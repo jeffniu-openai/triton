@@ -1,30 +1,38 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-18 07:13 UTC non-linear i8 ISA/API split: i8 MMAv5
+  signedness/saturation exposure is no longer in the linear-layout gap
+  register. Signed i8 MMAv5 runtime support on GB200 remains documented in
+  `gb200_i8_validation_artifacts.md`, while the remaining independent A/B
+  signedness and integer saturation controls are tracked in
+  `isa_api_followups.md` as ISA/API work. The active linear-layout gaps are
+  now Gap #1 `tcgen05.cp` complete-support umbrella with sub-buckets
+  `1A`-`1F`, Gap #2 narrow scaled-MMAv5 `N=8/16`, and Gap #3 mixed fp4 TMEM
+  LHS.
+
 - Latest: 2026-04-18 06:57 UTC remaining gap register reconsolidation:
   `remaining_coverage_gaps.md` no longer keeps old `tcgen05.cp` placeholder
-  gaps. The current active list is Gap #1 i8 MMAv5 signedness/saturation API
-  exposure; Gap #2 `tcgen05.cp` complete-support umbrella with sub-buckets
-  `2A`-`2F`; Gap #3 narrow scaled-MMAv5 `N=8/16`; and Gap #4 mixed fp4 TMEM
-  LHS. Use these current numbers going forward.
+  gaps. This checkpoint was superseded by the 07:13 UTC split that moved
+  non-linear i8 MMAv5 ISA/API work out of the linear-layout gap register.
 
 - Latest: 2026-04-18 06:54 UTC `tcgen05.cp` gap merge: all copy-related
-  remaining coverage questions are now merged into Gap #2. The active
-  sub-buckets are `2A` dense subword exact-width `128x128b` evidence,
-  `2B` partial footprints/masks, `2C` `4x256b` refresh views/readback,
-  `2D` packed/subword `warpx2`, `2E` two-CTA `warpx2::02_13`, and
-  `2F` frontend descriptor/copy-source contracts. This checkpoint was
-  superseded by the 06:57 UTC reconsolidation that removed the old placeholder
-  gaps and renumbered the remaining non-copy gaps.
+  remaining coverage questions are now merged into the `tcgen05.cp` umbrella.
+  This checkpoint was superseded by later reconsolidation; current sub-buckets
+  are `1A` dense subword exact-width `128x128b` evidence, `1B` partial
+  footprints/masks, `1C` `4x256b` refresh views/readback, `1D`
+  packed/subword `warpx2`, `1E` two-CTA `warpx2::02_13`, and `1F` frontend
+  descriptor/copy-source contracts.
 
 - Latest: 2026-04-18 06:45 UTC Gap #2 `tcgen05.cp` supported-layout audit:
   `tcgen05_cp_gap2_audit_20260418.md` records the family-by-family audit.
   The copy verifier/planner is already normalized around `LinearLayout`;
   legacy tensor-memory encodings are compatibility syntax only, not a separate
   backend support category. No broad new copy implementation gap was found.
-  Current unsupported rows now classify under Gap #2 sub-buckets rather than
-  separate gap numbers. Optional closure polish is one tiny dense subword
-  exact-width `128x128b` evidence row, or an explicit waiver because dense
-  subword `128x256b` already exercises the same packed dense path.
+  This checkpoint was superseded by the later merge/renumbering; current
+  unsupported copy rows classify under Gap #1 sub-buckets rather than separate
+  gap numbers. Optional closure polish is one tiny dense subword exact-width
+  `128x128b` evidence row, or an explicit waiver because dense subword
+  `128x256b` already exercises the same packed dense path.
 
 - Latest: 2026-04-17 23:34 UTC remaining coverage gap register:
   `remaining_coverage_gaps.md` is now the stable-numbered source of truth for
@@ -35,8 +43,8 @@
   subword `warpx2`; Gap #6 two-CTA `warpx2::02_13`; Gap #7 narrow
   scaled-MMAv5 `N=8/16`; Gap #8 mixed fp4 TMEM LHS; Gap #9 frontend
   descriptor and copy-source contracts. This original register was
-  reconsolidated on 2026-04-18 06:57 UTC; use the current compact list at the
-  top of `remaining_coverage_gaps.md`.
+  reconsolidated on 2026-04-18; use the current compact list at the top of
+  `remaining_coverage_gaps.md`.
 
 - Latest: 2026-04-17 21:48 UTC direct `ld/st` query-precedence cleanup:
   `TensorMemoryToLLVM` no longer owns the query-type-before-raw-query

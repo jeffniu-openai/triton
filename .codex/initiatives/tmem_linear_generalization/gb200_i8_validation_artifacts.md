@@ -2,10 +2,12 @@
 
 Last updated: 2026-04-18 01:36 UTC
 
-This is the reusable artifact/runbook for Gap #1 signed i8 direct MMAv5
-validation. It records the exact generated module, remote environment, and
-commands used to prove that the current signed i8 `tcgen05.mma.kind::i8`
-frontend/lowering path runs correctly on GB200.
+This is the reusable artifact/runbook for signed i8 direct MMAv5 validation.
+It records the exact generated module, remote environment, and commands used
+to prove that the current signed i8 `tcgen05.mma.kind::i8` frontend/lowering
+path runs correctly on GB200. The remaining signedness/saturation controls are
+tracked as a non-linear ISA/API follow-up in `isa_api_followups.md`, not in
+the linear-layout gap register.
 
 Do not store CaaS API keys in this file. Supply `CAAS_API_KEY` in the shell
 environment when rerunning the validation.
@@ -131,6 +133,7 @@ PASS signed i8 tcgen05.mma sm100 PTX matches torch int32 matmul
 
 ## Classification
 
-Gap #1 signed i8 direct MMAv5 is supported on GB200 for the current
-frontend/lowering path. Remaining i8 work is separate: unsigned/per-operand
-signedness and integer saturation need explicit IR/frontend exposure decisions.
+Signed i8 direct MMAv5 is supported on GB200 for the current frontend/lowering
+path. Remaining i8 work is separate from linear-layout coverage:
+unsigned/per-operand signedness and integer saturation need explicit
+IR/frontend exposure decisions.

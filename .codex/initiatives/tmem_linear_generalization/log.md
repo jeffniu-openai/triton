@@ -25088,7 +25088,7 @@ Open after this slice:
     through `2F`;
   - renumbered the remaining active non-copy gaps so narrow scaled-MMAv5
     `N=8/16` is now Gap #3 and mixed fp4 TMEM LHS is now Gap #4.
-- Current active gap list:
+- Active gap list at that checkpoint, now superseded:
   - Gap #1: i8 MMAv5 signedness/saturation API exposure;
   - Gap #2: `tcgen05.cp` complete-support umbrella;
   - Gap #3: narrow scaled-MMAv5 `N=8/16`;
@@ -25096,4 +25096,34 @@ Open after this slice:
 - Validation:
   - documentation-only checkpoint; run `git diff --check` before commit.
 - Next:
-  - use the compact four-gap list for further discussions.
+  - superseded by the 07:13 UTC split: use the linear-layout-only three-gap
+    list for further discussions, and track i8 signedness/saturation in the
+    separate ISA/API follow-up document.
+
+## 2026-04-18 07:13 UTC: split non-layout ISA/API work from linear-layout gaps
+
+- Starting point: `codex/tmem` at pushed `930e8de19`.
+- User correction:
+  - i8 MMAv5 signedness/saturation is related to ISA coverage, but it is not
+    a linear-layout coverage gap;
+  - the main gap register should track support gaps whose implementation or
+    coverage depends on linear-layout generalization.
+- Change:
+  - created `isa_api_followups.md` for TMEM ISA/API work outside the
+    linear-layout gap register;
+  - moved the remaining i8 MMAv5 independent A/B signedness and integer
+    saturation exposure work there;
+  - kept signed i8 GB200 runtime evidence in
+    `gb200_i8_validation_artifacts.md`;
+  - renamed the active gap register to `TMEM Linear-Layout Remaining Coverage
+    Gaps`;
+  - renumbered the active linear-layout gaps to:
+    - Gap #1: `tcgen05.cp` complete-support umbrella (`1A`-`1F`);
+    - Gap #2: narrow scaled-MMAv5 `N=8/16`;
+    - Gap #3: mixed fp4 TMEM LHS.
+- Validation:
+  - documentation-only checkpoint; run `git diff --check` before commit.
+- Next:
+  - use Gap #1/#2/#3 only for linear-layout support discussions;
+  - discuss i8 signedness/saturation as an ISA/API follow-up, not as a
+    linear-layout gap.

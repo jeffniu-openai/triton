@@ -46,36 +46,46 @@ When resuming the initiative:
   remaining buckets, completed checkpoints, and next concrete implementation
   slice.
 - use `remaining_coverage_gaps.md` as the stable numbered register for the
-  unresolved support/coverage questions. Refer to these as Gap #1, Gap #2,
-  etc.; preserve the compact numbering unless the user explicitly asks for a
-  reconsolidation.
-- use `gb200_i8_validation_artifacts.md` for the reusable Gap #1 signed i8
-  MMAv5 GB200 artifact inventory and CaaS rerun command.
-- use `tcgen05_cp_gap2_audit_20260418.md` for the Gap #2 `tcgen05.cp`
-  complete-support umbrella audit, family-by-family classification, and
-  sub-bucket definitions.
+  unresolved linear-layout support/coverage questions. Refer to these as
+  Gap #1, Gap #2, etc.; preserve the compact numbering unless the user
+  explicitly asks for a reconsolidation.
+- use `isa_api_followups.md` for TMEM-related ISA/API work that does not
+  depend on linear-layout generalization.
+- use `gb200_i8_validation_artifacts.md` for the reusable signed i8 MMAv5
+  GB200 artifact inventory and CaaS rerun command.
+- use `tcgen05_cp_gap2_audit_20260418.md` for the current Gap #1
+  `tcgen05.cp` complete-support umbrella audit, family-by-family
+  classification, and sub-bucket definitions. The filename preserves the
+  earlier pre-reconsolidation numbering.
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 07:13 UTC: moved i8 MMAv5 signedness/saturation out of the
+  linear-layout gap register. It is now tracked as a non-linear ISA/API
+  follow-up in `isa_api_followups.md` because the remaining work is descriptor
+  semantic exposure, not layout-general backend coverage. The active
+  linear-layout gap list is now Gap #1 `tcgen05.cp` complete-support umbrella
+  (`1A`-`1F`), Gap #2 narrow scaled-MMAv5 `N=8/16`, and Gap #3 mixed fp4 TMEM
+  LHS.
 - 2026-04-18 06:57 UTC: reconsolidated the remaining coverage gap register and
   removed the old `tcgen05.cp` placeholder gaps entirely. The current compact
-  list is Gap #1 i8 MMAv5 signedness/saturation API exposure, Gap #2
-  `tcgen05.cp` complete-support umbrella with sub-buckets `2A`-`2F`, Gap #3
-  narrow scaled-MMAv5 `N=8/16`, and Gap #4 mixed fp4 TMEM LHS.
+  list at that checkpoint was later superseded by the 07:13 UTC classification
+  update that moved non-linear i8 MMAv5 ISA/API work out of this register.
 - 2026-04-18 06:54 UTC: merged all `tcgen05.cp`-related remaining coverage
-  questions into Gap #2. The old Gap #3 partial-footprint, Gap #4
+  questions into then-Gap #2. The old Gap #3 partial-footprint, Gap #4
   `4x256b` refresh-view, Gap #5 packed/subword copy, Gap #6 two-CTA
   `warpx2::02_13`, and Gap #9 copy-source/frontend-contract entries are now
-  merged into Gap #2 sub-buckets `2B` through `2F`; this was superseded by the
-  06:57 UTC reconsolidation that removed those placeholders and renumbered the
-  remaining non-copy gaps.
+  merged into the current Gap #1 `tcgen05.cp` sub-buckets `1B` through `1F`;
+  this was superseded by the 06:57 UTC reconsolidation that removed those
+  placeholders and the 07:13 UTC i8 ISA/API split that renumbered the active
+  linear-layout gaps.
 - 2026-04-18 06:45 UTC: completed the Gap #2 `tcgen05.cp` supported-layout
   completeness audit. The planner/verifier path is normalized around
   `LinearLayout`; legacy tensor-memory encodings are frontend compatibility
   syntax, not a separate backend capability. No broad new copy implementation
   gap was found. The old separate `tcgen05.cp` follow-up buckets have since
-  been merged into Gap #2 sub-buckets. Optional evidence before closing the
-  supported-layout baseline is one tiny dense subword
+  been merged into the current Gap #1 sub-buckets. Optional evidence before
+  closing the supported-layout baseline is one tiny dense subword
   exact-width `128x128b` runtime row such as f16 `128x8` or i8 `128x16`.
 - 2026-04-18 01:51 UTC: added the first checked-in runtime pytest coverage for
   Gap #1 signed i8 MMAv5. `test_core.py` now has an exact `GB200/sm100` gated
@@ -105,8 +115,10 @@ When resuming the initiative:
   questions. The original list had separate `tcgen05.cp` entries for layout
   completeness, partial copy footprints, `4x256b` refresh views, packed
   copy/subword `warpx2`, two-CTA `warpx2::02_13`, and frontend
-  descriptor/copy-source contracts; these are now merged under Gap #2 and the
-  old placeholder entries have been removed from the active list.
+  descriptor/copy-source contracts; these are now merged under the current
+  Gap #1 `tcgen05.cp` umbrella and the old placeholder entries have been
+  removed from the active list. The i8 MMAv5 ISA/API item was later moved out
+  of the linear-layout register.
 - 2026-04-17 21:50 UTC: final local boundary checkpoint for the active
   completion tracker. The current plan has no unblocked local
   support-bearing implementation slice remaining: the full runtime matrix is
