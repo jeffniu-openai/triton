@@ -742,6 +742,14 @@ and `1024`, under both simulated production routing and uniform routing.
     register occupancy limit, but not the actual shared-memory residency limit.
     Further occupancy hints alone are unlikely to help unless the W/X/scale
     footprint drops or the producer/consumer wait timing changes.
+- A temporary source probe changed the MMA partition to wait for X before W,
+  then was reverted after measurement. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_waitx_rank3457_rep1200.csv`.
+  - The probe slightly lifted rank 3 in one run (`0.952x` vs `0.950x` for
+    default W6/regs48), but still lost to 1CTA and regressed ranks 4, 5, and 7
+    versus the default W-before-X order. Keeping the existing W wait, scale
+    copy, then X wait order is better because it can overlap scale movement
+    with X readiness.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
