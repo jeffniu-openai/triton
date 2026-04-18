@@ -25014,9 +25014,10 @@ Open after this slice:
 - Scope:
   - audited whether Gap #2 is an actual backend implementation gap or a
     coverage/classification question over normalized `LinearLayout` families;
-  - kept separate the already-numbered follow-up gaps for partial footprints,
-    `4x256b` refresh views, packed/subword `warpx2`, two-CTA
-    `warpx2::02_13`, and frontend descriptor/copy-source contracts.
+  - initially kept separate the already-numbered follow-up gaps for partial
+    footprints, `4x256b` refresh views, packed/subword `warpx2`, two-CTA
+    `warpx2::02_13`, and frontend descriptor/copy-source contracts; this was
+    superseded by the 06:54 UTC merge into Gap #2 sub-buckets.
 - Findings:
   - `TMemCopyOp` verification obtains the shared source layout with
     `toLinearLayout(srcTy)`;
@@ -25034,19 +25035,45 @@ Open after this slice:
   - dense `128x256b`: supported for canonical dense, explicit linear,
     subword, indexed/subslice, one-CTA/two-CTA, and swizzle families in scope;
   - refresh `4x256b`: supported for explicit refresh-shaped layouts; ordinary
-    view/readback remains Gap #4;
+    view/readback is now Gap #2C;
   - no-scales `warpx2::01_23`: supported for 32-bit one-CTA/two-CTA and
-    descriptor/source-rematerialized views; subword remains Gap #5;
+    descriptor/source-rematerialized views; subword is now Gap #2D;
   - no-scales `warpx2::02_13`: supported for 32-bit single-CTA; two-CTA
-    remains Gap #6 and subword remains Gap #5;
+    is now Gap #2E and subword is now Gap #2D;
   - scales `warpx4`: supported for direct scales copy, source
-    rematerialization, and scaled-MMA copy use; descriptor/mask contracts
-    remain Gap #3/#9.
+    rematerialization, and scaled-MMA copy use; descriptor/mask contracts are
+    now Gap #2B/#2F.
 - Durable docs updated:
   - added `tcgen05_cp_gap2_audit_20260418.md`;
   - updated README, memory, and the stable gap register with the audit result.
 - Validation:
   - documentation-only checkpoint; run `git diff --check` before commit.
 - Next:
-  - add or waive the optional dense subword exact-width `128x128b` evidence
-    row, then mark Gap #2 supported modulo Gaps #3-#6/#9.
+  - superseded by the 06:54 UTC merge: continue under Gap #2 sub-buckets
+    `2A` through `2F`.
+
+## 2026-04-18 06:54 UTC: merge tcgen05.cp-related gaps into Gap #2
+
+- Starting point: `codex/tmem` at pushed `e509a0adf`.
+- Change:
+  - made Gap #2 the single active `tcgen05.cp` complete-support umbrella;
+  - merged the former Gap #3 partial-footprint, Gap #4 `4x256b`
+    refresh-view, Gap #5 packed/subword copy, Gap #6 two-CTA
+    `warpx2::02_13`, and Gap #9 copy-source/frontend-contract scopes into
+    Gap #2 sub-buckets;
+  - kept the old headings as `merged` placeholders so existing references do
+    not become ambiguous;
+  - left unrelated Gap #7 narrow scaled-MMAv5 and Gap #8 mixed fp4 TMEM LHS
+    unchanged.
+- New Gap #2 sub-buckets:
+  - `2A` dense subword exact-width `128x128b` evidence;
+  - `2B` partial footprints/masks and full-atom decomposition;
+  - `2C` `4x256b` refresh ordinary-view/readback semantics;
+  - `2D` packed-lane `tcgen05.cp` and subword no-scales `warpx2`;
+  - `2E` two-CTA no-scales `warpx2::02_13`;
+  - `2F` frontend descriptor and copy-source contracts.
+- Validation:
+  - documentation-only checkpoint; run `git diff --check` before commit.
+- Next:
+  - discuss/resolve the Gap #2 sub-buckets one at a time using the `2A`-`2F`
+    labels.

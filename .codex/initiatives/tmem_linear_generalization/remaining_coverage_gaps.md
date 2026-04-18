@@ -1,11 +1,12 @@
 # TMEM Remaining Coverage Gaps
 
-Last updated: 2026-04-18 06:45 UTC
+Last updated: 2026-04-18 06:54 UTC
 
 This is the stable reference list for the remaining TMEM coverage gaps that
-need deeper discussion. Keep the numbering stable. If a gap is resolved,
-classify it in place as `supported`, `impossible`, or `deferred`; do not
-renumber later gaps. New discoveries should be appended as new gap numbers.
+need deeper discussion. Keep the numbering stable. If a gap is resolved or
+merged, classify it in place as `supported`, `impossible`, `deferred`, or
+`merged`; do not renumber later gaps. New discoveries should be appended as
+new gap numbers.
 
 Each gap should be examined with the same decision standard:
 - Is this impossible under the public PTX/ISA and current hardware behavior?
@@ -43,98 +44,73 @@ Each gap should be examined with the same decision standard:
   Unsigned/per-operand signedness and saturation still need an explicit
   IR/frontend exposure decision.
 
-## Gap #2: `tcgen05.cp` Supported-Layout Completeness
+## Gap #2: `tcgen05.cp` Complete Support Umbrella
 
-- Area: complete coverage of `tcgen05.cp` layouts modulo public instruction
-  families and hardware restrictions.
+- Area: all remaining `tcgen05.cp` support and coverage questions after
+  normalization to `LinearLayout`, including the formerly separate Gap #3
+  partial-footprint work, Gap #4 `4x256b` refresh-view work, Gap #5
+  packed/subword copy work, Gap #6 two-CTA `warpx2::02_13` work, and Gap #9
+  copy-source/frontend contract work.
 - Current state: the formal audit is recorded in
   `tcgen05_cp_gap2_audit_20260418.md`. The planner/verifier path normalizes
   through `LinearLayout`: legacy `TensorMemoryLayout` encodings are frontend
   compatibility syntax, not a separate backend capability. Coverage should be
   judged by normalized layout equivalence classes.
-- Audit result: no broad new `tcgen05.cp` implementation gap was found. The
-  supported public families are dense `128x128b`, dense `128x256b`, explicit
+- Supported baseline: no broad new `tcgen05.cp` implementation gap was found.
+  Supported public families are dense `128x128b`, dense `128x256b`, explicit
   refresh-shaped `4x256b`, 32-bit no-scales `warpx2::01_23`, 32-bit
   no-scales single-CTA `warpx2::02_13`, and scales `warpx4.32x128b`.
-  Remaining unsupported rows map to Gap #3 partial footprints/masks, Gap #4
-  refresh views/readback, Gap #5 packed/subword `warpx2`, Gap #6 two-CTA
-  `warpx2::02_13`, or Gap #9 descriptor/copy-source contracts.
-- Remaining evidence question: optional dense subword exact-width `128x128b`
-  rows, such as f16 `128x8` or i8 `128x16`, are not explicitly represented.
-  Existing dense subword `128x256b` rows exercise the same packed dense path at
-  wider N, so this is evidence polish rather than a known implementation gap.
-- Current classification: audit-complete; close as supported modulo Gaps
-  #3-#6/#9 after adding or explicitly waiving the optional dense subword
-  `128x128b` evidence row.
+- Active sub-buckets:
+  - `2A`: optional evidence polish for dense subword exact-width `128x128b`
+    rows, such as f16 `128x8` or i8 `128x16`; existing dense subword
+    `128x256b` rows exercise the same packed dense path at wider N.
+  - `2B`: partial copy footprints, including row/column permutations,
+    sub-instruction tile permutations, descriptor-view column slices, and any
+    copy that wants only part of a public copy atom footprint. Decide whether
+    each negative row decomposes into non-overlapping full atoms or needs an
+    unavailable mask/smaller footprint/source format.
+  - `2C`: `tcgen05.cp.4x256b` refresh views. Explicit refresh-shaped copies
+    are positive for one-CTA and two-CTA, while ordinary contiguous `4x8`
+    exposure and direct `ld/st` readback need a first-class refresh
+    view/remap/load-store contract or should remain rejected.
+  - `2D`: packed-lane `tcgen05.cp`, especially f16/bf16/i16/i8 no-scales
+    `warpx2`. Direct packed copy appears ISA-limited because `tcgen05.cp`
+    lacks the `ld/st` pack/unpack modifiers; staged compiler support may be
+    possible through shared/register/TMEM `ld/st.pack` paths.
+  - `2E`: no-scales `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`.
+    Single-CTA `02_13` and two-CTA `01_23` are positive. Two-CTA `02_13`
+    still needs proof that a legal descriptor/address/source schedule can
+    preserve the high source-column bit, or a final hardware/ISA limitation
+    classification.
+  - `2F`: frontend descriptor and copy-source contracts for
+    `tcgen05_copy`, including explicit descriptor-view APIs and
+    transposed/padded/noncanonical shared sources. Decide which cases should
+    become explicit API contracts, which should rematerialize automatically,
+    and which should stay rejected because semantics would be ambiguous or too
+    expensive implicitly.
+- Current classification: one active umbrella gap. Close Gap #2 only after the
+  sub-buckets above are individually classified as supported, impossible, or
+  deferred.
 
-## Gap #3: Partial `tcgen05.cp` Footprints
+## Gap #3: Merged Into Gap #2
 
-- Area: row/column permutations, sub-instruction tile permutations,
-  descriptor-view column slices, and any copy that wants only part of a public
-  copy atom footprint.
-- Current state: current diagnostics report destination-mask,
-  descriptor-row-split, source-row-split, column-permutation, or packed-lane
-  requirements. Public `tcgen05.cp` writes full atom footprints, and there is
-  no current destination row/column mask operand.
-- Open question: are any currently negative partial-copy layouts decomposable
-  into non-overlapping full public atoms, or do they fundamentally require
-  unavailable masks/smaller footprints/source formats?
-- Next evidence: for each representative partial row, prove either an exact
-  non-overlapping atom decomposition or an unavoidable write-overlap/mask
-  requirement.
-- Initial classification: partially implementable for exact decompositions;
-  otherwise likely public-ISA limited.
+- Former area: partial `tcgen05.cp` footprints.
+- Current classification: merged. Use Gap #2 sub-bucket `2B`.
 
-## Gap #4: `tcgen05.cp.4x256b` Refresh Views
+## Gap #4: Merged Into Gap #2
 
-- Area: `tcgen05.cp.4x256b` ordinary contiguous views, refresh-shaped layouts,
-  and direct `ld/st` readback of refresh images.
-- Current state: refresh-shaped `4x256b` copy is positive for one-CTA and
-  two-CTA layouts. Ordinary contiguous `4x8` exposure and direct `ld/st`
-  readback remain clean unsupported because the physical refresh image stores
-  logical row/column bits in a non-ordinary layout.
-- Open question: can the compiler expose a first-class refresh view/remap
-  contract that makes ordinary user-facing copies and readback safe, or should
-  ordinary contiguous `4x256b` remain impossible for direct copy/load/store?
-- Next evidence: specify the logical-to-physical refresh image contract and
-  determine whether readback can be implemented through supported packets or
-  only through explicit rematerialization/staging.
-- Initial classification: copy is supported only for explicit refresh layouts;
-  broader support needs API/storage contract work.
+- Former area: `tcgen05.cp.4x256b` refresh views.
+- Current classification: merged. Use Gap #2 sub-bucket `2C`.
 
-## Gap #5: Packed `tcgen05.cp` and Subword `warpx2`
+## Gap #5: Merged Into Gap #2
 
-- Area: packed-lane `tcgen05.cp`, especially f16/bf16/i16/i8 `warpx2`
-  no-scales copies whose logical N is narrower than the 128-bit public atom
-  footprint.
-- Current state: `tcgen05.ld/st` have pack/unpack support, but `tcgen05.cp`
-  does not expose an analogous pack/unpack modifier. Current subword `warpx2`
-  negatives report packed-lane source/destination storage requirements and
-  insufficient logical column basis coverage.
-- Open question: can the compiler support any of these through explicit
-  packed-lane storage/rematerialization while preserving semantics, or is
-  direct packed `tcgen05.cp` impossible under the public instruction surface?
-- Next evidence: separate single-instruction `tcgen05.cp` impossibility from
-  possible multi-step staging strategies through shared/register/TMEM
-  `ld/st.pack` paths, including correctness and cost.
-- Initial classification: direct packed `tcgen05.cp` is likely ISA-limited;
-  staged compiler support may be possible for selected cases.
+- Former area: packed `tcgen05.cp` and subword `warpx2`.
+- Current classification: merged. Use Gap #2 sub-bucket `2D`.
 
-## Gap #6: Two-CTA `warpx2::02_13`
+## Gap #6: Merged Into Gap #2
 
-- Area: no-scales `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`.
-- Current state: single-CTA `02_13` is positive. Two-CTA `01_23` is positive.
-  Two-CTA `02_13` currently reports a high source-column preservation
-  requirement: known descriptor/direct-seed schedules either duplicate low
-  source columns, fault, or read zeros.
-- Open question: is there any legal `cta_group::2` descriptor/address/source
-  schedule that preserves the high source-column bit for `02_13`, or should
-  this be closed as a hardware/ISA schedule limitation?
-- Next evidence: perform a focused schedule search and, where possible, use
-  compile-only PTX checks plus GB200 runtime/probe evidence to validate or
-  eliminate candidates.
-- Initial classification: open research gap with strong current evidence for
-  a hardware schedule limitation.
+- Former area: two-CTA no-scales `tcgen05.cp.warpx2::02_13`.
+- Current classification: merged. Use Gap #2 sub-bucket `2E`.
 
 ## Gap #7: Narrow Scaled-MMAv5 `N=8/16`
 
@@ -172,19 +148,13 @@ Each gap should be examined with the same decision standard:
 - Initial classification: implementable backend/storage-model gap, not a
   known ISA impossibility.
 
-## Gap #9: Frontend Descriptor and Copy-Source Contracts
+## Gap #9: Merged Into Gap #2 For `tcgen05.cp`
 
-- Area: frontend block-layout tensor-memory descriptors, explicit descriptor
-  view APIs, and `tcgen05_copy` source contracts for transposed/padded or
-  otherwise noncanonical shared sources.
-- Current state: `tcgen05_copy` requires a shared-memory descriptor source and
-  tensor-memory descriptor destination, with only selected scales and `warpx2`
-  source rematerialization paths. Block-layout TMEM descriptors and some copy
-  source contracts still fail before they become backend support questions.
-- Open question: which failures should become explicit API contracts, which
-  should rematerialize through canonical shared/TMEM descriptors, and which
-  should remain rejected because the semantics would be ambiguous or too
-  expensive implicitly?
-- Next evidence: design the frontend descriptor/view contract and decide where
-  rematerialization is automatic versus opt-in.
-- Initial classification: implementable API/lowering design gap.
+- Former area: frontend descriptor and copy-source contracts, including
+  `tcgen05_copy` source contracts for transposed/padded or otherwise
+  noncanonical shared sources.
+- Current classification: merged for all `tcgen05.cp`-related work. Use Gap #2
+  sub-bucket `2F`.
+- Boundary note: if a future non-copy frontend descriptor/API gap is identified,
+  append a new gap with explicit non-`tcgen05.cp` scope instead of reusing
+  Gap #9 ambiguously.

@@ -1,27 +1,35 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-18 06:54 UTC `tcgen05.cp` gap merge: all copy-related
+  remaining coverage questions are now merged into Gap #2. The active
+  sub-buckets are `2A` dense subword exact-width `128x128b` evidence,
+  `2B` partial footprints/masks, `2C` `4x256b` refresh views/readback,
+  `2D` packed/subword `warpx2`, `2E` two-CTA `warpx2::02_13`, and
+  `2F` frontend descriptor/copy-source contracts. Former Gaps #3-#6 and the
+  `tcgen05.cp` portion of Gap #9 remain only as merged placeholders so old
+  references do not become ambiguous. Gap #7 and Gap #8 keep their numbers and
+  are still separate MMAv5/TMEM-LHS questions.
+
 - Latest: 2026-04-18 06:45 UTC Gap #2 `tcgen05.cp` supported-layout audit:
   `tcgen05_cp_gap2_audit_20260418.md` records the family-by-family audit.
   The copy verifier/planner is already normalized around `LinearLayout`;
   legacy tensor-memory encodings are compatibility syntax only, not a separate
   backend support category. No broad new copy implementation gap was found.
-  Current unsupported rows classify under the existing dedicated gaps: Gap #3
-  partial footprints/masks, Gap #4 refresh views/readback, Gap #5
-  packed/subword `warpx2`, Gap #6 two-CTA `warpx2::02_13`, and Gap #9
-  descriptor/copy-source contracts. Optional closure polish is one tiny dense
-  subword exact-width `128x128b` evidence row, or an explicit waiver because
-  dense subword `128x256b` already exercises the same packed dense path.
+  Current unsupported rows now classify under Gap #2 sub-buckets rather than
+  separate gap numbers. Optional closure polish is one tiny dense subword
+  exact-width `128x128b` evidence row, or an explicit waiver because dense
+  subword `128x256b` already exercises the same packed dense path.
 
 - Latest: 2026-04-17 23:34 UTC remaining coverage gap register:
   `remaining_coverage_gaps.md` is now the stable-numbered source of truth for
-  the next support-boundary discussions. The registered gaps are: Gap #1 GB200
-  i8 MMAv5 compile-only coverage; Gap #2 `tcgen05.cp` supported-layout
-  completeness; Gap #3 partial `tcgen05.cp` footprints; Gap #4
-  `tcgen05.cp.4x256b` refresh views; Gap #5 packed `tcgen05.cp` and subword
-  `warpx2`; Gap #6 two-CTA `warpx2::02_13`; Gap #7 narrow scaled-MMAv5
-  `N=8/16`; Gap #8 mixed fp4 TMEM LHS; Gap #9 frontend descriptor and
-  copy-source contracts. Keep these numbers stable and update the individual
-  entries in place as each gap is proven supported, impossible, or deferred.
+  the next support-boundary discussions. The original registered gaps were:
+  Gap #1 GB200 i8 MMAv5 compile-only coverage; Gap #2 `tcgen05.cp`
+  supported-layout completeness; Gap #3 partial `tcgen05.cp` footprints;
+  Gap #4 `tcgen05.cp.4x256b` refresh views; Gap #5 packed `tcgen05.cp` and
+  subword `warpx2`; Gap #6 two-CTA `warpx2::02_13`; Gap #7 narrow
+  scaled-MMAv5 `N=8/16`; Gap #8 mixed fp4 TMEM LHS; Gap #9 frontend
+  descriptor and copy-source contracts. Keep these numbers stable; merged gaps
+  stay in place as placeholders.
 
 - Latest: 2026-04-17 21:48 UTC direct `ld/st` query-precedence cleanup:
   `TensorMemoryToLLVM` no longer owns the query-type-before-raw-query

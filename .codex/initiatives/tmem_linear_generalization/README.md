@@ -51,18 +51,24 @@ When resuming the initiative:
 - use `gb200_i8_validation_artifacts.md` for the reusable Gap #1 signed i8
   MMAv5 GB200 artifact inventory and CaaS rerun command.
 - use `tcgen05_cp_gap2_audit_20260418.md` for the Gap #2 `tcgen05.cp`
-  supported-layout completeness audit and family-by-family classification.
+  complete-support umbrella audit, family-by-family classification, and
+  sub-bucket definitions.
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 06:54 UTC: merged all `tcgen05.cp`-related remaining coverage
+  questions into Gap #2. The old Gap #3 partial-footprint, Gap #4
+  `4x256b` refresh-view, Gap #5 packed/subword copy, Gap #6 two-CTA
+  `warpx2::02_13`, and Gap #9 copy-source/frontend-contract entries are now
+  merged placeholders pointing to Gap #2 sub-buckets `2B` through `2F`.
+  Unrelated gaps keep their original numbers.
 - 2026-04-18 06:45 UTC: completed the Gap #2 `tcgen05.cp` supported-layout
   completeness audit. The planner/verifier path is normalized around
   `LinearLayout`; legacy tensor-memory encodings are frontend compatibility
   syntax, not a separate backend capability. No broad new copy implementation
-  gap was found. Remaining unsupported rows map to Gap #3 partial footprints,
-  Gap #4 `4x256b` refresh views/readback, Gap #5 packed/subword `warpx2`,
-  Gap #6 two-CTA `warpx2::02_13`, or Gap #9 descriptor/copy-source contracts.
-  Optional evidence before closing Gap #2 is one tiny dense subword
+  gap was found. The old separate `tcgen05.cp` follow-up buckets have since
+  been merged into Gap #2 sub-buckets. Optional evidence before closing the
+  supported-layout baseline is one tiny dense subword
   exact-width `128x128b` runtime row such as f16 `128x8` or i8 `128x16`.
 - 2026-04-18 01:51 UTC: added the first checked-in runtime pytest coverage for
   Gap #1 signed i8 MMAv5. `test_core.py` now has an exact `GB200/sm100` gated
@@ -88,12 +94,12 @@ When resuming the initiative:
   Next: copy the directory to GB200 and run
   `python3 run_i8_ptx_torch.py --launcher cpp`.
 - 2026-04-17 23:34 UTC: added `remaining_coverage_gaps.md` as the canonical
-  stable-numbered discussion register for the nine unresolved coverage/support
-  questions: GB200 i8 MMAv5 compile-only coverage; `tcgen05.cp` supported
-  layout completeness; partial copy footprints; `4x256b` refresh-view
-  exposure; packed copy/subword `warpx2`; two-CTA `warpx2::02_13`; narrow
-  scaled-MMAv5 N=8/16; mixed fp4 TMEM LHS; and frontend descriptor/copy-source
-  contracts. Use this register for future "Gap #N" discussions.
+  stable-numbered discussion register for the unresolved coverage/support
+  questions. The original list had separate `tcgen05.cp` entries for layout
+  completeness, partial copy footprints, `4x256b` refresh views, packed
+  copy/subword `warpx2`, two-CTA `warpx2::02_13`, and frontend
+  descriptor/copy-source contracts; these are now merged under Gap #2 while
+  preserving the old numbers as placeholders.
 - 2026-04-17 21:50 UTC: final local boundary checkpoint for the active
   completion tracker. The current plan has no unblocked local
   support-bearing implementation slice remaining: the full runtime matrix is

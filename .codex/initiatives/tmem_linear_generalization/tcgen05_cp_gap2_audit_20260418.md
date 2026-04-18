@@ -1,23 +1,20 @@
-# Gap #2 Audit: `tcgen05.cp` Supported-Layout Completeness
+# Gap #2 Audit: `tcgen05.cp` Complete Support Umbrella
 
-Last updated: 2026-04-18 06:45 UTC
+Last updated: 2026-04-18 06:54 UTC
 
 ## Scope
 
-Gap #2 asks whether Triton has complete enough `tcgen05.cp` layout support for
-the public copy instruction families, modulo known ISA/storage/API boundaries.
-This audit treats legacy tensor-memory encodings as frontend syntax only:
+Gap #2 owns all remaining `tcgen05.cp` support and coverage questions. It
+started as an audit of supported-layout completeness for the public copy
+instruction families, but now also owns the formerly separate copy-specific
+gaps: partial footprints, `4x256b` refresh views, packed/subword `warpx2`,
+two-CTA `warpx2::02_13`, and `tcgen05_copy` source/frontend contracts.
+
+This audit still treats legacy tensor-memory encodings as frontend syntax only:
 compiler support must be judged after conversion to normalized `LinearLayout`.
-
-The audit does not try to close the separate support questions already split
-into other gap numbers:
-
-- Gap #3: partial copy footprints, row/column masks, and sub-instruction tile
-  permutations.
-- Gap #4: ordinary/readback contracts for `tcgen05.cp.4x256b` refresh images.
-- Gap #5: packed `tcgen05.cp` and subword `warpx2` storage.
-- Gap #6: two-CTA `warpx2::02_13` source-column preservation.
-- Gap #9: explicit frontend descriptor and copy-source contracts.
+The old gap numbers remain as merged placeholders in
+`remaining_coverage_gaps.md`; active `tcgen05.cp` work should use Gap #2
+sub-buckets instead.
 
 ## Normalization Audit
 
@@ -50,10 +47,10 @@ The current planner recognizes these public `tcgen05.cp` families:
 | --- | --- | --- |
 | `128x128b` | dense row projection, no multicast, 128-bit column footprint | Supported for canonical dense layouts, one-CTA and two-CTA, with representative legacy/linear and indexed-view rows. |
 | `128x256b` | dense row projection, no multicast, >=256-bit column footprint | Supported for canonical dense layouts, one-CTA and two-CTA, linear indexed/subslice views, swizzle variants, 32-bit and representative subword linear rows. |
-| `4x256b` | refresh-shaped 32-bit conversion, or four-row 256-bit atom candidate | Supported only for explicit refresh-shaped layouts, one-CTA and two-CTA. Ordinary contiguous four-row views are Gap #4. |
-| `warpx2::01_23.64x128b` | row bit 5 broadcast, row bit 6 non-broadcast | Supported for 32-bit no-scales single-CTA and two-CTA canonical layouts, plus dense-source rematerialization and descriptor views. Subword variants are Gap #5. |
-| `warpx2::02_13.64x128b` | row bit 6 broadcast, row bit 5 non-broadcast | Supported for 32-bit no-scales single-CTA canonical layouts and source rematerialization. Two-CTA remains Gap #6. Subword variants are Gap #5. |
-| `warpx4.32x128b` | row bits 5 and 6 both broadcast | Supported for tensor-memory scales, direct copy, source rematerialization, one-CTA/two-CTA scaled-MMA use, and format/geometry sweeps. Descriptor-view mask cases are Gap #3/#9. |
+| `4x256b` | refresh-shaped 32-bit conversion, or four-row 256-bit atom candidate | Supported only for explicit refresh-shaped layouts, one-CTA and two-CTA. Ordinary contiguous four-row views are Gap #2C. |
+| `warpx2::01_23.64x128b` | row bit 5 broadcast, row bit 6 non-broadcast | Supported for 32-bit no-scales single-CTA and two-CTA canonical layouts, plus dense-source rematerialization and descriptor views. Subword variants are Gap #2D. |
+| `warpx2::02_13.64x128b` | row bit 6 broadcast, row bit 5 non-broadcast | Supported for 32-bit no-scales single-CTA canonical layouts and source rematerialization. Two-CTA remains Gap #2E. Subword variants are Gap #2D. |
+| `warpx4.32x128b` | row bits 5 and 6 both broadcast | Supported for tensor-memory scales, direct copy, source rematerialization, one-CTA/two-CTA scaled-MMA use, and format/geometry sweeps. Descriptor-view mask cases are Gap #2B/#2F. |
 
 ## Coverage Evidence By Family
 
@@ -98,7 +95,7 @@ Clean negatives:
 - TMEM allocation OOR cases for intentionally too-large lifted views.
 
 Audit result: implementation support is present for the realizable dense
-linear layouts currently in scope. Remaining negatives are Gap #3-style
+linear layouts currently in scope. Remaining negatives are Gap #2B
 full-footprint/mask boundaries, not generic layout incompleteness.
 
 ### Refresh `4x256b`
@@ -115,8 +112,8 @@ Clean negatives:
 
 Audit result: the public copy instruction itself is covered for the only
 layout contract currently exposed. Broader ordinary-view/readback behavior is
-not a Gap #2 miss; it is Gap #4 because it needs a first-class refresh image
-view/remap/load-store contract.
+not a supported-layout-baseline miss; it is Gap #2C because it needs a
+first-class refresh image view/remap/load-store contract.
 
 ### No-Scales `warpx2::01_23`
 
@@ -133,7 +130,7 @@ Clean negatives:
   public atom and require packed-lane source/destination storage.
 
 Audit result: support is complete for the 32-bit realizable family. Subword
-support is Gap #5, not Gap #2.
+support is Gap #2D, not a 32-bit layout-baseline issue.
 
 ### No-Scales `warpx2::02_13`
 
@@ -148,7 +145,7 @@ Clean negatives:
 - subword variants require packed-lane storage.
 
 Audit result: single-CTA support is covered. The two-CTA hole is the dedicated
-Gap #6 research question; subword support is Gap #5.
+Gap #2E research question; subword support is Gap #2D.
 
 ### Scales `warpx4.32x128b`
 
@@ -167,7 +164,7 @@ Clean negatives:
   or a copy-source contract the frontend does not expose yet.
 
 Audit result: core `warpx4` scales copy coverage is strong. Remaining failures
-belong to Gap #3 and Gap #9.
+belong to Gap #2B and Gap #2F.
 
 ## Cross-Cutting Negative Categories
 
@@ -196,7 +193,7 @@ These categories explain the current negatives without falling back to a vague
    backend capabilities. Legacy coverage should be retained only as frontend
    compatibility evidence.
 2. No new broad `tcgen05.cp` implementation gap was found. The major remaining
-   unsupported rows all map cleanly to Gap #3, #4, #5, #6, or #9.
+   unsupported rows all map cleanly to Gap #2B through Gap #2F.
 3. The only evidence-level hole found by this audit is small: dense subword
    exact-width `128x128b` rows are not explicitly represented. Existing dense
    subword `128x256b` rows exercise the same packed dense path at wider N, so
@@ -204,17 +201,28 @@ These categories explain the current negatives without falling back to a vague
    issue.
 4. Descriptor-view coverage is strong for index/subslice views, including
    `warpx2`, but broader reshape/transpose destination-view semantics should
-   be discussed under Gap #9 if users need explicit frontend contracts for
+   be discussed under Gap #2F if users need explicit frontend contracts for
    them.
+
+## Active Sub-Buckets
+
+- `2A`: optional dense subword exact-width `128x128b` evidence row.
+- `2B`: partial copy footprints and mask/full-atom decomposition.
+- `2C`: `4x256b` refresh image ordinary-view and readback semantics.
+- `2D`: packed-lane `tcgen05.cp` and subword no-scales `warpx2`.
+- `2E`: two-CTA no-scales `warpx2::02_13` source-column preservation.
+- `2F`: frontend descriptor and copy-source contracts for `tcgen05_copy`.
 
 ## Recommended Closure Criteria
 
-Gap #2 can be closed when one of these happens:
+The supported-layout baseline inside Gap #2 can be closed when one of these
+happens:
 - add one or two tiny dense subword exact-width rows for `128x128b`, then mark
-  Gap #2 supported modulo the separately numbered gaps; or
+  Gap #2A supported; or
 - explicitly waive that optional evidence as redundant with the existing dense
-  subword `128x256b` rows, and mark Gap #2 as an audit-complete classification
-  item rather than an implementation gap.
+  subword `128x256b` rows, and mark Gap #2A as audit-complete rather than an
+  implementation gap.
 
-Either way, future `tcgen05.cp` work should be driven by Gaps #3-#6/#9, not by
-legacy-versus-linear distinctions.
+Full Gap #2 closure requires each sub-bucket `2A` through `2F` to be classified
+as supported, impossible, or deferred. Future `tcgen05.cp` work should be
+driven by these sub-buckets, not by legacy-versus-linear distinctions.
