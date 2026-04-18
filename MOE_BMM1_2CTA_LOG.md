@@ -928,6 +928,26 @@ and `1024`, under both simulated production routing and uniform routing.
     B20/no-scale/regs52 row to `0.965x` and the rank-4 B23/B25 rows to about
     `0.965x-0.966x`. Keeping W data before W scale in the shared ready
     barrier is better for the current loader/MMA overlap.
+- NCU on the best current rank-3 odd-band near-miss shows the same structural
+  limiter as earlier W6 profiles. Artifact:
+  `/tmp/ncu_moe_896_uniform_rank3_2cta_warps4_x5w6_b20_nomcscale_regs52.ncu-rep`.
+  - Profile target: uniform batch `896`, local rank `3`,
+    `m32_bn256_sub1_direct_warps4_x5w6_b20_nomcscale_act2w1m1_regs52_epin1_b32`.
+  - Duration was `39.78 us`, executed instructions `6.85M`, active
+    warps/scheduler `3.86`, eligible warps/scheduler `0.39`,
+    registers/thread `52`, dynamic shared memory `113.88 KB`, and
+    shared-memory occupancy limit `2` blocks.
+  - The Nsight rule output again identifies low issue-slot utilization from
+    too few eligible warps, shared-memory-limited theoretical occupancy, and
+    long-scoreboard stalls. Disabling W-scale multicast and raising the
+    register cap shifts local timing but does not change the core limiter.
+- A read-only W-reuse feasibility pass found that a `load_weights`-local cache
+  is not legal under the current barrier protocol. W addressing ignores
+  `pid_m`, so reuse is mathematically available, but each W ring stage has one
+  ready/empty lifecycle and `mma_partition` releases `w_empty_bar` after one
+  MMA use. Reusing W for a second `pid_m` block would require pair-aware
+  scheduling, two live accumulators or interleaved K loops, and delayed W
+  release; a small cache-only source patch risks overwrite or deadlock.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
