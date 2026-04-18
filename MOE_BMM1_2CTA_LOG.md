@@ -750,6 +750,18 @@ and `1024`, under both simulated production routing and uniform routing.
     versus the default W-before-X order. Keeping the existing W wait, scale
     copy, then X wait order is better because it can overlap scale movement
     with X readiness.
+- W6 banding interactions still do not close slice 28. Artifacts:
+  - `/tmp/moe_bmm1_slice28_w6_band_mc_combo_rank3457_rep1200.csv`
+  - `/tmp/moe_bmm1_slice28_w6_band_acc2_rank3457_rep1200.csv`
+  - `/tmp/moe_bmm1_slice28_w6_b20_regs_rank3_rep1400.csv`
+  - `BAND_N=20` remains the best rank-3 local result at about `0.978x`, and
+    disabling scale or X multicast makes that rank worse.
+  - `BAND_N=24 + ACC_NUM_BUFS=2` can lift rank 4 locally (`1.004x` in this
+    run), but rank 5 remains below parity (`0.973x`) and rank 7 is only about
+    parity. It does not solve the hard-rank set.
+  - A rank-3 `BAND_N=20` register sweep (`MAXNREG=52/56/60`) also stayed below
+    parity; best was `regs56` at `0.977x`, so the rank-3 near-miss is not a
+    simple register-cap artifact.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
