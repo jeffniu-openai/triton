@@ -25217,3 +25217,29 @@ Open after this slice:
 - Next:
   - checkpoint and push, then continue with Gap `1E`
     `cta_group::2.warpx2::02_13` source-column preservation probing.
+
+## 2026-04-18 19:50 UTC: close tcgen05.cp Gap #1 for linear-layout project
+
+- Starting point: `codex/tmem` at pushed `f4cf40f20`.
+- Change:
+  - added `tcgen05_cp_gap1_closure_20260418.md`;
+  - updated README, memory, audit, execution plan, remaining gap register,
+    follow-up registry, completion tracker, and handoff to record final
+    classification of sub-buckets `1B` through `1F`;
+  - moved future copy work on masks, packed lanes, refresh-image readback, and
+    copy-source APIs into explicit ISA/API/storage follow-up territory rather
+    than leaving it as a generic linear-layout gap.
+- Validation:
+  - `make -j8`;
+  - exact `1E` root/dense rows: `4 passed`;
+  - full current `1E` direct/index/subslice/slice-index/dense-source selector:
+    `16 passed`;
+  - `1B` partial-footprint/mask/full-atom selector: `39 passed`;
+  - `1C` refresh plus `1D` packed-lane selector: `23 passed`;
+  - `1F` source-contract/rematerialization selector: `17 passed`.
+- Result:
+  - Gap #1 `tcgen05.cp` is closed for the TMEM linear-layout generalization
+    project.
+- Next:
+  - run `git diff --check`, commit, push, then move to Gap #2 narrow
+    scaled-MMAv5 `N=8/16` or Gap #3 mixed fp4 TMEM LHS unless redirected.

@@ -60,9 +60,21 @@ When resuming the initiative:
   earlier pre-reconsolidation numbering.
 - use `tcgen05_cp_gap1_execution_plan_20260418.md` as the active execution
   plan for closing or classifying Gap #1 sub-buckets `1A` through `1F`.
+- use `tcgen05_cp_gap1_closure_20260418.md` for the final Gap #1 closure
+  classification: what is supported, what is cleanly impossible under the
+  current public copy ISA/storage model, and what is deferred behind a
+  non-linear-layout API/storage contract.
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 19:50 UTC: closed Gap #1 `tcgen05.cp` for the TMEM
+  linear-layout generalization project. The remaining non-positive rows are
+  classified as public atom mask/full-footprint boundaries, explicit
+  `4x256b` refresh-view API work, packed-lane storage/staged-copy work,
+  two-CTA `warpx2::02_13` ISA/schedule behavior, or frontend copy-source
+  contracts. Focused validation: `make -j8`; `1E` rows `16 passed`;
+  partial-footprint rows `39 passed`; refresh/packed rows `23 passed`;
+  source-contract rows `17 passed`.
 - 2026-04-18 19:46 UTC: closed Gap `1A`. Added explicit-linear dense subword
   exact-width `128x128b` runtime evidence with f16 `128x8` and i8 `128x16`
   rows. Focused validation: `make -j8`; `git diff --check`; exact new nodeid

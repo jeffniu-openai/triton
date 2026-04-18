@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-18 19:32 UTC
+Last updated: 2026-04-18 19:50 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -47,13 +47,14 @@ The project is complete when:
   surfaces in this branch. Remaining frontend/lowering code is orchestration
   around backend helpers, not an unowned support predicate with known red
   coverage.
-- Phase C, finish `tcgen05.copy` atomized planner: active cleanup/support
-  checkpoint in progress. The copy planner now uses one generic family/footprint
-  path for scales and non-scales, with no `isScales` physical-query dimension
-  or support-kind mode. Focused copy/runtime shards are green after the
-  refactor. Residual rows still require packed-lane storage, destination masks,
-  source-message schedules, refresh remap/readback contracts, or CTA/source
-  ownership semantics not available in the current public copy model.
+- Phase C, finish `tcgen05.copy` atomized planner: closed for the TMEM
+  linear-layout generalization project at 2026-04-18 19:50 UTC. The copy
+  planner uses one generic family/footprint path for scales and non-scales,
+  with no `isScales` physical-query dimension or support-kind mode. Residual
+  rows are classified as public atom mask/full-footprint boundaries,
+  refresh-image API work, packed-lane storage/staged-copy work,
+  cta-group::2 `warpx2::02_13` ISA/schedule behavior, or explicit frontend
+  copy-source contracts. See `tcgen05_cp_gap1_closure_20260418.md`.
 - Phase D, finish `ld/st` and `ld.red` packet/replay planning:
   boundary-complete for the current matrix. Supported descriptor-view/replay
   rows are positive; residual rows are true atom-footprint or refresh-row-anchor
@@ -80,9 +81,10 @@ The project is complete when:
 ## Current Clean-Negative Inventory
 
 For the stable discussion order of remaining support/coverage questions, use
-`remaining_coverage_gaps.md`. The active linear-layout entries are currently
-Gap #1 through Gap #3 after the 2026-04-18 reconsolidation; do not use old
-pre-reconsolidation copy gap numbers unless explicitly discussing history.
+`remaining_coverage_gaps.md`. Gap #1 `tcgen05.cp` is now closed for this
+project; the active linear-layout entries are Gap #2 narrow scaled-MMAv5
+`N=8/16` and Gap #3 mixed fp4 TMEM LHS. Do not use old pre-reconsolidation
+copy gap numbers unless explicitly discussing history.
 
 Collected at 2026-04-17 18:59 UTC after `make -j8`:
 

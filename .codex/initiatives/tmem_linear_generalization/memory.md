@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-18 19:50 UTC Gap #1 `tcgen05.cp` closed for the TMEM
+  linear-layout generalization project. Added
+  `tcgen05_cp_gap1_closure_20260418.md`; remaining copy non-positive rows are
+  classified as public atom mask/full-footprint boundaries, explicit `4x256b`
+  refresh-view API work, packed-lane storage/staged-copy work, cta-group::2
+  `warpx2::02_13` ISA/schedule behavior, or frontend copy-source contracts.
+  Validation: `make -j8`; `1E` selector `16 passed`; partial-footprint
+  selector `39 passed`; refresh/packed selector `23 passed`;
+  source-contract selector `17 passed`. Active linear-layout gaps now continue
+  with Gap #2 narrow scaled-MMAv5 `N=8/16` and Gap #3 mixed fp4 TMEM LHS.
+
 - Latest: 2026-04-18 19:46 UTC Gap `1A` closed: added explicit-linear dense
   subword exact-width `128x128b` runtime coverage through
   `test_tmem_runtime_matrix_cp_128x128_subword_exact_width`. The rows cover
@@ -13614,3 +13625,31 @@ rejection, not rescue
   - representative runtime-matrix clean-error exacts passed `3/3`;
   - local sm100 compile-only probe for the three new shapes emitted expected
     `kind::i8` op counts and cubins.
+
+## Current: 2026-04-18 19:50 UTC tcgen05.cp Gap #1 closed
+
+- Starting point: `codex/tmem` at pushed `f4cf40f20`.
+- Added `tcgen05_cp_gap1_closure_20260418.md` as the durable closure report.
+- Decision:
+  - Gap #1 `tcgen05.cp` is closed for the TMEM linear-layout generalization
+    project;
+  - there is no remaining generic copy backend gap attributable to legacy
+    layout spelling, scales-vs-no-scales mode, or incomplete normalized
+    `LinearLayout` arithmetic;
+  - remaining non-positive copy rows are typed boundaries:
+    public atom masks/full-footprint writes, explicit `4x256b` refresh
+    view/readback API, packed-lane storage or staged-copy design, cta-group::2
+    `warpx2::02_13` high source-column preservation behavior, or explicit
+    frontend copy-source/descriptor-view contracts.
+- Evidence:
+  - `make -j8` had no work;
+  - `1E` root/dense rows passed `4/4`;
+  - all current `1E` direct/index/subslice/slice-index/dense-source rows passed
+    `16/16`;
+  - `1B` partial-footprint and mask/full-atom selector passed `39/39`;
+  - `1C` refresh plus `1D` packed-lane selector passed `23/23`;
+  - `1F` source-contract/rematerialization selector passed `17/17`.
+- Next:
+  - unless the user opens a separate copy ISA/API/storage project, continue
+    the TMEM linear-layout project with Gap #2 narrow scaled-MMAv5 `N=8/16` or
+    Gap #3 mixed fp4 TMEM LHS.

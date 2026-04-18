@@ -1,6 +1,6 @@
 # Gap #1 Audit: `tcgen05.cp` Complete Support Umbrella
 
-Last updated: 2026-04-18 19:46 UTC
+Last updated: 2026-04-18 19:50 UTC
 
 ## Scope
 
@@ -219,16 +219,25 @@ These categories explain the current negatives without falling back to a vague
 ## Active Sub-Buckets
 
 - `1A`: closed, dense subword exact-width `128x128b` evidence row.
-- `1B`: partial copy footprints and mask/full-atom decomposition.
-- `1C`: `4x256b` refresh image ordinary-view and readback semantics.
-- `1D`: packed-lane `tcgen05.cp` and subword no-scales `warpx2`.
-- `1E`: two-CTA no-scales `warpx2::02_13` source-column preservation.
-- `1F`: frontend descriptor and copy-source contracts for `tcgen05_copy`.
+- `1B`: closed as classified, partial copy footprints and mask/full-atom
+  decomposition.
+- `1C`: closed as classified, `4x256b` refresh image ordinary-view and readback
+  semantics.
+- `1D`: closed as classified, packed-lane `tcgen05.cp` and subword no-scales
+  `warpx2`.
+- `1E`: closed as a public ISA/schedule boundary, two-CTA no-scales
+  `warpx2::02_13` source-column preservation.
+- `1F`: closed as classified, frontend descriptor and copy-source contracts for
+  `tcgen05_copy`.
 
 ## Recommended Closure Criteria
 
-The supported-layout baseline inside Gap #1 is closed for dense `128x128b`
-evidence. Full Gap #1 closure requires each remaining sub-bucket `1B` through
-`1F` to be classified as supported, impossible, or deferred. Future
-`tcgen05.cp` work should be driven by these sub-buckets, not by
-legacy-versus-linear distinctions.
+Gap #1 is closed for the TMEM linear-layout generalization project. The final
+closure report is `tcgen05_cp_gap1_closure_20260418.md`.
+
+Future `tcgen05.cp` work should not be triaged as legacy-versus-linear,
+scales-versus-no-scales, or generic linear-layout incompleteness unless a new
+normalized-layout failure escapes the classifications above. Reopen as a
+separate ISA/API/storage project for destination masks or smaller atoms,
+packed-lane/staged-copy storage, explicit refresh-image load/store views, or
+frontend copy-source/descriptor-view contracts.

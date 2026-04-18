@@ -1,6 +1,6 @@
 # TMEM ISA/API Follow-Ups Outside Linear Layout
 
-Last updated: 2026-04-18 07:16 UTC
+Last updated: 2026-04-18 19:50 UTC
 
 This file records TMEM-related ISA/API context that is useful but not part of
 the linear-layout generalization gap register. Items here should not consume
@@ -29,3 +29,29 @@ treated as active blockers.
 - Evidence/runbook: `gb200_i8_validation_artifacts.md`.
 - Key lowering site:
   `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`.
+
+## `tcgen05.cp` Follow-Ups Outside Linear Layout
+
+- Area: public copy masks/smaller atoms, `4x256b` refresh-image load/store
+  views, packed-lane/staged-copy storage, and explicit frontend copy-source or
+  descriptor-view contracts.
+- Project disposition: Gap #1 `tcgen05.cp` is closed for the TMEM
+  linear-layout generalization project as of 2026-04-18 19:50 UTC.
+- Classification: these are ISA/API/storage-model follow-ups, not residual
+  generic linear-layout backend gaps.
+- Current direct-support boundary:
+  - public `tcgen05.cp` exposes full destination atom footprints and no
+    per-row/per-column destination mask;
+  - public `tcgen05.cp.warpx2` has no `ld/st`-style pack/unpack modifier, so
+    sub-dword lane selection needs a first-class packed source/destination
+    storage model or staged movement plan;
+  - `tcgen05.cp.4x256b` writes a sparse refresh-shaped TMEM image, so ordinary
+    contiguous `4x8` views and direct `ld/st` readback need an explicit
+    refresh view/remap/load-store API;
+  - cta-group::2 `warpx2::02_13` direct-seed probes emit the opcode but do not
+    preserve the high source-column pair under the tested legal source/dest
+    offset schedules.
+- Reopen condition: only reopen under a separate request to design one of
+  these contracts, or if a new public PTX/ISA capability exposes the missing
+  mask/packing/source-selection semantics.
+- Evidence/runbook: `tcgen05_cp_gap1_closure_20260418.md`.

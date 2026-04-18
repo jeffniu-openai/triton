@@ -1,6 +1,6 @@
 # TMEM Linear-Layout Remaining Coverage Gaps
 
-Last updated: 2026-04-18 19:46 UTC
+Last updated: 2026-04-18 19:50 UTC
 
 This is the stable reference list for remaining TMEM support gaps whose
 coverage depends on linear-layout generalization. The list was reconsolidated
@@ -23,6 +23,8 @@ Each gap should be examined with the same decision standard:
 
 ## Gap #1: `tcgen05.cp` Complete Support Umbrella
 
+- Status: closed for the TMEM linear-layout generalization project at
+  2026-04-18 19:50 UTC.
 - Area: all remaining `tcgen05.cp` support and coverage questions after
   normalization to `LinearLayout`, including partial-footprint work,
   `4x256b` refresh-view work, packed/subword copy work, two-CTA
@@ -39,37 +41,34 @@ Each gap should be examined with the same decision standard:
   Supported public families are dense `128x128b`, dense `128x256b`, explicit
   refresh-shaped `4x256b`, 32-bit no-scales `warpx2::01_23`, 32-bit
   no-scales single-CTA `warpx2::02_13`, and scales `warpx4.32x128b`.
-- Active sub-buckets:
+- Resolved sub-buckets:
   - `1A`: closed at 2026-04-18 19:46 UTC. Dense subword exact-width
     `128x128b` evidence now has positive f16 `128x8` and i8 `128x16` rows
     using explicit `TensorMemoryLinearLayout`.
-  - `1B`: partial copy footprints, including row/column permutations,
-    sub-instruction tile permutations, descriptor-view column slices, and any
-    copy that wants only part of a public copy atom footprint. Decide whether
-    each negative row decomposes into non-overlapping full atoms or needs an
-    unavailable mask/smaller footprint/source format.
-  - `1C`: `tcgen05.cp.4x256b` refresh views. Explicit refresh-shaped copies
-    are positive for one-CTA and two-CTA, while ordinary contiguous `4x8`
-    exposure and direct `ld/st` readback need a first-class refresh
-    view/remap/load-store contract or should remain rejected.
-  - `1D`: packed-lane `tcgen05.cp`, especially f16/bf16/i16/i8 no-scales
-    `warpx2`. Direct packed copy appears ISA-limited because `tcgen05.cp`
-    lacks the `ld/st` pack/unpack modifiers; staged compiler support may be
-    possible through shared/register/TMEM `ld/st.pack` paths.
-  - `1E`: no-scales `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`.
-    Single-CTA `02_13` and two-CTA `01_23` are positive. Two-CTA `02_13`
-    still needs proof that a legal descriptor/address/source schedule can
-    preserve the high source-column bit, or a final hardware/ISA limitation
-    classification.
-  - `1F`: frontend descriptor and copy-source contracts for
-    `tcgen05_copy`, including explicit descriptor-view APIs and
-    transposed/padded/noncanonical shared sources. Decide which cases should
-    become explicit API contracts, which should rematerialize automatically,
-    and which should stay rejected because semantics would be ambiguous or too
-    expensive implicitly.
-- Current classification: one active umbrella gap. Gap `1A` is closed; close
-  Gap #1 only after `1B` through `1F` are individually classified as
-  supported, impossible, or deferred.
+  - `1B`: closed as classified. Full public-copy atoms and tile-selector
+    permutations outside the instruction footprint are supported; remaining
+    sub-instruction permutations, row/column masks, mixed physical bases, and
+    noncanonical two-CTA ownership need unavailable masks/smaller atoms or
+    remain clean unsupported.
+  - `1C`: closed as classified. Explicit refresh-shaped `4x256b` copy layouts
+    are positive for one-CTA and two-CTA; ordinary contiguous `4x8` exposure and
+    direct `ld/st` readback are deferred behind a first-class refresh-image
+    view/remap/load-store contract.
+  - `1D`: closed as classified. Direct subword no-scales `warpx2` copy needs
+    packed-lane storage semantics that public `tcgen05.cp` does not expose.
+    Future staged support belongs to a packed-storage/staged-copy project.
+  - `1E`: closed as an ISA/schedule boundary. Current descriptor plans need
+    row-selected source offsets inside one full 64-row atom, and the direct-seed
+    sweep emitted `cta_group::2.warpx2::02_13` only with low-column duplication,
+    zero reads, launch failures, or illegal/faulting deltas.
+  - `1F`: closed as classified. Safe source rematerialization is supported;
+    remaining descriptor-view/copy-source cases need explicit frontend/API
+    contracts or remain rejected when implicit behavior is ambiguous or too
+    expensive.
+- Closure artifact: `tcgen05_cp_gap1_closure_20260418.md`.
+- Current classification: no active `tcgen05.cp` linear-layout gap remains.
+  Future work on masks, packed lanes, refresh-image readback, or frontend
+  copy-source APIs should be tracked as separate ISA/API/storage follow-ups.
 
 ## Gap #2: Narrow Scaled-MMAv5 `N=8/16`
 
