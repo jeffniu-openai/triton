@@ -58,9 +58,22 @@ When resuming the initiative:
   `tcgen05.cp` complete-support umbrella audit, family-by-family
   classification, and sub-bucket definitions. The filename preserves the
   earlier pre-reconsolidation numbering.
+- use `tcgen05_cp_gap1_execution_plan_20260418.md` as the active execution
+  plan for closing or classifying Gap #1 sub-buckets `1A` through `1F`.
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 19:46 UTC: closed Gap `1A`. Added explicit-linear dense subword
+  exact-width `128x128b` runtime evidence with f16 `128x8` and i8 `128x16`
+  rows. Focused validation: `make -j8`; `git diff --check`; exact new nodeid
+  `2 passed`; neighboring dense `128x128b` selector plus new rows `6 passed`.
+  Continue with Gap `1E` two-CTA `warpx2::02_13` probing next.
+- 2026-04-18 19:44 UTC: added the active Gap #1 `tcgen05.cp` execution plan.
+  The plan preserves the current invariant that copy support is classified by
+  normalized `LinearLayout`, public copy-family footprint, CTA ownership,
+  packed-lane/storage semantics, and explicit frontend contracts, not by
+  legacy-vs-linear or scales-vs-no-scales backend modes. Execution starts with
+  Gap `1A`, a tiny dense subword exact-width `128x128b` evidence row.
 - 2026-04-18 19:32 UTC: first implementation checkpoint for the Gap #1
   `tcgen05.cp` backend generalization slice. The Gluon bridge now reuses
   backend `TensorMemoryUtils` helpers for common first-legal `ld/st` register

@@ -1,6 +1,6 @@
 # TMEM Linear-Layout Remaining Coverage Gaps
 
-Last updated: 2026-04-18 19:32 UTC
+Last updated: 2026-04-18 19:46 UTC
 
 This is the stable reference list for remaining TMEM support gaps whose
 coverage depends on linear-layout generalization. The list was reconsolidated
@@ -40,9 +40,9 @@ Each gap should be examined with the same decision standard:
   refresh-shaped `4x256b`, 32-bit no-scales `warpx2::01_23`, 32-bit
   no-scales single-CTA `warpx2::02_13`, and scales `warpx4.32x128b`.
 - Active sub-buckets:
-  - `1A`: optional evidence polish for dense subword exact-width `128x128b`
-    rows, such as f16 `128x8` or i8 `128x16`; existing dense subword
-    `128x256b` rows exercise the same packed dense path at wider N.
+  - `1A`: closed at 2026-04-18 19:46 UTC. Dense subword exact-width
+    `128x128b` evidence now has positive f16 `128x8` and i8 `128x16` rows
+    using explicit `TensorMemoryLinearLayout`.
   - `1B`: partial copy footprints, including row/column permutations,
     sub-instruction tile permutations, descriptor-view column slices, and any
     copy that wants only part of a public copy atom footprint. Decide whether
@@ -67,9 +67,9 @@ Each gap should be examined with the same decision standard:
     become explicit API contracts, which should rematerialize automatically,
     and which should stay rejected because semantics would be ambiguous or too
     expensive implicitly.
-- Current classification: one active umbrella gap. Close Gap #1 only after the
-  sub-buckets above are individually classified as supported, impossible, or
-  deferred.
+- Current classification: one active umbrella gap. Gap `1A` is closed; close
+  Gap #1 only after `1B` through `1F` are individually classified as
+  supported, impossible, or deferred.
 
 ## Gap #2: Narrow Scaled-MMAv5 `N=8/16`
 

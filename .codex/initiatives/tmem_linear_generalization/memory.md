@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-18 19:46 UTC Gap `1A` closed: added explicit-linear dense
+  subword exact-width `128x128b` runtime coverage through
+  `test_tmem_runtime_matrix_cp_128x128_subword_exact_width`. The rows cover
+  f16 `128x8` and i8 `128x16`, verify exact output, and check one
+  `tcgen05.cp.cta_group::1.128x128b` in PTX/LLIR. Validation: `make -j8`;
+  `git diff --check`; exact nodeid `2 passed`; neighboring dense `128x128b`
+  selector plus new rows `6 passed`. Next active Gap #1 sub-bucket is `1E`
+  two-CTA no-scales `warpx2::02_13` probing, followed by `1B` decomposition.
+
 - Latest: 2026-04-18 19:32 UTC Gap #1 `tcgen05.cp` generic-backend
   checkpoint: refactored duplicated Gluon/backend linear-layout arithmetic
   into `TensorMemoryUtils`, removed the remaining load-bearing

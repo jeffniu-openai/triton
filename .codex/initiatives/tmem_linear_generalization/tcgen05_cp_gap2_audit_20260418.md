@@ -1,6 +1,6 @@
 # Gap #1 Audit: `tcgen05.cp` Complete Support Umbrella
 
-Last updated: 2026-04-18 19:32 UTC
+Last updated: 2026-04-18 19:46 UTC
 
 ## Scope
 
@@ -77,10 +77,9 @@ Clean negatives:
 - mixed row/column TMEM bases.
 
 Audit result: implementation support is present. Legacy rows are compatibility
-aliases, not a separate backend capability. Optional evidence improvement: add
-a very small explicit-linear subword exact-width row, such as f16 `128x8` or
-i8 `128x16`, if we want direct runtime proof that the dense `128x128b`
-subword path is covered independently of `128x256b`.
+aliases, not a separate backend capability. Gap `1A` is closed: the runtime
+matrix now includes explicit-linear f16 `128x8` and i8 `128x16` exact-width
+rows that check `tcgen05.cp.cta_group::1.128x128b` in PTX/LLIR.
 
 ### Dense `128x256b`
 
@@ -219,7 +218,7 @@ These categories explain the current negatives without falling back to a vague
 
 ## Active Sub-Buckets
 
-- `1A`: optional dense subword exact-width `128x128b` evidence row.
+- `1A`: closed, dense subword exact-width `128x128b` evidence row.
 - `1B`: partial copy footprints and mask/full-atom decomposition.
 - `1C`: `4x256b` refresh image ordinary-view and readback semantics.
 - `1D`: packed-lane `tcgen05.cp` and subword no-scales `warpx2`.
@@ -228,14 +227,8 @@ These categories explain the current negatives without falling back to a vague
 
 ## Recommended Closure Criteria
 
-The supported-layout baseline inside Gap #1 can be closed when one of these
-happens:
-- add one or two tiny dense subword exact-width rows for `128x128b`, then mark
-  Gap #1A supported; or
-- explicitly waive that optional evidence as redundant with the existing dense
-  subword `128x256b` rows, and mark Gap #1A as audit-complete rather than an
-  implementation gap.
-
-Full Gap #1 closure requires each sub-bucket `1A` through `1F` to be classified
-as supported, impossible, or deferred. Future `tcgen05.cp` work should be
-driven by these sub-buckets, not by legacy-versus-linear distinctions.
+The supported-layout baseline inside Gap #1 is closed for dense `128x128b`
+evidence. Full Gap #1 closure requires each remaining sub-bucket `1B` through
+`1F` to be classified as supported, impossible, or deferred. Future
+`tcgen05.cp` work should be driven by these sub-buckets, not by
+legacy-versus-linear distinctions.

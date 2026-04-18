@@ -25196,3 +25196,24 @@ Open after this slice:
   - continue Gap #1 sub-bucket work from the unified copy planner baseline,
     focusing next on whether `1A` can be closed as evidence-only or whether
     `1B`/`1D` require a real packed-lane/mask/storage design.
+
+## 2026-04-18 19:46 UTC: close tcgen05.cp Gap 1A evidence row
+
+- Starting point: `codex/tmem` at pushed `4f7dd8671`.
+- Change:
+  - added `test_tmem_runtime_matrix_cp_128x128_subword_exact_width`;
+  - covered explicit-linear f16 `128x8` and i8 `128x16` dense TMEM layouts;
+  - added a small shared-linear source helper and kernel so exact-width
+    subword rows avoid invalid NVMMAShared swizzle-width constraints;
+  - each row verifies runtime output and exact
+    `tcgen05.cp.cta_group::1.128x128b` PTX/LLIR emission.
+- Validation:
+  - `make -j8`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_128x128_subword_exact_width` (`2 passed`);
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_128x128 python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_128x128_subword_exact_width` (`6 passed`).
+- Result:
+  - Gap `1A` is closed as supported evidence, not an implementation gap.
+- Next:
+  - checkpoint and push, then continue with Gap `1E`
+    `cta_group::2.warpx2::02_13` source-column preservation probing.

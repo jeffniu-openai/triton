@@ -344,6 +344,16 @@ def _make_tmem_copy_warpx2_shared_layout():
     )
 
 
+def _make_tmem_copy_dense_shared_layout(m, n):
+    return ttgl.SharedLinearLayout(
+        offset_bases=[
+            *[[0, 1 << i] for i in range(int(math.log2(n)))],
+            *[[1 << i, 0] for i in range(int(math.log2(m)))],
+        ],
+        alignment=16,
+    )
+
+
 def _make_tmem_copy_warpx2_tmem_layout():
     return TensorMemoryLinearLayout(
         rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]],
@@ -2476,6 +2486,31 @@ def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr, tmem_layout: tt
 
     output = tmem.load(tmem_reg_layout)
     ttgl.store(out_ptr + offs, ttgl.convert_layout(output, blocked))
+
+
+@gluon.jit
+def tmem_copy_128x128_subword_exact_kernel(
+    in_ptr, out_ptr, N: ttgl.constexpr, tmem_layout: ttgl.constexpr, shared_layout: ttgl.constexpr
+):
+    M: ttgl.constexpr = 128
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=tmem_layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=shared_layout, value=value)
+    fence_async_shared()
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    out = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, out)
 
 
 @gluon.jit
@@ -4836,6 +4871,11 @@ CP_NO_SCALES_128X128_CASES = [
     (layout_kind, dtype_name, torch_dtype, 128)
     for layout_kind, (dtype_name, torch_dtype) in product(("legacy", "linear"), CP_NO_SCALES_128X128_DTYPES)
 ]
+
+CP_NO_SCALES_128X128_SUBWORD_EXACT_CASES = (
+    ("f16", torch.float16, 8),
+    ("i8", torch.int8, 16),
+)
 
 CP_NO_SCALES_TWOCTA_128X128_CASES = [
     (layout_kind, dtype_name, torch_dtype)
@@ -10130,6 +10170,24 @@ def test_tmem_runtime_matrix_cp_128x128(layout_kind, dtype_name, torch_dtype, M)
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x128b"] * (M // 128))
     if layout_kind == "linear":
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,N", CP_NO_SCALES_128X128_SUBWORD_EXACT_CASES)
+def test_tmem_runtime_matrix_cp_128x128_subword_exact_width(dtype_name, torch_dtype, N):
+    M = 128
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout(M, N)
+    shared_layout = _make_tmem_copy_dense_shared_layout(M, N)
+
+    compiled = tmem_copy_128x128_subword_exact_kernel[(1, )](
+        inp, out, N, layout, shared_layout, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x128b"])
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
