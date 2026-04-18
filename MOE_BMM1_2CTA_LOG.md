@@ -762,6 +762,22 @@ and `1024`, under both simulated production routing and uniform routing.
   - A rank-3 `BAND_N=20` register sweep (`MAXNREG=52/56/60`) also stayed below
     parity; best was `regs56` at `0.977x`, so the rank-3 near-miss is not a
     simple register-cap artifact.
+- Direct `BLOCK_K=256` variants are illegal too. Artifact:
+  `/tmp/moe_bmm1_slice28_bk256_direct_rank3_rep400.csv`.
+  - Direct four-warp `BK256` variants with `x3/w3`, `x4/w3`, and `x3/w4` all
+    failed with `AssertionError()`, matching earlier non-direct `BK256`
+    failures. Larger-K is not a legal way to reduce K-loop wait frequency in
+    this descriptor path.
+- NCU and schedule-order follow-up on the rank-3 `BAND_N=20` near-miss did not
+  expose a promotion path. Artifacts:
+  - `/tmp/ncu_moe_896_uniform_rank3_2cta_warps4_x5w6_b20_regs48.ncu-rep`
+  - `/tmp/moe_bmm1_sched_w6_b20_rank3_actual_rep1200.csv`
+  - The B20 NCU report still shows the same shared-memory residency limit
+    (`2` blocks) and low eligible warps/scheduler (`0.378`), only a small
+    improvement over default W6/regs48 (`0.364`) and still far below 1CTA
+    (`0.741`).
+  - Custom block orders did not improve beyond the B20 near-miss:
+    `full_first_reverse` reached `0.978x`; other orders regressed.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
