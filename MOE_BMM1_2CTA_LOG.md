@@ -866,6 +866,14 @@ and `1024`, under both simulated production routing and uniform routing.
   - Default, B20, and B24 OCC4 variants regressed to about `0.85x-0.87x` on
     ranks 3 and 5. Prior OCC1/OCC3 checks were also bad, so the persistent
     launch-grid density axis is closed for the current W6 direct family.
+- Odd W6 band factors expose rank-specific optima but not a selector-safe
+  policy. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_oddbands_rank3457_rep800.csv`.
+  - In the same-input rank sweep, B20 remained best for rank 3 (`0.979x`),
+    B25 was best for rank 4 (`0.997x`), B19 crossed parity on rank 5
+    (`1.006x`), and B24 crossed parity on rank 7 (`1.015x`). The axis is a
+    useful routing-rank specialization clue, but no single band beats 1CTA on
+    all hard fixed ranks.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
