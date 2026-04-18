@@ -567,6 +567,68 @@ and `1024`, under both simulated production routing and uniform routing.
   - Decision: the MMA/descriptor mapping depends on the current row-CGA
     split; full-M gather is not a safe structural path without a deeper layout
     redesign.
+- Controlled synthetic-route sweeps isolated the bad route pattern. Artifacts:
+  - `/tmp/moe_bmm1_slice28_custom_routes_rank4_rep600.csv`
+  - `/tmp/moe_bmm1_slice28_custom_routes_rank4_order_rep600.csv`
+  - With the same `475` local tokens and `9` spill rows, no-spill routes were
+    near parity (`~1.002x`), one-spill and two-spill routes were wins
+    (`~1.007x-1.009x`), three moderate spill experts were near parity
+    (`~0.996x`), and four moderate spill experts were the hard loss
+    (`~0.91x-0.94x` depending on expert order). Nine tiny one-row spills were
+    a win because 1CTA slowed more than 2CTA.
+  - Conclusion: the failure is not total tokens, max rows, or spill rows alone.
+    It is the interaction of several moderate `>32` experts with persistent
+    loop scheduling and load/compute overlap.
+- Scratch metadata-schedule probes changed only `block_schedule_data` for the
+  precomputed 32-row schedule, without source changes. Artifacts:
+  - `/tmp/moe_bmm1_slice28_schedule_order_rank4_actual_rep800.csv`
+  - `/tmp/moe_bmm1_slice28_schedule_order_rank4_front4_rep800.csv`
+  - `/tmp/moe_bmm1_slice28_schedule_order_rank{3,5,7}_actual_rep800.csv`
+  - Schedule order can reduce synthetic front-clustered losses
+    (`spill_experts_last` reached `0.950x` versus current `0.902x`), and
+    `slice_major_reverse` helped rank 3 (`0.942x`), but no tested order reached
+    parity on the actual hard ranks. Current slice-major remains best for
+    ranks 4 and 7.
+- W-ring depth was the most useful axis in this pass. Artifacts:
+  - `/tmp/moe_bmm1_slice28_warps4_w6_rank{0,1,2,3,4,5,6,7}_rep1200.csv`
+  - `/tmp/moe_bmm1_slice28_warps4_wdepth_rank{3,4,5,7}_rep900.csv`
+  - `x5/w6` improved every fixed local rank. It preserved and improved the
+    previous winning ranks (`~1.028x-1.042x` on ranks 0, 1, 2, 6) and lifted
+    the hard ranks to about rank 3 `0.948x`, rank 4 `0.961x`, rank 5
+    `0.948x`, rank 7 `0.974x`.
+  - `x6/w6`, `x5/w7`, and `x5/w8` crossed a resource cliff and regressed to
+    about `0.70x-0.72x`.
+  - NCU report `/tmp/ncu_moe_896_uniform_rank4_2cta_warps4_x5w6.ncu-rep`
+    showed why W6 helped: duration improved from `39.968 us` (W5) to
+    `38.400 us`, DRAM bandwidth rose from `3.822 TB/s` to `3.984 TB/s`,
+    eligible warps/scheduler rose from `0.369` to `0.389`, and dynamic shared
+    memory rose from `96.988 KB/block` to `113.884 KB/block`.
+- W6 combination checks:
+  - Schedule-order plus W6/regs52 artifacts:
+    `/tmp/moe_bmm1_slice28_schedule_order_w6_rank{3,4,5,7}_actual_rep800.csv`.
+  - Schedule-order plus W6/regs48 artifacts:
+    `/tmp/moe_bmm1_slice28_schedule_order_w6r48_rank{3,4,5,7}_actual_rep800.csv`.
+  - W6 register sweep artifacts:
+    `/tmp/moe_bmm1_slice28_w6_regs_rank{3,4,5,7}_rep1000.csv`.
+  - W6 band artifacts:
+    `/tmp/moe_bmm1_slice28_w6_band_rank{3,4,5,7}_rep900.csv`.
+  - W6 multicast artifacts:
+    `/tmp/moe_bmm1_slice28_w6_mc_rank{3,4,5,7}_rep900.csv`.
+  - W6 inline artifacts:
+    `/tmp/moe_bmm1_slice28_w6_inline_rank{3,4,5,7}_rep900.csv`.
+  - W6 occupancy artifacts:
+    `/tmp/moe_bmm1_slice28_w6_occ_rank{4,5}_rep900.csv`.
+  - Best stacked W6 results stayed below parity: rank 3 reached about
+    `0.979x` with `BAND_N=20`, rank 4 about `0.966x` with no multicast, rank
+    5 about `0.960x` with `spill_first_reverse` schedule plus W6/regs48, and
+    rank 7 about `0.976x` with W6/regs48. Inline release, W7/W8, eight-warps,
+    and `OCCUPANCY=1/3` regressed.
+- `BN384` direct candidates are illegal in this descriptor path. Artifacts:
+  `/tmp/moe_bmm1_slice28_bn384_rank{3,4,5,7}_rep1000.csv`. The descriptor
+  rejects the scale shape because a shape element must be a power of two.
+- Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
+  new best near-miss family and should be the baseline for future slice-28
+  work, but it still loses to 1CTA on hard uniform fixed-rank routes.
 
 ## Next Frontier
 
@@ -585,6 +647,10 @@ and `1024`, under both simulated production routing and uniform routing.
     help, so the next attempt should target in-kernel overlap/ownership around
     the transition between full and spill blocks rather than simply reordering
     the host block schedule.
+  - Continue from the four-warp `x5/w6/regs48` direct family for slice 28.
+    W6 is the only tested knob that improved every fixed local rank; deeper W
+    rings, W6+inline, W6+8warps, W6+occupancy changes, and simple schedule
+    reorderings do not close the remaining gap.
   - Find a legal way to reduce 2CTA shared-memory footprint while preserving
     W5 depth, possibly by changing scale staging or descriptor/layout
     ownership rather than X/W buffer counts.
