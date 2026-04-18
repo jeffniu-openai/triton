@@ -486,10 +486,36 @@ and `1024`, under both simulated production routing and uniform routing.
   - Full-tile schedule plus optional gather-index reuse regressed the losing
     ranks. Artifacts:
     `/tmp/moe_bmm1_slice28_fullsched_uniform_rank{3,4,5,7}_rep1200.csv`.
+  - `BN512` direct variants were severe regressions on losing ranks, with
+    two-warp variants around `0.75x-0.78x` and three-warp variants around
+    `0.60x`. Artifacts:
+    `/tmp/moe_bmm1_slice28_bn512_uniform_rank{3,4,5,7}_rep1000.csv`.
+  - Eight-warp partition variants were rechecked after fixing the cached
+    harness key. Most active-warp / weight-warp splits fail `warp_specialize`
+    lowering; the only legal `act4/w1/mma1` register-56 variant regressed the
+    losing ranks versus the four-warp direct path. Artifacts:
+    `/tmp/moe_bmm1_slice28_8warp_partition_rank{3,4,5,7}_rep1200.csv`.
+- Fixed-rank NCU reports for the hard rank-4 route:
+  - `/tmp/ncu_moe_896_uniform_rank4_1cta_target.ncu-rep`
+  - `/tmp/ncu_moe_896_uniform_rank4_2cta_warps4_x5w5.ncu-rep`
+  - 1CTA: duration `37.888 us`, DRAM bandwidth `3.953 TB/s`, instructions
+    `9.24M`, active warps `49.31%`, eligible warps/scheduler `0.741`, issue
+    active `0.38`, registers/thread `64`, dynamic shared memory
+    `114.432 KB/block`, and occupancy limited to two blocks by both shared
+    memory and registers.
+  - 2CTA four-warp direct: duration `39.968 us`, DRAM bandwidth `3.822 TB/s`,
+    instructions `6.65M`, active warps `24.37%`, eligible warps/scheduler
+    `0.369`, issue active `0.29`, registers/thread `52`, dynamic shared
+    memory `96.988 KB/block`, and occupancy limited to two blocks by shared
+    memory.
+  - Interpretation: the hard route confirms the global `slice=28` diagnosis.
+    2CTA executes fewer instructions, but lower active/eligible warp count and
+    shared-memory-limited residency leave it slower than 1CTA.
 - Current interpretation: `slice=28` is now known to be route-local. The
   unsolved case is not all uniform routes, but specific local-rank
-  distributions with several 33+ row experts. M16, M64, eight-warps,
-  full-tile scheduling, and band-only tuning do not solve those distributions.
+  distributions with several 33+ row experts. M16, M64, BN512, eight-warps,
+  full-tile scheduling, 8-warp partitioning, and band-only tuning do not solve
+  those distributions.
 
 ## Next Frontier
 
