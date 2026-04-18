@@ -801,6 +801,17 @@ and `1024`, under both simulated production routing and uniform routing.
     candidate failed in `gl.warp_specialize` during compilation. This makes
     MMA-first primary partition ownership illegal for the current direct-store
     warp-specialized shape rather than a viable low-eligibility fix.
+- W6 MMA-warp ownership and warp-count follow-ups did not improve the hard
+  slice-28 ranks. Artifacts:
+  - `/tmp/moe_bmm1_slice28_w6_mmawarps_rank3457_rep800.csv`
+  - `/tmp/moe_bmm1_slice28_warpcount_rank35_rep400.csv`
+  - Moving from `act2/w1/m1` to `act1/w1/m2` was legal but slower on every
+    blocking rank. Rank 3 fell to `0.931x` or worse, rank 4 stayed below the
+    existing B24/ACC2 comparator, rank 5 fell to about `0.962x`, and rank 7
+    lost the existing positive margin.
+  - `NUM_WARPS=6` is illegal (`num_warps must be a power of 2`), and
+    16-warps direct variants were severe regressions (`~0.62x-0.65x`) on
+    ranks 3 and 5. Extra warp ownership is not the missing slice-28 lever.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
