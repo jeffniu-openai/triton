@@ -10,6 +10,13 @@ and keeps improving, with special focus on batch sizes `<= 2048`.
 
 - Follow `large-project-methodology`: update this log with hypotheses,
   experiments, validation, and remaining work.
+- Never voluntarily stop or end an optimization turn while there is an
+  untested hypothesis, unmeasured regression, plausible tuning path, running
+  validation/profiler, or uncommitted durable state. Keep moving through
+  experiments, measurements, source edits, validation, notes, commits, and
+  pushes. If an external interruption forces a stop, update this log with the
+  branch, artifacts, validation, current hypothesis, and exact next unblocked
+  command first.
 - Use subagents liberally for code analysis, related-codebase research,
   profiling analysis, review, autotuning ideas, and hypothesis testing when
   the user has authorized parallel work.
@@ -329,6 +336,10 @@ and `1024`, under both simulated production routing and uniform routing.
   resident or eligible warps without giving up W5 staging. Parameter sweeps
   that only reduce staging, change banding, or change 32-vs-64 row shape have
   not worked.
+- Do not treat this frontier as closed. Continue iterating through harness
+  improvements, structural occupancy/shared-memory hypotheses, source changes,
+  correctness, benchmarks, notes, commits, and pushes until 2CTA beats 1CTA for
+  every batch and further improvements are exhausted.
 - Promising next directions:
   - Find a legal way to reduce 2CTA shared-memory footprint while preserving
     W5 depth, possibly by changing scale staging or descriptor/layout
