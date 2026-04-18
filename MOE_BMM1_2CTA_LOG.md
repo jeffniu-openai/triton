@@ -394,6 +394,59 @@ and `1024`, under both simulated production routing and uniform routing.
   direct epilogue accumulator wait time without increasing tensor-memory or
   shared-memory residency.
 
+## 2026-04-18 Selector Measurement Recheck
+
+- Raw focused selector sweeps for `slice=16` and `slice=20` reproduced the
+  earlier warning: `selected` and an explicit identical candidate could measure
+  several percent apart when materialized and benchmarked separately. Treat
+  artifacts
+  `/tmp/moe_bmm1_slice16_20_selector_uniform_rep2500_s012.csv` and
+  `/tmp/moe_bmm1_slice16_20_selector_prod_rep2500_s012.csv` as useful noise
+  evidence, not selector evidence.
+- Built a temporary cached harness,
+  `/tmp/moe_bmm1_pair_tune_cached.py`, that aliases identical configs and
+  reuses prepared tensors for configs with the same `BLOCK_K/BLOCK_N/NUM_WARPS`
+  layout. Cached artifacts:
+  - `/tmp/moe_bmm1_slice16_20_selector_cached_uniform_rep2500_s012.csv`
+  - `/tmp/moe_bmm1_slice16_20_selector_cached_prod_rep2500_s012.csv`
+- Cached selector outcome:
+  - Uniform `batch=512` / `slice=16`: current selected `x5/w5` remains best on
+    geometric speedup, `1.017x` versus 1CTA. No multicast variant produced a
+    stable win.
+  - Uniform `batch=640` / `slice=20`: all x5/x6 multicast variants are within
+    about `0.03%` average of selected; this is below the promotion threshold.
+  - Prod `batch=512`: x6 variants average about `0.1%` faster than selected,
+    but uniform does not agree.
+  - Prod `batch=640`: selected x6/w5 remains effectively tied with the best
+    no-multicast variants (`<=0.02%` average gap).
+- Decision: no selector source change. The current low-batch selector is still
+  the safest policy for `slice=16` and `slice=20`; any future sub-percent
+  selector change needs cached/aliased measurement or an even stricter
+  alternating same-graph harness.
+
+## 2026-04-18 Low-Footprint Inline Probe
+
+- Added temporary scratch-harness candidates for four-warp direct `slice=28`
+  variants with lower X/W staging and inline MMA input release. The goal was to
+  see whether inline release could make a smaller shared-memory footprint
+  viable without losing too much producer/consumer overlap.
+- Artifacts:
+  - `/tmp/moe_bmm1_slice28_inline_lowfootprint_uniform_rep1800_v2.csv`
+  - `/tmp/moe_bmm1_slice28_inline_lowfootprint_prod_rep1200_v2.csv`
+- Uniform `batch=896` remained the hard failure:
+  - Current best four-warp `x5/w5` direct candidate: `0.929x` in this run.
+  - `x5/w4` variants fell to `0.86x-0.87x`.
+  - `x4/w5` variants fell to `0.907x-0.917x`.
+  - `x4/w4` variants fell to `0.858x-0.866x`.
+  - Inline release did not recover the lost staging depth; it usually made the
+    lower-footprint variants worse.
+- Prod `batch=896` showed a small positive result for
+  `x4/w5/inline` (`1.006x`), but uniform is the selector gate and strongly
+  rejects the path.
+- Decision: do not pursue reduced X/W ring footprint via inline release for
+  `slice=28`. The x5/w5 shared-memory footprint still appears necessary for
+  uniform routing, despite its low occupancy.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases
