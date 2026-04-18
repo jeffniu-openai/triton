@@ -905,6 +905,14 @@ and `1024`, under both simulated production routing and uniform routing.
     dropped into the existing descriptor/MMA/accumulator contract; a W
     footprint reduction needs a deeper layout rewrite rather than only
     shrinking the shared-memory allocation shape.
+- Full-tile scheduling does not combine profitably with the odd-band W6
+  near-misses. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_odd_fullsched_rank3457_rep900.csv`.
+  - The fullsched variants failed to improve the blocking ranks and usually
+    regressed versus their non-fullsched comparators. Rank 3 topped out at
+    `0.968x`, rank 4 at `0.980x`, and rank 5 at `0.980x` in this run; rank 7
+    still had positive non-fullsched rows, but fullsched was lower. Host
+    full-tile ordering remains closed for the current W6 odd-band family.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
