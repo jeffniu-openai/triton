@@ -789,6 +789,11 @@ and `1024`, under both simulated production routing and uniform routing.
   `PartitionArgs`; `epilogue_direct_store` writes directly to global memory
   and does not use a store ring. Replacing it with a dedicated packed-output
   ring would add shared memory rather than reduce the current residency limit.
+- A gather-index reuse check on the best B20 family regressed the remaining
+  blockers. Artifact: `/tmp/moe_bmm1_slice28_w6_b20_reuse_rank35_rep1200.csv`.
+  - Rank 3 fell from `0.972x` to `0.965x` in the paired run, and rank 5 also
+    regressed. This makes a more invasive shared gather-index fanout between
+    CTAs unlikely to pay for the extra shared state and synchronization.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
