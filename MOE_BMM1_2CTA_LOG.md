@@ -855,6 +855,12 @@ and `1024`, under both simulated production routing and uniform routing.
   - ACC2/ACC3/ACC4 did not preserve the best B20 rank-3 near-miss and stayed
     well below parity on ranks 4, 5, and 7. The B20 and B24 evidence together
     makes additional accumulator ring depth unattractive for this family.
+- Helper-store W6 variants are still severe regressions. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_helper_rank35_rep500.csv`.
+  - B20/B22/B24 helper-store variants with W6 measured only about
+    `0.64x-0.66x` on ranks 3 and 5. The low-batch W6 family needs direct
+    epilogue stores; returning to helper-store overlap adds too much cost and
+    shared-memory pressure.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
