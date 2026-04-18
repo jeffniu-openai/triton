@@ -51,6 +51,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 00:01 UTC: prepared the Gap #1 GB200 validation artifact under
+  `experiments/mmav5_i8_remote/`. Local `sm_100` compilation generates
+  `tcgen05_i8_signed_sm100.ptx` with `.target sm_100a`,
+  `tcgen05.mma.cta_group::1.kind::i8`, descriptor immediate `136316064`, and a
+  ptxas-produced cubin. The remote runner uses torch tensors plus a tiny CUDA
+  Driver launch shim, so the GB200 container does not need to rebuild Triton.
+  Next: copy the directory to GB200 and run
+  `python3 run_i8_ptx_torch.py --launcher cpp`.
 - 2026-04-17 23:34 UTC: added `remaining_coverage_gaps.md` as the canonical
   stable-numbered discussion register for the nine unresolved coverage/support
   questions: GB200 i8 MMAv5 compile-only coverage; `tcgen05.cp` supported

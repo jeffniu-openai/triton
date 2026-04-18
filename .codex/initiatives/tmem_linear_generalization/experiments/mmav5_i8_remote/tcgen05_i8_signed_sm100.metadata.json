@@ -1,0 +1,48 @@
+{
+  "description": "Signed i8 tcgen05.mma frontend/runtime smoke test generated from Gluon mma_kernel.",
+  "dtypes": {
+    "a": "torch.int8",
+    "b": "torch.int8",
+    "out": "torch.int32"
+  },
+  "expected_ptx": {
+    "commit_opcode_substring": "tcgen05.commit.cta_group::1",
+    "descriptor_immediate": 136316064,
+    "mma_opcodes": [
+      "tcgen05.mma.cta_group::1.kind::i8"
+    ]
+  },
+  "kernel_name": "mma_kernel",
+  "launch": {
+    "block": [
+      128,
+      1,
+      1
+    ],
+    "dynamic_shared_memory_bytes": 8204,
+    "entry_param_count": 5,
+    "grid": [
+      1,
+      1,
+      1
+    ],
+    "live_runtime_params": [
+      "a",
+      "b",
+      "out"
+    ],
+    "num_warps": 4,
+    "trailing_dummy_u64_params": 2
+  },
+  "local_ptxas_cubin_bytes": 97072,
+  "ptx_file": "tcgen05_i8_signed_sm100.ptx",
+  "ptx_sha256": "012c73541aaaf373d8c346cf6a4763c337ed8c714dc1742b6f68b5c96e5aed7f",
+  "ptx_version": "9.1",
+  "shape": {
+    "K": 32,
+    "M": 128,
+    "N": 128
+  },
+  "target": "sm_100a",
+  "triton_head": "feb5381c04f938528998ca269115e7ec8fb56b70"
+}

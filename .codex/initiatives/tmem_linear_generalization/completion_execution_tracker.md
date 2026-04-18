@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 23:34 UTC
+Last updated: 2026-04-18 00:01 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -60,7 +60,9 @@ The project is complete when:
   boundary-complete for the current public ISA and storage contracts. Remaining
   rows are external `.kind::i8` PTXAS/ISA rejections, instruction-tile order
   boundaries, mixed fp4A padded-storage requirements, or narrow-N scale-fragment
-  boundaries.
+  boundaries. Gap #1 now has a generated signed-i8 `sm_100a` PTX/runtime
+  artifact under `experiments/mmav5_i8_remote/`; remote GB200 execution is
+  pending.
 - Phase F, cleanup/redesign deletion: done for currently identified duplicate
   backend policy. Recent checkpoints moved MMAv5 address selection, direct
   `ld/st` support/replay predicates, physical-bitcast/view predicates, and

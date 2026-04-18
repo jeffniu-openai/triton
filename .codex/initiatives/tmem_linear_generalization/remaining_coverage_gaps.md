@@ -1,6 +1,6 @@
 # TMEM Remaining Coverage Gaps
 
-Last updated: 2026-04-17 23:34 UTC
+Last updated: 2026-04-18 00:01 UTC
 
 This is the stable reference list for the remaining TMEM coverage gaps that
 need deeper discussion. Keep the numbering stable. If a gap is resolved,
@@ -17,18 +17,22 @@ Each gap should be examined with the same decision standard:
 ## Gap #1: GB200 i8 MMAv5 Compile-Only Coverage
 
 - Area: plain MMAv5 direct `tcgen05.mma.kind::i8`.
-- Current state: runtime validation is blocked on this GB300 machine because
-  `sm_103a` rejects direct i8 MMAv5, but GB200/`sm_100a` should be a supported
-  target. The frontend guard is already capability-scoped to reject
-  capability `>= 103`, not GB200.
-- Open question: does the current lowering generate valid GB200 PTX/IR and
-  pass PTX compilation for representative signed/unsigned i8 direct MMAv5
-  cases?
-- Next evidence: add or run compile-only FileCheck plus PTX/LLC/PTXAS checks
-  for `compute-capability=100`, then manually inspect the emitted PTX
-  instruction descriptor and `tcgen05.mma.kind::i8` operands.
-- Initial classification: implementable coverage gap, not a known linear
-  layout blocker.
+- Current state: local `sm_100` compilation now succeeds for the signed i8
+  frontend/Gluon `mma_kernel` path. The generated artifact lives under
+  `experiments/mmav5_i8_remote/` and emits `.target sm_100a`,
+  `tcgen05.mma.cta_group::1.kind::i8`, descriptor immediate `136316064`, and a
+  local ptxas cubin (`97072` bytes). This is still runtime-pending because the
+  current local GPU is GB300/`sm_103`.
+- Open question: does the generated signed i8 PTX execute correctly on GB200
+  with torch-owned buffers and produce the exact int32 matmul result?
+- Next evidence: copy `experiments/mmav5_i8_remote/` to a GB200 container and
+  run `python3 run_i8_ptx_torch.py --launcher cpp` (or `--launcher ctypes` if
+  CUDA headers are unavailable). If it passes, classify signed i8 MMAv5 as
+  supported for GB200 compiler/runtime validation; unsigned i8 still needs a
+  frontend/IR-exposure decision because the high-level Gluon builtin currently
+  does not expose per-operand signedness.
+- Current classification: compile path looks supported for signed i8 on
+  GB200; runtime evidence pending. Not a linear-layout blocker.
 
 ## Gap #2: `tcgen05.cp` Supported-Layout Completeness
 

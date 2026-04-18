@@ -24887,3 +24887,29 @@ Open after this slice:
   - checkpoint and push;
   - when the remote GB200 container API is available, use Gap #1 to drive
     compile-only PTX/FileCheck/PTXAS validation for i8 MMAv5.
+
+## 2026-04-18 00:01 UTC: package Gap #1 GB200 runtime artifact
+
+- Starting point: `codex/tmem` at pushed `feb5381c0`.
+- User direction:
+  - do not rebuild Triton in the slow remote GB200 container;
+  - generate PTX locally and move a tiny torch/CUDA Driver shim to the host for
+    output checking.
+- Change:
+  - added `experiments/mmav5_i8_remote/` with a local sm100 PTX generator,
+    generated signed-i8 PTX/metadata, a torch-based runner, a tiny C++ Driver
+    API launch shim, and a ctypes fallback launcher.
+- Local evidence:
+  - generated PTX targets `sm_100a`, contains
+    `tcgen05.mma.cta_group::1.kind::i8`, uses descriptor immediate
+    `136316064`, and has a local ptxas cubin of `97072` bytes;
+  - runner dry-run validates the PTX hash, kernel name, and launch metadata.
+- Validation:
+  - `python3 .codex/initiatives/tmem_linear_generalization/experiments/mmav5_i8_remote/generate_i8_sm100_ptx.py`;
+  - `python3 .codex/initiatives/tmem_linear_generalization/experiments/mmav5_i8_remote/run_i8_ptx_torch.py --dry-run`;
+  - `PYTHONPYCACHEPREFIX=/tmp/triton-pyc python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/mmav5_i8_remote/generate_i8_sm100_ptx.py .codex/initiatives/tmem_linear_generalization/experiments/mmav5_i8_remote/run_i8_ptx_torch.py`.
+- Next:
+  - copy `experiments/mmav5_i8_remote/` to GB200 and run
+    `python3 run_i8_ptx_torch.py --launcher cpp`;
+  - use `--launcher ctypes` if the container lacks CUDA headers;
+  - checkpoint and push this artifact.

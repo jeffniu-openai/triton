@@ -13429,3 +13429,36 @@ rejection, not rescue
   - after that, treat PR/CI integration as the next source of work rather than
     continuing speculative local implementation against already-classified
     boundary rows.
+
+## Current: 2026-04-18 00:01 UTC Gap #1 GB200 PTX runtime artifact
+
+- User direction:
+  - avoid rebuilding Triton in the slow remote GB200 container;
+  - generate PTX locally, then move only a tiny torch/CUDA Driver launch shim
+    to the remote host for runtime validation.
+- Artifact added:
+  - `experiments/mmav5_i8_remote/generate_i8_sm100_ptx.py`;
+  - `experiments/mmav5_i8_remote/tcgen05_i8_signed_sm100.ptx`;
+  - `experiments/mmav5_i8_remote/tcgen05_i8_signed_sm100.metadata.json`;
+  - `experiments/mmav5_i8_remote/run_i8_ptx_torch.py`;
+  - `experiments/mmav5_i8_remote/ptx_driver.cpp`;
+  - `experiments/mmav5_i8_remote/README.md`.
+- Local evidence:
+  - generator compiles the signed i8 Gluon `mma_kernel` for
+    `GPUTarget("cuda", 100, 32)` in about 1.6s;
+  - generated PTX has `.target sm_100a`,
+    `tcgen05.mma.cta_group::1.kind::i8`, descriptor immediate `136316064`,
+    `.reqntid 128`, and dynamic shared memory `8204` bytes;
+  - local ptxas generated a `97072` byte cubin, proving PTX syntax/assembly
+    for the requested target.
+- Validation run locally:
+  - `python3 .../generate_i8_sm100_ptx.py`;
+  - `python3 .../run_i8_ptx_torch.py --dry-run`;
+  - `PYTHONPYCACHEPREFIX=/tmp/triton-pyc python3 -m py_compile ...`.
+- Remote next step:
+  - copy `experiments/mmav5_i8_remote/` to the GB200 container;
+  - run `python3 run_i8_ptx_torch.py --launcher cpp`;
+  - if CUDA headers are not present, run `python3 run_i8_ptx_torch.py
+    --launcher ctypes`;
+  - expected output is `PASS signed i8 tcgen05.mma sm100 PTX matches torch
+    int32 matmul`.
