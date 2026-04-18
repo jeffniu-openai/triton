@@ -794,6 +794,13 @@ and `1024`, under both simulated production routing and uniform routing.
   - Rank 3 fell from `0.972x` to `0.965x` in the paired run, and rank 5 also
     regressed. This makes a more invasive shared gather-index fanout between
     CTAs unlikely to pay for the extra shared state and synchronization.
+- A temporary source probe moved `mma_partition` first in the direct-path
+  `gl.warp_specialize` ordering, then was reverted after compile failure.
+  Artifact: `/tmp/moe_bmm1_slice28_w6_mmafirst_rank35_rep500.csv`.
+  - The paired 1CTA baseline row compiled and ran, but every direct 2CTA
+    candidate failed in `gl.warp_specialize` during compilation. This makes
+    MMA-first primary partition ownership illegal for the current direct-store
+    warp-specialized shape rather than a viable low-eligibility fix.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
