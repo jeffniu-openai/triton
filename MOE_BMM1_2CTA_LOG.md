@@ -849,6 +849,12 @@ and `1024`, under both simulated production routing and uniform routing.
   - `ACC_NUM_BUFS=3` slightly lifted rank 3 within B24 (`0.959x`) but still
     lost badly to the B20 near-miss, while ranks 4, 5, and 7 were best with
     ACC1 or ACC2 and remained below parity. `ACC_NUM_BUFS=4` was worse.
+- Deeper accumulator buffering for the B20 W6 family also does not solve the
+  hard ranks. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_b20_accdepth_rank3457_rep800.csv`.
+  - ACC2/ACC3/ACC4 did not preserve the best B20 rank-3 near-miss and stayed
+    well below parity on ranks 4, 5, and 7. The B20 and B24 evidence together
+    makes additional accumulator ring depth unattractive for this family.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
