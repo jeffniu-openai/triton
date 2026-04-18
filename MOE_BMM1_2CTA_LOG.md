@@ -778,6 +778,17 @@ and `1024`, under both simulated production routing and uniform routing.
     (`0.741`).
   - Custom block orders did not improve beyond the B20 near-miss:
     `full_first_reverse` reached `0.978x`; other orders regressed.
+- A temporary source probe swapped the direct-path warp-specialization order
+  so the weight loader was listed before the activation loader, then was
+  reverted. Artifact: `/tmp/moe_bmm1_slice28_w6_weightfirst_rank3457_rep1200.csv`.
+  - Weight-first ordering improved rank 5 and rank 7 locally in one run, but
+    regressed the rank-3 `BAND_N=20` near-miss from `~0.978x` to `0.972x`.
+    It is not selector-safe.
+- Inspected the direct-store shared-memory alias suggested by the profiler
+  follow-up. In the direct path, `store_bufs = x_bufs` is a dummy alias to fill
+  `PartitionArgs`; `epilogue_direct_store` writes directly to global memory
+  and does not use a store ring. Replacing it with a dedicated packed-output
+  ring would add shared memory rather than reduce the current residency limit.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
