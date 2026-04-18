@@ -895,6 +895,16 @@ and `1024`, under both simulated production routing and uniform routing.
     then saw an incompatible operand/output shape. Simple CTA-local X storage
     is not legal without also changing the gather/MMA/accumulator layout
     contract.
+- Temporary source probes reduced the 2CTA W shared-memory tile, and then the
+  W+scale shared-memory tiles, to CTA-local N extents. Both were reverted after
+  compile failure. Artifacts:
+  - `/tmp/moe_bmm1_slice28_wlocal_legality_rank3_rep200.csv`
+  - `/tmp/moe_bmm1_slice28_wlocal_wonly_legality_rank3_rep200.csv`
+  - Both probes failed during `gl.warp_specialize` parsing for the current
+    direct W6 layout. Like X storage, simple CTA-local W storage cannot be
+    dropped into the existing descriptor/MMA/accumulator contract; a W
+    footprint reduction needs a deeper layout rewrite rather than only
+    shrinking the shared-memory allocation shape.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
