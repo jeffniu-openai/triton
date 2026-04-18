@@ -447,6 +447,50 @@ and `1024`, under both simulated production routing and uniform routing.
   `slice=28`. The x5/w5 shared-memory footprint still appears necessary for
   uniform routing, despite its low occupancy.
 
+## 2026-04-18 Route-Local Slice-28 Probes
+
+- Narrow `BAND_N` sweep on uniform `batch=896`:
+  - Initial four-seed artifact set:
+    `/tmp/moe_bmm1_slice28_band_uniform_seed{0,1,2,3}_rep1600.csv`.
+    `BAND_N=20/22` helped some seeds but did not fix seed 0.
+  - Cached recheck artifacts:
+    `/tmp/moe_bmm1_slice28_band_cached_uniform_seed{0,1,2,3}_rep3000.csv`.
+    Current `BAND_N=32` remained best geometrically (`0.989x`), with
+    `BAND_N=22` close but still below (`0.989x`) and worse on the hardest
+    seed. No band-only selector change is justified.
+- Extended `/tmp/moe_bmm1_pair_tune_cached.py` to support fixed
+  `--local-ranks` and fixed a scratch-harness key bug where `NUM_WARPS` was
+  not part of the config key. Any artifact from the cached harness before this
+  fix must not be used to compare four- versus eight-warp variants.
+- Fixed-local-rank uniform `batch=896` artifacts:
+  - `/tmp/moe_bmm1_slice28_localrank_uniform_r0_1_rep1400.csv`
+  - `/tmp/moe_bmm1_slice28_localrank_uniform_r2_3_rep1400.csv`
+  - `/tmp/moe_bmm1_slice28_localrank_uniform_r4_5_rep1400.csv`
+  - `/tmp/moe_bmm1_slice28_localrank_uniform_r6_7_rep1400.csv`
+- Local-rank result:
+  - 2CTA wins or ties on ranks `0`, `1`, `2`, and `6`.
+  - 2CTA loses badly on ranks `3`, `4`, `5`, and `7`.
+  - Losing ranks usually have four local experts above 32 rows, but total local
+    tokens alone is not predictive. This points at route/block distribution
+    sensitivity rather than a single global batch-size effect.
+- Shape/schedule checks on the losing local ranks:
+  - `M64/BN256` helper and direct candidates stayed below the current
+    four-warp `M32/BN256` direct path. Artifacts:
+    `/tmp/moe_bmm1_slice28_m64_uniform_rank{3,4,5,7}_rep1200.csv`.
+  - `M16/BN256` direct on rank 4 was much worse (`~0.75x-0.76x`) even with a
+    bounded compile/benchmark. Artifact:
+    `/tmp/moe_bmm1_slice28_m16_uniform_rank4_timeout240_rep600.csv`.
+  - Corrected eight-warp direct recheck on losing ranks gave only small local
+    improvements and stayed below parity. Artifacts:
+    `/tmp/moe_bmm1_slice28_8warp_uniform_rank{3,4,5,7}_rep1200_v2.csv`.
+  - Full-tile schedule plus optional gather-index reuse regressed the losing
+    ranks. Artifacts:
+    `/tmp/moe_bmm1_slice28_fullsched_uniform_rank{3,4,5,7}_rep1200.csv`.
+- Current interpretation: `slice=28` is now known to be route-local. The
+  unsolved case is not all uniform routes, but specific local-rank
+  distributions with several 33+ row experts. M16, M64, eight-warps,
+  full-tile scheduling, and band-only tuning do not solve those distributions.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases
