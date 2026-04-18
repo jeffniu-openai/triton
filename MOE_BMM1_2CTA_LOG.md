@@ -671,6 +671,51 @@ and `1024`, under both simulated production routing and uniform routing.
     ring to `0.935x` even with equal scale depth (`ws6`), and shallower scale
     rings regressed further (`ws5` `0.900x`, `ws4` `0.840x`, `ws3` `0.731x`,
     `ws2` `0.560x`). The current combined W+scale barrier is better.
+- NCU source/scheduler extraction on uniform `896`, local rank `4`, confirmed
+  that W6 improves the best W5 2CTA family but does not solve the structural
+  eligibility gap. Artifacts:
+  - `/tmp/ncu_moe_896_uniform_rank4_1cta_target.ncu-rep`
+  - `/tmp/ncu_moe_896_uniform_rank4_2cta_warps4_x5w5.ncu-rep`
+  - `/tmp/ncu_moe_896_uniform_rank4_2cta_warps4_x5w6.ncu-rep`
+  - 1CTA: issue active `0.38`, active warps/scheduler `7.73`, eligible
+    warps/scheduler `0.74`, long-scoreboard `12.11` inst/issue, barrier
+    `2.18`, wait `1.61`, registers/thread `64`, dynamic shared memory
+    `114.432 KB`.
+  - 2CTA W5: issue active `0.29`, active warps/scheduler `3.83`, eligible
+    warps/scheduler `0.37`, long-scoreboard `7.48` inst/issue, barrier
+    `1.72`, wait `1.40`, registers/thread `52`, dynamic shared memory
+    `96.988 KB`.
+  - 2CTA W6: issue active `0.30`, active warps/scheduler `3.87`, eligible
+    warps/scheduler `0.39`, long-scoreboard `7.22` inst/issue, barrier
+    `1.73`, wait `1.40`, registers/thread `52`, dynamic shared memory
+    `113.884 KB`.
+  - The source/SASS view attributes the dominant 2CTA W6 long-scoreboard
+    samples to `SYNCS.PHASECHK.TRANS64.TRYWAIT` loops and nearby branch waits
+    around TMA gather/W staging, with additional samples on
+    `UTMALDG.2D.GATHER4.2CTA`. This makes loader/wait-loop overlap the next
+    structural target; epilogue bias placement and split scale barriers are
+    already measured dead ends.
+- W6 no-multicast schedule-order probes on actual hard local ranks did not
+  produce a host-ordering selector candidate. Artifacts:
+  - `/tmp/moe_bmm1_sched_w6_nomc_rank3_actual_rep1200.csv`
+  - `/tmp/moe_bmm1_sched_w6_nomc_rank4_actual_rep1200.csv`
+  - `/tmp/moe_bmm1_sched_w6_nomc_rank5_actual_rep1200.csv`
+  - `/tmp/moe_bmm1_sched_w6_nomc_rank7_actual_rep1200.csv`
+  - Best observed speedups were rank 3 `0.964x` (`slice_major_reverse`),
+    rank 4 `0.962x` (`slice_major_reverse` / `spill_first_reverse`), rank 5
+    `0.952x` (`spill_first_reverse`), and rank 7 `0.966x` (`slice_major`).
+- `BLOCK_K=64` scratch variants are illegal in the current scale descriptor
+  layout. Artifact: `/tmp/moe_bmm1_slice28_bk64_warps4_rank4_rep800.csv`.
+  Every BK64 candidate failed with
+  `AssertionError('block_shape[0]=2 must be divisible by 4')`.
+- X/W-scale multicast isolation on W6/regs48 did not yield a stable
+  selector-ready configuration. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_xmc_iso_rank3457_rep1200.csv`.
+  - Rank 3 still lost (`0.954x`) and rank 5 still lost (`0.973x`).
+  - Rank 4 and rank 7 showed local >1.0 readings (`1.002x` for no-X
+    multicast on rank 4 and `1.008x` for no-scale multicast on rank 7), but
+    the same family has previously measured below parity on nearby repeated
+    hard-route runs, so these are not sufficient for promotion.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
