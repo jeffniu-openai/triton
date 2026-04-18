@@ -861,6 +861,11 @@ and `1024`, under both simulated production routing and uniform routing.
     `0.64x-0.66x` on ranks 3 and 5. The low-batch W6 family needs direct
     epilogue stores; returning to helper-store overlap adds too much cost and
     shared-memory pressure.
+- W6 `OCCUPANCY=4` launch-grid overdecomposition is a dead end. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_occ4_rank35_rep600.csv`.
+  - Default, B20, and B24 OCC4 variants regressed to about `0.85x-0.87x` on
+    ranks 3 and 5. Prior OCC1/OCC3 checks were also bad, so the persistent
+    launch-grid density axis is closed for the current W6 direct family.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
