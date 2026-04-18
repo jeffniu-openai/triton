@@ -948,6 +948,13 @@ and `1024`, under both simulated production routing and uniform routing.
   MMA use. Reusing W for a second `pid_m` block would require pair-aware
   scheduling, two live accumulators or interleaved K loops, and delayed W
   release; a small cache-only source patch risks overwrite or deadlock.
+- X-depth interactions around the odd-band W6 near-misses do not improve the
+  hard ranks. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_odd_xdepth_rank34_rep900.csv`.
+  - For B20/no-scale/regs52, B23, and B25/no-multicast variants, `x4/w6`
+    regressed and `x6/w6` hit a severe resource cliff (`~0.69x-0.72x` on
+    rank 4). The existing `x5/w6` pairing remained best, at `0.979x` on rank
+    3 and `0.997x` on rank 4.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
