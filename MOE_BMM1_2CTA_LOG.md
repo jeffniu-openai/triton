@@ -913,6 +913,13 @@ and `1024`, under both simulated production routing and uniform routing.
     `0.968x`, rank 4 at `0.980x`, and rank 5 at `0.980x` in this run; rank 7
     still had positive non-fullsched rows, but fullsched was lower. Host
     full-tile ordering remains closed for the current W6 odd-band family.
+- Register caps do not rescue the odd-band multicast near-misses. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_odd_regs_mc_rank34_rep1000.csv`.
+  - On the rank-3 B20/no-scale-multicast path, `MAXNREG=52` was best at
+    `0.979x`; higher caps were worse. On rank 4, B23/regs48 remained best at
+    `0.997x`, with B23 regs56 and B25/no-multicast regs48/56 also below
+    parity. The rank-3 and rank-4 gaps are not fixed by pairing odd bands,
+    multicast toggles, and register caps.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
