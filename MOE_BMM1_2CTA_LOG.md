@@ -955,6 +955,12 @@ and `1024`, under both simulated production routing and uniform routing.
     regressed and `x6/w6` hit a severe resource cliff (`~0.69x-0.72x` on
     rank 4). The existing `x5/w6` pairing remained best, at `0.979x` on rank
     3 and `0.997x` on rank 4.
+- W-depth interactions around the odd-band near-misses also keep `x5/w6` as
+  the best local depth pairing. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_odd_wdepth_rank34_rep900.csv`.
+  - Retesting `x5/w5` and `x6/w5` against `x5/w6` for B20/no-scale/regs52,
+    B23, and B25/no-multicast showed W5 materially worse on ranks 3 and 4.
+    Best rows stayed `x5/w6`, at `0.976x` for rank 3 and `0.997x` for rank 4.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
