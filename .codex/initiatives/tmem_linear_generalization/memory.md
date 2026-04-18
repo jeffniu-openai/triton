@@ -13496,3 +13496,24 @@ rejection, not rescue
     frontend/lowering path;
   - unsigned/per-operand signedness and integer saturation remain IR/frontend
     exposure questions.
+
+## Current: 2026-04-18 01:36 UTC Gap #1 artifact runbook captured
+
+- Added `gb200_i8_validation_artifacts.md` as the durable inventory for the
+  signed i8 MMAv5 GB200 check.
+- Added `experiments/mmav5_i8_remote/run_on_caas_gb200.py` as the reusable
+  CaaS launcher. It:
+  - requires `CAAS_API_KEY` in the environment but does not print or store it;
+  - defaults to `caas-gpu10`, image `cudaberry-arm`, one `GpuType.GB200`;
+  - runs `nvidia-smi` and torch capability probes;
+  - uploads the local artifact directory to `/tmp/mmav5_i8_remote`;
+  - runs `run_i8_ptx_torch.py --dry-run` and then the cubin-backed C++/torch
+    validation.
+- The runbook records:
+  - PTX and cubin hashes;
+  - generated module sizes and launch metadata;
+  - remote cluster/image/TTL/write-timeout constraints;
+  - exact rerun commands and useful variants.
+- Secret handling:
+  - the user-provided CaaS token was intentionally not written into any
+    tracked file.

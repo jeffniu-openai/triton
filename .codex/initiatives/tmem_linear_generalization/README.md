@@ -48,6 +48,8 @@ When resuming the initiative:
 - use `remaining_coverage_gaps.md` as the stable numbered register for the
   unresolved support/coverage questions. Refer to these as Gap #1, Gap #2,
   etc.; do not renumber gaps after discussion starts.
+- use `gb200_i8_validation_artifacts.md` for the reusable Gap #1 signed i8
+  MMAv5 GB200 artifact inventory and CaaS rerun command.
 
 ## Current Backend Checkpoint
 

@@ -16,6 +16,12 @@ Remote run on GB200:
 python3 run_i8_ptx_torch.py --launcher cpp
 ```
 
+To provision CaaS, upload this directory, and run the same check end-to-end:
+
+```bash
+python3 run_on_caas_gb200.py
+```
+
 The runner loads the ptxas-produced cubin by default because some remote
 driver/toolkit combinations reject local PTX JIT with
 `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`. Use `--module ptx` only when validating

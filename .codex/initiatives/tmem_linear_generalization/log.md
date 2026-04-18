@@ -24957,3 +24957,28 @@ Open after this slice:
   - treat Gap #1 signed i8 as closed/supported for GB200, with only
     unsigned/per-operand signedness and saturation left as frontend/API
     questions.
+
+## 2026-04-18 01:36 UTC: record reusable GB200 i8 validation artifacts
+
+- Starting point: `codex/tmem` at pushed `d469f9b16`.
+- Change:
+  - added `gb200_i8_validation_artifacts.md` as a durable runbook for the
+    Gap #1 signed i8 GB200 validation;
+  - added `experiments/mmav5_i8_remote/run_on_caas_gb200.py` so the CaaS
+    allocation, `nvidia-smi`/torch probes, artifact upload, dry-run, and
+    cubin-backed runtime check can be rerun with one command;
+  - linked the runbook from the initiative README and the experiment README.
+- Captured artifacts:
+  - PTX/cubin filenames, hashes, sizes, target, opcode, descriptor immediate,
+    launch shape, and dynamic shared-memory size;
+  - remote cluster/image/TTL/file-write timeout constraints;
+  - expected passing output and useful rerun variants.
+- Secret handling:
+  - the CaaS token is documented only as `CAAS_API_KEY`; no token value is
+    stored in tracked files.
+- Validation:
+  - `python3 .../run_on_caas_gb200.py --help`;
+  - `PYTHONPYCACHEPREFIX=/tmp/triton-pyc python3 -m py_compile ...`;
+  - `git diff --check`.
+- Next:
+  - commit and push this artifact-runbook checkpoint.
