@@ -517,6 +517,57 @@ and `1024`, under both simulated production routing and uniform routing.
   full-tile scheduling, 8-warp partitioning, and band-only tuning do not solve
   those distributions.
 
+## 2026-04-18 Slice-28 Mixed-Route Structural Probes
+
+- Rebuilt with `make` first; ninja reported no work.
+- Four-warp planar-snake schedule variants were tested on the hard uniform
+  `batch=896` ranks. Artifact set:
+  `/tmp/moe_bmm1_slice28_warps4_snake_rank{3,4,5,7}_rep1200.csv`.
+  - Rank 3 had a small local improvement with `minor_dim=1,width=8`
+    (`0.923x` versus current `0.918x` in that run).
+  - Ranks 4, 5, and 7 all regressed versus the current four-warp direct path.
+  - Decision: no planar-snake selector change.
+- Four-warp multicast and `x6/w5` staging variants were tested on the same
+  hard ranks. Artifact set:
+  `/tmp/moe_bmm1_slice28_warps4_mc_rank{3,4,5,7}_rep1200.csv`.
+  - `x6/w5` with both X gather and W-scale multicast disabled helped rank 4
+    locally (`0.934x`) but regressed rank 5 and did not fix ranks 3 or 7.
+  - Decision: no multicast or `x6/w5` selector change for `slice=28`.
+- Four-warp register-cap variants were tested for both `x5/w5` and `x6/w5`.
+  Artifact set:
+  `/tmp/moe_bmm1_slice28_warps4_regs_rank{3,4,5,7}_rep1200.csv`.
+  - Lower `MAXNREG=48` helped ranks 3, 4, and 5 slightly, while rank 7 stayed
+    best at the current/higher cap. All variants remained below parity.
+  - Decision: register caps are sub-percent tuning only; they do not solve the
+    route-local gap.
+- A temporary split diagnostic measured first-block-only and spill-only
+  subroutes with the same prepared inputs. Artifacts:
+  - `/tmp/moe_bmm1_slice28_hybrid_rank4_rep800.csv`
+  - `/tmp/moe_bmm1_slice28_split_diag_rank{0,3,4,5,7}_rep800.csv`
+  - Two-launch hybrid `first rows via 2CTA + spill rows via 1CTA` was correct
+    but much slower (`~0.68x-0.73x`) because launch overhead dominates.
+  - The diagnostic is still useful: on losing ranks, first-only 2CTA was near
+    parity (`~0.983x-1.003x`) and spill-only 2CTA beat spill-only 1CTA, while
+    the combined route stayed far below parity (`~0.904x-0.958x`). The gap is
+    therefore not simply spill-row arithmetic; mixed full/spill block behavior
+    inside the persistent loop is the problem.
+- An opt-in layered block schedule was prototyped and then removed from source
+  after measurement. Artifact set:
+  `/tmp/moe_bmm1_slice28_layered_rank{3,4,5,7}_rep1200.csv`.
+  - Scheduling all first blocks across experts before all spill blocks
+    regressed every hard rank. The current slice-major block schedule remains
+    better.
+- An opt-in full-M activation gather descriptor was prototyped and removed
+  after validation:
+  - No-CGA X layout failed lowering because the shared-memory layout had one
+    CTA per CGA inside a two-CTA context.
+  - Zero-basis two-CTA X layout compiled after matching the gather-offset
+    layout, but failed correctness with row-16 mismatches. Artifact:
+    `/tmp/moe_bmm1_slice28_xfull_rank4_rep600_v3.csv`.
+  - Decision: the MMA/descriptor mapping depends on the current row-CGA
+    split; full-M gather is not a safe structural path without a deeper layout
+    redesign.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases
@@ -528,6 +579,12 @@ and `1024`, under both simulated production routing and uniform routing.
   correctness, benchmarks, notes, commits, and pushes until 2CTA beats 1CTA for
   every batch and further improvements are exhausted.
 - Promising next directions:
+  - Use the split diagnostic result to focus on mixed full/spill persistent
+    loop behavior. First-only and spill-only subroutes are near parity or
+    positive; the combined route loses. Layered host block ordering did not
+    help, so the next attempt should target in-kernel overlap/ownership around
+    the transition between full and spill blocks rather than simply reordering
+    the host block schedule.
   - Find a legal way to reduce 2CTA shared-memory footprint while preserving
     W5 depth, possibly by changing scale staging or descriptor/layout
     ownership rather than X/W buffer counts.
