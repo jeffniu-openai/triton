@@ -828,6 +828,27 @@ and `1024`, under both simulated production routing and uniform routing.
     one MMA input barrier is hang-prone in this warp-specialized protocol.
     The already-tested all-input inline release is legal but slower, so this
     release axis is closed for the current direct W6 family.
+- Route-matched NCU for the rank-5 B24/ACC2 near-miss shows the same structural
+  limiter as ranks 3 and 4. Artifacts:
+  - `/tmp/ncu_moe_896_uniform_rank5_1cta_target.ncu-rep`
+  - `/tmp/ncu_moe_896_uniform_rank5_2cta_warps4_x5w6_b24_acc2.ncu-rep`
+  - Rank 5 1CTA: duration `37.376 us`, DRAM bandwidth `4.017 TB/s`,
+    instructions `14.14M`, active warps/scheduler `7.72`, eligible
+    warps/scheduler `0.754`, registers/thread `64`, dynamic shared memory
+    `114.432 KB`, shared-memory occupancy limit `2` blocks.
+  - Rank 5 B24/ACC2 2CTA: duration `40.384 us`, DRAM bandwidth `3.787 TB/s`,
+    instructions `8.35M`, active warps/scheduler `3.85`, eligible
+    warps/scheduler `0.371`, registers/thread `48`, dynamic shared memory
+    `113.892 KB`, shared-memory occupancy limit `2` blocks.
+  - The 2CTA path again wins on instruction count but loses on resident and
+    eligible warp count. The remaining rank-5 gap is latency hiding, not raw
+    instruction volume.
+- Deeper accumulator buffering for the B24 W6 family does not solve the hard
+  ranks. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_b24_accdepth_rank3457_rep800.csv`.
+  - `ACC_NUM_BUFS=3` slightly lifted rank 3 within B24 (`0.959x`) but still
+    lost badly to the B20 near-miss, while ranks 4, 5, and 7 were best with
+    ACC1 or ACC2 and remained below parity. `ACC_NUM_BUFS=4` was worse.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
