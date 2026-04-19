@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-18 23:03 UTC
+Last updated: 2026-04-19 00:11 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -77,7 +77,11 @@ The project is complete when:
   progress. Recent checkpoints moved MMAv5 address selection, direct `ld/st`
   support/replay predicates, physical-bitcast/view predicates, query-type
   lowering precedence, and now shared Gluon/backend `ld/st` register-layout
-  arithmetic into backend helpers, and deleted stale copy address dead code.
+  arithmetic into backend helpers, deleted stale copy address dead code, and
+  removed obsolete hardcoded trace-file/debug-disable shims from the touched
+  Gluon and LLVM TMEM paths. The 2026-04-19 branch cleanup audit also pruned
+  superseded raw experiment result logs while preserving compact current
+  summaries and reusable evidence artifacts.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.

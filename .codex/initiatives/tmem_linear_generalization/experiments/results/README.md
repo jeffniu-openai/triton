@@ -1,8 +1,10 @@
-# TMEM Fuzz Results
+# TMEM Experiment Results
 
-Store JSONL sweep outputs here.
+Store only compact, reusable result artifacts here. Large raw sweep logs,
+per-offset JSONL dumps, and one-off probe transcripts should stay local and
+untracked after their conclusions have been summarized in the initiative docs.
 
-Each record should include:
+For new compact JSONL summaries, each record should include:
 - `case_id`
 - `family`
 - `shape`
@@ -17,5 +19,6 @@ Each record should include:
 - `ptx_opcodes`
 - `llir_opcodes`
 
-Keep high-signal summaries in `../../log.md`. This directory is for detailed
-artifacts that other agents can consume directly.
+Keep high-signal summaries in `../../log.md`, `../../memory.md`, or a focused
+closure report. This directory is for small artifacts that other agents can
+consume directly, plus duration cache files used by validation runners.

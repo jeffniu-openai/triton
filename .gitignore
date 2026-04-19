@@ -98,3 +98,15 @@ docs/sg_execution_times.rst
 .DS_Store
 
 AGENTS.override.md
+
+# Codex initiative scratch artifacts
+.codex/initiatives/tmem_linear_generalization/experiments/results/*
+!.codex/initiatives/tmem_linear_generalization/experiments/results/README.md
+!.codex/initiatives/tmem_linear_generalization/experiments/results/ldst_pytest_durations_20260413.json
+!.codex/initiatives/tmem_linear_generalization/experiments/results/*_summary.json
+!.codex/initiatives/tmem_linear_generalization/experiments/results/*_current.jsonl
+!.codex/initiatives/tmem_linear_generalization/experiments/results/*_current.log
+!.codex/initiatives/tmem_linear_generalization/experiments/results/probe_tmem_opcode_catalog_gpu2.json
+!.codex/initiatives/tmem_linear_generalization/experiments/results/probe_tmem_opcode_catalog_gpu2.stderr
+!.codex/initiatives/tmem_linear_generalization/experiments/results/probe_ldst_atom_gap_matrix_gpu1.json
+!.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_shape_coverage_const_gpu1.txt

@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-19 00:11 UTC branch cleanup audit executed. Compared
+  `codex/tmem` against merge-base
+  `11ee1144a737006921231bbd3386c187812c38e1` and recorded the inventory in
+  `branch_cleanup_inventory_20260419.md`. Removed obsolete hardcoded TMEM
+  trace-file/debug-disable shims from `python/src/gluon_ir.cc` and
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`.
+  Pruned superseded raw `experiments/results/` probe/sweep logs while keeping
+  compact current summaries, the `ld/st` duration cache, and reusable probe
+  evidence. Added `.gitignore` rules so future one-off raw result dumps stay
+  local unless explicitly promoted. Historical docs may still contain old
+  trace commands as provenance, but those env toggles are no longer live
+  production debugging surfaces. Validation: `make -j8`; `git diff --check`;
+  focused runtime-matrix selector `52 passed` across four GPU shards; Gluon
+  descriptor-chain smoke `26 passed` across four GPU shards.
+
 - Latest: 2026-04-18 19:50 UTC Gap #1 `tcgen05.cp` closed for the TMEM
   linear-layout generalization project. Added
   `tcgen05_cp_gap1_closure_20260418.md`; remaining copy non-positive rows are

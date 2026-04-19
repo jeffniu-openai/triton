@@ -1,7 +1,0 @@
-warpx4_base: PASS launch_ok sum=-15352 cubin=/tmp/cp_ptx_variant_xh7lvqki/kernel.cubin
-warpx2_02_13: PASS launch_ok sum=-10426 cubin=/tmp/cp_ptx_variant_mart44ea/kernel.cubin
-warpx2_01_23: PASS launch_ok sum=-10426 cubin=/tmp/cp_ptx_variant_o3wad23t/kernel.cubin
-cp_4x256b: PASS launch_ok sum=-10771 cubin=/tmp/cp_ptx_variant_hwdrqktz/kernel.cubin
-warpx2_02_13: diff_vs_warpx4_base=2036
-warpx2_01_23: diff_vs_warpx4_base=2036
-cp_4x256b: diff_vs_warpx4_base=2068

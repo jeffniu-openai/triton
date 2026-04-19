@@ -1473,20 +1473,8 @@ void init_gluon_ir(py::module &&m) {
         if (!memDescTy)
           throw std::invalid_argument("expected a memdesc value");
         bool debug = std::getenv("TRITON_DEBUG_TMEM_REG_LAYOUT") != nullptr;
-        bool traceToFile =
-            std::getenv("TRITON_TRACE_TMEM_REG_LAYOUT_FILE") != nullptr;
         std::string debugLogStr;
         llvm::raw_string_ostream debugLog(debugLogStr);
-        auto appendTrace = [&](const Twine &msg) {
-          if (!traceToFile)
-            return;
-          std::error_code ec;
-          llvm::raw_fd_ostream os("/tmp/tmem_reg_layout_trace.log", ec,
-                                  llvm::sys::fs::OF_Append);
-          if (ec)
-            return;
-          os << msg << "\n";
-        };
         auto ctx = memDesc.getContext();
         auto matchesDesiredAtom =
             [&](ttg::MemDescType queryTy,
@@ -1523,8 +1511,6 @@ void init_gluon_ir(py::module &&m) {
                 debugLog << "[tmem-reg-layout] invalid linear attr: "
                          << verifyDetails;
             }
-            if (traceToFile && !verifyDetails.empty())
-              appendTrace(Twine("invalid linear attr: ") + verifyDetails);
             return std::nullopt;
           }
           return ttg::LinearEncodingAttr::get(ctx, std::move(layout));
@@ -1552,11 +1538,6 @@ void init_gluon_ir(py::module &&m) {
 
           for (auto candidate : ttng::getTMemLdStCandidateLayoutsForQuery(
                    queryMemDesc, queryTy, numWarps, atomName)) {
-            if (traceToFile) {
-              appendTrace(Twine("getCompatibleLayouts rowPlan atom=") +
-                          Twine(static_cast<int>(candidate.atom)) +
-                          " layout=" + candidate.layout.toString());
-            }
             addLayout(std::move(candidate.layout));
           }
           for (auto layout : ttng::getTMemLdStGenericCompatibleLayouts(
@@ -1582,9 +1563,6 @@ void init_gluon_ir(py::module &&m) {
               /*maxnreg=*/256);
           if (!regTy)
             return py::none();
-          if (traceToFile)
-            appendTrace(Twine("firstLegalLayoutForType atomName=") + atomName +
-                        " matched");
           return layoutToGluon(regTy->getEncoding());
         };
         auto firstLegalLayout = [&](Value queryMemDesc, ttg::MemDescType queryTy,
@@ -1640,14 +1618,6 @@ void init_gluon_ir(py::module &&m) {
                                      .str()
                                : ("fail details=" + candidateDetails))
                        << "\n";
-            }
-            if (traceToFile) {
-              appendTrace(Twine("firstLegalLayout atomName=") + atomName +
-                          " candidate=" +
-                          (succeeded(maybeInfo)
-                               ? (Twine("ok matchedAtom=") +
-                                  Twine(static_cast<int>(maybeInfo->atom)))
-                               : (Twine("fail details=") + candidateDetails)));
             }
             if (succeeded(maybeInfo) &&
                 matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom))
@@ -1713,10 +1683,6 @@ void init_gluon_ir(py::module &&m) {
           auto maybeQueryLayout = ttng::inferStandaloneTMemLdStQueryLayout(
               queryMemDesc, /*preserveNonCanonicalView=*/true, &error);
           if (failed(maybeQueryLayout)) {
-            if (traceToFile && !error.empty()) {
-              appendTrace(Twine("inferRawQueryLayout atomName=") + atomName +
-                          " error=" + error);
-            }
             if (debug && !error.empty()) {
               debugLog << "[tmem-reg-layout] raw query layout failed: " << error
                        << "\n";
@@ -1735,17 +1701,6 @@ void init_gluon_ir(py::module &&m) {
           if (!rowPlan)
             rowPlan = ttng::getTMemLdStRowPlanForRawQuery(
                 queryMemDesc, queryTy, queryLayout);
-          if (traceToFile) {
-            appendTrace(Twine("firstLegalLayoutForQueryLayout atomName=") +
-                        atomName + " rowPlan=" +
-                        (rowPlan
-                             ? Twine("{") + Twine(rowPlan->warpRow0) + "," +
-                                   Twine(rowPlan->warpRow1) + ";span=" +
-                                   Twine(rowPlan->rowSpan) + ";base=" +
-                                   Twine(rowPlan->baseOffset) + "}"
-                             : Twine("none")) +
-                        " layout=" + queryLayout.layout.toString());
-          }
 
           auto tryAtom = [&](ttng::TMemAccessAtom atom) -> py::object {
             auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
@@ -1755,9 +1710,6 @@ void init_gluon_ir(py::module &&m) {
                        << static_cast<int>(atom) << " -> "
                        << (maybeLayout ? "layout" : "none") << "\n";
             }
-            if (traceToFile && !maybeLayout)
-              appendTrace(Twine("rawQuery atomName=") + atomName + " tryAtom=" +
-                          Twine(static_cast<int>(atom)) + " no-layout");
             if (!maybeLayout)
               return py::none();
             auto reshapedLayout =
@@ -1793,19 +1745,8 @@ void init_gluon_ir(py::module &&m) {
                                : ("fail details=" + rawDetails))
                        << "\n";
             }
-            if (traceToFile) {
-              appendTrace(Twine("rawQuery atomName=") + atomName + " tryAtom=" +
-                          Twine(static_cast<int>(atom)) + " candidate=" +
-                          (succeeded(maybeInfo)
-                               ? (Twine("ok matchedAtom=") +
-                                  Twine(static_cast<int>(maybeInfo->atom)))
-                               : (Twine("fail details=") + rawDetails)));
-            }
             if (succeeded(maybeInfo) &&
                 matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
-              appendTrace(Twine("firstLegalLayoutForQueryLayout atomName=") +
-                          atomName + " matchedAtom=" +
-                          Twine(static_cast<int>(maybeInfo->atom)));
               return layoutToGluon(*attr);
             }
             return py::none();
@@ -1832,8 +1773,6 @@ void init_gluon_ir(py::module &&m) {
               auto fallbackLayouts = getBlockedFallbackLayouts(
                   queryMemDescTy, queryMemDescTy.getShape());
               if (!fallbackLayouts.empty()) {
-                appendTrace(
-                    "findDirectLayoutForMemDesc replayableHalfSliceFallback");
                 return layoutToGluon(fallbackLayouts.front());
               }
             }
@@ -1841,14 +1780,8 @@ void init_gluon_ir(py::module &&m) {
               auto fallbackLayouts = getBlockedFallbackLayouts(
                   queryMemDescTy, queryMemDescTy.getShape());
               if (!fallbackLayouts.empty()) {
-                appendTrace(
-                    "findDirectLayoutForMemDesc replayableFullViewFallback");
                 return layoutToGluon(fallbackLayouts.front());
               }
-            }
-            if (traceToFile && !unsupportedDescriptorViewError.empty()) {
-              appendTrace(Twine("findDirectLayoutForMemDesc unsupportedView=") +
-                          unsupportedDescriptorViewError);
             }
             if (debug && !unsupportedDescriptorViewError.empty()) {
               debugLog << "[tmem-reg-layout] unsupported descriptor view: "
@@ -1858,9 +1791,6 @@ void init_gluon_ir(py::module &&m) {
           }
           bool isViewLikeMemDesc =
               ttng::isExplicitTMemLdStViewProducer(queryMemDesc);
-          bool disableTypeOnlyFallback =
-              std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
-              nullptr;
           auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
           auto preferQueryTypeLayoutsBeforeRawQuery =
               ttng::shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
@@ -1871,7 +1801,6 @@ void init_gluon_ir(py::module &&m) {
               py::object layout = firstLegalLayout(queryMemDesc, queryTy, layouts,
                                                    desiredAtom);
               if (!layout.is_none()) {
-                appendTrace("findDirectLayoutForMemDesc queryTy layouts");
                 return layout;
               }
             }
@@ -1902,10 +1831,6 @@ void init_gluon_ir(py::module &&m) {
             }
             auto trySupportAtom = [&](ttng::TMemAccessAtom atom) -> py::object {
               if (!supportRowPlan) {
-                if (traceToFile)
-                  appendTrace(Twine("supportQuery atomName=") + atomName +
-                              " tryAtom=" + Twine(static_cast<int>(atom)) +
-                              " no-row-plan");
                 return py::none();
               }
               auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
@@ -1917,36 +1842,20 @@ void init_gluon_ir(py::module &&m) {
                          << (maybeLayout ? "layout" : "none") << "\n";
               }
               if (!maybeLayout) {
-                if (traceToFile)
-                  appendTrace(Twine("supportQuery atomName=") + atomName +
-                              " tryAtom=" + Twine(static_cast<int>(atom)) +
-                              " no-layout");
                 return py::none();
               }
               auto reshapedLayout = reshapeRegLayoutToQueryShape(
                   *maybeLayout, queryMemDescTy.getShape());
               if (!reshapedLayout) {
-                if (traceToFile)
-                  appendTrace(Twine("supportQuery atomName=") + atomName +
-                              " tryAtom=" + Twine(static_cast<int>(atom)) +
-                              " reshape-failed");
                 return py::none();
               }
               auto normalizedLayout =
                   normalizeRegLayoutForAttr(std::move(*reshapedLayout));
               if (!normalizedLayout) {
-                if (traceToFile)
-                  appendTrace(Twine("supportQuery atomName=") + atomName +
-                              " tryAtom=" + Twine(static_cast<int>(atom)) +
-                              " normalize-failed");
                 return py::none();
               }
               auto attr = createLinearRegAttr(std::move(*normalizedLayout));
               if (!attr) {
-                if (traceToFile)
-                  appendTrace(Twine("supportQuery atomName=") + atomName +
-                              " tryAtom=" + Twine(static_cast<int>(atom)) +
-                              " invalid-linear-attr");
                 return py::none();
               }
               auto regTy = RankedTensorType::get(
@@ -1962,15 +1871,6 @@ void init_gluon_ir(py::module &&m) {
                     [&]() { return mlir::emitError(mlir::UnknownLoc::get(ctx)); },
                     supportRowPlan);
               }();
-              if (traceToFile) {
-                appendTrace(Twine("supportQuery atomName=") + atomName +
-                            " tryAtom=" + Twine(static_cast<int>(atom)) +
-                            " candidate=" +
-                            (succeeded(maybeInfo)
-                                 ? (Twine("ok matchedAtom=") +
-                                    Twine(static_cast<int>(maybeInfo->atom)))
-                                 : (Twine("fail details=") + supportDetails)));
-              }
               if (succeeded(maybeInfo) &&
                   matchesDesiredAtom(queryMemDescTy, desiredAtom,
                                      maybeInfo->atom)) {
@@ -1989,7 +1889,6 @@ void init_gluon_ir(py::module &&m) {
                   queryMemDesc, supportQuery, desiredAtom, supportRowPlan);
             }
             if (!layout.is_none()) {
-              appendTrace("findDirectLayoutForMemDesc supportQuery");
               return layout;
             }
             if (debug)
@@ -2020,11 +1919,6 @@ void init_gluon_ir(py::module &&m) {
             auto attr = createLinearRegAttr(std::move(*normalizedLayout));
             if (!attr)
               return py::none();
-            if (traceToFile) {
-              appendTrace(Twine("canonicalM64SplitNRawQuery atomName=") +
-                          atomName + " recognized");
-            }
-            appendTrace("findDirectLayoutForMemDesc canonicalM64SplitNRawQuery");
             return layoutToGluon(*attr);
           };
           if (auto supportPlan =
@@ -2037,8 +1931,6 @@ void init_gluon_ir(py::module &&m) {
             py::object supportFallback =
                 physicalSupportLayout(queryMemDesc, desiredAtom);
             if (!supportFallback.is_none()) {
-              appendTrace(
-                  "findDirectLayoutForMemDesc physicalSupportLayout-after-support");
               return supportFallback;
             }
           } else if (debug && !supportError.empty()) {
@@ -2058,29 +1950,19 @@ void init_gluon_ir(py::module &&m) {
             }
             py::object layout = firstLegalLayoutForQueryLayout(
                 queryMemDesc, *rawQueryLayout, desiredAtom);
-            if (!layout.is_none()) {
-              appendTrace("findDirectLayoutForMemDesc rawQuery");
+            if (!layout.is_none())
               return layout;
-            }
             layout = tryCanonicalM64SplitNRawQuery(*rawQueryLayout);
             if (!layout.is_none())
               return layout;
           }
-          if (disableTypeOnlyFallback && isViewLikeMemDesc) {
-            return py::none();
-          }
           py::object supportFallback = py::none();
           supportFallback = physicalSupportLayout(queryMemDesc, desiredAtom);
-          if (!supportFallback.is_none()) {
-            appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
+          if (!supportFallback.is_none())
             return supportFallback;
-          }
           std::string typeOnlyFallbackReason;
           if (ttng::disallowTMemLdStTypeOnlyFallback(
                   queryMemDesc, &typeOnlyFallbackReason)) {
-            if (traceToFile)
-              appendTrace(
-                  "findDirectLayoutForMemDesc type-only-fallback-disallowed");
             if (debug) {
               debugLog << "[tmem-reg-layout] " << typeOnlyFallbackReason
                        << "; refusing type-only fallback\n";
@@ -2099,17 +1981,13 @@ void init_gluon_ir(py::module &&m) {
             py::object layout =
                 firstLegalLayout(queryMemDesc, queryTy, blockedLayouts,
                                  desiredAtom);
-            if (!layout.is_none()) {
-              appendTrace("findDirectLayoutForMemDesc blocked fallback");
+            if (!layout.is_none())
               return layout;
-            }
           }
           py::object fallbackLayout = py::none();
           fallbackLayout = physicalSupportLayout(queryMemDesc, desiredAtom);
-          if (!fallbackLayout.is_none()) {
-            appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
+          if (!fallbackLayout.is_none())
             return fallbackLayout;
-          }
           if (desiredAtom) {
             if (isViewLikeMemDesc)
               return py::none();
@@ -2175,9 +2053,9 @@ void init_gluon_ir(py::module &&m) {
             llvm::errs() << debugLog.str();
           return layout;
         }
-          if (debug)
-            llvm::errs() << debugLog.str();
-          return py::none();
+        if (debug)
+          llvm::errs() << debugLog.str();
+        return py::none();
       });
 
   m.def(

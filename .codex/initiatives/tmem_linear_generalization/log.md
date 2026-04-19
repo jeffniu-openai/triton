@@ -25284,3 +25284,35 @@ Open after this slice:
 - Next:
   - run `git diff --check`, commit, push, and then rebaseline the remaining
     clean-negative inventory for any non-gap residuals.
+
+## 2026-04-19 00:11 UTC: branch cleanup audit and artifact pruning
+
+- Starting point: `codex/tmem` at pushed `5ef66b3bb87e`.
+- Merge-base against `origin/main`:
+  `11ee1144a737006921231bbd3386c187812c38e1`.
+- Inventory:
+  - recorded `branch_cleanup_inventory_20260419.md` with the branch-wide diff
+    buckets, keep policy, cleanup plan, and later cleanup candidates;
+  - classified production TMEM/compiler changes separately from tests,
+    durable initiative docs, and raw experiment/probe outputs;
+  - found the largest removable branch bulk in superseded raw
+    `experiments/results/` logs, not in production compiler logic.
+- Cleanup:
+  - removed investigation-only hardcoded trace-file hooks from Gluon TMEM
+    register-layout selection and LLVM direct `ld/st` query lowering;
+  - removed old debug-disable toggles for comparing against obsolete fallback
+    behavior, leaving the normal gated `TRITON_DEBUG_TMEM_*` diagnostics;
+  - pruned raw per-offset probe dumps and old sweep logs while keeping compact
+    current summaries, the duration cache, and reusable probe artifacts;
+  - added `.gitignore` rules so future one-off raw result files stay local
+    unless intentionally promoted.
+- Validation:
+  - `make -j8`;
+  - `git diff --check`;
+  - split-4 focused runtime-matrix selector for direct `ld/st`
+    descriptor/query paths plus narrow scaled-MMAv5:
+    `13/13`, `13/13`, `13/13`, and `13/13` passed;
+  - split-4 `test_core.py::test_tmem_descriptor_chain_matrix` smoke:
+    `7/7`, `7/7`, `7/7`, and `5/5` passed.
+- Next:
+  - commit and push to `origin/codex/tmem`.

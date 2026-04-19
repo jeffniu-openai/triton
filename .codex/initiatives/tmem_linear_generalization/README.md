@@ -64,9 +64,21 @@ When resuming the initiative:
   classification: what is supported, what is cleanly impossible under the
   current public copy ISA/storage model, and what is deferred behind a
   non-linear-layout API/storage contract.
+- use `branch_cleanup_inventory_20260419.md` for the branch-wide cleanup audit
+  against the `origin/main` merge-base and the executed artifact/shim pruning
+  plan.
 
 ## Current Backend Checkpoint
 
+- 2026-04-19 00:11 UTC: executed the branch cleanup audit against merge-base
+  `11ee1144a737006921231bbd3386c187812c38e1`. Production cleanup removed
+  temporary hardcoded trace-file/debug-disable shims from Gluon TMEM register
+  layout selection and LLVM direct `ld/st` query lowering. Initiative cleanup
+  pruned superseded raw experiment result logs while keeping compact current
+  summaries, reusable probe evidence, and the duration cache used by the
+  runtime-matrix runner. Validation: `make -j8`; `git diff --check`;
+  focused runtime-matrix selector `52 passed` across four GPU shards; Gluon
+  descriptor-chain smoke `26 passed` across four GPU shards.
 - 2026-04-18 19:50 UTC: closed Gap #1 `tcgen05.cp` for the TMEM
   linear-layout generalization project. The remaining non-positive rows are
   classified as public atom mask/full-footprint boundaries, explicit
