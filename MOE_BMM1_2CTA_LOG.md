@@ -969,6 +969,30 @@ and `1024`, under both simulated production routing and uniform routing.
     rank 4 (`0.997x`). The longer confirm kept B21/plain as rank 3's best
     (`0.982x`) but still below parity, and B28/plain was only `0.995x` on
     rank 4. B21/B28 multicast and register interactions regressed.
+- Added a repo-local structural exploration harness:
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`. It defines new
+  Gluon kernel entry points that reuse the same descriptors, reference checks,
+  and prepared inputs but change producer/MMA ownership:
+  - `combined`: one fused input producer issues both gathered X and W/scale TMA.
+  - `mmaw`: activation producer stays separate; MMA owns W/scale TMA.
+  - `mmax`: weight producer stays separate; MMA owns gathered X TMA.
+  Artifacts:
+  - `/tmp/moe_bmm1_structural_explore_selfcontained_smoke.csv`
+  - `/tmp/moe_bmm1_structural_explore_rank34_selfcontained_rep180.csv`
+  - The first attempted `combined@l3m1` shape failed compile because Gluon
+    blocked layouts require power-of-two worker-warps; the script now rejects
+    non-power-of-two worker counts before compilation.
+  - All legal structural ownership merges were correctness-gated but much
+    slower than the split-producer baseline. On uniform batch `896`, rank 3:
+    split B21 was `0.975x`, `combined@l2m1` was `0.886x`, `mmaw@l2m1` was
+    `0.380x`, and `mmax@w1m1` was `0.527x` versus 1CTA. On rank 4: split B21
+    was `1.004x`, `combined@l2m1` was `0.905x`, `mmaw@l2m1` was `0.383x`, and
+    `mmax@w1m1` was `0.530x`.
+  - Decision: do not pursue simple producer-collapse structures further. The
+    existing split activation/weight producer ownership is essential for TMA
+    overlap; future structural work should preserve independent producers and
+    instead target epilogue ownership, shared-memory footprint, or pair-aware
+    scheduling with delayed W release.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
@@ -997,6 +1021,9 @@ and `1024`, under both simulated production routing and uniform routing.
   - Find a legal way to reduce 2CTA shared-memory footprint while preserving
     W5 depth, possibly by changing scale staging or descriptor/layout
     ownership rather than X/W buffer counts.
+  - Preserve separate X and W producer ownership. Scratch kernels that fused
+    both producers, moved W TMA into MMA, or moved gathered X TMA into MMA all
+    passed correctness but regressed badly.
   - Avoid separate W-scale barrier rings for this kernel. The split W-scale
     probe was legal but slower even at equal depth, so future shared-memory
     reductions need to preserve the single combined W+scale ready/empty
