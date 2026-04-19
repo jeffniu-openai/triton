@@ -993,6 +993,18 @@ and `1024`, under both simulated production routing and uniform routing.
     overlap; future structural work should preserve independent producers and
     instead target epilogue ownership, shared-memory footprint, or pair-aware
     scheduling with delayed W release.
+- Pair-aware W reuse has limited immediate surface at the current M32 shape,
+  and the M16 family is too slow to use as an easy pair-reuse base. Artifacts:
+  - Route diagnostic for uniform batch `896`, seed `0`, fixed ranks `3/4/5/7`:
+    at `BLOCK_M=32`, each rank had only `4` extra M blocks that could reuse W
+    for a second tile; at `BLOCK_M=16`, ranks had `19-20` extra pairable
+    blocks.
+  - `/tmp/moe_bmm1_slice28_m16_pair_surface_rank34_rep180.csv`
+  - On ranks 3 and 4, the tested M16 direct candidates were only
+    `0.754x-0.768x` versus 1CTA, while the M32 W6 split baseline stayed near
+    `0.976x` and `0.998x`. A delayed-release pair kernel would need to start
+    from the M32 family or radically improve M16; do not spend a large rewrite
+    on the existing M16 shape as-is.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
@@ -1024,6 +1036,9 @@ and `1024`, under both simulated production routing and uniform routing.
   - Preserve separate X and W producer ownership. Scratch kernels that fused
     both producers, moved W TMA into MMA, or moved gathered X TMA into MMA all
     passed correctness but regressed badly.
+  - Treat pair-aware W reuse as a targeted M32 rewrite, not an M16 shortcut.
+    M32 has only a few pairable spill blocks in the hard routes; M16 has more
+    pairable work but is far below parity before any reuse rewrite.
   - Avoid separate W-scale barrier rings for this kernel. The split W-scale
     probe was legal but slower even at equal depth, so future shared-memory
     reductions need to preserve the single combined W+scale ready/empty
