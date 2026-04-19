@@ -13,7 +13,10 @@
   trace commands as provenance, but those env toggles are no longer live
   production debugging surfaces. Validation: `make -j8`; `git diff --check`;
   focused runtime-matrix selector `52 passed` across four GPU shards; Gluon
-  descriptor-chain smoke `26 passed` across four GPU shards.
+  descriptor-chain smoke `26 passed` across four GPU shards. Production
+  cleanup checkpoint commit:
+  `e1e4d6336934706c3d91bf5f268c7f54fb49351e`, pushed to
+  `origin/codex/tmem`.
 
 - Latest: 2026-04-18 19:50 UTC Gap #1 `tcgen05.cp` closed for the TMEM
   linear-layout generalization project. Added

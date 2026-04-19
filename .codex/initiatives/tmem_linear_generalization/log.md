@@ -25315,4 +25315,8 @@ Open after this slice:
   - split-4 `test_core.py::test_tmem_descriptor_chain_matrix` smoke:
     `7/7`, `7/7`, `7/7`, and `5/5` passed.
 - Next:
-  - commit and push to `origin/codex/tmem`.
+  - production cleanup checkpoint was committed as
+    `e1e4d6336934706c3d91bf5f268c7f54fb49351e` and pushed to
+    `origin/codex/tmem`;
+  - continue with optional clean-negative rebaseline or later cleanup
+    candidates if requested.

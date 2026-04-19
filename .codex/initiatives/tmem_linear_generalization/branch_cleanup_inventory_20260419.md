@@ -2,6 +2,10 @@
 
 Status: executed cleanup checkpoint; validation passed.
 
+Production cleanup checkpoint commit:
+`e1e4d6336934706c3d91bf5f268c7f54fb49351e`, pushed to
+`origin/codex/tmem`.
+
 Branch: `codex/tmem`
 
 Merge-base against `origin/main`: `11ee1144a737006921231bbd3386c187812c38e1`
