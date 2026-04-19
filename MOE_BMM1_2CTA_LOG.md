@@ -993,6 +993,55 @@ and `1024`, under both simulated production routing and uniform routing.
     overlap; future structural work should preserve independent producers and
     instead target epilogue ownership, shared-memory footprint, or pair-aware
     scheduling with delayed W release.
+- Aggressively tuned the structural exploration harness instead of stopping at
+  the first structural pass.
+  - Harness changes:
+    `python/examples/gluon/06-moe-bmm1-structural-explore.py` now supports
+    `--candidates-file`, parses 4- and 8-warp base names, and accepts
+    per-candidate overrides for X/W/ACC buffer depth, band, warp count,
+    occupancy, SwiGLU subtile factor, epilogue buffer depth, epilogue N-warp
+    forcing, multicast toggles, worker splits, `MAXNREG`, and explicit
+    activation/weight/MMA partition register budgets.
+  - Aggressive rank-3 family sweeps:
+    `/tmp/moe_bmm1_struct_combined_rank3_aggressive_rep30.csv`,
+    `/tmp/moe_bmm1_struct_mmax_rank3_aggressive_rep30.csv`, and
+    `/tmp/moe_bmm1_struct_mmaw_rank3_aggressive_rep30.csv`.
+    Best `combined` improved from the first-pass `~0.886x` to `0.909x`
+    versus 1CTA, while `mmax` topped out at `0.547x` and `mmaw` at `0.407x`.
+    The useful ridge was `combined@l1m1,x6,w5,b21,regs52,nomcscale`; W6 in
+    the combined structure hit a severe resource cliff, and 8-warp variants
+    were not competitive.
+  - Wider route-rank ridge sweep:
+    `/tmp/moe_bmm1_struct_combined_ridge_rank{3,4,5,7}_rep20.csv`.
+    Short-rep local bests were rank 3 `0.928x` at B16, rank 4 `0.911x`,
+    rank 5 `0.918x` at B19/B22, and rank 7 `0.935x`. Route-specific banding
+    was the dominant axis; no single combined row approached the split
+    producer baseline across hard ranks.
+- Added two more scratch structural kernels that change input-producer issue
+  order:
+  - `combinedx:` issues gathered X as soon as its ring slot is free, then
+    waits/issues W+scale.
+  - `combinedw:` issues W+scale first, then waits/issues gathered X.
+  Artifacts:
+  - Smoke: `/tmp/moe_bmm1_structural_order_smoke.csv`.
+  - Aggressive order sweep:
+    `/tmp/moe_bmm1_struct_combined_order_rank{3,4,5,7}_rep20.csv`.
+  - Same-GPU long confirm:
+    `/tmp/moe_bmm1_struct_order_confirm_rank3457_rep500.csv`.
+  - Long-confirm best structural rows versus 1CTA were rank 3 `0.922x`
+    (`combinedw@x6,w5,b16,regs56,nomcscale`), rank 4 `0.935x`
+    (`combinedx@x6,w5,b32,regs48,nomcscale`), rank 5 `0.931x`
+    (`combinedw@x6,w5,b19,regs60,nomcscale`), and rank 7 `0.951x`
+    (`combinedw@x6,w5,b16,regs56,nomcscale`). These are improvements over the
+    first structural pass but still below the split-producer baselines on all
+    hard ranks; the short-rep `0.937x` rank-3 result did not survive the
+    `rep=500` confirmation.
+  - Decision: keep the order modes in the scratch harness as diagnostic tools,
+    but do not port them into `05-moe-bmm1-fused-gather.py` or selector policy.
+    Producer-collapse and producer-order rewrites reduce overlap too much; the
+    next promising work should preserve separate producers and target
+    shared-memory footprint, epilogue ownership, or delayed-release pair-aware
+    scheduling.
 - Pair-aware W reuse has limited immediate surface at the current M32 shape,
   and the M16 family is too slow to use as an easy pair-reuse base. Artifacts:
   - Route diagnostic for uniform batch `896`, seed `0`, fixed ranks `3/4/5/7`:

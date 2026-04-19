@@ -167,13 +167,18 @@ def make_candidate(name: str, slice_size: int):
     prefix = None
     xbuf = None
     wbuf = None
+    num_warps = None
     for cur_x in (4, 5, 6):
         for cur_w in (5, 6):
-            cur_prefix = f"m32_bn256_sub1_direct_warps4_x{cur_x}w{cur_w}_b"
-            if name.startswith(cur_prefix):
-                prefix = cur_prefix
-                xbuf = cur_x
-                wbuf = cur_w
+            for cur_warps in (4, 8):
+                cur_prefix = f"m32_bn256_sub1_direct_warps{cur_warps}_x{cur_x}w{cur_w}_b"
+                if name.startswith(cur_prefix):
+                    prefix = cur_prefix
+                    xbuf = cur_x
+                    wbuf = cur_w
+                    num_warps = cur_warps
+                    break
+            if prefix is not None:
                 break
         if prefix is not None:
             break
@@ -187,7 +192,7 @@ def make_candidate(name: str, slice_size: int):
             regs = cur_regs
             break
 
-    if suffix is None or prefix is None or xbuf is None or wbuf is None or regs is None:
+    if suffix is None or prefix is None or xbuf is None or wbuf is None or regs is None or num_warps is None:
         raise ValueError(name)
 
     tokens = name[len(prefix):-len(suffix)].split("_")
@@ -202,7 +207,7 @@ def make_candidate(name: str, slice_size: int):
     cfg = dict(
         BLOCK_N=256,
         NUM_CTAS=2,
-        NUM_WARPS=4,
+        NUM_WARPS=num_warps,
         X_NUM_BUFS=xbuf,
         W_NUM_BUFS=wbuf,
         SWIGLU_SUBTILE_FACTOR=1,
@@ -329,6 +334,150 @@ def load_inputs_partition(p: PartitionArgs):
                 w_ready_bar,
                 scale_buf,
                 multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+            )
+
+            x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+            x_issued += 1
+            w_issued += 1
+
+
+@gluon.jit
+def load_inputs_xfirst_partition(p: PartitionArgs):
+    local_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
+    offs_layout: gl.constexpr = gl.SliceLayout(
+        dim=0,
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0], cga_layout=local_cga_layout),
+    )
+    tile_x_bytes: gl.constexpr = p.x_desc.block_type.nbytes * (p.BLOCK_M_PER_CTA if p.USE_2CTA else p.BLOCK_M)
+    tile_w_bytes: gl.constexpr = p.w_desc.nbytes_per_cta
+    tile_scale_bytes: gl.constexpr = p.scale_desc.nbytes_per_cta
+    bytes_per_w_stage: gl.constexpr = tile_w_bytes + tile_scale_bytes
+    scale_k_stride: gl.constexpr = p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
+
+    x_idx = 0
+    x_phase = 1
+    x_issued = 0
+    w_idx = 0
+    w_phase = 1
+    w_issued = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_m = pid_m * p.BLOCK_M
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+        mask_m = offs_m < shape_m
+        offs_x_m = gl.load(
+            p.gather_indx_ptr + slice_offset + offs_m,
+            mask=mask_m,
+            other=p.x_desc.shape[0],
+        )
+        scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+
+        for ki in range(p.K_TILES):
+            off_k_x = ki * p.BLOCK_K
+            off_k_scale = ki * scale_k_stride
+
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            mbarrier.wait(x_empty_bar, x_phase, pred=x_issued >= p.x_num_bufs)
+            mbarrier.expect(x_ready_bar, tile_x_bytes)
+            tma.async_gather(
+                p.x_desc,
+                offs_x_m,
+                off_k_x,
+                x_ready_bar,
+                x_buf,
+                multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
+            )
+
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            scale_buf = p.w_scale_bufs.index(w_idx)
+            mbarrier.wait(w_empty_bar, w_phase, pred=w_issued >= p.w_num_bufs)
+            mbarrier.expect(w_ready_bar, bytes_per_w_stage)
+            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, ki, pid_n, 0, 0], w_ready_bar, w_buf)
+            tma.async_copy_global_to_shared(
+                p.scale_desc,
+                [0, scale_idx, off_k_scale, 0, 0],
+                w_ready_bar,
+                scale_buf,
+                multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+            )
+
+            x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+            x_issued += 1
+            w_issued += 1
+
+
+@gluon.jit
+def load_inputs_wfirst_partition(p: PartitionArgs):
+    local_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
+    offs_layout: gl.constexpr = gl.SliceLayout(
+        dim=0,
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0], cga_layout=local_cga_layout),
+    )
+    tile_x_bytes: gl.constexpr = p.x_desc.block_type.nbytes * (p.BLOCK_M_PER_CTA if p.USE_2CTA else p.BLOCK_M)
+    tile_w_bytes: gl.constexpr = p.w_desc.nbytes_per_cta
+    tile_scale_bytes: gl.constexpr = p.scale_desc.nbytes_per_cta
+    bytes_per_w_stage: gl.constexpr = tile_w_bytes + tile_scale_bytes
+    scale_k_stride: gl.constexpr = p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
+
+    x_idx = 0
+    x_phase = 1
+    x_issued = 0
+    w_idx = 0
+    w_phase = 1
+    w_issued = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_m = pid_m * p.BLOCK_M
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+        mask_m = offs_m < shape_m
+        offs_x_m = gl.load(
+            p.gather_indx_ptr + slice_offset + offs_m,
+            mask=mask_m,
+            other=p.x_desc.shape[0],
+        )
+        scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+
+        for ki in range(p.K_TILES):
+            off_k_x = ki * p.BLOCK_K
+            off_k_scale = ki * scale_k_stride
+
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            scale_buf = p.w_scale_bufs.index(w_idx)
+            mbarrier.wait(w_empty_bar, w_phase, pred=w_issued >= p.w_num_bufs)
+            mbarrier.expect(w_ready_bar, bytes_per_w_stage)
+            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, ki, pid_n, 0, 0], w_ready_bar, w_buf)
+            tma.async_copy_global_to_shared(
+                p.scale_desc,
+                [0, scale_idx, off_k_scale, 0, 0],
+                w_ready_bar,
+                scale_buf,
+                multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+            )
+
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            mbarrier.wait(x_empty_bar, x_phase, pred=x_issued >= p.x_num_bufs)
+            mbarrier.expect(x_ready_bar, tile_x_bytes)
+            tma.async_gather(
+                p.x_desc,
+                offs_x_m,
+                off_k_x,
+                x_ready_bar,
+                x_buf,
+                multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
             )
 
             x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
@@ -713,6 +862,26 @@ def ws_matmul_combined_load_kernel(
             [LOAD_ACTIVATION_WARPS, MMA_WARPS],
             [LOAD_ACTIVATION_REGS, MMA_REGS],
         )
+    elif STRUCTURAL_MODE == 3:
+        gl.warp_specialize(
+            [
+                (epilogue_partition, (p, )),
+                (load_inputs_xfirst_partition, (p, )),
+                (mma_partition, (p, )),
+            ],
+            [LOAD_ACTIVATION_WARPS, MMA_WARPS],
+            [LOAD_ACTIVATION_REGS, MMA_REGS],
+        )
+    elif STRUCTURAL_MODE == 4:
+        gl.warp_specialize(
+            [
+                (epilogue_partition, (p, )),
+                (load_inputs_wfirst_partition, (p, )),
+                (mma_partition, (p, )),
+            ],
+            [LOAD_ACTIVATION_WARPS, MMA_WARPS],
+            [LOAD_ACTIVATION_REGS, MMA_REGS],
+        )
     else:
         if STRUCTURAL_MODE == 1:
             gl.warp_specialize(
@@ -881,6 +1050,12 @@ def parse_candidate(name: str, slice_size: int):
     if name.startswith("combined:"):
         spec = name[len("combined:"):]
         mode = "combined"
+    elif name.startswith("combinedx:"):
+        spec = name[len("combinedx:"):]
+        mode = "combinedx"
+    elif name.startswith("combinedw:"):
+        spec = name[len("combinedw:"):]
+        mode = "combinedw"
     elif name.startswith("mmaw:"):
         spec = name[len("mmaw:"):]
         mode = "mmaw"
@@ -895,8 +1070,49 @@ def parse_candidate(name: str, slice_size: int):
         p = make_candidate(base_name, slice_size)
         options = option_text.split(",") if option_text else []
         updates = {}
+        explicit_regs = None
         for option in options:
-            if option.startswith("l") and "m" in option:
+            if option.startswith("x") and option[1:].isdigit():
+                updates["X_NUM_BUFS"] = int(option[1:])
+            elif option.startswith("w") and option[1:].isdigit():
+                updates["W_NUM_BUFS"] = int(option[1:])
+            elif option.startswith("acc") and option[3:].isdigit():
+                updates["ACC_NUM_BUFS"] = int(option[3:])
+            elif option.startswith("sub") and option[3:].isdigit():
+                updates["SWIGLU_SUBTILE_FACTOR"] = int(option[3:])
+            elif option.startswith("epi") and option[3:].isdigit():
+                updates["EPILOGUE_BUFFER_DEPTH"] = int(option[3:])
+            elif option.startswith("occ") and option[3:].isdigit():
+                updates["OCCUPANCY"] = int(option[3:])
+            elif option.startswith("b") and option[1:].isdigit():
+                updates["BAND_N"] = int(option[1:])
+            elif option.startswith("warps") and option[5:].isdigit():
+                updates["NUM_WARPS"] = int(option[5:])
+            elif option.startswith("regs") and option[4:].isdigit():
+                explicit_regs = int(option[4:])
+                updates["MAXNREG"] = explicit_regs
+            elif option.startswith("la") and option[2:].isdigit():
+                updates["LOAD_ACTIVATION_REGS"] = int(option[2:])
+            elif option.startswith("lw") and option[2:].isdigit():
+                updates["LOAD_WEIGHT_REGS"] = int(option[2:])
+            elif option.startswith("mma") and option[3:].isdigit():
+                updates["MMA_REGS"] = int(option[3:])
+            elif option == "epin0":
+                updates["FORCE_EPILOGUE_WARPS_N1"] = False
+            elif option == "epin1":
+                updates["FORCE_EPILOGUE_WARPS_N1"] = True
+            elif option == "nomcx":
+                updates["X_GATHER_MULTICAST"] = False
+            elif option == "nomcscale":
+                updates["W_SCALE_MULTICAST"] = False
+            elif option == "nomc":
+                updates["X_GATHER_MULTICAST"] = False
+                updates["W_SCALE_MULTICAST"] = False
+            elif option == "fullsched":
+                updates["USE_FULL_TILE_SCHEDULE"] = True
+            elif option == "reuse":
+                updates["REUSE_GATHER_INDICES"] = True
+            elif option.startswith("l") and "m" in option:
                 load_warps, mma_warps = option[1:].split("m", 1)
                 load_warps = int(load_warps)
                 mma_warps = int(mma_warps)
@@ -916,6 +1132,19 @@ def parse_candidate(name: str, slice_size: int):
                 updates["MMA_WARPS"] = mma_warps
             elif option:
                 raise ValueError(f"unknown combined option {option!r}")
+        if explicit_regs is not None:
+            if explicit_regs == 60:
+                updates.setdefault("LOAD_ACTIVATION_REGS", 48)
+                updates.setdefault("LOAD_WEIGHT_REGS", 40)
+                updates.setdefault("MMA_REGS", 40)
+            elif explicit_regs in (52, 56):
+                updates.setdefault("LOAD_ACTIVATION_REGS", 40)
+                updates.setdefault("LOAD_WEIGHT_REGS", 32)
+                updates.setdefault("MMA_REGS", 32)
+            else:
+                updates.setdefault("LOAD_ACTIVATION_REGS", 32)
+                updates.setdefault("LOAD_WEIGHT_REGS", 32)
+                updates.setdefault("MMA_REGS", 32)
         p = replace(
             p,
             USE_DIRECT_EPILOGUE_STORE=True,
@@ -932,7 +1161,7 @@ def parse_candidate(name: str, slice_size: int):
 
 def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
     pc = ex.make_precision_config(prepared)
-    if mode in ("combined", "mmaw", "mmax"):
+    if mode in ("combined", "combinedx", "combinedw", "mmaw", "mmax"):
         return combined_load_matmul(
             a=prepared.x,
             b=prepared.w,
@@ -943,7 +1172,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
             c=out,
             fused_activation=prepared.fused_activation,
             p=p,
-            structural_mode={"combined": 0, "mmaw": 1, "mmax": 2}[mode],
+            structural_mode={"combined": 0, "mmaw": 1, "mmax": 2, "combinedx": 3, "combinedw": 4}[mode],
         )
     return run_split_with_config(prepared, p, out)
 
@@ -996,7 +1225,14 @@ def main():
             "mmax:m32_bn256_sub1_direct_warps4_x5w6_b21_act2w1m1_regs48_epin1_b32@w1m1",
         ],
     )
+    ap.add_argument("--candidates-file", help="Read one candidate per non-empty, non-comment line.")
     args = ap.parse_args()
+    if args.candidates_file:
+        args.candidates = [
+            line.strip()
+            for line in Path(args.candidates_file).read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
 
     c = ex.GPT_OSS_120B_CONFIG
     device = f"cuda:{torch.cuda.current_device()}"
