@@ -13931,3 +13931,25 @@ rejection, not rescue
     not a custom fused attention baseline.
 - Next:
   - implement ragged expert views example.
+
+## Current: 2026-04-20 23:01 UTC ragged expert panel example implemented
+
+- Added `python/examples/gluon/11-tmem-ragged-expert-views.py`.
+- The example implements:
+  - Python-scheduled ragged expert panels with token counts `(128, 256, 0, 128)`
+    and widths `(32, 64, 32, 64)`;
+  - compact per-expert narrow scaled-MMAv5 projections;
+  - precomputed padded `N=128` per-expert baseline;
+  - empty-expert correctness coverage.
+- Validation:
+  - py-compile passed;
+  - focused pytest passed `2 passed in 3.59s`.
+- Benchmark:
+  - `experts=4 active=3 tokens=512 K=128`: compact `0.089 ms`, padded
+    `0.128 ms`, `1.43x`.
+- Caveat:
+  - this is a pragmatic Python-scheduled demonstration, not a full persistent
+    grouped-MoE scheduler or single shared TMEM arena implementation.
+- Next:
+  - run broad validation across the new example files and refresh Phase H as
+    complete or record any remaining corrections.

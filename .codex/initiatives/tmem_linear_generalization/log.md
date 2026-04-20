@@ -25647,3 +25647,28 @@ Open after this slice:
     attention baseline.
 - Next:
   - run `git diff --check`, commit/push, then implement ragged expert views.
+
+## 2026-04-20 23:01 UTC: implement TMEM ragged expert panel example
+
+- Added `python/examples/gluon/11-tmem-ragged-expert-views.py`.
+- Algorithm:
+  - schedule a ragged expert list in Python;
+  - skip empty experts;
+  - compute active experts with compact narrow scaled-MMAv5 projections;
+  - compare with precomputed padded `N=128` per-expert baseline.
+- Tests:
+  - `test_ragged_expert_outputs_match_torch` checks compact panels against
+    PyTorch and covers the empty expert;
+  - `test_ragged_expert_padded_baseline_matches_compact` checks padded
+    baseline agreement and benchmark execution.
+- Validation:
+  - `python -m py_compile python/examples/gluon/11-tmem-ragged-expert-views.py`
+    passed;
+  - focused pytest passed `2 passed in 3.59s`;
+  - fixed the benchmark to precompute padded expert tensors outside the timed
+    baseline function;
+  - corrected script benchmark printed compact `0.089 ms`, padded `0.128 ms`,
+    `1.43x`.
+- Next:
+  - run `git diff --check`, commit/push, then run broad validation over the
+    new examples and refresh Phase H completion state.

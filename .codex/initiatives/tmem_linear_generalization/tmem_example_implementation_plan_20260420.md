@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 22:45 UTC
+Last updated: 2026-04-20 23:01 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -174,8 +174,8 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Example 4: Ragged Grouped/MoE Expert Output Views
 
-- Status: implemented at 2026-04-20 22:18 UTC.
-- Proposed file: `python/examples/gluon/08-tmem-ragged-expert-views.py`.
+- Status: implemented at 2026-04-20 23:01 UTC.
+- Proposed file: `python/examples/gluon/11-tmem-ragged-expert-views.py`.
 - New capability used:
   - descriptor-view chains over a shared TMEM arena;
   - physical bitcast/view support for per-expert accumulator slices;
@@ -202,8 +202,11 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - grouped compact TMEM arena versus per-expert padded baseline;
   - report total latency and effective useful TFLOP/s.
 - Implementation notes:
-  - this is likely the highest-complexity example and should come after the
-    skinny projection and LoRA examples establish reusable helper patterns.
+  - implemented pragmatic Python-scheduled ragged expert panels using compact
+    narrow projection for each active expert, a precomputed padded `N=128`
+    baseline, empty-expert coverage, correctness tests, and inline benchmark
+    transcript;
+  - this is not a full persistent grouped-MoE scheduler.
 
 ## Example 5: Windowed Attention Score Tile With TMEM Reductions
 
@@ -362,3 +365,8 @@ grouped and attention examples until reusable helper patterns exist.
   and the benchmark printed noncausal rows near parity/slower than `torch.max`
   and causal rows `8.68x`/`7.56x` faster than the executable PyTorch
   mask-plus-max baseline.
+- 2026-04-20 23:01 UTC: implemented Example 4 as
+  `python/examples/gluon/11-tmem-ragged-expert-views.py`. Validation:
+  `python -m py_compile` passed, focused pytest passed `2 passed in 3.59s`,
+  and the corrected benchmark printed `1.43x` over the precomputed padded
+  `N=128` per-expert baseline.

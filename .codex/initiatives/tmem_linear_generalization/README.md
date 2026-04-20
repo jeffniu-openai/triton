@@ -4825,3 +4825,16 @@ When resuming the initiative:
   - `N=64` noncausal `0.88x`, causal `8.68x`;
   - `N=128` noncausal `0.76x`, causal `7.56x`.
 - Next Phase H slice: ragged expert views.
+
+## Latest: 2026-04-20 23:01 UTC ragged expert panel example implemented
+
+- Added `python/examples/gluon/11-tmem-ragged-expert-views.py` as the ragged
+  expert panel example.
+- Focused validation passed:
+  - py-compile;
+  - `pytest -s --tb=short python/examples/gluon/11-tmem-ragged-expert-views.py`
+    passed `2/2`.
+- Recorded corrected benchmark output:
+  - compact `0.089 ms`, padded `0.128 ms`, `1.43x`.
+- All seven planned Phase H examples now have implementation files. Next step:
+  broad validation across the new example files and final Phase H refresh.
