@@ -116,10 +116,14 @@ logic. It comes from durable initiative state and raw experiment outputs:
 ## Later Cleanup Candidates
 
 - Consolidate the remaining `TRITON_DEBUG_TMEM_*` printing behind one helper if
-  compile-time profiling shows the `getenv` checks matter.
-- Review the names of Python runtime matrix `legacy` parameters. They are test
-  spelling for frontend compatibility encodings, not backend policy, but the
-  naming is easy to misread.
+  compile-time profiling shows the `getenv` checks matter. Reviewed on
+  2026-04-20; no source consolidation was made because this pass had no
+  profiling evidence that the remaining gated checks materially affect compile
+  time.
+- Review the names of Python runtime matrix `legacy` parameters. Executed on
+  2026-04-20 by adding explicit `TensorMemoryLayout` compatibility constants
+  and helper usage in representative runtime-matrix cases while preserving the
+  historical `legacy` nodeid spelling used by manifests and logs.
 - Split or squash historical initiative docs before PR presentation only if
   the user wants a smaller public review surface. The current repo instructions
   still require durable initiative state to stay in-tree.

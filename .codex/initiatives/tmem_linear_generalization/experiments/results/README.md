@@ -22,3 +22,9 @@ For new compact JSONL summaries, each record should include:
 Keep high-signal summaries in `../../log.md`, `../../memory.md`, or a focused
 closure report. This directory is for small artifacts that other agents can
 consume directly, plus duration cache files used by validation runners.
+
+Current compact inventories:
+- `clean_unsupported_inventory_current.log`: latest
+  `reports_clean_unsupported` collect-only nodeids.
+- `clean_unsupported_or_error_inventory_current.log`: latest combined
+  `reports_clean_unsupported or reports_clean_error` collect-only nodeids.

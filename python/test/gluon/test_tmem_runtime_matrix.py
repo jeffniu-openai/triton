@@ -40,6 +40,17 @@ from tmem_test_utils import (
     unswizzle_scales_shared_memory,
 )
 
+TMEM_ENCODING_LAYOUT_KIND = "legacy"
+TMEM_LINEAR_LAYOUT_KIND = "linear"
+TMEM_LAYOUT_KIND_CASES = (TMEM_ENCODING_LAYOUT_KIND, TMEM_LINEAR_LAYOUT_KIND)
+
+# Runtime-matrix nodeids keep the historical "legacy" spelling because old
+# manifests and logs refer to those cases. In these tests it means the public
+# TensorMemoryLayout frontend encoding; backend support must still canonicalize
+# it before applying TMEM layout policy.
+def _uses_tmem_encoding_layout(layout_kind):
+    return layout_kind == TMEM_ENCODING_LAYOUT_KIND
+
 
 def _make_tmem_linear_layout(m, n):
     return TensorMemoryLinearLayout(
@@ -47,6 +58,13 @@ def _make_tmem_linear_layout(m, n):
         cols=[[0, 1 << i] for i in range(int(math.log2(n)))],
         shape=[m, n],
     )
+
+
+def _make_tmem_acc_layout(layout_kind, m, n):
+    if _uses_tmem_encoding_layout(layout_kind):
+        return TensorMemoryLayout((m, n), col_stride=1)
+    assert layout_kind == TMEM_LINEAR_LAYOUT_KIND
+    return _make_tmem_linear_layout(m, n)
 
 
 def _make_tmem_copy_4x256b_refresh_layout(two_ctas=False):
@@ -4869,7 +4887,7 @@ CP_NO_SCALES_SWIZZLE_CASES = [
 
 CP_NO_SCALES_128X128_CASES = [
     (layout_kind, dtype_name, torch_dtype, 128)
-    for layout_kind, (dtype_name, torch_dtype) in product(("legacy", "linear"), CP_NO_SCALES_128X128_DTYPES)
+    for layout_kind, (dtype_name, torch_dtype) in product(TMEM_LAYOUT_KIND_CASES, CP_NO_SCALES_128X128_DTYPES)
 ]
 
 CP_NO_SCALES_128X128_SUBWORD_EXACT_CASES = (
@@ -4879,7 +4897,9 @@ CP_NO_SCALES_128X128_SUBWORD_EXACT_CASES = (
 
 CP_NO_SCALES_TWOCTA_128X128_CASES = [
     (layout_kind, dtype_name, torch_dtype)
-    for layout_kind, (dtype_name, torch_dtype) in product(("linear", "legacy"), CP_NO_SCALES_128X128_DTYPES)
+    for layout_kind, (dtype_name, torch_dtype) in product(
+        (TMEM_LINEAR_LAYOUT_KIND, TMEM_ENCODING_LAYOUT_KIND), CP_NO_SCALES_128X128_DTYPES
+    )
 ]
 
 CP_NO_SCALES_WARPX2_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
@@ -4964,7 +4984,7 @@ SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
         ("mxfp4", "mxfp4"),
         ("nvfp4", "nvfp4"),
     )
-    for acc_layout_kind in ("legacy", "linear")
+    for acc_layout_kind in TMEM_LAYOUT_KIND_CASES
 ]
 
 SCALED_MMA_LHS_SUBSLICE_NK_CASES = list(
@@ -5000,12 +5020,12 @@ SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = list(
 )
 
 SCALED_MMA_LHS_TILE_PERMUTED_MIXED_FP4A_UNSUPPORTED_CASES = [
-    (n, acc_layout_kind) for n, acc_layout_kind in product((32, 64, 128, 256), ("legacy", "linear"))
+    (n, acc_layout_kind) for n, acc_layout_kind in product((32, 64, 128, 256), TMEM_LAYOUT_KIND_CASES)
 ]
 
 SCALED_MMA_LHS_SUBSLICE_MIXED_FP4A_UNSUPPORTED_CASES = [
     (n, k, acc_layout_kind)
-    for n, k, acc_layout_kind in product((32, 64, 128, 256), (128, 256), ("legacy", "linear"))
+    for n, k, acc_layout_kind in product((32, 64, 128, 256), (128, 256), TMEM_LAYOUT_KIND_CASES)
 ]
 
 SCALED_MMA_ACC_SUBSLICE_N_CASES = [
@@ -10380,8 +10400,8 @@ def _expected_plain_mma_op_count(kind, k):
 
 
 def _expected_m64_plain_mma_op_count(kind, k, acc_layout_kind, n):
-    legacy_multiplier = n // 64 if acc_layout_kind == "legacy" else 1
-    return legacy_multiplier * _expected_plain_mma_op_count(kind, k)
+    encoding_multiplier = n // 64 if _uses_tmem_encoding_layout(acc_layout_kind) else 1
+    return encoding_multiplier * _expected_plain_mma_op_count(kind, k)
 
 
 MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS = {
@@ -10400,7 +10420,7 @@ def _expected_lhs_tile_permuted_mma_op_count(kind, k):
 
 MMA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind)
-    for kind, acc_layout_kind in product(MMA_PLAIN_KINDS, ("legacy", "linear"))
+    for kind, acc_layout_kind in product(MMA_PLAIN_KINDS, TMEM_LAYOUT_KIND_CASES)
 ]
 
 def _dedupe_matrix_cases(cases):
@@ -10424,7 +10444,7 @@ MMA_KIND_REPRESENTATIVE_NK = (128, 64)
 MMA_PLAIN_KIND_ACC_CASES = _dedupe_matrix_cases(
     [(kind, "linear", *MMA_KIND_REPRESENTATIVE_NK) for kind in MMA_PLAIN_KINDS] + [
         ("f16", acc_layout_kind, n, k)
-        for acc_layout_kind in ("legacy", "linear")
+        for acc_layout_kind in TMEM_LAYOUT_KIND_CASES
         for n, k in MMA_REPRESENTATIVE_NK_CASES
     ]
 )
@@ -10432,7 +10452,7 @@ MMA_PLAIN_KIND_ACC_CASES = _dedupe_matrix_cases(
 MMA_INDEXED_ACC_CASES = _dedupe_matrix_cases(
     [(kind, "linear", *MMA_KIND_REPRESENTATIVE_NK, False) for kind in MMA_PLAIN_KINDS] + [
         ("f16", parent_layout_kind, n, k, use_acc)
-        for parent_layout_kind in ("legacy", "linear")
+        for parent_layout_kind in TMEM_LAYOUT_KIND_CASES
         for n, k in MMA_REPRESENTATIVE_NK_CASES
         for use_acc in (False, True)
         # Linear parent views keep the whole [2, M, N] physical image live; N=256
@@ -10462,7 +10482,7 @@ MMA_TWOCTA_TMA_NON_TF32_DTYPES = {
 MMA_TWOCTA_TMA_NON_TF32_CASES = _dedupe_matrix_cases(
     [(dtype_name, "linear", 128, 64, False) for dtype_name in MMA_TWOCTA_TMA_NON_TF32_DTYPES] + [
         ("f16", acc_layout_kind, block_n, block_k, use_acc)
-        for acc_layout_kind in ("legacy", "linear")
+        for acc_layout_kind in TMEM_LAYOUT_KIND_CASES
         for block_n, block_k in MMA_REPRESENTATIVE_NK_CASES
         for use_acc in (False, True)
     ] + [
@@ -10494,7 +10514,7 @@ MMA_M64_REPRESENTATIVE_NK_CASES = ((32, 32), (64, 64), (128, 128), (256, 128))
 MMA_M64_PLAIN_KIND_CASES = _dedupe_matrix_cases(
     [(kind, "linear", *MMA_KIND_REPRESENTATIVE_NK, False) for kind in MMA_PLAIN_KINDS] + [
         ("f16", acc_layout_kind, n, k, use_acc)
-        for acc_layout_kind in ("legacy", "linear")
+        for acc_layout_kind in TMEM_LAYOUT_KIND_CASES
         for n, k in MMA_M64_REPRESENTATIVE_NK_CASES
         for use_acc in (False, True)
         if acc_layout_kind == "linear" or n in (64, 128)
@@ -10557,7 +10577,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_ki
     m = 128
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
-    acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
+    acc_layout = _make_tmem_acc_layout(acc_layout_kind, m, n)
 
     a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
     out = torch.empty((m, n), device="cuda", dtype=torch.float32)
@@ -10604,7 +10624,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind, n, k
     m = 128
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
-    acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
+    acc_layout = _make_tmem_acc_layout(acc_layout_kind, m, n)
 
     a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
     c = torch.randn((m, n), device="cuda", dtype=torch.float32)
@@ -10691,7 +10711,7 @@ def test_tmem_runtime_matrix_mma_m64_acc_subslice_view_plain_kinds(kind, n, k, s
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra/sm103")
-@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+@pytest.mark.parametrize("acc_layout_kind", TMEM_LAYOUT_KIND_CASES)
 @pytest.mark.parametrize("n", (32, 64, 128, 256))
 @pytest.mark.parametrize("k", (32, 64))
 def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, n, k, capfd):
@@ -10704,7 +10724,7 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, n, k, c
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
     shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
     shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
-    acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
+    acc_layout = _make_tmem_acc_layout(acc_layout_kind, m, n)
 
     with pytest.raises(Exception) as excinfo:
         mma_kernel[(1, )](

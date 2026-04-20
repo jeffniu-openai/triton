@@ -25320,3 +25320,37 @@ Open after this slice:
     `origin/codex/tmem`;
   - continue with optional clean-negative rebaseline or later cleanup
     candidates if requested.
+
+## 2026-04-20 17:03 UTC: cleanup follow-ups
+
+- Starting point: `codex/tmem` at pushed `a6859debdfdc`.
+- Rebaseline:
+  - `make -j8` had no work;
+  - `PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'reports_clean_unsupported'` collected `91/1594`;
+  - `PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'reports_clean_unsupported or reports_clean_error'` collected `141/1594`;
+  - saved exact nodeid inventories in
+    `experiments/results/clean_unsupported_inventory_current.log` and
+    `experiments/results/clean_unsupported_or_error_inventory_current.log`.
+- Cleanup:
+  - added explicit runtime-matrix constants for `TensorMemoryLayout`
+    compatibility and linear layout cases while preserving historical
+    `legacy` nodeids used by older manifests and logs;
+  - routed representative MMA accumulator-layout cases through
+    `_make_tmem_acc_layout(...)` so new code does not read `legacy` as a
+    backend layout mode;
+  - reviewed remaining `TRITON_DEBUG_TMEM_*` checks. No source consolidation
+    was made because this pass did not include profile evidence that the
+    remaining gated debug checks materially affect compile time.
+- Validation:
+  - `python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - exact runtime helper smoke:
+    `test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc[f16-legacy-64-64]`
+    and
+    `test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc[f16-linear-64-64]`
+    passed `2/2`.
+- Next:
+  - run `git diff --check`, commit, and push.

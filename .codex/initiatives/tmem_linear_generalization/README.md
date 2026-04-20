@@ -70,6 +70,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-20 17:03 UTC: executed the two cleanup follow-ups from the branch
+  audit. Rebaselined the current clean-negative inventory:
+  `reports_clean_unsupported` is `91/1594`; combined
+  `reports_clean_unsupported or reports_clean_error` remains `141/1594`.
+  Saved exact current nodeid inventories under `experiments/results/`. The
+  runtime-matrix test naming pass kept stable `legacy` nodeids but added
+  explicit constants/helpers documenting that those cases mean the public
+  `TensorMemoryLayout` frontend encoding, not a backend policy mode. Debug
+  helper consolidation was reviewed and left deferred because no compile-time
+  profile in this pass showed the remaining gated debug checks as material.
 - 2026-04-19 00:11 UTC: executed the branch cleanup audit against merge-base
   `11ee1144a737006921231bbd3386c187812c38e1`. Production cleanup removed
   temporary hardcoded trace-file/debug-disable shims from Gluon TMEM register

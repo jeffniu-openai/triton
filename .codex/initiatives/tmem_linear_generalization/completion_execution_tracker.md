@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-19 00:11 UTC
+Last updated: 2026-04-20 17:03 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -40,9 +40,9 @@ The project is complete when:
 ## Active Phase Board
 
 - Phase A, rebaseline and classify: done for this branch. The current
-  clean-negative/error surface is stable at `141/1594` and every bucket below
-  is classified as positive support, typed clean boundary, or frontend/API
-  contract error.
+  clean-negative/error surface is stable at `141/1594`; unsupported-only
+  collect-only is `91/1594`. Every bucket below is classified as positive
+  support, typed clean boundary, or frontend/API contract error.
 - Phase B, complete shared physical-query model: done for known TMEM policy
   surfaces in this branch. Remaining frontend/lowering code is orchestration
   around backend helpers, not an unowned support predicate with known red
@@ -82,6 +82,11 @@ The project is complete when:
   Gluon and LLVM TMEM paths. The 2026-04-19 branch cleanup audit also pruned
   superseded raw experiment result logs while preserving compact current
   summaries and reusable evidence artifacts.
+  2026-04-20 follow-ups rebaselined the current clean-negative inventory,
+  saved exact compact current logs under `experiments/results/`, and clarified
+  `legacy` runtime-matrix vocabulary as `TensorMemoryLayout` frontend
+  compatibility rather than backend policy. Debug-helper consolidation remains
+  deferred until profiling shows the gated debug checks are material.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
@@ -129,6 +134,14 @@ Result after the 2026-04-18 22:54 Gap #2/#3 checkpoint:
 `141/1594` tests collected (1453 deselected) in 3.07s. The total matrix grew
 by two rows from intervening coverage, and the former 20 narrow scaled-MMAv5
 clean-negative rows are now positive runtime coverage.
+
+Result after the 2026-04-20 cleanup follow-up rebaseline:
+`91/1594` tests collected (1503 deselected) in 3.83s. Exact nodeids are stored
+in `experiments/results/clean_unsupported_inventory_current.log`.
+
+Combined clean-negative/clean-error result after the same follow-up:
+`141/1594` tests collected (1453 deselected) in 3.83s. Exact nodeids are stored
+in `experiments/results/clean_unsupported_or_error_inventory_current.log`.
 
 Current buckets:
 - `ld/st` scales variant atom-footprint boundaries:

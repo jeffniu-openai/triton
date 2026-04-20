@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-20 17:03 UTC cleanup follow-ups executed. Rebaselined the
+  current clean-negative inventory after the artifact cleanup and test naming
+  clarification: `reports_clean_unsupported` collects `91/1594`, and
+  `reports_clean_unsupported or reports_clean_error` collects `141/1594`.
+  Exact nodeid inventories are now stored as compact current artifacts:
+  `experiments/results/clean_unsupported_inventory_current.log` and
+  `experiments/results/clean_unsupported_or_error_inventory_current.log`.
+  `python/test/gluon/test_tmem_runtime_matrix.py` now defines
+  `TMEM_ENCODING_LAYOUT_KIND`, `TMEM_LINEAR_LAYOUT_KIND`, and
+  `_make_tmem_acc_layout(...)` so the historical `legacy` nodeid spelling is
+  documented as `TensorMemoryLayout` frontend-encoding compatibility, not a
+  backend policy mode. Remaining `TRITON_DEBUG_TMEM_*` checks were reviewed;
+  no helper consolidation was made because this pass had no profile evidence
+  that those gated checks affect compile time.
+
 - Latest: 2026-04-19 00:11 UTC branch cleanup audit executed. Compared
   `codex/tmem` against merge-base
   `11ee1144a737006921231bbd3386c187812c38e1` and recorded the inventory in
