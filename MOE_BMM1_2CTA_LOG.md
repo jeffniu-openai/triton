@@ -1133,6 +1133,56 @@ and `1024`, under both simulated production routing and uniform routing.
     decomposition, not just add occupancy, warps, wider N, or paired scheduling
     on top of the current M32 shape.
 
+## 2026-04-20 Structural Scratch Follow-Up
+
+- Added additional scratch modes and parser controls to
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`:
+  - `mmamc:` passes `multicast=p.USE_2CTA` to the scaled MMA.
+  - `epiload:`/`epiload1:`/`epiload2:`/`epiload3:` test the legal explicit
+    TMEM load layouts reported by lowering for the transposed `[BLOCK_N,
+    BLOCK_M]` accumulator.
+  - `splitws:` is a scratch proxy for the production direct split pipeline.
+  - `mmacount:` tests descriptor-aware `tcgen05_commit(..., descs=[...])`
+    and barrier counts following the multicta matmul examples.
+  - `split:` candidates can now carry tuning options (`bm`, `bn`, `bk`,
+    `ctas`, helper/wide store, store-helper warps/regs, inline release, and
+    existing buffer/register/band knobs) so production-kernel structural
+    variants can be benchmarked without adding one-off candidate names.
+- Subagent findings:
+  - Hume recommended epilogue TMEM load ownership, MMA multicast/barrier
+    counts, accumulator buffering, and helper/wide-handoff epilogues as the
+    next concrete experiments; descriptor CGA flips were called out as higher
+    risk.
+  - Schrodinger ran a GPU 2 hard-rank sweep in
+    `/tmp/moe_bmm1_agent_structural_sweep.csv`; all `80/80` rows validated.
+    Best non-1CTA speedups were still below parity: rank 3 `0.9756x`
+    (`mmamc`), rank 4 `0.9676x` (split W6/B21), rank 5 `0.9477x`
+    (`x4w6/B26`), rank 7 `0.9829x` (split W6/B21).
+- Scratch and production-variant classification artifacts:
+  - `/tmp/moe_bmm1_mmamc_rank4_smoke.csv`: `mmamc` compiled and validated but
+    remained a regression (`0.9667x` in the first smoke).
+  - `/tmp/moe_bmm1_epiload_linear_variants_rank4.csv`: the first legal
+    explicit TMEM load layout was neutral/slightly worse (`0.9657x`), while
+    the other legal layouts were much slower (`~0.697x-0.703x`).
+  - `/tmp/moe_bmm1_splitws_inline_rank4.csv`: inline MMA input release was
+    slower (`0.952x`); `acc3+inline` recovered only to `0.9655x`.
+  - `/tmp/moe_bmm1_mmacount_rank4.csv`: descriptor-aware counted commits were
+    slower (`0.9536x`).
+  - `/tmp/moe_bmm1_helper_store_rank4.csv`: helper-store and wide-handoff M32
+    2CTA epilogues were all far slower (`~0.656x-0.665x`).
+  - `/tmp/moe_bmm1_shape_flex_rank4.csv`: flexible production shape probes did
+    not find a better structure; M64 helper was the best alternate shape at
+    only `0.9008x`, M64 direct was `~0.77x-0.81x`, M16 direct was `0.745x`,
+    and M128 helper was `0.403x`.
+  - `/tmp/moe_bmm1_rank4_param_sweep.csv`: a 191-candidate M32/BN256 direct
+    sweep around bands, X/W rings, registers, and `acc3` peaked at `0.9676x`
+    (`x5w6/B26/regs52`), essentially tied with the previous W6 near-miss and
+    still far below the `1.20x` target.
+- Decision: none of the follow-up synchronization, epilogue ownership, helper
+  store, shape, or parameter sweeps are promotable. Keep the scratch modes and
+  flexible parser as diagnostics, but the next winning attempt needs a more
+  fundamental work decomposition than the current M32/BN256 2CTA split.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases
