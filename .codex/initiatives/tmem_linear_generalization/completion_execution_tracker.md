@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 21:34 UTC
+Last updated: 2026-04-20 21:51 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -962,3 +962,10 @@ signal handling:
   checks for `tensor_memory_linear` and `ttng.tc_gen5_mma_scaled`, and inline
   benchmark transcripts. Focused validation passed `8/8`. Next concrete slice:
   Example 2 LoRA / adapter projection fusion.
+
+- 2026-04-20 21:51 UTC: implemented Phase H Example 2 in
+  `python/examples/gluon/06-tmem-lora-fusion.py`. The example covers compact
+  MXFP8 LoRA down projection for `R=32/64`, `K=128/256`, a padded `R=128`
+  pre-generalization baseline, a full LoRA update wrapper, TTGIR checks, and
+  inline benchmark transcript. Focused validation passed `8/8`. Next concrete
+  slice: Example 3 candidate-head projection.

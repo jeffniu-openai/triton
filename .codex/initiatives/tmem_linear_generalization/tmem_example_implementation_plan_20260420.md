@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 21:34 UTC
+Last updated: 2026-04-20 21:51 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -101,7 +101,8 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Example 2: LoRA / Adapter Projection Fusion
 
-- Status: planned.
+- Status: compact down-projection/update wrapper implemented at
+  2026-04-20 21:51 UTC.
 - Proposed file: `python/examples/gluon/06-tmem-lora-fusion.py`.
 - New capability used:
   - compact TMEM accumulator for the low-rank `X @ A.T` intermediate;
@@ -130,8 +131,11 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - optimized fused path versus best old two-kernel or padded intermediate;
   - report memory traffic avoided for the intermediate.
 - Implementation notes:
-  - this may be a two-phase example: first compact `tmp`, then full second-stage
-    fusion.
+  - implemented compact MXFP8 down projection, padded `R=128` baseline,
+    full LoRA update wrapper using PyTorch for `tmp @ up.T`, shape coverage,
+    TTGIR checks, and inline benchmark transcript;
+  - the second projection is not fused into the Gluon kernel yet. The example
+    isolates the TMEM layout win for the low-rank intermediate.
 
 ## Example 3: Small-Vocabulary / Speculative-Decode Candidate Head
 
@@ -325,3 +329,8 @@ grouped and attention examples until reusable helper patterns exist.
   projection benchmark printed `E=32` `1.21x` and `E=64` `1.02x`, and
   projection plus top-k wrapper benchmark printed `E=32` `2.11x` and
   `E=64` `2.03x` over the padded `E=128` baseline.
+- 2026-04-20 21:51 UTC: implemented Example 2 as
+  `python/examples/gluon/06-tmem-lora-fusion.py`. Validation:
+  `python -m py_compile` passed, focused pytest passed `8 passed in 11.53s`,
+  and the benchmark printed `R=32` `1.09x` and `R=64` `1.11x` over the padded
+  `R=128` baseline.

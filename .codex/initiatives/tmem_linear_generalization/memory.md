@@ -13832,3 +13832,27 @@ rejection, not rescue
     from feeding a smaller logits matrix into selection.
 - Next:
   - implement Example 2 LoRA / adapter projection fusion.
+
+## Current: 2026-04-20 21:51 UTC LoRA example implemented
+
+- Added `python/examples/gluon/06-tmem-lora-fusion.py`.
+- The example implements:
+  - compact MXFP8 LoRA down projection `tmp = x @ down.T` into narrow TMEM for
+    `R=32/64`;
+  - padded `R=128` scaled-MMAv5 baseline;
+  - full adapter update wrapper `base + alpha * (tmp @ up.T)` using PyTorch for
+    the second projection;
+  - tests for `R=32/64`, `K=128/256`, update correctness, padded baseline
+    agreement, and stable TTGIR markers.
+- Validation:
+  - `python -m py_compile python/examples/gluon/06-tmem-lora-fusion.py`
+    passed;
+  - focused pytest passed `8 passed in 11.53s`.
+- Benchmark:
+  - `M=4096 K=128 N=128`: `R=32` compact `0.125 ms`, padded `0.136 ms`,
+    `1.09x`; `R=64` compact `0.125 ms`, padded `0.138 ms`, `1.11x`.
+- Caveat:
+  - the second projection is not fused into the Gluon kernel yet; both
+    benchmark paths use PyTorch for `tmp @ up.T`.
+- Next:
+  - implement Example 3 small-vocabulary/speculative-decode candidate head.

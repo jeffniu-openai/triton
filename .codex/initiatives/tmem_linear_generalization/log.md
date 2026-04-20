@@ -25510,3 +25510,35 @@ Open after this slice:
     top-k fusion.
 - Next:
   - run `git diff --check`, commit/push, then implement Example 2 LoRA fusion.
+
+## 2026-04-20 21:51 UTC: implement TMEM LoRA adapter example
+
+- Added `python/examples/gluon/06-tmem-lora-fusion.py`.
+- Algorithm:
+  - compute the LoRA down projection `tmp[M,R] = x[M,K] @ down[R,K].T` with
+    MXFP8 `tcgen05_mma_scaled`;
+  - use a tile-permuted `TensorMemoryLinearLayout` accumulator for compact
+    `R=32/64`;
+  - compare against a padded `R=128` scaled-MMAv5 baseline;
+  - perform `base + alpha * (tmp @ up.T)` with PyTorch in both paths to check
+    the full adapter update.
+- Tests:
+  - `test_lora_down_projection_matches_torch` covers `R=32/64` and
+    `K=128/256`;
+  - `test_lora_update_matches_torch` checks the full adapter update;
+  - `test_lora_padded_baseline_matches_compact` checks the padded baseline
+    leading columns against the compact path;
+  - TTGIR checks assert `tensor_memory_linear` and `ttng.tc_gen5_mma_scaled`.
+- Validation:
+  - `python -m py_compile python/examples/gluon/06-tmem-lora-fusion.py` passed;
+  - focused pytest passed `8 passed in 11.53s`;
+  - script benchmark:
+    `R=32` compact `0.125 ms`, padded `0.136 ms`, `1.09x`;
+    `R=64` compact `0.125 ms`, padded `0.138 ms`, `1.11x`.
+- Note:
+  - the second projection remains a PyTorch operation in both paths, so this
+    example isolates the compact TMEM intermediate rather than claiming a fully
+    fused LoRA kernel.
+- Next:
+  - run `git diff --check`, commit/push, then implement Example 3
+    candidate-head projection.

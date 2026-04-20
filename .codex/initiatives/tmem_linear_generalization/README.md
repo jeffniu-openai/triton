@@ -4754,3 +4754,19 @@ When resuming the initiative:
   - projection-only `M=4096 K=128`: `E=32` `1.21x`, `E=64` `1.02x`;
   - projection plus top-k wrapper: `E=32` `2.11x`, `E=64` `2.03x`.
 - Next Phase H slice: Example 2 LoRA / adapter projection fusion.
+
+## Latest: 2026-04-20 21:51 UTC LoRA example implemented
+
+- Added `python/examples/gluon/06-tmem-lora-fusion.py` as Phase H Example 2.
+- The example uses narrow MXFP8 scaled-MMAv5 accumulator fragments through a
+  tile-permuted `TensorMemoryLinearLayout` for compact LoRA ranks `R=32/64`,
+  and compares against a padded `R=128` broad-TMEM baseline.
+- Focused validation passed:
+  - py-compile;
+  - `pytest -s --tb=short python/examples/gluon/06-tmem-lora-fusion.py`
+    passed `8/8`.
+- Recorded benchmark output for `M=4096 K=128 N=128`:
+  - `R=32` `1.09x`;
+  - `R=64` `1.11x`.
+- Next Phase H slice: Example 3 small-vocabulary / speculative-decode
+  candidate head.
