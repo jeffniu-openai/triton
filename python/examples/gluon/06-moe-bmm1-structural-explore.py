@@ -28,6 +28,8 @@ blackwell = ex.blackwell
 tma = ex.tma
 mbarrier = ex.mbarrier
 triton = ex.triton
+aggregate = ex.aggregate
+clc = blackwell.clc
 
 PartitionArgs = ex.PartitionArgs
 advance = ex.advance
@@ -35,6 +37,10 @@ alloc_barrier_ring = ex.alloc_barrier_ring
 alloc_empty_ready_barriers = ex.alloc_empty_ready_barriers
 banded_row_major = ex.banded_row_major
 unpack_block_schedule = ex.unpack_block_schedule
+apply_full_tile_schedule = ex.apply_full_tile_schedule
+apply_block_schedule = ex.apply_block_schedule
+apply_weight_schedule = ex.apply_weight_schedule
+apply_activation_schedule = ex.apply_activation_schedule
 load_activations = ex.load_activations
 load_weights = ex.load_weights
 epilogue_partition = ex.epilogue_partition
@@ -522,6 +528,233 @@ def run_split_with_config(prepared, p, out: torch.Tensor):
     )
 
 
+@aggregate
+class Counter:
+    index: gl.tensor
+    phase: gl.tensor
+    num_barriers: gl.constexpr
+
+    @gluon.jit
+    def create(phase, num_barriers: gl.constexpr):
+        return Counter(gl.to_tensor(0), gl.to_tensor(phase), num_barriers)
+
+    @gluon.must_use_result
+    @gluon.jit
+    def next(self, pred=True):
+        incr = self.index + gl.where(pred, 1, 0)
+        rollover = incr == self.num_barriers
+        index = gl.where(rollover, 0, incr)
+        phase = gl.where(rollover, self.phase ^ 1, self.phase)
+        return Counter(index, phase, self.num_barriers)
+
+
+@aggregate
+class ClcBlockSchedulerConsumer:
+    has_work: gl.tensor
+    block_id: gl.tensor
+    clc_result_buffers: gl.shared_memory_descriptor
+    clc_barriers: gl.shared_memory_descriptor
+    clc_block_id_buffers: gl.shared_memory_descriptor
+    clc_block_ready_bars: gl.shared_memory_descriptor
+    clc_consumed_bars: gl.shared_memory_descriptor
+    counter: Counter
+    consumed_counter: Counter
+
+    @gluon.jit
+    def initialize(clc_result_buffers, clc_barriers, clc_block_id_buffers, clc_block_ready_bars, clc_consumed_bars):
+        return ClcBlockSchedulerConsumer(
+            gl.to_tensor(True),
+            gl.program_id(axis=0),
+            clc_result_buffers,
+            clc_barriers,
+            clc_block_id_buffers,
+            clc_block_ready_bars,
+            clc_consumed_bars,
+            Counter.create(0, clc_barriers.shape[0]),
+            Counter.create(0, clc_barriers.shape[0]),
+        )
+
+    @gluon.jit
+    def step(self, iteration):
+        consumed_counter = self.consumed_counter
+        if iteration > 0:
+            mbarrier.arrive(self.clc_consumed_bars.index(consumed_counter.index))
+            consumed_counter = consumed_counter.next()
+
+        counter = self.counter
+        barrier = self.clc_barriers.index(counter.index)
+        mbarrier.wait(barrier, counter.phase)
+        mbarrier.wait(self.clc_block_ready_bars.index(counter.index), counter.phase)
+        block_slot = self.clc_block_id_buffers.index(counter.index)
+        block_layout: gl.constexpr = gl.BlockedLayout([1], [32], [gl.num_warps()], [0],
+                                                      [[0]] * (gl.num_ctas().bit_length() - 1))
+        block_id = block_slot.load(block_layout).reshape([]).to(gl.int32)
+        has_work = block_id >= 0
+        return ClcBlockSchedulerConsumer(
+            has_work,
+            block_id,
+            self.clc_result_buffers,
+            self.clc_barriers,
+            self.clc_block_id_buffers,
+            self.clc_block_ready_bars,
+            self.clc_consumed_bars,
+            counter.next(),
+            consumed_counter,
+        )
+
+
+@aggregate
+class ClcPartitionArgs:
+    x_desc: tma.tensor_descriptor
+    w_desc: tma.tensor_descriptor
+    scale_desc: tma.tensor_descriptor
+    out_desc: tma.tensor_descriptor
+    x_scale_ptr: gl.tensor | gl.constexpr
+    w_scale_ptr: gl.tensor | gl.constexpr
+    out_scale_ptr: gl.tensor
+
+    out_ptr: gl.tensor
+    bias_ptr: gl.tensor
+    bias_stride: gl.tensor
+    gather_indx_ptr: gl.tensor
+    x_slice_sizes: gl.tensor
+    x_slice_offs: gl.tensor
+    x_block_offs: gl.tensor
+    x_block_schedule: gl.tensor
+    x_tile_schedule: gl.tensor
+
+    x_bufs: gl.shared_memory_descriptor
+    x_empty_bars: gl.shared_memory_descriptor
+    x_ready_bars: gl.shared_memory_descriptor
+    x_num_bufs: gl.constexpr
+
+    w_bufs: gl.shared_memory_descriptor
+    w_scale_bufs: gl.shared_memory_descriptor
+    w_empty_bars: gl.shared_memory_descriptor
+    w_ready_bars: gl.shared_memory_descriptor
+    w_scale_empty_bars: gl.shared_memory_descriptor
+    w_scale_ready_bars: gl.shared_memory_descriptor
+    w_num_bufs: gl.constexpr
+    w_scale_num_bufs: gl.constexpr
+
+    x_scale_tmem: blackwell.tensor_memory_descriptor
+    w_scale_tmem: blackwell.tensor_memory_descriptor
+    w_scale_tmem_alt: blackwell.tensor_memory_descriptor
+    acc_bufs: blackwell.tensor_memory_descriptor
+    acc_empty_bars: gl.shared_memory_descriptor
+    acc_ready_bars: gl.shared_memory_descriptor
+    acc_num_bufs: gl.constexpr
+
+    store_bufs: gl.shared_memory_descriptor
+    store_empty_bars: gl.shared_memory_descriptor
+    store_ready_bars: gl.shared_memory_descriptor
+
+    grid_m: gl.tensor
+    GRID_N: gl.constexpr
+    K_TILES: gl.constexpr
+    SCALE_FLAT_N: gl.constexpr
+    SCALE_BLOCK_N_DIV: gl.constexpr
+    num_blocks: gl.tensor
+
+    NUM_SMS: gl.constexpr
+    NUM_WARPS: gl.constexpr
+    USE_2CTA: gl.constexpr
+    BLOCK_M_PER_CTA: gl.constexpr
+    BLOCK_M: gl.constexpr
+    BLOCK_N: gl.constexpr
+    BLOCK_K: gl.constexpr
+    SCALE_SIZE_OUTER: gl.constexpr
+    SCALE_SIZE_INNER: gl.constexpr
+    MXFP_BLOCK_SIZE: gl.constexpr
+
+    SWIGLU_ALPHA: gl.constexpr
+    SWIGLU_LIMIT: gl.constexpr
+    REDUCTION_N: gl.constexpr
+    FLEXPOINT_SATURATE_INF: gl.constexpr
+
+    SWIGLU_SUBTILE_FACTOR: gl.constexpr
+    EPILOGUE_BUFFER_DEPTH: gl.constexpr
+    USE_PLANAR_SNAKE: gl.constexpr
+    GRID_MINOR_DIM: gl.constexpr
+    GRID_TILE_WIDTH: gl.constexpr
+    BAND_N: gl.constexpr
+    USE_FULL_TILE_SCHEDULE: gl.constexpr
+    X_GATHER_MULTICAST: gl.constexpr
+    W_SCALE_MULTICAST: gl.constexpr
+    FORCE_EPILOGUE_WARPS_N1: gl.constexpr
+    USE_WIDE_STORE_HANDOFF: gl.constexpr
+    USE_DIRECT_EPILOGUE_STORE: gl.constexpr
+    REUSE_GATHER_INDICES: gl.constexpr
+    INLINE_MMA_INPUT_RELEASE: gl.constexpr
+
+    clc_result_buffers: gl.shared_memory_descriptor
+    clc_barriers: gl.shared_memory_descriptor
+    clc_block_id_buffers: gl.shared_memory_descriptor
+    clc_block_ready_bars: gl.shared_memory_descriptor
+    clc_consumed_bars: gl.shared_memory_descriptor
+
+    @gluon.jit
+    def apply_block_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
+        if self.USE_FULL_TILE_SCHEDULE:
+            return apply_full_tile_schedule(
+                block_id=block_id,
+                slice_offsets=self.x_slice_offs,
+                tile_schedule=self.x_tile_schedule,
+            )
+        return apply_block_schedule(
+            block_id=block_id,
+            grid_m=self.grid_m,
+            GRID_N=self.GRID_N,
+            slice_offsets=self.x_slice_offs,
+            block_schedule=self.x_block_schedule,
+            USE_PLANAR_SNAKE=self.USE_PLANAR_SNAKE,
+            GRID_MINOR_DIM=self.GRID_MINOR_DIM,
+            GRID_TILE_WIDTH=self.GRID_TILE_WIDTH,
+            BAND_N=self.BAND_N,
+        )
+
+    @gluon.jit
+    def apply_weight_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor]:
+        return apply_weight_schedule(
+            block_id=block_id,
+            grid_m=self.grid_m,
+            GRID_N=self.GRID_N,
+            block_schedule=self.x_block_schedule,
+            tile_schedule=self.x_tile_schedule,
+            USE_FULL_TILE_SCHEDULE=self.USE_FULL_TILE_SCHEDULE,
+            USE_PLANAR_SNAKE=self.USE_PLANAR_SNAKE,
+            GRID_MINOR_DIM=self.GRID_MINOR_DIM,
+            GRID_TILE_WIDTH=self.GRID_TILE_WIDTH,
+            BAND_N=self.BAND_N,
+        )
+
+    @gluon.jit
+    def apply_activation_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor]:
+        return apply_activation_schedule(
+            block_id=block_id,
+            grid_m=self.grid_m,
+            GRID_N=self.GRID_N,
+            slice_offsets=self.x_slice_offs,
+            block_schedule=self.x_block_schedule,
+            tile_schedule=self.x_tile_schedule,
+            USE_FULL_TILE_SCHEDULE=self.USE_FULL_TILE_SCHEDULE,
+            USE_PLANAR_SNAKE=self.USE_PLANAR_SNAKE,
+            GRID_MINOR_DIM=self.GRID_MINOR_DIM,
+            GRID_TILE_WIDTH=self.GRID_TILE_WIDTH,
+            BAND_N=self.BAND_N,
+        )
+
+    @gluon.jit
+    def get_clc_consumer(self):
+        return ClcBlockSchedulerConsumer.initialize(
+            self.clc_result_buffers,
+            self.clc_barriers,
+            self.clc_block_id_buffers,
+            self.clc_block_ready_bars,
+            self.clc_consumed_bars,
+        )
+
+
 @gluon.jit
 def noop_partition(p: PartitionArgs):
     pass
@@ -599,6 +832,244 @@ def load_inputs_partition(p: PartitionArgs):
             w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
             x_issued += 1
             w_issued += 1
+
+
+@gluon.jit
+def load_inputs_clc_partition(p: ClcPartitionArgs):
+    local_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
+    offs_layout: gl.constexpr = gl.SliceLayout(
+        dim=0,
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0], cga_layout=local_cga_layout),
+    )
+    tile_x_bytes: gl.constexpr = p.x_desc.block_type.nbytes * (p.BLOCK_M_PER_CTA if p.USE_2CTA else p.BLOCK_M)
+    tile_w_bytes: gl.constexpr = p.w_desc.nbytes_per_cta
+    tile_scale_bytes: gl.constexpr = p.scale_desc.nbytes_per_cta
+    bytes_per_w_stage: gl.constexpr = tile_w_bytes + tile_scale_bytes
+    scale_k_stride: gl.constexpr = p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
+
+    x_idx = 0
+    x_phase = 1
+    x_issued = 0
+    w_idx = 0
+    w_phase = 1
+    w_issued = 0
+    scheduler = p.get_clc_consumer()
+    i = 0
+
+    while scheduler.has_work:
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(scheduler.block_id)
+        off_m = pid_m * p.BLOCK_M
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+        mask_m = offs_m < shape_m
+        offs_x_m = gl.load(
+            p.gather_indx_ptr + slice_offset + offs_m,
+            mask=mask_m,
+            other=p.x_desc.shape[0],
+        )
+        scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+
+        for ki in range(p.K_TILES):
+            off_k_x = ki * p.BLOCK_K
+            off_k_scale = ki * scale_k_stride
+
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            scale_buf = p.w_scale_bufs.index(w_idx)
+
+            mbarrier.wait(x_empty_bar, x_phase, pred=x_issued >= p.x_num_bufs)
+            mbarrier.wait(w_empty_bar, w_phase, pred=w_issued >= p.w_num_bufs)
+
+            mbarrier.expect(x_ready_bar, tile_x_bytes)
+            tma.async_gather(
+                p.x_desc,
+                offs_x_m,
+                off_k_x,
+                x_ready_bar,
+                x_buf,
+                multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
+            )
+
+            mbarrier.expect(w_ready_bar, bytes_per_w_stage)
+            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, ki, pid_n, 0, 0], w_ready_bar, w_buf)
+            tma.async_copy_global_to_shared(
+                p.scale_desc,
+                [0, scale_idx, off_k_scale, 0, 0],
+                w_ready_bar,
+                scale_buf,
+                multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+            )
+
+            x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+            x_issued += 1
+            w_issued += 1
+
+        scheduler = scheduler.step(i)
+        i += 1
+
+
+@gluon.jit
+def mma_clc_partition(p: ClcPartitionArgs):
+    x_idx = 0
+    x_phase = 0
+    w_idx = 0
+    w_phase = 0
+    mma_idx = 0
+    mma_phase = 1
+    scheduler = p.get_clc_consumer()
+    i = 0
+
+    while scheduler.has_work:
+        acc_empty_bar = p.acc_empty_bars.index(mma_idx)
+        acc_ready_bar = p.acc_ready_bars.index(mma_idx)
+        acc_buf = p.acc_bufs.index(mma_idx)
+        mbarrier.wait(acc_empty_bar, mma_phase)
+
+        use_acc = False
+        for _ in range(p.K_TILES):
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            scale_buf = p.w_scale_bufs.index(w_idx)
+            mbarrier.wait(w_ready_bar, w_phase)
+
+            blackwell.tcgen05_copy(
+                unswizzle_mx_scale(scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER, p.MXFP_BLOCK_SIZE),
+                p.w_scale_tmem,
+            )
+
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            mbarrier.wait(x_ready_bar, x_phase)
+
+            if p.INLINE_MMA_INPUT_RELEASE:
+                blackwell.tcgen05_mma_scaled(
+                    w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                    x_buf.permute((1, 0)),
+                    acc_buf,
+                    p.w_scale_tmem,
+                    p.x_scale_tmem,
+                    a_type="e2m1",
+                    b_type="e4m3",
+                    use_acc=use_acc,
+                    mbarriers=[x_empty_bar, w_empty_bar],
+                )
+            else:
+                blackwell.tcgen05_mma_scaled(
+                    w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                    x_buf.permute((1, 0)),
+                    acc_buf,
+                    p.w_scale_tmem,
+                    p.x_scale_tmem,
+                    a_type="e2m1",
+                    b_type="e4m3",
+                    use_acc=use_acc,
+                )
+                blackwell.tcgen05_commit(x_empty_bar)
+                blackwell.tcgen05_commit(w_empty_bar)
+
+            x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+            use_acc = True
+
+        blackwell.tcgen05_commit(acc_ready_bar)
+        mma_idx, mma_phase = advance(mma_idx, mma_phase, p.acc_num_bufs)
+        scheduler = scheduler.step(i)
+        i += 1
+
+
+@gluon.jit
+def epilogue_clc_partition(p: ClcPartitionArgs):
+    gl.static_assert(p.USE_DIRECT_EPILOGUE_STORE, "clccombined starts with direct epilogue only")
+
+    idx = 0
+    phase = 0
+
+    x_scale = 1.0 if p.x_scale_ptr is None else gl.load(p.x_scale_ptr)
+    w_scale = 1.0 if p.w_scale_ptr is None else gl.load(p.w_scale_ptr)
+    acc_scale = x_scale * w_scale
+    out_recip = 1.0 / gl.load(p.out_scale_ptr)
+
+    num_warps: gl.constexpr = gl.num_warps()
+    warps_n: gl.constexpr = 1 if p.FORCE_EPILOGUE_WARPS_N1 else (2 if num_warps >= 8 and p.BLOCK_N >= 256 else 1)
+    split_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
+    split_layout: gl.constexpr = gl.BlockedLayout(
+        [1, 4],
+        [1, 32],
+        [num_warps // warps_n, warps_n],
+        [1, 0],
+        cga_layout=split_cga_layout,
+    )
+    bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
+    store_layout: gl.constexpr = get_store_layout(p)
+    scheduler = p.get_clc_consumer()
+    i = 0
+
+    while scheduler.has_work:
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(scheduler.block_id)
+        off_m = pid_m * p.BLOCK_M
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        out_off_n_packed = pid_n * (p.BLOCK_N // p.REDUCTION_N // 4)
+        idx, phase, acc_packed = apply_bias_and_scale(
+            p,
+            idx,
+            phase,
+            pid_n,
+            slice_idx,
+            split_layout,
+            bias_layout,
+            acc_scale,
+        )
+        epilogue_direct_store(
+            p,
+            acc_packed,
+            out_recip,
+            off_m,
+            out_off_n_packed,
+            shape_m,
+            slice_offset,
+            store_layout,
+        )
+        scheduler = scheduler.step(i)
+        i += 1
+
+
+@gluon.jit
+def moe_clc_partition(p: ClcPartitionArgs):
+    has_work = gl.to_tensor(True)
+    state = Counter.create(0, p.clc_barriers.shape[0])
+    consumed_state = Counter.create(1, p.clc_barriers.shape[0])
+    clc_stages: gl.constexpr = p.clc_barriers.shape[0]
+    i = 0
+
+    while has_work:
+        mbarrier.wait(p.clc_consumed_bars.index(consumed_state.index), consumed_state.phase, pred=(i >= clc_stages))
+        barrier = p.clc_barriers.index(state.index)
+        result = p.clc_result_buffers.index(state.index)
+        mbarrier.expect(barrier, 16)
+        clc.try_cancel(result, barrier)
+        mbarrier.wait(barrier, state.phase)
+        clc_res = clc.load_result(result)
+        has_work = clc_res.is_canceled()
+        block_id = gl.full((), -1, gl.int32)
+        if has_work:
+            block_id = clc_res.program_id(0)
+            has_work = block_id < p.num_blocks
+            block_id = gl.where(has_work, block_id, -1)
+        block_slot = p.clc_block_id_buffers.index(state.index)
+        block_layout: gl.constexpr = gl.BlockedLayout([1], [32], [gl.num_warps()], [0],
+                                                      [[0]] * (gl.num_ctas().bit_length() - 1))
+        block_slot.store(gl.full([1], block_id.to(gl.int64), gl.int64, layout=block_layout))
+        mbarrier.arrive(p.clc_block_ready_bars.index(state.index))
+        state = state.next()
+        consumed_state = consumed_state.next()
+        i += 1
 
 
 @gluon.jit
@@ -5181,7 +5652,111 @@ def ws_matmul_combined_load_kernel(
         INLINE_MMA_INPUT_RELEASE=INLINE_MMA_INPUT_RELEASE,
     )
 
-    if STRUCTURAL_MODE == 0:
+    if STRUCTURAL_MODE == 48:
+        gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "clccombined starts with direct epilogue only")
+        gl.static_assert(not REUSE_GATHER_INDICES, "clccombined uses the combined load path without gather reuse")
+        gl.static_assert(gl.num_ctas() == 2, "clccombined is a 2CTA-only scratch mode")
+
+        clc_stages: gl.constexpr = ACC_NUM_BUFS
+        clc_barriers = alloc_barrier_ring(clc_stages)
+        clc_block_ready_bars = alloc_barrier_ring(clc_stages)
+        clc_consumed_bars = alloc_barrier_ring(clc_stages, two_ctas=use_2cta, count=3)
+        cga_layout_clc: gl.constexpr = [[0]] * (gl.num_ctas().bit_length() - 1)
+        clc_layout: gl.constexpr = gl.SwizzledSharedLayout(1, 1, 1, [0], cga_layout=cga_layout_clc)
+        clc_result_buffers = gl.allocate_shared_memory(gl.int64, [clc_stages, 2], clc_layout)
+        clc_block_id_buffers = gl.allocate_shared_memory(gl.int64, [clc_stages, 1], clc_layout)
+
+        p_clc = ClcPartitionArgs(
+            x_desc=x_desc,
+            w_desc=w_desc,
+            scale_desc=scale_desc,
+            out_desc=out_desc,
+            x_scale_ptr=x_scale_ptr,
+            w_scale_ptr=w_scale_ptr,
+            out_scale_ptr=out_scale_ptr,
+            out_ptr=out_ptr,
+            bias_ptr=bias_ptr,
+            bias_stride=bias_stride,
+            gather_indx_ptr=gather_indx_ptr,
+            x_slice_sizes=x_slice_sizes,
+            x_slice_offs=x_slice_offs,
+            x_block_offs=x_block_offs,
+            x_block_schedule=x_block_schedule,
+            x_tile_schedule=x_tile_schedule,
+            x_bufs=x_bufs,
+            x_empty_bars=x_empty_bars,
+            x_ready_bars=x_ready_bars,
+            x_num_bufs=x_num_bufs,
+            w_bufs=w_bufs,
+            w_scale_bufs=w_scale_bufs,
+            w_empty_bars=w_empty_bars,
+            w_ready_bars=w_ready_bars,
+            w_scale_empty_bars=w_scale_empty_bars,
+            w_scale_ready_bars=w_scale_ready_bars,
+            w_num_bufs=w_num_bufs,
+            w_scale_num_bufs=w_scale_num_bufs,
+            x_scale_tmem=x_scale_tmem,
+            w_scale_tmem=w_scale_tmem,
+            w_scale_tmem_alt=w_scale_tmem_alt,
+            acc_bufs=acc_tmem,
+            acc_empty_bars=acc_empty_bars,
+            acc_ready_bars=acc_ready_bars,
+            acc_num_bufs=acc_num_bufs,
+            store_bufs=store_bufs,
+            store_empty_bars=store_empty_bars,
+            store_ready_bars=store_ready_bars,
+            grid_m=grid_m,
+            GRID_N=grid_n,
+            K_TILES=k_tiles,
+            SCALE_FLAT_N=scale_flat_n,
+            SCALE_BLOCK_N_DIV=scale_block_n_div,
+            num_blocks=num_blocks,
+            NUM_SMS=NUM_SMS,
+            NUM_WARPS=NUM_WARPS,
+            USE_2CTA=uses_2cta_layout,
+            BLOCK_M_PER_CTA=block_m_per_cta,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
+            SCALE_SIZE_OUTER=SCALE_SIZE_OUTER,
+            SCALE_SIZE_INNER=SCALE_SIZE_INNER,
+            MXFP_BLOCK_SIZE=MXFP_BLOCK_SIZE,
+            SWIGLU_ALPHA=SWIGLU_ALPHA,
+            SWIGLU_LIMIT=SWIGLU_LIMIT,
+            REDUCTION_N=REDUCTION_N,
+            FLEXPOINT_SATURATE_INF=FLEXPOINT_SATURATE_INF,
+            SWIGLU_SUBTILE_FACTOR=SWIGLU_SUBTILE_FACTOR,
+            EPILOGUE_BUFFER_DEPTH=EPILOGUE_BUFFER_DEPTH,
+            USE_PLANAR_SNAKE=USE_PLANAR_SNAKE,
+            GRID_MINOR_DIM=GRID_MINOR_DIM,
+            GRID_TILE_WIDTH=GRID_TILE_WIDTH,
+            BAND_N=BAND_N,
+            USE_FULL_TILE_SCHEDULE=USE_FULL_TILE_SCHEDULE,
+            X_GATHER_MULTICAST=X_GATHER_MULTICAST,
+            W_SCALE_MULTICAST=W_SCALE_MULTICAST,
+            FORCE_EPILOGUE_WARPS_N1=FORCE_EPILOGUE_WARPS_N1,
+            USE_WIDE_STORE_HANDOFF=USE_WIDE_STORE_HANDOFF,
+            USE_DIRECT_EPILOGUE_STORE=USE_DIRECT_EPILOGUE_STORE,
+            REUSE_GATHER_INDICES=REUSE_GATHER_INDICES,
+            INLINE_MMA_INPUT_RELEASE=INLINE_MMA_INPUT_RELEASE,
+            clc_result_buffers=clc_result_buffers,
+            clc_barriers=clc_barriers,
+            clc_block_id_buffers=clc_block_id_buffers,
+            clc_block_ready_bars=clc_block_ready_bars,
+            clc_consumed_bars=clc_consumed_bars,
+        )
+
+        gl.warp_specialize(
+            [
+                (epilogue_clc_partition, (p_clc, )),
+                (load_inputs_clc_partition, (p_clc, )),
+                (mma_clc_partition, (p_clc, )),
+                (moe_clc_partition, (p_clc, )),
+            ],
+            [LOAD_ACTIVATION_WARPS, MMA_WARPS, 1],
+            [LOAD_ACTIVATION_REGS, MMA_REGS, 24],
+        )
+    elif STRUCTURAL_MODE == 0:
         gl.warp_specialize(
             [
                 (epilogue_partition, (p, )),
@@ -5715,6 +6290,7 @@ def combined_load_matmul(
     assert b.storage.layout.block_k == p.BLOCK_K
     assert b.storage.layout.block_n == p.BLOCK_N
     x_block_offs, x_block_schedule = ex.get_block_schedule_tensors(a_ragged_metadata, p.BLOCK_M)
+    actual_grid_m = None
     expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, p.BLOCK_M)
     grid_n = triton.cdiv(n, p.BLOCK_N)
     route_class_split = structural_mode in (46, 47)
@@ -5725,7 +6301,10 @@ def combined_load_matmul(
             grid_n,
             want_full=structural_mode == 46,
         )
+        actual_grid_m = int(x_block_offs[-1].item())
         expected_grid_m = int(x_block_offs[-1].item())
+    elif structural_mode == 48:
+        actual_grid_m = int(x_block_offs[a_ragged_metadata.n_slices].item())
     schedule_grid_m = triton.cdiv(expected_grid_m, 2) if structural_mode in (40, 44) else expected_grid_m
     schedule_grid_n = triton.cdiv(grid_n, 2) if structural_mode in (36, 37) else grid_n
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
@@ -5770,7 +6349,7 @@ def combined_load_matmul(
             if p.USE_FULL_TILE_SCHEDULE else ex.get_dummy_full_tile_schedule_tensor(a_ragged_metadata.slice_sizes.device)
         )
         use_full_tile_schedule = p.USE_FULL_TILE_SCHEDULE
-    grid = (launch_grid, )
+    grid = (actual_grid_m * grid_n, ) if structural_mode == 48 else (launch_grid, )
 
     fake_nsplit = structural_mode == 15
     cta_npair = structural_mode in (36, 37)
@@ -5922,6 +6501,9 @@ def parse_candidate(name: str, slice_size: int):
     elif name.startswith("combinedw:"):
         spec = name[len("combinedw:"):]
         mode = "combinedw"
+    elif name.startswith("clccombined:"):
+        spec = name[len("clccombined:"):]
+        mode = "clccombined"
     elif name.startswith("mmaw:"):
         spec = name[len("mmaw:"):]
         mode = "mmaw"
@@ -6173,8 +6755,10 @@ def parse_candidate(name: str, slice_size: int):
                 updates.setdefault("LOAD_ACTIVATION_REGS", 32)
                 updates.setdefault("LOAD_WEIGHT_REGS", 32)
                 updates.setdefault("MMA_REGS", 32)
-        if mode in ("pair", "pairsplit", "phasepair", "xpair", "fakenspair", "dualmma"):
+        if mode in ("pair", "pairsplit", "phasepair", "xpair", "fakenspair", "dualmma", "clccombined"):
             updates.setdefault("ACC_NUM_BUFS", 2)
+        if mode == "clccombined" and "NUM_WARPS" not in updates and p.NUM_WARPS < 8:
+            updates["NUM_WARPS"] = 8
         if mode == "mmastore":
             updates.setdefault("USE_DIRECT_EPILOGUE_STORE", False)
             updates.setdefault("SWIGLU_SUBTILE_FACTOR", 2)
@@ -6217,6 +6801,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
         "combined",
         "combinedx",
         "combinedw",
+        "clccombined",
         "mmaw",
         "mmax",
         "pair",
@@ -6274,6 +6859,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
             p=p,
             structural_mode={
                 "combined": 0,
+                "clccombined": 48,
                 "mmaw": 1,
                 "mmax": 2,
                 "combinedx": 3,
@@ -6348,7 +6934,7 @@ def bench_ms(prepared, p, mode: str, rep: int):
 
     fn()
     torch.cuda.synchronize()
-    if mode == "routesplit":
+    if mode in ("routesplit", "clccombined"):
         vals = triton.testing.do_bench(fn, warmup=25, rep=rep, return_mode="all")
     else:
         vals = ex.do_bench_cudagraph(fn, rep=rep, return_mode="all")

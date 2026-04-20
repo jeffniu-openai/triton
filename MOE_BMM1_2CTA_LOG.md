@@ -1537,3 +1537,39 @@ and `1024`, under both simulated production routing and uniform routing.
   slice. The remaining plausible single-launch frontier is a CLC-style
   persistent scheduler or a deeper rewrite that changes how multiple logical
   blocks are owned inside one CTA cluster without adding an uncaptured launch.
+
+## 2026-04-20 CLC Combined Scratch And Fused-Epilogue Recheck
+
+- Added scratch `clccombined:` mode (`STRUCTURAL_MODE=48`) in
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`. It uses one CLC
+  partition plus the combined input loader, MMA partition, and direct epilogue
+  partition, keeping the CLC consumed barrier count at `3` workers.
+- Initial CLC versions failed until two protocol issues were fixed:
+  the CLC handoff now mirrors the working tutorial pattern by publishing a
+  scalar canceled block id through shared memory, and the full-grid launch now
+  uses the actual block-schedule count from `x_block_offs[-1]` instead of the
+  host `n_blocks()` estimate. The estimate can be much larger than the compact
+  MoE block schedule on small ragged slices, which over-launched clusters and
+  caused out-of-range gather-index loads under Compute Sanitizer.
+- `clccombined:` validates on small ragged uniform batch `128` and hard
+  uniform batch `896`, local rank `4`. It is not graph-capturable in the
+  current harness, so `bench_ms` uses the same non-graph fallback as
+  `routesplit:` for this scratch mode.
+- Hard-row timing is not competitive:
+  `/tmp/moe_bmm1_clccombined_wall_uniform896_v2.csv`. The paired run reported
+  `1cta = 0.02786 ms`, normal `splitws = 0.02960 ms` (`0.94126x`), and
+  `clccombined = 0.18675 ms` (`0.14920x`). Treat this CLC shape as a
+  diagnostic scheduler experiment, not a promotable 2CTA path.
+- Rechecked the existing fused-MMA-epilogue scratch (`mmaepi:`). With the
+  default one-warp MMA owner it fails frontend lowering because TMEM
+  `acc_buf.load()` requires a worker-local power-of-two `num_warps >= 4`.
+  Retrying with `warps8,l2m4` reaches PTXAS but fails register allocation:
+  `/tmp/moe_bmm1_mmaepi_warps8_uniform896.csv` needs `80` registers with
+  `maxnreg=52`; `/tmp/moe_bmm1_mmaepi_regs80_uniform896.csv` then needs `136`;
+  `/tmp/moe_bmm1_mmaepi_regs160_uniform896.csv` then needs `255`. The current
+  fused epilogue implementation is not a viable quick rescue without a much
+  smaller epilogue/MMA live-range rewrite.
+- Current decision: CLC and existing `mmaepi:` are both non-promotable. The
+  next structural work should focus on a new ownership rewrite such as true
+  N-shard/X-reuse or a tighter two-output fused body, not another scheduler-only
+  wrapper.
