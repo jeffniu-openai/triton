@@ -25574,3 +25574,27 @@ Open after this slice:
 - Next:
   - run `git diff --check`, commit/push, then implement Example 4
     layout-as-epilogue store ordering.
+
+## 2026-04-20 22:18 UTC: implement TMEM layout-as-epilogue example
+
+- Added `python/examples/gluon/08-tmem-layout-as-epilogue.py`.
+- Algorithm:
+  - stage a tile through a tile-permuted `TensorMemoryLinearLayout`;
+  - optimized path stores directly in the consumer's column-group order;
+  - baseline stores canonical order and applies a PyTorch reorder, modeling a
+    separate epilogue/reorder step.
+- Tests:
+  - `test_direct_consumer_order_matches_pytorch` covers `N=64/128/256`;
+  - `test_layout_epilogue_baseline_matches_direct` checks the baseline matches
+    the direct path.
+- Validation:
+  - `python -m py_compile python/examples/gluon/08-tmem-layout-as-epilogue.py`
+    passed;
+  - focused pytest passed `5 passed in 7.07s`;
+  - script benchmark:
+    `N=64` direct `0.011 ms`, baseline `0.095 ms`, `8.56x`;
+    `N=128` direct `0.017 ms`, baseline `0.095 ms`, `5.61x`;
+    `N=256` direct `0.027 ms`, baseline `0.095 ms`, `3.53x`.
+- Next:
+  - run `git diff --check`, commit/push, then implement fused MLP
+    side-projection.

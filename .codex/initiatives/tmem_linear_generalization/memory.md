@@ -13877,3 +13877,19 @@ rejection, not rescue
     kernel; the example does not implement in-kernel float8 vocabulary gather.
 - Next:
   - implement Example 4 layout-as-epilogue store ordering.
+
+## Current: 2026-04-20 22:18 UTC layout-as-epilogue example implemented
+
+- Added `python/examples/gluon/08-tmem-layout-as-epilogue.py`.
+- The example implements:
+  - direct consumer-order stores from a tile-permuted TMEM layout;
+  - canonical TMEM store plus PyTorch reorder baseline;
+  - tests for `N=64/128/256` and `tile_n=16/32/64`.
+- Validation:
+  - py-compile passed;
+  - focused pytest passed `5 passed in 7.07s`.
+- Benchmark:
+  - `M=128`: `N=64` `8.56x`, `N=128` `5.61x`, `N=256` `3.53x` over
+    canonical-output plus reorder.
+- Next:
+  - implement fused MLP side-projection example.

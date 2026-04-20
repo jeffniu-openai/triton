@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 22:04 UTC
+Last updated: 2026-04-20 22:18 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -976,3 +976,10 @@ signal handling:
   baseline, candidate-order validation, TTGIR checks, and inline benchmark
   transcript. Focused validation passed `6/6`. Next concrete slice: Example 4
   layout-as-epilogue store ordering.
+
+- 2026-04-20 22:18 UTC: implemented Phase H layout-as-epilogue example in
+  `python/examples/gluon/08-tmem-layout-as-epilogue.py`. The example covers
+  direct consumer-order stores for `N=64/128/256`, a canonical-store plus
+  PyTorch reorder baseline, and inline benchmark transcript. Focused
+  validation passed `5/5`. Next concrete slice: Example 5 fused MLP
+  side-projection.

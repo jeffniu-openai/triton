@@ -4785,3 +4785,17 @@ When resuming the initiative:
   - `C=32` `1.17x`;
   - `C=64` `1.03x`.
 - Next Phase H slice: Example 4 layout-as-epilogue store ordering.
+
+## Latest: 2026-04-20 22:18 UTC layout-as-epilogue example implemented
+
+- Added `python/examples/gluon/08-tmem-layout-as-epilogue.py` as the
+  consumer-order store example.
+- Focused validation passed:
+  - py-compile;
+  - `pytest -s --tb=short python/examples/gluon/08-tmem-layout-as-epilogue.py`
+    passed `5/5`.
+- Recorded benchmark output for `M=128`:
+  - `N=64` `8.56x`;
+  - `N=128` `5.61x`;
+  - `N=256` `3.53x`.
+- Next Phase H slice: fused MLP side-projection.

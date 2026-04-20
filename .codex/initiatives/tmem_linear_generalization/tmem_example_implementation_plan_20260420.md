@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 22:04 UTC
+Last updated: 2026-04-20 22:18 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -174,7 +174,7 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Example 4: Ragged Grouped/MoE Expert Output Views
 
-- Status: planned.
+- Status: implemented at 2026-04-20 22:18 UTC.
 - Proposed file: `python/examples/gluon/08-tmem-ragged-expert-views.py`.
 - New capability used:
   - descriptor-view chains over a shared TMEM arena;
@@ -301,8 +301,9 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - direct consumer-order store versus canonical-store-plus-reorder baseline;
   - report end-to-end latency and bytes moved by removed reorder.
 - Implementation notes:
-  - this example should include the clearest explanation of layout choice as an
-    epilogue optimization rather than a mathematical algorithm change.
+  - implemented direct consumer-order store versus canonical-store-plus-PyTorch
+    reorder baseline, tests over `N=64/128/256`, and inline benchmark
+    transcript.
 
 ## Execution Order
 
@@ -342,3 +343,8 @@ grouped and attention examples until reusable helper patterns exist.
   `python -m py_compile` passed, focused pytest passed `6 passed in 9.71s`,
   and the benchmark printed `C=32` `1.17x` and `C=64` `1.03x` over the padded
   `C=128` baseline.
+- 2026-04-20 22:18 UTC: implemented Example 7, ahead of examples 4-6, as
+  `python/examples/gluon/08-tmem-layout-as-epilogue.py`. Validation:
+  `python -m py_compile` passed, focused pytest passed `5 passed in 7.07s`,
+  and the benchmark printed `8.56x`, `5.61x`, and `3.53x` over the
+  canonical-output plus reorder baseline for `N=64/128/256`.
