@@ -50,6 +50,7 @@ float2 = ex.float2
 _dynamic_pair_w_reuse_tile_schedule_cache: dict[tuple[int, int, int, int], torch.Tensor] = {}
 _dynamic_pair_x_reuse_tile_schedule_cache: dict[tuple[int, int, int, int], torch.Tensor] = {}
 _dynamic_full_then_spill_tile_schedule_cache: dict[tuple[int, int, int], torch.Tensor] = {}
+_dynamic_route_class_tile_schedule_cache: dict[tuple[int, int, int, bool], tuple[torch.Tensor, torch.Tensor]] = {}
 
 
 def _pack_full_tile(pid_m: int, pid_n: int, slice_idx: int) -> int:
@@ -206,6 +207,48 @@ def get_full_then_spill_tile_schedule_tensor(
     tile_schedule = torch.tensor(packed_schedule, dtype=torch.int64, device=ragged_metadata.slice_sizes.device)
     _dynamic_full_then_spill_tile_schedule_cache[key] = tile_schedule
     return tile_schedule
+
+
+def get_route_class_tile_schedule_tensors(
+    ragged_metadata,
+    block_size: int,
+    grid_n: int,
+    *,
+    want_full: bool,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    key = (id(ragged_metadata), block_size, grid_n, want_full)
+    cached = _dynamic_route_class_tile_schedule_cache.get(key)
+    if cached is not None:
+        return cached
+
+    block_offs, block_schedule = ex.get_block_schedule_tensors(ragged_metadata, block_size)
+    grid_m = int(block_offs[ragged_metadata.n_slices].item())
+    block_schedule_cpu = block_schedule.cpu().tolist()
+    slice_sizes_cpu = ragged_metadata.slice_sizes.cpu().tolist()
+
+    entries: list[tuple[int, int, int]] = []
+    for schedule_pid_m in range(grid_m):
+        m_entry = int(block_schedule_cpu[schedule_pid_m])
+        slice_idx = m_entry & 0xFFFF
+        pid_m = m_entry >> 16
+        is_full = (pid_m + 1) * block_size <= int(slice_sizes_cpu[slice_idx])
+        if is_full == want_full:
+            for pid_n in range(grid_n):
+                entries.append((pid_m, pid_n, slice_idx))
+
+    assert entries, "route-class split produced an empty schedule"
+    assert len(entries) % grid_n == 0
+    packed_schedule = [_pack_full_tile(*entry) for entry in entries]
+    tile_schedule = torch.tensor(packed_schedule, dtype=torch.int64, device=ragged_metadata.slice_sizes.device)
+    route_block_offs = torch.zeros(
+        ragged_metadata.n_slices + 1,
+        dtype=torch.int32,
+        device=ragged_metadata.slice_sizes.device,
+    )
+    route_block_offs[-1] = len(entries) // grid_n
+    result = (tile_schedule, route_block_offs)
+    _dynamic_route_class_tile_schedule_cache[key] = result
+    return result
 
 
 @dataclass(frozen=True)
@@ -5246,7 +5289,7 @@ def ws_matmul_combined_load_kernel(
             [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
             [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
         )
-    elif STRUCTURAL_MODE == 12 or STRUCTURAL_MODE == 19 or STRUCTURAL_MODE == 41:
+    elif STRUCTURAL_MODE == 12 or STRUCTURAL_MODE == 19 or STRUCTURAL_MODE == 41 or STRUCTURAL_MODE == 46 or STRUCTURAL_MODE == 47:
         gl.warp_specialize(
             [
                 (epilogue_partition, (p, )),
@@ -5674,12 +5717,23 @@ def combined_load_matmul(
     x_block_offs, x_block_schedule = ex.get_block_schedule_tensors(a_ragged_metadata, p.BLOCK_M)
     expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, p.BLOCK_M)
     grid_n = triton.cdiv(n, p.BLOCK_N)
+    route_class_split = structural_mode in (46, 47)
+    if route_class_split:
+        x_tile_schedule, x_block_offs = get_route_class_tile_schedule_tensors(
+            a_ragged_metadata,
+            p.BLOCK_M,
+            grid_n,
+            want_full=structural_mode == 46,
+        )
+        expected_grid_m = int(x_block_offs[-1].item())
     schedule_grid_m = triton.cdiv(expected_grid_m, 2) if structural_mode in (40, 44) else expected_grid_m
     schedule_grid_n = triton.cdiv(grid_n, 2) if structural_mode in (36, 37) else grid_n
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
     sms *= p.OCCUPANCY
     launch_grid = max(1, min(max(1, sms // p.NUM_CTAS), schedule_grid_m * schedule_grid_n))
-    if structural_mode in (5, 6, 38):
+    if route_class_split:
+        use_full_tile_schedule = True
+    elif structural_mode in (5, 6, 38):
         x_tile_schedule = get_pair_w_reuse_tile_schedule_tensor(
             a_ragged_metadata,
             p.BLOCK_M,
@@ -5820,6 +5874,44 @@ def combined_load_matmul(
     return c
 
 
+def route_split_matmul(
+    a,
+    b,
+    bias,
+    a_ragged_metadata,
+    gather_indx,
+    precision_config,
+    c,
+    fused_activation,
+    p,
+):
+    combined_load_matmul(
+        a=a,
+        b=b,
+        bias=bias,
+        a_ragged_metadata=a_ragged_metadata,
+        gather_indx=gather_indx,
+        precision_config=precision_config,
+        c=c,
+        fused_activation=fused_activation,
+        p=p,
+        structural_mode=46,
+    )
+    combined_load_matmul(
+        a=a,
+        b=b,
+        bias=bias,
+        a_ragged_metadata=a_ragged_metadata,
+        gather_indx=gather_indx,
+        precision_config=precision_config,
+        c=c,
+        fused_activation=fused_activation,
+        p=p,
+        structural_mode=47,
+    )
+    return c
+
+
 def parse_candidate(name: str, slice_size: int):
     if name.startswith("combined:"):
         spec = name[len("combined:"):]
@@ -5956,6 +6048,9 @@ def parse_candidate(name: str, slice_size: int):
     elif name.startswith("privsched:"):
         spec = name[len("privsched:"):]
         mode = "privsched"
+    elif name.startswith("routesplit:"):
+        spec = name[len("routesplit:"):]
+        mode = "routesplit"
     elif name.startswith("mmascale:"):
         spec = name[len("mmascale:"):]
         mode = "mmascale"
@@ -6106,6 +6201,18 @@ def parse_candidate(name: str, slice_size: int):
 
 def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
     pc = ex.make_precision_config(prepared)
+    if mode == "routesplit":
+        return route_split_matmul(
+            a=prepared.x,
+            b=prepared.w,
+            bias=prepared.bias,
+            a_ragged_metadata=prepared.ragged_metadata,
+            gather_indx=prepared.gather_indx,
+            precision_config=pc,
+            c=out,
+            fused_activation=prepared.fused_activation,
+            p=p,
+        )
     if mode in (
         "combined",
         "combinedx",
@@ -6241,7 +6348,10 @@ def bench_ms(prepared, p, mode: str, rep: int):
 
     fn()
     torch.cuda.synchronize()
-    vals = ex.do_bench_cudagraph(fn, rep=rep, return_mode="all")
+    if mode == "routesplit":
+        vals = triton.testing.do_bench(fn, warmup=25, rep=rep, return_mode="all")
+    else:
+        vals = ex.do_bench_cudagraph(fn, rep=rep, return_mode="all")
     return float(statistics.median(vals)), float(statistics.mean(vals)), [float(v) for v in vals]
 
 

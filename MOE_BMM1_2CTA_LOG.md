@@ -1503,3 +1503,37 @@ and `1024`, under both simulated production routing and uniform routing.
   should either change persistent work ownership more substantially or split
   route classes into separately tuned launches despite the launch-overhead
   risk.
+
+## 2026-04-20 Route-Split And Remaining Parameter Escape Hatches
+
+- Added scratch route-class scheduling support in
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`: helper schedules
+  can now isolate full M tiles from spill/tail M tiles, and `routesplit:`
+  launches the same 2CTA config once for full tiles and once for spill tiles.
+- `routesplit:` validated against the reference on hard uniform batch `896`,
+  rank `4`, but `do_bench_cudagraph` cannot capture the two-launch wrapper
+  (`operation failed due to a previous error during capture`). A non-graph
+  fallback was added for this scratch mode only, and the measured walltime was
+  not competitive: `/tmp/moe_bmm1_routesplit_wall_uniform896.csv` reported
+  `0.30960 ms`, only `0.09019x` versus the normal 1CTA graph baseline. Treat
+  Python-level two-launch route splitting as non-promotable unless it can be
+  fused into one launch or captured reliably.
+- BN512 direct low-batch escape remains poor:
+  `/tmp/moe_bmm1_bn512_direct_uniform896.csv`. Best tested BN512 row was
+  `0.78819x` (`x4,w3,regs52`); other BN512 points were `0.63x-0.67x`.
+- M16 pair-reuse does recover some of the weak M16 baseline but remains far
+  below parity: `/tmp/moe_bmm1_m16_pair_uniform896.csv`. Best tested M16 row
+  was `0.84682x` (`pairsplit:x8w5`), so a from-scratch M16x2 rewrite would
+  need a very large structural improvement before it could matter.
+- Aggressive low-register retuning did not improve hard rank 4:
+  `/tmp/moe_bmm1_lowregs_uniform896.csv`. `regs44` was essentially tied with
+  the current split row (`0.97491x` vs `0.97530x` in that run), while
+  `regs40/36` and explicit `la32,lw24,mma24` variants regressed.
+- Deeper W staging with shallower X is not viable:
+  `/tmp/moe_bmm1_wdeep_uniform896.csv`. `x4/w7`, `x3/w7`, `x4/w8`, and
+  `x3/w8` landed at `0.58565x-0.66862x`; `x4/w6,regs52` and `x3/w6,regs52`
+  were also below the current split row.
+- Current decision: ordinary parameter escape hatches are exhausted for this
+  slice. The remaining plausible single-launch frontier is a CLC-style
+  persistent scheduler or a deeper rewrite that changes how multiple logical
+  blocks are owned inside one CTA cluster without adding an uncaptured launch.
