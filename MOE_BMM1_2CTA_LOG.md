@@ -1397,3 +1397,63 @@ and `1024`, under both simulated production routing and uniform routing.
     much lower eligibility.
   - Investigate whether 2CTA can use a different epilogue ownership model that
     raises active warps without reintroducing the helper-store overhead.
+
+## 2026-04-20 Structural Ownership And Direct-Scale Scratch
+
+- Added more scratch-only structural modes and infrastructure in
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`:
+  - `ctampair:` mode `40` tries CTA-M pairing, where rank 0/1 own adjacent
+    M blocks for the same N tile with local accumulator/direct stores.
+  - `privsched:` mode `41` consumes a full-then-spill host schedule to isolate
+    route class ordering from kernel codegen.
+  - `mmascale:` mode `42` removes W-scale staging from the W producer and tries
+    direct scale TMA from the MMA partition.
+  - `dualmma:` mode `43` is a fresh two-lane interleave: paired X/W producers
+    issue two adjacent logical blocks per K step and the MMA partition keeps
+    two accumulators live.
+- `dualmma:` validated on hard uniform batch `896`, ranks `3/4/5/7`, but
+  regressed strongly in `/tmp/moe_bmm1_dualmma_uniform896_smoke.csv`. Explicit
+  best speedups were rank 3 `0.90731x`, rank 4 `0.92271x`, rank 5 `0.90290x`,
+  and rank 7 `0.94992x`. Larger `x6/w6` buffering was worse (`~0.67x-0.68x`).
+  Deterministic two-lane interleave does not replace a true nonblocking
+  wait-steal primitive.
+- MMA wait/dependency/barrier variants did not help the same hard route:
+  `/tmp/moe_bmm1_mma_barrier_family_uniform896_rep320.csv`. Explicit bests
+  were rank 3 `0.97850x`, rank 4 `0.98376x`, rank 5 `0.96840x`, and rank 7
+  `0.99279x`.
+- `mmascale:` was partially fixed at compile time by allocating the direct
+  scale-ready barrier with `two_ctas=mma_two_ctas` and using the standard
+  W-scale multicast flag. It still launch-fails under
+  `CUDA_LAUNCH_BLOCKING=1` in
+  `/tmp/moe_bmm1_mmascale_multicast_blocking_smoke.csv`, so scale TMA from the
+  MMA partition is classified unsafe until the protocol is redesigned.
+- `ctampair:` remains invalid. The rank-3 smoke
+  `/tmp/moe_bmm1_ctampair_recheck_smoke.csv` failed in the `gl.warp_specialize`
+  lowering branch before a usable benchmark row. Earlier long `l4m1` attempts
+  could hang, so do not spend broad GPU time on this path without an IR-level
+  fix for CTA-rank/local-store control.
+- Persistent launch-grid oversubscription was tested in
+  `/tmp/moe_bmm1_launch_occ_uniform896_rep500.csv` and
+  `/tmp/moe_bmm1_launch_occ_prod_r5_rep500.csv`. The inherited `occ2` remains
+  best; `occ1`, `occ3`, and `occ4` all regress on hard uniform ranks and prod
+  rank-5 rows.
+- Direct BM64/BN256 without the helper-store path was tested in
+  `/tmp/moe_bmm1_bm64_direct_uniform896_rep240.csv`; explicit bests stayed
+  around `0.915x-0.918x` on ranks `3/4/5/7`. The earlier BM64 helper sweeps
+  were killed after more than 35 minutes with no rows or output files.
+- A selected-family large-batch prod sweep used `split:selected@...` so tuning
+  started from the production BN512/helper configuration instead of the M32
+  scratch base: `/tmp/moe_bmm1_selected_large_tune_prod_rep360.csv`. Best rows
+  improved some points but still missed the `1.20x` bar:
+  - rank 3: bs1536 `1.14704x`, bs2048 `1.17655x`, bs3072 `1.15245x`,
+    bs4096 `1.12192x`.
+  - rank 4: bs1536 `1.11188x`, bs2048 `1.10446x`, bs3072 `1.12488x`,
+    bs4096 `1.18558x`.
+  - `w6` exceeded shared memory on large rows, and explicit `regs72` or
+    over-constrained register partitions frequently regressed.
+- Current decision: the 20% criterion is still not met. The hard uniform
+  slice-28 route is not responsive to ordinary staging, banding, launch-grid,
+  M64, deterministic dual-block interleave, or wait-order tuning. The next
+  useful frontier should either change CTA ownership with a correct rank/local
+  control model, or reduce the true 2CTA shared-memory/scale footprint without
+  moving TMA into the MMA partition.

@@ -77,6 +77,7 @@ __all__ = [
     "tuple",
     "tuple_type",
     "num_ctas",
+    "cluster_cta_rank",
 ]
 
 T = TypeVar("T")
@@ -597,6 +598,15 @@ def num_ctas(_semantic=None):
     Returns the number of CTAs in the current kernel
     """
     return _semantic.num_ctas()
+
+
+@builtin
+def cluster_cta_rank(_semantic=None):
+    """
+    Returns this CTA's rank within the current cluster as a scalar int32.
+    """
+    handle = _semantic.builder.create_cluster_cta_id()
+    return tensor(handle, int32)
 
 
 @builtin
