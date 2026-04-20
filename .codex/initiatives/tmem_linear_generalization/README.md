@@ -70,6 +70,21 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-20 20:10 UTC: reframed
+  `python/tutorials/gluon/15-tmem-linear-layout-generalization.py` as a
+  standalone hardware-focused tutorial instead of a branch/project summary.
+  The limitations section now explains public Blackwell instruction atom
+  boundaries with concrete examples: packetized `ld/st`, full-footprint
+  `tcgen05.cp`, MMAv5 in-tile basis order, packed-lane storage contracts, and
+  refresh-image readback. The examples now execute kernels and check numerical
+  results rather than asserting compiler text, and the main example is a
+  skinny MXFP8 block-scaled projection benchmark using narrow TMEM accumulator
+  fragments. Validation: `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include
+  make -j8`; `pytest -s --tb=short
+  python/tutorials/gluon/15-tmem-linear-layout-generalization.py` (`6
+  passed`); script benchmark on GPU0 reported `N=32` narrow `0.011 ms` vs
+  padded `0.013 ms` (`1.18x`) and `N=64` narrow `0.013 ms` vs padded
+  `0.013 ms` (`1.04x`).
 - 2026-04-20 19:03 UTC: added
   `python/tutorials/gluon/15-tmem-linear-layout-generalization.py` as a
   presentation/tutorial cleanup for the branch. The tutorial explains explicit

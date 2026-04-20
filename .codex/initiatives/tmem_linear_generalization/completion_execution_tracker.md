@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 19:03 UTC
+Last updated: 2026-04-20 20:10 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -92,6 +92,10 @@ The project is complete when:
   presentation/tutorial cleanup summarizing the completed branch features and
   true residual boundaries with runnable examples. This did not open a new
   support-bearing implementation slice.
+  2026-04-20 20:10 UTC rewrote that tutorial to be standalone and
+  hardware-focused, removed compiler-text assertions, added numeric runtime
+  examples, and added a skinny MXFP8 block-scaled projection benchmark using
+  narrow TMEM accumulator fragments.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
@@ -559,6 +563,12 @@ signal handling:
   directory with no `build.ninja`; direct import also failed on the unbuilt
   local `triton._C.libtriton.getenv` symbol. Tutorial checkpoint commit
   `4e96b6d40` was pushed to `origin/codex/tmem`.
+
+- 2026-04-20 20:10 UTC: tutorial rewrite is runtime-validated. Required
+  `make -j8` passed with explicit host libstdc++ include paths in
+  `CPLUS_INCLUDE_PATH`; focused tutorial pytest passed `6/6`; script benchmark
+  reported `N=32` narrow `0.011 ms` vs padded `0.013 ms` and `N=64` narrow
+  `0.013 ms` vs padded `0.013 ms`.
 
 ## Progress
 

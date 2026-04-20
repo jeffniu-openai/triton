@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-20 20:10 UTC tutorial rewrite completed. The new
+  `15-tmem-linear-layout-generalization.py` now reads independently of the
+  initiative and frames remaining limits as hardware/public-ISA facts rather
+  than project scope: fixed `ld/st` packet shapes, full-footprint
+  `tcgen05.cp` atoms with no partial-column mask, MMAv5 in-tile basis-order
+  requirements, packed-lane storage contracts, and refresh-image readback
+  semantics. The code examples execute kernels and compare numerical outputs;
+  compiler-text assertions were removed. The main example is a skinny MXFP8
+  block-scaled projection using narrow TMEM accumulator fragments and a padded
+  `N=128` baseline. Validation: `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include
+  make -j8` passed after the host include path was supplied for the GSan CUDA
+  build; `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
+  PYTHONPATH=.:./python pytest -s --tb=short
+  python/tutorials/gluon/15-tmem-linear-layout-generalization.py` passed
+  `6/6`; running the tutorial as a script reported `M=4096 N=32 K=128`
+  narrow `0.011 ms`, padded `0.013 ms`, `1.18x`, `3.0` useful TFLOP/s and
+  `M=4096 N=64 K=128` narrow `0.013 ms`, padded `0.013 ms`, `1.04x`, `5.3`
+  useful TFLOP/s.
+
 - Latest: 2026-04-20 19:03 UTC presentation/tutorial cleanup added
   `python/tutorials/gluon/15-tmem-linear-layout-generalization.py`. It is a
   Gluon tutorial-style file with runnable pytest examples for the branch's

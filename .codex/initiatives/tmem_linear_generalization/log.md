@@ -25384,3 +25384,36 @@ Open after this slice:
   - after the build directory is regenerated, run focused tutorial pytest with
     `pytest -s --tb=short python/tutorials/gluon/15-tmem-linear-layout-generalization.py`;
   - no support-bearing implementation work was opened by this tutorial pass.
+
+## 2026-04-20 20:10 UTC: reframe tutorial around hardware limits and executable benchmark
+
+- Starting point: `codex/tmem` at pushed `a73c8ac9f`.
+- Change:
+  - rewrote `python/tutorials/gluon/15-tmem-linear-layout-generalization.py`
+    so it is independent of the TMEM initiative/project history;
+  - explained limits as hardware/public instruction constraints: packetized
+    `ld/st`, full-footprint copy atoms, MMAv5 in-tile basis order,
+    packed-lane storage semantics, and refresh-image readback semantics;
+  - replaced compiler-text assertions with runtime examples that execute
+    kernels and compare numerical results;
+  - added a skinny MXFP8 block-scaled projection benchmark using narrow
+    `N=32/64` TMEM accumulator fragments and a padded `N=128` baseline.
+- Validation:
+  - initial `make dev-install`/`make -j8` exposed a host toolchain issue in
+    the GSan CUDA build: Clang did not find libstdc++ header `climits`;
+  - reran `make -j8` with
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include`,
+    which passed;
+  - `python -m py_compile
+    python/tutorials/gluon/15-tmem-linear-layout-generalization.py` passed;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
+    PYTHONPATH=.:./python pytest -s --tb=short
+    python/tutorials/gluon/15-tmem-linear-layout-generalization.py` passed
+    `6 passed in 6.46s`;
+  - running the tutorial as a script produced:
+    `M=4096 N=32 K=128 | narrow=0.011 ms | padded N=128=0.013 ms |
+    speedup=1.18x | useful=3.0 TFLOP/s` and
+    `M=4096 N=64 K=128 | narrow=0.013 ms | padded N=128=0.013 ms |
+    speedup=1.04x | useful=5.3 TFLOP/s`.
+- Next:
+  - commit and push the tutorial rewrite plus this durable checkpoint.

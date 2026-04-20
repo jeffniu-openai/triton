@@ -1,37 +1,45 @@
 """
-TMEM Linear Layout Generalization
-=================================
+TMEM Linear Layouts on Blackwell
+================================
 
 The earlier Blackwell tutorials introduce tensor memory (TMEM), `tcgen05_mma`,
-`tcgen05_copy`, and block-scaled MMA.  This tutorial focuses on the features
-added by the TMEM linear-layout generalization work on this branch.
+`tcgen05_copy`, and block-scaled MMA.  This tutorial explains the more general
+TMEM layout support available through `TensorMemoryLinearLayout`.
 
-The short version is that TMEM operations are no longer limited to a small set
-of frontend layout spellings.  You can describe the physical TMEM mapping with
-`TensorMemoryLinearLayout`, compose descriptor views with `index`, `slice`,
-`reshape`, `permute`, and `bitcast`, and let the backend decide whether the
-result can be expressed with public Blackwell TMEM instructions.
+`TensorMemoryLinearLayout` describes the physical TMEM address of each logical
+tensor index bit.  Once a TMEM allocation has an exact linear layout, descriptor
+views such as `index`, `slice`, `reshape`, `permute`, and `bitcast` can be
+composed algebraically.  The compiler then asks a hardware question:
 
-The new support covers:
+Can this logical operation be covered by the public Blackwell TMEM instruction
+atoms without changing the requested data semantics?
 
-- direct TMEM load/store on explicit linear layouts, including descriptor-view
-  chains;
-- `tcgen05_copy` into explicit linear layouts, including exact-width subword
-  copies that previously lacked a public `TensorMemoryLayout` spelling;
-- MMAv5 accumulators stored in linear TMEM layouts, including tile-permuted
-  accumulator layouts;
-- scaled-MMAv5 accumulators with narrow `N=8` and `N=16` fragments;
-- typed clean failures for true boundaries such as masks, packed-lane storage,
-  refresh-image readback, and mixed-fp4A direct TMEM storage.
+That distinction is important.  General linear layouts make many useful
+descriptor chains and accumulator layouts expressible, but the hardware still
+has fixed instruction footprints.  For example:
 
-The examples below are deliberately small.  They are intended to show the new
-surface area in isolation, not to replace the pipelined kernels in
-`10-tcgen05-copy.py` and `11-tcgen05-mma-scaled.py`.
+- `tcgen05.ld` and `tcgen05.st` move packet shapes such as `32x32b`,
+  `16x64b`, and related variants.  A layout is usable when the requested view
+  can be partitioned into those packets without aliasing or missing elements.
+- `tcgen05.cp` writes complete copy-atom footprints.  If a program asks for
+  only half of the destination columns of a public copy atom, the instruction
+  has no mask bit that makes that a partial write.
+- `tcgen05.mma` and `tcgen05.mma_scaled` consume fixed instruction tiles.  The
+  compiler can permute whole tiles and split descriptor views, but the row and
+  column bases inside each instruction tile must match what the tensor core
+  instruction reads and writes.
+- Some storage formats have extra semantics beyond a raw TMEM byte layout.  In
+  particular, mixed fp4 operand-A paths use the shared-memory `fp4_padded`
+  contract.  A direct TMEM LHS would need to represent that padding and swizzle
+  contract explicitly; a raw linear TMEM layout alone is not enough.
+
+The examples below execute kernels and check numerical results.  They avoid
+compiler-only tests so the file can also be run as a normal tutorial on a
+Blackwell machine.
 """
 
 import importlib
 import math
-import re
 
 import pytest
 import torch
@@ -66,17 +74,18 @@ if __name__ == "__main__" and not is_blackwell():
     raise RuntimeError("This tutorial requires a Blackwell NVIDIA GPU")
 
 
-# Re-use the quantized tensor generator from the scaled-MMA tutorial so the
-# examples here stay focused on new TMEM layout behavior.
+# Reuse the quantized tensor generator from `11-tcgen05-mma-scaled.py`.  That
+# tutorial already explains MXFP4/MXFP8/NVFP4 packing and scale tensors; this
+# file focuses on what the new TMEM layouts make possible.
 t11 = importlib.import_module("11-tcgen05-mma-scaled")
 
 
 # %%
-# Linear TMEM layouts
-# -------------------
+# Building useful linear TMEM layouts
+# -----------------------------------
 #
-# A `TensorMemoryLinearLayout` maps logical tensor index bits to physical TMEM
-# row and column coordinates.  The identity mapping for an `M x N` tile is:
+# The identity layout maps logical row bits to physical TMEM rows and logical
+# column bits to physical TMEM columns.
 
 
 def make_tmem_linear_layout(m, n):
@@ -87,31 +96,11 @@ def make_tmem_linear_layout(m, n):
     )
 
 
-# Since the layout is explicit, we can also permute the row or column basis
-# bits.  These are still exact linear layouts; the backend now reasons about
-# them algebraically instead of trying to recognize one frontend layout class.
-
-
-def _permute_pow2_bases(bits, kind):
-    if kind == "identity":
-        return list(bits)
-    if kind == "rotate1":
-        return list(bits[1:]) + [bits[0]]
-    if kind == "even_odd":
-        return list(bits[::2]) + list(bits[1::2])
-    if kind == "reverse":
-        return list(reversed(bits))
-    raise ValueError(f"unknown permutation kind: {kind}")
-
-
-def make_tmem_permuted_layout(m, n, row_kind="identity", col_kind="identity"):
-    row_bits = _permute_pow2_bases([1 << i for i in range(int(math.log2(m)))], row_kind)
-    col_bits = _permute_pow2_bases([1 << i for i in range(int(math.log2(n)))], col_kind)
-    return TensorMemoryLinearLayout(
-        rows=[[b, 0] for b in row_bits],
-        cols=[[0, b] for b in col_bits],
-        shape=[m, n],
-    )
+# Whole-tile permutations are useful for epilogues and skinny projections.  The
+# helper below swaps the column bit that selects a tile with the next larger
+# column bit.  For `N=32, tile_n=8`, this makes the accumulator physically look
+# like four 8-column tiles in an order that the MMA planner can split into
+# public instruction fragments.
 
 
 def make_tmem_tile_permuted_layout(m, n, tile_n):
@@ -144,23 +133,19 @@ def scaled_mma_operand_params(format_name):
     raise ValueError(f"unsupported scaled MMA format: {format_name}")
 
 
-def _extract_tcgen05_opcodes(asm, prefix):
-    return re.findall(rf"({prefix}[^\s;\"]+)", asm)
-
-
 # %%
-# Descriptor-view chains on linear TMEM
-# -------------------------------------
+# Example 1: descriptor chains that still load and store correctly
+# ---------------------------------------------------------------
 #
-# The first new pattern is that descriptor transformations compose cleanly with
-# explicit linear TMEM layouts.  The view below goes through a higher-rank
-# allocation, slices and indexes it back to a 2D tile, applies reshape/permute
-# pairs, then bitcasts to the original element type and layout.  The compiler
-# still derives a valid TMEM load/store plan from the final descriptor.
+# This example writes through a descriptor chain rather than the root TMEM
+# descriptor.  The chain indexes a higher-rank allocation, reshapes it, permutes
+# it twice, slices it, and then bitcasts it back to the original logical tile.
+# The interesting part is that the store and load still execute as real TMEM
+# load/store packets; the user-visible result is just `input + 3`.
 
 
 @gluon.jit
-def descriptor_chain_roundtrip_kernel(in_ptr, out_ptr, layout: gl.constexpr, M: gl.constexpr, N: gl.constexpr):
+def descriptor_chain_add_kernel(in_ptr, out_ptr, layout: gl.constexpr, M: gl.constexpr, N: gl.constexpr):
     offs = gl.arange(0, M)[:, None] * N + gl.arange(0, N)[None, :]
     value = gl.load(in_ptr + offs)
     element_ty: gl.constexpr = in_ptr.dtype.element_ty
@@ -182,28 +167,24 @@ def descriptor_chain_roundtrip_kernel(in_ptr, out_ptr, layout: gl.constexpr, M: 
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_descriptor_chain_roundtrip_on_permuted_linear_layout():
+def test_descriptor_chain_add():
     m, n = 128, 32
-    layout = make_tmem_permuted_layout(m, n, row_kind="even_odd", col_kind="rotate1")
+    layout = make_tmem_tile_permuted_layout(m, n, tile_n=8)
     inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = descriptor_chain_roundtrip_kernel[(1, )](inp, out, layout, m, n, num_warps=4)
+    descriptor_chain_add_kernel[(1, )](inp, out, layout, m, n, num_warps=4)
 
     torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
-    assert "tensor_memory_linear" in compiled.asm["ttgir"]
-    assert "ttg.memdesc_reshape" in compiled.asm["ttgir"]
-    assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
 
 
 # %%
-# Exact-width subword `tcgen05.copy`
-# ----------------------------------
+# Example 2: exact-width subword `tcgen05.copy`
+# --------------------------------------------
 #
-# `TensorMemoryLayout` is a compact frontend encoding for common 2D TMEM
-# layouts, but it cannot spell every useful exact layout.  With
-# `TensorMemoryLinearLayout`, a 128-bit copy atom can now target exact-width
-# subword tiles such as f16 `128x8` and i8 `128x16`.
+# A 128-bit copy atom is a natural fit for f16 `128x8` or i8 `128x16` tiles.
+# Those are awkward to express with the compact `TensorMemoryLayout` frontend
+# encoding, but they are direct to express as linear TMEM layouts.
 
 
 @gluon.jit
@@ -242,151 +223,83 @@ def test_exact_width_subword_copy(dtype, n):
     layout = make_tmem_linear_layout(m, n)
     shared_layout = make_dense_shared_layout(m, n)
 
-    compiled = copy_128x128b_exact_width_kernel[(1, )](inp, out, n, layout, shared_layout, num_warps=4)
+    copy_128x128b_exact_width_kernel[(1, )](inp, out, n, layout, shared_layout, num_warps=4)
 
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
-    assert "tensor_memory_linear" in compiled.asm["ttgir"]
-    assert "tcgen05.cp.cta_group::1.128x128b" in compiled.asm["ptx"]
 
 
 # %%
-# MMAv5 accumulators in tile-permuted linear TMEM
-# -----------------------------------------------
+# Example 3: a real use case - skinny block-scaled projection
+# ----------------------------------------------------------
 #
-# The MMAv5 examples in `06-tcgen05.py` use the standard accumulator layout.
-# This branch lets the accumulator be a compatible explicit linear layout.  In
-# the next example, the logical accumulator is still `128x128`, but the
-# column tile selector bits are permuted.  The backend lowers the descriptor
-# views needed to feed public `tcgen05.mma` instruction tiles.
+# Block-scaled FP8/FP4 GEMM is one of Blackwell's important fast paths.  Large
+# GEMMs usually fill broad accumulator tiles, but many model kernels are skinny:
+# router projections, low-rank adapter projections, small vocabulary heads, and
+# fused side projections often compute `M x K` by `K x 32` or `K x 64`.
+#
+# Without narrow accumulator fragments, a kernel often has to compute a padded
+# `N=128` tile and throw most of it away.  A tile-permuted linear TMEM layout
+# lets the scaled-MMA planner cover `N=32` with 8-column fragments and `N=64`
+# with 16-column fragments, so the kernel below computes only the useful
+# columns.
 
 
 @gluon.jit
-def mma_tile_permuted_acc_kernel(a_ptr, b_ptr, out_ptr, acc_layout: gl.constexpr):
-    M: gl.constexpr = 128
-    N: gl.constexpr = 128
-    K: gl.constexpr = 32
-
-    offs_a = gl.arange(0, M)[:, None] * K + gl.arange(0, K)[None, :]
-    offs_b = gl.arange(0, K)[:, None] * N + gl.arange(0, N)[None, :]
-    a_layout: gl.constexpr = gl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
-    b_layout: gl.constexpr = gl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
-    a = gl.load(gl.set_auto_layout(a_ptr + offs_a, a_layout))
-    b = gl.load(gl.set_auto_layout(b_ptr + offs_b, b_layout))
-
-    smem_a_layout: gl.constexpr = gl.NVMMASharedLayout(swizzle_byte_width=32, element_bitwidth=16, rank=2)
-    smem_b_layout: gl.constexpr = gl.NVMMASharedLayout(swizzle_byte_width=32, element_bitwidth=16, rank=2)
-    smem_a = gl.allocate_shared_memory(gl.float16, [M, K], smem_a_layout, a)
-    smem_b = gl.allocate_shared_memory(gl.float16, [K, N], smem_b_layout, b)
-
-    acc_tmem = allocate_tensor_memory(gl.float32, [M, N], acc_layout)
-    bar = gl.allocate_shared_memory(gl.int64, [1], mbarrier.MBarrierLayout())
-    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], False))
-    tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=False, mbarriers=[bar])
-    mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
-    mbarrier.invalidate(bar)
-
-    c_offs = gl.arange(0, M)[:, None] * N + gl.arange(0, N)[None, :]
-    out = acc_tmem.load()
-    gl.store(out_ptr + c_offs, out)
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_mma_with_tile_permuted_linear_accumulator():
-    m, n, k = 128, 128, 32
-    torch.manual_seed(0)
-    a = torch.randn((m, k), device="cuda", dtype=torch.float16)
-    b = torch.randn((k, n), device="cuda", dtype=torch.float16)
-    out = torch.empty((m, n), device="cuda", dtype=torch.float32)
-    acc_layout = make_tmem_tile_permuted_layout(m, n, tile_n=32)
-
-    compiled = mma_tile_permuted_acc_kernel[(1, )](a, b, out, acc_layout, num_warps=4)
-
-    torch.testing.assert_close(out, a.to(torch.float32) @ b.to(torch.float32), atol=1e-2, rtol=1e-2)
-    assert "tensor_memory_linear" in compiled.asm["ttgir"]
-    assert "tcgen05.mma.cta_group::1.kind::f16" in compiled.asm["ptx"]
-
-
-# %%
-# Narrow scaled-MMAv5 accumulator fragments
-# -----------------------------------------
-#
-# Scaled-MMAv5 has extra scale-storage constraints.  A previous implementation
-# rejected narrow accumulator families such as `N=32, tile_n=8` and
-# `N=64, tile_n=16`.  The branch now pads/rematerializes the B-scale storage
-# so these narrow linear accumulator layouts work.
-
-
-@gluon.jit
-def scaled_mma_narrow_acc_kernel(
-    out_ptr,
-    M: gl.constexpr,
-    N: gl.constexpr,
-    K: gl.constexpr,
+def skinny_mxfp8_projection_kernel(
     a,
     b,
     a_scale,
     b_scale,
+    out,
+    BLOCK_N: gl.constexpr,
+    BLOCK_K: gl.constexpr,
     acc_layout: gl.constexpr,
-    VEC_SIZE: gl.constexpr,
-    A_ELEM_PER_BYTE: gl.constexpr,
-    B_ELEM_PER_BYTE: gl.constexpr,
-    A_FORMAT: gl.constexpr,
-    B_FORMAT: gl.constexpr,
 ):
-    A_STORAGE_K: gl.constexpr = K // A_ELEM_PER_BYTE
-    B_STORAGE_K: gl.constexpr = K // B_ELEM_PER_BYTE
-    A_IS_FP4: gl.constexpr = A_ELEM_PER_BYTE == 2
-    B_IS_FP4: gl.constexpr = B_ELEM_PER_BYTE == 2
-    MIXED_PREC: gl.constexpr = A_ELEM_PER_BYTE != B_ELEM_PER_BYTE
+    BLOCK_M: gl.constexpr = 128
+    VEC_SIZE: gl.constexpr = 32
+    pid_m = gl.program_id(0)
+    off_m = pid_m * BLOCK_M
 
     block_layout: gl.constexpr = gl.BlockedLayout([1, 1], [1, 32], [gl.num_warps(), 1], [1, 0])
-    a_smem_layout: gl.constexpr = gl.NVMMASharedLayout.get_default_for(
-        [M, A_STORAGE_K],
-        a.dtype.element_ty,
-        fp4_padded=A_IS_FP4 and MIXED_PREC,
-    )
-    b_smem_layout: gl.constexpr = gl.NVMMASharedLayout.get_default_for(
-        [N, B_STORAGE_K],
-        b.dtype.element_ty,
-        fp4_padded=B_IS_FP4 and MIXED_PREC,
-    )
+    a_m = off_m + gl.arange(0, BLOCK_M, gl.SliceLayout(1, block_layout))[:, None]
+    a_k = gl.arange(0, BLOCK_K, gl.SliceLayout(0, block_layout))[None, :]
+    b_n = gl.arange(0, BLOCK_N, gl.SliceLayout(1, block_layout))[:, None]
+    b_k = gl.arange(0, BLOCK_K, gl.SliceLayout(0, block_layout))[None, :]
 
-    a_m = gl.arange(0, M, gl.SliceLayout(1, block_layout))[:, None]
-    a_k = gl.arange(0, A_STORAGE_K, gl.SliceLayout(0, block_layout))[None, :]
-    b_n = gl.arange(0, N, gl.SliceLayout(1, block_layout))[:, None]
-    b_k = gl.arange(0, B_STORAGE_K, gl.SliceLayout(0, block_layout))[None, :]
-    a_tile = gl.load(a + a_m * A_STORAGE_K + a_k)
-    b_tile = gl.load(b + b_n * B_STORAGE_K + b_k)
-    a_smem = gl.allocate_shared_memory(a.dtype.element_ty, [M, A_STORAGE_K], a_smem_layout, a_tile)
-    b_smem = gl.allocate_shared_memory(b.dtype.element_ty, [N, B_STORAGE_K], b_smem_layout, b_tile)
+    a_tile = gl.load(a + a_m * BLOCK_K + a_k)
+    b_tile = gl.load(b + b_n * BLOCK_K + b_k)
+    smem_a_layout: gl.constexpr = gl.NVMMASharedLayout.get_default_for([BLOCK_M, BLOCK_K], gl.float8e4nv)
+    smem_b_layout: gl.constexpr = gl.NVMMASharedLayout.get_default_for([BLOCK_N, BLOCK_K], gl.float8e4nv)
+    smem_a = gl.allocate_shared_memory(gl.float8e4nv, [BLOCK_M, BLOCK_K], smem_a_layout, a_tile)
+    smem_b = gl.allocate_shared_memory(gl.float8e4nv, [BLOCK_N, BLOCK_K], smem_b_layout, b_tile)
 
-    acc_tmem = allocate_tensor_memory(gl.float32, [M, N], acc_layout)
+    acc_tmem = allocate_tensor_memory(gl.float32, [BLOCK_M, BLOCK_N], acc_layout)
     acc_reg_layout: gl.constexpr = acc_tmem.get_reg_layout()
-    acc_tmem.store(gl.zeros([M, N], gl.float32, layout=acc_reg_layout))
+    acc_tmem.store(gl.zeros([BLOCK_M, BLOCK_N], gl.float32, layout=acc_reg_layout))
 
     scale_layout: gl.constexpr = TensorMemoryScalesLayout()
-    a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, K // VEC_SIZE], scale_layout)
-    b_scale_tmem = allocate_tensor_memory(b_scale.dtype.element_ty, [N, K // VEC_SIZE], scale_layout)
-    a_scale_reg_layout: gl.constexpr = a_scale_tmem.get_reg_layout()
-    b_scale_reg_layout: gl.constexpr = b_scale_tmem.get_reg_layout()
+    a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [BLOCK_M, BLOCK_K // VEC_SIZE], scale_layout)
+    b_scale_tmem = allocate_tensor_memory(b_scale.dtype.element_ty, [BLOCK_N, BLOCK_K // VEC_SIZE], scale_layout)
+    a_scale_layout: gl.constexpr = a_scale_tmem.get_reg_layout()
+    b_scale_layout: gl.constexpr = b_scale_tmem.get_reg_layout()
 
-    scale_k_a = gl.arange(0, K // VEC_SIZE, gl.SliceLayout(0, a_scale_reg_layout))[None, :]
-    scale_k_b = gl.arange(0, K // VEC_SIZE, gl.SliceLayout(0, b_scale_reg_layout))[None, :]
-    scale_m = gl.arange(0, M, gl.SliceLayout(1, a_scale_reg_layout))[:, None]
-    scale_n = gl.arange(0, N, gl.SliceLayout(1, b_scale_reg_layout))[:, None]
-    a_scale_tmem.store(gl.load(a_scale + scale_m * (K // VEC_SIZE) + scale_k_a))
-    b_scale_tmem.store(gl.load(b_scale + scale_n * (K // VEC_SIZE) + scale_k_b))
+    a_scale_m = off_m + gl.arange(0, BLOCK_M, gl.SliceLayout(1, a_scale_layout))[:, None]
+    a_scale_k = gl.arange(0, BLOCK_K // VEC_SIZE, gl.SliceLayout(0, a_scale_layout))[None, :]
+    b_scale_n = gl.arange(0, BLOCK_N, gl.SliceLayout(1, b_scale_layout))[:, None]
+    b_scale_k = gl.arange(0, BLOCK_K // VEC_SIZE, gl.SliceLayout(0, b_scale_layout))[None, :]
+    a_scale_tmem.store(gl.load(a_scale + a_scale_m * (BLOCK_K // VEC_SIZE) + a_scale_k))
+    b_scale_tmem.store(gl.load(b_scale + b_scale_n * (BLOCK_K // VEC_SIZE) + b_scale_k))
 
     bar = gl.allocate_shared_memory(gl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=1)
     tcgen05_mma_scaled(
-        a_smem,
-        b_smem.permute((1, 0)),
+        smem_a,
+        smem_b.permute((1, 0)),
         acc_tmem,
         a_scale_tmem,
         b_scale_tmem,
-        A_FORMAT,
-        B_FORMAT,
+        "e4m3",
+        "e4m3",
         use_acc=True,
     )
     tcgen05_commit(bar)
@@ -394,60 +307,101 @@ def scaled_mma_narrow_acc_kernel(
     mbarrier.invalidate(bar)
 
     out_layout: gl.constexpr = gl.BlockedLayout([1, 1], [32, 1], [gl.num_warps(), 1], [1, 0])
-    out_m = gl.arange(0, M, gl.SliceLayout(1, out_layout))[:, None]
-    out_n = gl.arange(0, N, gl.SliceLayout(0, out_layout))[None, :]
-    out = acc_tmem.load()
-    gl.store(out_ptr + out_m * N + out_n, gl.convert_layout(out, out_layout))
+    out_m = off_m + gl.arange(0, BLOCK_M, gl.SliceLayout(1, out_layout))[:, None]
+    out_n = gl.arange(0, BLOCK_N, gl.SliceLayout(0, out_layout))[None, :]
+    acc = acc_tmem.load()
+    gl.store(out + out_m * BLOCK_N + out_n, gl.convert_layout(acc, out_layout))
 
 
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("n,tile_n", [(32, 8), (64, 16)])
-def test_scaled_mma_with_narrow_linear_accumulator(n, tile_n):
-    m, k = 128, 128
-    a_format = b_format = "mxfp8"
-    vec_size = 32
-    a_elem_per_byte, a_tcgen_format = scaled_mma_operand_params(a_format)
-    b_elem_per_byte, b_tcgen_format = scaled_mma_operand_params(b_format)
-
+def make_mxfp8_inputs(total_m, n, k):
     torch.manual_seed(0)
-    a, a_scale, a_ref = t11.random_quantized_tensor(m, k, a_format)
-    b, b_scale, b_ref = t11.random_quantized_tensor(n, k, b_format)
-    out = torch.empty((m, n), device="cuda", dtype=torch.float32)
-    acc_layout = make_tmem_tile_permuted_layout(m, n, tile_n)
+    a, a_scale, a_ref = t11.random_quantized_tensor(total_m, k, "mxfp8")
+    b, b_scale, b_ref = t11.random_quantized_tensor(n, k, "mxfp8")
+    return a, b, a_scale, b_scale, a_ref, b_ref
 
-    compiled = scaled_mma_narrow_acc_kernel[(1, )](
-        out,
-        m,
-        n,
-        k,
+
+def skinny_projection_into(a, b, a_scale, b_scale, out, n, k):
+    total_m = a.shape[0]
+    tile_n = 8 if n == 32 else 16
+    acc_layout = make_tmem_tile_permuted_layout(128, n, tile_n)
+    grid = (triton.cdiv(total_m, 128), )
+    skinny_mxfp8_projection_kernel[grid](
         a,
         b,
         a_scale,
         b_scale,
+        out,
+        n,
+        k,
         acc_layout,
-        vec_size,
-        a_elem_per_byte,
-        b_elem_per_byte,
-        a_tcgen_format,
-        b_tcgen_format,
         num_warps=4,
     )
 
+
+def skinny_projection(a, b, a_scale, b_scale, n, k):
+    total_m = a.shape[0]
+    out = torch.empty((total_m, n), device="cuda", dtype=torch.float32)
+    skinny_projection_into(a, b, a_scale, b_scale, out, n, k)
+    return out
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("n", [32, 64])
+def test_skinny_mxfp8_projection(n):
+    total_m, k = 512, 128
+    a, b, a_scale, b_scale, a_ref, b_ref = make_mxfp8_inputs(total_m, n, k)
+
+    out = skinny_projection(a, b, a_scale, b_scale, n, k)
+
     torch.testing.assert_close(out, a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
-    assert "tensor_memory_linear" in compiled.asm["ttgir"]
-    assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
-    assert "tcgen05.mma.cta_group::1.kind::mxf8f6f4" in compiled.asm["ptx"]
+
+
+def benchmark_skinny_projection(total_m=4096, n=32, k=128):
+    assert n in (32, 64)
+    a, b, a_scale, b_scale, a_ref, b_ref = make_mxfp8_inputs(total_m, n, k)
+    padded_n = 128
+    _, b_pad, _, b_scale_pad, _, b_ref_pad = make_mxfp8_inputs(padded_n, padded_n, k)
+
+    # Put the useful skinny projection in the leading columns of the padded
+    # problem.  The padded baseline models kernels that must execute a full
+    # 128-column accumulator tile because they cannot use narrow TMEM fragments.
+    b_pad[:n, :] = b
+    b_scale_pad[:n, :] = b_scale
+    b_ref_pad[:n, :] = b_ref
+
+    narrow_result = torch.empty((total_m, n), device="cuda", dtype=torch.float32)
+    padded_result = torch.empty((total_m, padded_n), device="cuda", dtype=torch.float32)
+    narrow = lambda: skinny_projection_into(a, b, a_scale, b_scale, narrow_result, n, k)
+    padded = lambda: skinny_projection_into(a, b_pad, a_scale, b_scale_pad, padded_result, padded_n, k)
+
+    narrow()
+    padded()
+    torch.testing.assert_close(narrow_result, a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+    torch.testing.assert_close(padded_result[:, :n], narrow_result, atol=1e-3, rtol=1e-3)
+
+    narrow_ms = triton.testing.do_bench(narrow)
+    padded_ms = triton.testing.do_bench(padded)
+    useful_flops = 2 * total_m * n * k
+    return {
+        "M": total_m,
+        "N": n,
+        "K": k,
+        "narrow_ms": narrow_ms,
+        "padded_128_ms": padded_ms,
+        "speedup": padded_ms / narrow_ms,
+        "useful_tflops": useful_flops * 1e-12 / (narrow_ms * 1e-3),
+    }
 
 
 # %%
-# Reductions on explicit layouts
-# ------------------------------
+# Example 4: load-reduce on an explicit tile layout
+# -------------------------------------------------
 #
-# TMEM load-reduce support also consumes explicit linear layouts.  When a public
-# `tcgen05.ld.red` packet can realize the layout, the backend emits the hardware
-# reduction.  For other exact layouts or dtypes, the same high-level operation
-# falls back to a software reduction with a structured reason instead of a
-# verifier crash.
+# Reductions show the same hardware rule in a smaller kernel.  If the view can
+# be covered by public `tcgen05.ld.red` packets, the hardware performs the
+# reduction.  If a different exact layout cannot be covered, a good compiler
+# should fall back to scalar/software reduction or emit a precise unsupported
+# reason.  The user-facing operation below is simply rowwise max.
 
 
 @gluon.jit
@@ -476,39 +430,61 @@ def tmem_reduce_max_kernel(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-def test_tile_permuted_linear_layout_reduction():
+def test_tmem_rowwise_max():
     m, n = 128, 128
     inp = torch.randn((m, n), device="cuda", dtype=torch.float32)
     out = torch.empty_like(inp)
     red = torch.empty((m,), device="cuda", dtype=torch.float32)
     layout = make_tmem_tile_permuted_layout(m, n, tile_n=32)
 
-    compiled = tmem_reduce_max_kernel[(1, )](inp, out, red, layout, m, n, tl.PropagateNan.NONE, num_warps=4)
+    tmem_reduce_max_kernel[(1, )](inp, out, red, layout, m, n, tl.PropagateNan.NONE, num_warps=4)
 
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
     torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
-    assert "tensor_memory_linear" in compiled.asm["ttgir"]
-    assert _extract_tcgen05_opcodes(compiled.asm["ptx"], "tcgen05.ld.red.sync.aligned")
 
 
 # %%
-# What still stays unsupported?
-# -----------------------------
+# Hardware limits to keep in mind
+# -------------------------------
 #
-# The generalization does not mean every bit permutation can be expressed with a
-# public Blackwell instruction.  The branch now tries to keep these cases as
-# clean typed boundaries:
+# Linear layouts make the descriptor arithmetic exact; they do not add new
+# Blackwell instruction masks or storage formats.  A few concrete examples:
 #
-# - copy masks or sub-instruction row/column partitions that public
-#   `tcgen05.cp` atoms cannot write;
-# - packed-lane copy semantics that need a first-class packed TMEM storage
-#   contract;
-# - ordinary load/store readback of `4x256b` refresh images without an explicit
-#   refresh remap/readback API;
-# - direct TMEM LHS for mixed fp4A scaled-MMA, because the shared-memory
-#   `fp4_padded` operand-A contract has row-dependent swizzle/padding semantics
-#   not represented by raw TMEM storage.
+# `tcgen05.copy` partial footprints
+#   A public copy atom writes its full destination footprint.  If a descriptor
+#   view asks for only columns 0, 1, 4, and 5 of an 8-column footprint, the
+#   compiler cannot silently write columns 2, 3, 6, and 7.  That needs a smaller
+#   copy atom, a destination mask, or a different staging format.
 #
-# Those boundaries are useful: they separate "the backend can now derive the
-# layout algebra" from "the public ISA or frontend storage contract cannot
-# perform this operation yet."
+# Packed-lane subword copies
+#   Some i8/f16 copies want two logical lanes packed into one physical TMEM
+#   word and then read back as independent logical columns.  A raw linear layout
+#   can describe the addresses, but the public copy/load/store sequence also
+#   needs an agreed packed-storage contract.
+#
+# Refresh-image readback
+#   `4x256b` refresh-shaped copies are useful because the copy atom writes that
+#   image naturally.  Reading the same bytes back through an ordinary contiguous
+#   view is a different hardware operation.  It needs a refresh remap/readback
+#   model rather than just a different descriptor spelling.
+#
+# MMAv5 in-tile basis order
+#   Whole instruction tiles can be selected and permuted, as the skinny
+#   projection demonstrates.  Inside one public MMAv5 instruction tile, however,
+#   the row and column basis order must match what the tensor core instruction
+#   consumes.  Arbitrary bit permutations inside the tile need extra splitting,
+#   masking, or a different MMA family.
+
+
+if __name__ == "__main__":
+    print("Skinny MXFP8 projection benchmark")
+    print("=================================")
+    for n in (32, 64):
+        result = benchmark_skinny_projection(total_m=4096, n=n, k=128)
+        print(
+            f"M={result['M']} N={result['N']} K={result['K']} | "
+            f"narrow={result['narrow_ms']:.3f} ms | "
+            f"padded N=128={result['padded_128_ms']:.3f} ms | "
+            f"speedup={result['speedup']:.2f}x | "
+            f"useful={result['useful_tflops']:.1f} TFLOP/s"
+        )
