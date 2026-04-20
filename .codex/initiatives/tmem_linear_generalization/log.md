@@ -25357,3 +25357,29 @@ Open after this slice:
     `ccf4417ea93fc2bbe9399a6fbf0bf38423326949` and pushed to
     `origin/codex/tmem`;
   - no branch-audit follow-up remains open.
+
+## 2026-04-20 19:03 UTC: add Gluon TMEM linear-layout tutorial
+
+- Starting point: `codex/tmem` at pushed `955ad621b`.
+- Change:
+  - added `python/tutorials/gluon/15-tmem-linear-layout-generalization.py`;
+  - documented the branch's new user-facing support surface: explicit
+    `TensorMemoryLinearLayout`, descriptor-view composition, exact-width
+    subword `tcgen05.copy`, tile-permuted MMAv5 accumulators, narrow
+    scaled-MMAv5 accumulator fragments, and load-reduce behavior;
+  - included pytest-backed examples rather than prose-only snippets so the
+    tutorial can serve as branch presentation material and a smoke suite;
+  - recorded the residual boundaries as ISA/API/storage contracts instead of
+    generic linear-layout gaps.
+- Validation:
+  - attempted required pre-test `make -j8`, but it failed immediately because
+    `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12` is empty and
+    lacks `build.ninja`;
+  - direct import of the tutorial also failed before reaching tutorial code
+    because the unbuilt local `triton._C.libtriton` module lacks `getenv`;
+  - `python -m py_compile
+    python/tutorials/gluon/15-tmem-linear-layout-generalization.py` passed.
+- Next:
+  - after the build directory is regenerated, run focused tutorial pytest with
+    `pytest -s --tb=short python/tutorials/gluon/15-tmem-linear-layout-generalization.py`;
+  - no support-bearing implementation work was opened by this tutorial pass.

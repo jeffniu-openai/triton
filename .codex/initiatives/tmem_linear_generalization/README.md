@@ -70,6 +70,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-20 19:03 UTC: added
+  `python/tutorials/gluon/15-tmem-linear-layout-generalization.py` as a
+  presentation/tutorial cleanup for the branch. The tutorial explains explicit
+  `TensorMemoryLinearLayout` use, descriptor-view chains, exact-width subword
+  `tcgen05.copy`, tile-permuted MMAv5 accumulators, narrow scaled-MMAv5
+  accumulators, load-reduce behavior, and the remaining typed ISA/API/storage
+  boundaries. Validation: `python -m py_compile
+  python/tutorials/gluon/15-tmem-linear-layout-generalization.py`. Required
+  pre-test `make -j8` was attempted first but the local CMake build directory
+  is empty and lacks `build.ninja`, so runtime pytest was not run in this
+  checkpoint. Direct import was also blocked by the unbuilt local
+  `triton._C.libtriton.getenv` symbol.
 - 2026-04-20 17:03 UTC: executed the two cleanup follow-ups from the branch
   audit. Rebaselined the current clean-negative inventory:
   `reports_clean_unsupported` is `91/1594`; combined

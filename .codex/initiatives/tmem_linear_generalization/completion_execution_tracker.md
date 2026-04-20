@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 17:03 UTC
+Last updated: 2026-04-20 19:03 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -87,6 +87,11 @@ The project is complete when:
   `legacy` runtime-matrix vocabulary as `TensorMemoryLayout` frontend
   compatibility rather than backend policy. Debug-helper consolidation remains
   deferred until profiling shows the gated debug checks are material.
+  2026-04-20 19:03 UTC added
+  `python/tutorials/gluon/15-tmem-linear-layout-generalization.py` as a
+  presentation/tutorial cleanup summarizing the completed branch features and
+  true residual boundaries with runnable examples. This did not open a new
+  support-bearing implementation slice.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
@@ -547,6 +552,12 @@ signal handling:
 - if a future ISA/API exposes masks, packed-lane storage, refresh remapping,
   direct i8 MMAv5, or scaled-MMAv5 narrow-fragment support, create a new
   support slice from the corresponding boundary bucket.
+
+- 2026-04-20 19:03 UTC: user-requested presentation cleanup added a Gluon
+  tutorial for the branch feature suite. Validation was limited to py-compile
+  because required `make -j8` failed immediately on an empty local CMake build
+  directory with no `build.ninja`; direct import also failed on the unbuilt
+  local `triton._C.libtriton.getenv` symbol.
 
 ## Progress
 

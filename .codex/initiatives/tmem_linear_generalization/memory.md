@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-20 19:03 UTC presentation/tutorial cleanup added
+  `python/tutorials/gluon/15-tmem-linear-layout-generalization.py`. It is a
+  Gluon tutorial-style file with runnable pytest examples for the branch's
+  support surface: descriptor chains over explicit linear TMEM layouts,
+  exact-width f16/i8 subword `tcgen05.copy`, tile-permuted MMAv5 accumulator
+  layouts, narrow scaled-MMAv5 accumulator fragments, and load-reduce behavior.
+  It also documents true remaining boundaries: masks/sub-instruction copy
+  partitions, packed-lane storage, refresh-image readback, and mixed-fp4A
+  direct-TMEM storage contracts. Validation: `python -m py_compile
+  python/tutorials/gluon/15-tmem-linear-layout-generalization.py`. Required
+  pre-test `make -j8` was attempted and failed before compilation because
+  `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12` has no
+  `build.ninja`; a direct import attempt also failed because the unbuilt local
+  `triton._C.libtriton` module lacks `getenv`. No pytest was run after those
+  build blockers.
+
 - Latest: 2026-04-20 17:03 UTC cleanup follow-ups executed. Rebaselined the
   current clean-negative inventory after the artifact cleanup and test naming
   clarification: `reports_clean_unsupported` collects `91/1594`, and
