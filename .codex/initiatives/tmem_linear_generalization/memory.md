@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-20 20:21 UTC tutorial polish added the benchmark output
+  inline as if the user had run the script, and added a concrete
+  pre-generalization capability note. The new note is careful: block-scaled
+  MMA existed before this branch, but the benchmark's narrow tile-permuted
+  `TensorMemoryLinearLayout` accumulator path was not expressible through the
+  old compact `TensorMemoryLayout([BLOCK_M, BLOCK_N])` accumulator flow. Local
+  merge-base inspection at `11ee1144a737006921231bbd3386c187812c38e1` found no
+  tutorial `15` or runtime-matrix file, and the preexisting scaled-MMA
+  tutorial used `TensorMemoryLayout` accumulator allocations with no explicit
+  tile-permuted linear narrow-fragment path. Validation: py-compile,
+  `git diff --check`, focused tutorial pytest `6 passed in 6.33s`, and script
+  benchmark output `N=32` `1.18x`, `N=64` `1.05x`.
+
 - Latest: 2026-04-20 20:10 UTC tutorial rewrite completed. The new
   `15-tmem-linear-layout-generalization.py` now reads independently of the
   initiative and frames remaining limits as hardware/public-ISA facts rather
@@ -16,7 +29,7 @@
   python/tutorials/gluon/15-tmem-linear-layout-generalization.py` passed
   `6/6`; running the tutorial as a script reported `M=4096 N=32 K=128`
   narrow `0.011 ms`, padded `0.013 ms`, `1.18x`, `3.0` useful TFLOP/s and
-  `M=4096 N=64 K=128` narrow `0.013 ms`, padded `0.013 ms`, `1.04x`, `5.3`
+  `M=4096 N=64 K=128` narrow `0.013 ms`, padded `0.013 ms`, `1.05x`, `5.3`
   useful TFLOP/s. Tutorial rewrite checkpoint commit `021688bc2` was pushed
   to `origin/codex/tmem`.
 

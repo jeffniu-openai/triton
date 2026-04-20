@@ -25414,7 +25414,37 @@ Open after this slice:
     `M=4096 N=32 K=128 | narrow=0.011 ms | padded N=128=0.013 ms |
     speedup=1.18x | useful=3.0 TFLOP/s` and
     `M=4096 N=64 K=128 | narrow=0.013 ms | padded N=128=0.013 ms |
-    speedup=1.04x | useful=5.3 TFLOP/s`.
+    speedup=1.05x | useful=5.3 TFLOP/s`.
 - Next:
   - tutorial rewrite checkpoint commit `021688bc2` was pushed to
     `origin/codex/tmem`.
+
+## 2026-04-20 20:21 UTC: add inline benchmark transcript and pre-branch capability check
+
+- Starting point: `codex/tmem` at pushed `374a6d0e7`.
+- Change:
+  - added the measured benchmark output inline in tutorial `15`;
+  - added a note explaining the exact new capability used by the benchmark:
+    block-scaled MMA existed before, but the skinny projection depends on
+    narrow tile-permuted `TensorMemoryLinearLayout` accumulator fragments that
+    were not expressible via the old compact `TensorMemoryLayout` accumulator
+    path.
+- Pre-branch check:
+  - merge-base is `11ee1144a737006921231bbd3386c187812c38e1`;
+  - tutorial `15` did not exist at merge-base;
+  - `python/test/gluon/test_tmem_runtime_matrix.py` did not exist at
+    merge-base;
+  - merge-base `11-tcgen05-mma-scaled.py` used `TensorMemoryLayout` for
+    accumulator TMEM allocation and did not expose `TensorMemoryLinearLayout`
+    tile-permuted narrow accumulator fragments.
+- Validation:
+  - `python -m py_compile
+    python/tutorials/gluon/15-tmem-linear-layout-generalization.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
+    PYTHONPATH=.:./python pytest -s --tb=short
+    python/tutorials/gluon/15-tmem-linear-layout-generalization.py` passed
+    `6 passed in 6.33s`;
+  - script benchmark output: `N=32` `1.18x`, `N=64` `1.05x`.
+- Next:
+  - commit and push this tutorial polish checkpoint.

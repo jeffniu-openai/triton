@@ -242,6 +242,14 @@ def test_exact_width_subword_copy(dtype, n):
 # lets the scaled-MMA planner cover `N=32` with 8-column fragments and `N=64`
 # with 16-column fragments, so the kernel below computes only the useful
 # columns.
+#
+# The important new capability here is not block-scaled MMA itself; that is
+# covered in `11-tcgen05-mma-scaled.py`.  The new part is that the accumulator
+# can be a tile-permuted `TensorMemoryLinearLayout` whose `N` dimension is
+# smaller than the old broad accumulator tile.  On the pre-generalization path,
+# the compact `TensorMemoryLayout([BLOCK_M, BLOCK_N])` spelling could not
+# express these narrow physical accumulator fragments, so a practical skinny
+# projection had to use a broader accumulator tile or a non-TMEM fallback.
 
 
 @gluon.jit
@@ -488,3 +496,18 @@ if __name__ == "__main__":
             f"speedup={result['speedup']:.2f}x | "
             f"useful={result['useful_tflops']:.1f} TFLOP/s"
         )
+
+# %%
+# On one GB200-class run, executing this file printed:
+#
+# ```
+# Skinny MXFP8 projection benchmark
+# =================================
+# M=4096 N=32 K=128 | narrow=0.011 ms | padded N=128=0.013 ms | speedup=1.18x | useful=3.0 TFLOP/s
+# M=4096 N=64 K=128 | narrow=0.013 ms | padded N=128=0.013 ms | speedup=1.05x | useful=5.3 TFLOP/s
+# ```
+#
+# These tiny shapes are latency dominated, so the speedup is modest.  The point
+# of the example is structural: the narrow kernel performs the same mathematical
+# projection without materializing an unused 128-column accumulator tile, and it
+# does so with the same `tcgen05_mma_scaled` hardware path.

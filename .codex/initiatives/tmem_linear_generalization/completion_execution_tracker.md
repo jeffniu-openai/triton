@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 20:10 UTC
+Last updated: 2026-04-20 20:21 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -570,6 +570,13 @@ signal handling:
   reported `N=32` narrow `0.011 ms` vs padded `0.013 ms` and `N=64` narrow
   `0.013 ms` vs padded `0.013 ms`. Tutorial rewrite checkpoint `021688bc2`
   was pushed to `origin/codex/tmem`.
+
+- 2026-04-20 20:21 UTC: tutorial polish added inline benchmark output and a
+  pre-branch capability note. Merge-base inspection found that the old
+  scaled-MMA tutorial used `TensorMemoryLayout` accumulator allocations and did
+  not expose explicit tile-permuted linear narrow fragments. Focused tutorial
+  pytest passed `6/6`; script benchmark reported `N=32` `1.18x` and `N=64`
+  `1.05x`.
 
 ## Progress
 
