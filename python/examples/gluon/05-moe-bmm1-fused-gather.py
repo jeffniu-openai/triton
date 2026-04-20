@@ -378,6 +378,7 @@ class PartitionArgs:
 
     x_scale_tmem: blackwell.tensor_memory_descriptor
     w_scale_tmem: blackwell.tensor_memory_descriptor
+    w_scale_tmem_alt: blackwell.tensor_memory_descriptor
     acc_bufs: blackwell.tensor_memory_descriptor
     acc_empty_bars: gl.shared_memory_descriptor
     acc_ready_bars: gl.shared_memory_descriptor
@@ -1156,6 +1157,7 @@ def ws_matmul_kernel(
 
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], x_scale_layout)
     w_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, scale_k], w_scale_layout)
+    w_scale_tmem_alt = w_scale_tmem
 
     acc_num_bufs: gl.constexpr = ACC_NUM_BUFS
     acc_tmem = blackwell.allocate_tensor_memory(
@@ -1216,6 +1218,7 @@ def ws_matmul_kernel(
         #
         x_scale_tmem=x_scale_tmem,
         w_scale_tmem=w_scale_tmem,
+        w_scale_tmem_alt=w_scale_tmem_alt,
         acc_bufs=acc_tmem,
         acc_empty_bars=acc_empty_bars,
         acc_ready_bars=acc_ready_bars,

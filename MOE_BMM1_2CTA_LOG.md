@@ -1276,6 +1276,56 @@ and `1024`, under both simulated production routing and uniform routing.
   of resident work more fundamentally than transition pairing, late register
   retuning, `reuse`, `fullsched`, M64, BK256, or two-warp variants.
 
+## 2026-04-20 X-Reuse, Scale-Prefetch, And Shape-Escape Probes
+
+- Added scratch modes to isolate additional structural ideas in
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`:
+  - `xphaseprefetch:` uses the transition-aware X producer without the paired
+    accumulator/MMA path from `phasepair:`.
+  - `xpair:` creates an adjacent-N schedule for same `(slice_idx, pid_m)` work
+    and attempts to reuse one gathered X tile for two N tiles. It needs a
+    second W-scale TMEM descriptor because scale TMEM does not support batched
+    multibuffering.
+  - `xpairsched:` uses the same adjacent-N schedule but keeps normal per-block
+    X loads and MMAs, isolating schedule effects from X-buffer reuse.
+  - `scaleprefetch:` uses a second W-scale TMEM descriptor to pre-copy the next
+    K tile's scale before waiting on the current X tile.
+- `xpair:` is not currently a valid performance candidate. The first batched
+  scale-TMEM version failed compilation with `Scales don't currently support
+  multibuffering`; the separate-descriptor version and a post-wait local
+  barrier variant both timed out under `timeout 180s-240s` on uniform batch
+  `896`, rank `4`. Treat same-X/two-N MMAv5 reuse as unresolved/hazardous
+  until a lower-level mbarrier/SASS investigation proves the protocol.
+- Transition-only X prefetch validated but regressed:
+  `/tmp/moe_bmm1_xphaseprefetch_hard_ranks.csv`. Best `xphaseprefetch:` rows
+  were rank 3 `0.95619x`, rank 4 `0.95851x`, rank 5 `0.94794x`, and rank 7
+  `0.97127x`, all below the ordinary split baseline in the same run.
+- Adjacent-N schedule-only ordering validated but regressed:
+  `/tmp/moe_bmm1_xpairsched_hard_ranks.csv`. Best `xpairsched:` rows were rank
+  3 `0.92950x`, rank 4 `0.95234x`, rank 5 `0.92222x`, and rank 7 `0.93252x`.
+- W-scale prefetching validated but regressed:
+  `/tmp/moe_bmm1_scaleprefetch_hard_ranks.csv`. Best `scaleprefetch:` rows were
+  rank 3 `0.94863x`, rank 4 `0.93510x`, rank 5 `0.93880x`, and rank 7
+  `0.97041x`. Waiting on the next W tile before the current X wait likely
+  reduces overlap instead of increasing it.
+- Subagent multicast/off-axis sweep on GPU 1:
+  `/tmp/moe_bmm1_2cta_uniform_bs896_seed0_ranks3457_multicast_offaxis_rep180.csv`.
+  All `52` rows validated; disabling X multicast, W-scale multicast, or both
+  did not reach parity. Best rows were rank 3 `0.97876x`, rank 4 `0.97856x`,
+  rank 5 `0.97142x`, and rank 7 `0.98710x`.
+- Subagent shape-escape sweep on GPU 1:
+  `/tmp/moe_bmm1_shape_escape_bs896_seed0_r3_4_5_7_rep150.csv`. All ok rows
+  passed validation; `24` rows errored consistently. M64 helped rank 5
+  locally (`0.96248x`) but did not beat 1CTA and did not beat M32 on ranks 3,
+  4, or 7. M128 and `BN512` probes were much slower; `BM48`, `BM80`, and
+  `BM96` errored because shape element 0 must be a power of two, while one
+  `BM64/BN512` variant exceeded shared memory.
+- Decision: X transition prefetch, adjacent-N schedule-only ordering, same-X
+  adjacent-N reuse, W-scale prefetch, multicast disabling, and another
+  shape-escape sweep are not promotable. The hard slice-28 route still needs a
+  different ownership model or a lower-level fix to increase eligible work
+  without introducing the pair/schedule stalls measured here.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases
