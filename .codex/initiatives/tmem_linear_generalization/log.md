@@ -25416,4 +25416,5 @@ Open after this slice:
     `M=4096 N=64 K=128 | narrow=0.013 ms | padded N=128=0.013 ms |
     speedup=1.04x | useful=5.3 TFLOP/s`.
 - Next:
-  - commit and push the tutorial rewrite plus this durable checkpoint.
+  - tutorial rewrite checkpoint commit `021688bc2` was pushed to
+    `origin/codex/tmem`.

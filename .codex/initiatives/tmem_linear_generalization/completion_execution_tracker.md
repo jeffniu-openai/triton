@@ -568,7 +568,8 @@ signal handling:
   `make -j8` passed with explicit host libstdc++ include paths in
   `CPLUS_INCLUDE_PATH`; focused tutorial pytest passed `6/6`; script benchmark
   reported `N=32` narrow `0.011 ms` vs padded `0.013 ms` and `N=64` narrow
-  `0.013 ms` vs padded `0.013 ms`.
+  `0.013 ms` vs padded `0.013 ms`. Tutorial rewrite checkpoint `021688bc2`
+  was pushed to `origin/codex/tmem`.
 
 ## Progress
 

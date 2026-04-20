@@ -17,7 +17,8 @@
   `6/6`; running the tutorial as a script reported `M=4096 N=32 K=128`
   narrow `0.011 ms`, padded `0.013 ms`, `1.18x`, `3.0` useful TFLOP/s and
   `M=4096 N=64 K=128` narrow `0.013 ms`, padded `0.013 ms`, `1.04x`, `5.3`
-  useful TFLOP/s.
+  useful TFLOP/s. Tutorial rewrite checkpoint commit `021688bc2` was pushed
+  to `origin/codex/tmem`.
 
 - Latest: 2026-04-20 19:03 UTC presentation/tutorial cleanup added
   `python/tutorials/gluon/15-tmem-linear-layout-generalization.py`. It is a

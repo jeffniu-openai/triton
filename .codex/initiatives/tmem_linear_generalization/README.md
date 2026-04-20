@@ -84,7 +84,8 @@ When resuming the initiative:
   python/tutorials/gluon/15-tmem-linear-layout-generalization.py` (`6
   passed`); script benchmark on GPU0 reported `N=32` narrow `0.011 ms` vs
   padded `0.013 ms` (`1.18x`) and `N=64` narrow `0.013 ms` vs padded
-  `0.013 ms` (`1.04x`).
+  `0.013 ms` (`1.04x`). Tutorial rewrite checkpoint commit `021688bc2`,
+  pushed to `origin/codex/tmem`.
 - 2026-04-20 19:03 UTC: added
   `python/tutorials/gluon/15-tmem-linear-layout-generalization.py` as a
   presentation/tutorial cleanup for the branch. The tutorial explains explicit
