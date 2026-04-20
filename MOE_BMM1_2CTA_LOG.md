@@ -1639,3 +1639,67 @@ and `1024`, under both simulated production routing and uniform routing.
   attack the register cliff, but it needs a layout-level fix for local 2CTA
   TMEM slicing or a different accumulator orientation. `BN128` and simple M16
   retuning are non-promotable with the current scaled-MMA path.
+
+## 2026-04-20 Selector Refresh And Additional X2N Structures
+
+- Refreshed the hard uniform selector surface in
+  `/tmp/moe_bmm1_selector_refresh_uniform_hardranks.csv` for ranks `3/4/5/7`,
+  batches `128..2048`, rep `120`. Best available candidates were still far
+  short of the requested `1.20x` target: best min/max/avg speedup was
+  `0.99698 / 1.11351 / 1.03483`; selected min/max/avg was
+  `0.99620 / 1.09991 / 1.01755`. Worst hard rows remain around uniform rank
+  `4/5` at batch `896`.
+- Refreshed prod-routing ranks `0/1/2/3` in
+  `/tmp/moe_bmm1_selector_refresh_prod_ranks0123.csv`. Prod routing has more
+  exploitable skew: best min/max/avg was `0.99439 / 1.27139 / 1.08910`, with
+  several `>=1.15x` rows at batches `512/768/896/1536/2048`, but selector
+  regressions remain and uniform hard rows still dominate the all-batch
+  criterion.
+- Focused slice-28 W-buffer/band/register retunes for uniform ranks `3/4/5/7`
+  in `/tmp/moe_bmm1_slice28_tune_rank34.csv` and
+  `/tmp/moe_bmm1_slice28_tune_rank57.csv` did not find a parameter-only rescue.
+  Best explicit rank-4 rows stayed below parity; rank-7 had one small
+  `1.00584x` explicit split row. Current conclusion: the hard uniform rows
+  need a structural change, not another narrow selector tweak.
+- Added scratch natural-adjacent-N mode `x2n_natfrag:` (`STRUCTURAL_MODE=52`)
+  to test a local natural `[M, N]` accumulator and N-fragment epilogue. It is
+  blocked by Blackwell scaled-MMA shape constraints for this workload:
+  `BLOCK_M=32` fails because natural scaled MMA requires `blockM` at least
+  `64/128`, and `BLOCK_M=64` is also rejected on the current frontend path.
+  Do not spend more time on natural local `[M, N]` unless the MMA operand shape
+  can be made genuinely `128` rows without wasting the small-M workload.
+- Added scratch helper-handoff mode `x2n_helper:` (`STRUCTURAL_MODE=53`) to
+  decouple SwiGLU/packing from global stores. The first failure was a
+  worker-local warp-count issue: `acc_buf.load()` requires the handoff worker
+  to run with at least four warps, so candidates need `w4m1` or an explicit
+  handoff-warp knob. With four handoff warps, the full-tile helper follows the
+  same register cliff as fused epilogues: `regs52 -> needs 80`,
+  `regs80 -> needs 136`, `regs136 -> needs 248`.
+- Retried `x2n_helper:` with M-fragment handoff so only one row fragment is
+  live before passing it to the store worker. This reaches the TMEM subslice
+  verifier but fails on the local 2CTA accumulator layout: the inferred load
+  has a degenerate local block basis (`block = [[0, 0]]`). Allocating the
+  accumulator without CGA layout is rejected because the two-CTA
+  warp-specialize context requires two CTAs per CGA. This confirms the earlier
+  `x2n_mfrag:` blocker applies to helper handoff too.
+- Fixed the local adjacent-N TMEM block calculation in the scratch harness so
+  x2n modes use `BLOCK_N` rather than `BLOCK_N // num_ctas` for their local
+  accumulator instruction tile. This opens `BN128` past the previous
+  `blockM=64` assertion, but the direct BN128 x2n epilogue still fails register
+  allocation: `regs52 -> needs 80`, `regs80 -> needs 136`,
+  `regs136 -> needs 248`, and even `regs255` asks for `255+`.
+- Added scratch fused-MMA-epilogue adjacent-N mode `x2n_mmaepi:`
+  (`STRUCTURAL_MODE=54`) to run the direct epilogue inside the x2n MMA worker
+  with four MMA warps. It required host-side local-N descriptor/schedule
+  classification like the other x2n modes; after that fix it reaches PTXAS but
+  has the same `80 -> 136` register escalation. `M16/BN128` variants did not
+  finish compilation under the smoke timeouts, so they are not promotable for
+  the fast loop.
+- Current decision: the adjacent-N/X-reuse family is still attractive at the
+  algorithmic level, but every version that needs a full accumulator load is
+  non-promotable due register pressure, while M-fragment loads are blocked by
+  local 2CTA TMEM subslice verification. Next structural directions should
+  avoid local 2CTA TMEM subslices and full-tile epilogue liveness: e.g. route
+  two independent single-CTA tiles inside one 2CTA launch with a cheaper
+  scheduler, or find a legal true-2CTA accumulator orientation whose last
+  dimension is the epilogue fragment dimension.
