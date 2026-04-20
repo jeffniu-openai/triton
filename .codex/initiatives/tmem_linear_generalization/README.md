@@ -4838,3 +4838,15 @@ When resuming the initiative:
   - compact `0.089 ms`, padded `0.128 ms`, `1.43x`.
 - All seven planned Phase H examples now have implementation files. Next step:
   broad validation across the new example files and final Phase H refresh.
+
+## Latest: 2026-04-20 23:14 UTC Phase H examples complete
+
+- All seven requested user-facing TMEM examples are implemented under
+  `python/examples/gluon/`.
+- Combined validation passed:
+  - py-compile over files `05` through `11`;
+  - focused pytest over the seven files: `42 passed in 26.83s`.
+- The example plan, tracker, memory, log, and handoff now record Phase H as
+  complete, with caveats preserved for wrapper-based top-k/LoRA stages,
+  pre-staged candidate rows, executable PyTorch attention baselines, and the
+  Python-scheduled ragged expert demonstration.

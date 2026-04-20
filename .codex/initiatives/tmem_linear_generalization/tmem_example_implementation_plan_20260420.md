@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 23:01 UTC
+Last updated: 2026-04-20 23:14 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -370,3 +370,9 @@ grouped and attention examples until reusable helper patterns exist.
   `python -m py_compile` passed, focused pytest passed `2 passed in 3.59s`,
   and the corrected benchmark printed `1.43x` over the precomputed padded
   `N=128` per-expert baseline.
+- 2026-04-20 23:14 UTC: broad Phase H validation passed across all seven new
+  example files. Validation:
+  `python -m py_compile` passed for files `05` through `11`, and
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-examples
+  PYTHONPATH=.:./python pytest -s --tb=short` over the seven files passed
+  `42 passed in 26.83s`.

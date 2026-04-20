@@ -25672,3 +25672,20 @@ Open after this slice:
 - Next:
   - run `git diff --check`, commit/push, then run broad validation over the
     new examples and refresh Phase H completion state.
+
+## 2026-04-20 23:14 UTC: complete Phase H example validation
+
+- Broad validation over all seven new example files passed:
+  - `python -m py_compile python/examples/gluon/05-tmem-moe-router.py
+    python/examples/gluon/06-tmem-lora-fusion.py
+    python/examples/gluon/07-tmem-candidate-head.py
+    python/examples/gluon/08-tmem-layout-as-epilogue.py
+    python/examples/gluon/09-tmem-mlp-side-projection.py
+    python/examples/gluon/10-tmem-windowed-attention-score.py
+    python/examples/gluon/11-tmem-ragged-expert-views.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-examples PYTHONPATH=.:./python
+    pytest -s --tb=short` over the seven files passed
+    `42 passed in 26.83s`.
+- Phase H is complete for the requested example suite. The individual examples
+  document their measured benchmark transcripts and caveats.

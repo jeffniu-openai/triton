@@ -13953,3 +13953,26 @@ rejection, not rescue
 - Next:
   - run broad validation across the new example files and refresh Phase H as
     complete or record any remaining corrections.
+
+## Current: 2026-04-20 23:14 UTC Phase H examples complete
+
+- All seven requested TMEM performance examples have implementation files under
+  `python/examples/gluon/`:
+  - `05-tmem-moe-router.py`;
+  - `06-tmem-lora-fusion.py`;
+  - `07-tmem-candidate-head.py`;
+  - `08-tmem-layout-as-epilogue.py`;
+  - `09-tmem-mlp-side-projection.py`;
+  - `10-tmem-windowed-attention-score.py`;
+  - `11-tmem-ragged-expert-views.py`.
+- Broad validation:
+  - py-compile passed for all seven files;
+  - combined pytest passed `42 passed in 26.83s` with
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-examples
+    PYTHONPATH=.:./python pytest -s --tb=short <seven files>`.
+- Remaining caveats are documented in the examples and plan:
+  - top-k and LoRA second-stage paths use PyTorch wrappers rather than custom
+    in-kernel fusion;
+  - candidate-head assumes selected rows are pre-staged;
+  - attention score speedups are against executable PyTorch baselines;
+  - ragged experts are Python-scheduled, not a persistent grouped-MoE scheduler.

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 23:01 UTC
+Last updated: 2026-04-20 23:14 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -99,15 +99,15 @@ The project is complete when:
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
-- Phase H, user-facing performance examples: planned as a follow-on examples
-  project. The source of truth is
-  `tmem_example_implementation_plan_20260420.md`. It tracks seven separate
-  `python/examples/gluon/` examples: MoE router skinny projection/top-k, LoRA
-  adapter fusion, candidate-head projection, ragged expert views, windowed
-  attention score reductions, fused MLP side projection, and layout-as-epilogue
-  store ordering. Each example must include correctness tests, shape coverage,
-  a benchmark against the best pre-generalization baseline, and an algorithm
-  plus TMEM layout explanation.
+- Phase H, user-facing performance examples: complete for the seven planned
+  example files. The source of truth is
+  `tmem_example_implementation_plan_20260420.md`. Implemented examples:
+  `05-tmem-moe-router.py`, `06-tmem-lora-fusion.py`,
+  `07-tmem-candidate-head.py`, `08-tmem-layout-as-epilogue.py`,
+  `09-tmem-mlp-side-projection.py`,
+  `10-tmem-windowed-attention-score.py`, and
+  `11-tmem-ragged-expert-views.py`. Combined validation over those files
+  passed `42/42` at 2026-04-20 23:14 UTC.
 
 ## Current Clean-Negative Inventory
 
@@ -1005,3 +1005,10 @@ signal handling:
   and inline benchmark transcript. Focused validation passed `2/2`. All seven
   planned Phase H example files now exist; next concrete slice is broad
   examples validation and final plan refresh.
+
+- 2026-04-20 23:14 UTC: broad Phase H validation passed. Py-compile passed for
+  `python/examples/gluon/05-tmem-moe-router.py` through
+  `python/examples/gluon/11-tmem-ragged-expert-views.py`; combined focused
+  pytest over the seven files passed `42 passed in 26.83s`. Phase H is now
+  complete for the requested example suite, with caveats recorded in the
+  individual example files and plan.
