@@ -13,7 +13,8 @@
   documented as `TensorMemoryLayout` frontend-encoding compatibility, not a
   backend policy mode. Remaining `TRITON_DEBUG_TMEM_*` checks were reviewed;
   no helper consolidation was made because this pass had no profile evidence
-  that those gated checks affect compile time.
+  that those gated checks affect compile time. Follow-up checkpoint commit:
+  `ccf4417ea93fc2bbe9399a6fbf0bf38423326949`, pushed to `origin/codex/tmem`.
 
 - Latest: 2026-04-19 00:11 UTC branch cleanup audit executed. Compared
   `codex/tmem` against merge-base

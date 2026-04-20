@@ -25353,4 +25353,7 @@ Open after this slice:
     `test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc[f16-linear-64-64]`
     passed `2/2`.
 - Next:
-  - run `git diff --check`, commit, and push.
+  - follow-up checkpoint was committed as
+    `ccf4417ea93fc2bbe9399a6fbf0bf38423326949` and pushed to
+    `origin/codex/tmem`;
+  - no branch-audit follow-up remains open.
