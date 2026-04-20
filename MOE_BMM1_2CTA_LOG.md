@@ -2043,3 +2043,13 @@ and `1024`, under both simulated production routing and uniform routing.
     once it reaches executable code. A useful next M-pair attempt should first
     reduce to a minimal no-epilogue or single-K smoke to isolate load/compute
     barriers before adding fragment epilogues.
+- Existing x2n fragment paths were rechecked with legal epilogue warp counts:
+  - `x2n_mfrag` with `sh4/sub4/fullsched` fails the sliced-TMEM verifier at
+    `acc_sub.load().permute((1, 0))`; no-catch output confirms the same
+    `ttng.tmem_load` layout class seen in other M-fragment attempts.
+  - `x2n_permfrag` with `sh4/sub4/fullsched` hangs during validation before
+    writing a row. Artifact:
+    `/tmp/moe_bmm1_x2n_frag_existing_sh4_20260420T1215Z.csv`.
+  - Conclusion: neither existing fragment mode is ready to tune; the next
+    fragment attempt needs either a compiler/layout fix or a new epilogue that
+    avoids TMEM subviews entirely.
