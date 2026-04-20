@@ -374,8 +374,10 @@ class PartitionArgs:
     w_scale_bufs: gl.shared_memory_descriptor
     w_empty_bars: gl.shared_memory_descriptor
     w_ready_bars: gl.shared_memory_descriptor
+    w_scale_empty_bars: gl.shared_memory_descriptor
     w_scale_ready_bars: gl.shared_memory_descriptor
     w_num_bufs: gl.constexpr
+    w_scale_num_bufs: gl.constexpr
 
     x_scale_tmem: blackwell.tensor_memory_descriptor
     w_scale_tmem: blackwell.tensor_memory_descriptor
@@ -397,6 +399,7 @@ class PartitionArgs:
     num_blocks: gl.tensor
 
     NUM_SMS: gl.constexpr
+    NUM_WARPS: gl.constexpr
     USE_2CTA: gl.constexpr
     BLOCK_M_PER_CTA: gl.constexpr
     BLOCK_M: gl.constexpr
@@ -1079,6 +1082,7 @@ def ws_matmul_kernel(
     BLOCK_N: gl.constexpr,
     BLOCK_K: gl.constexpr,
     NUM_SMS: gl.constexpr,
+    NUM_WARPS: gl.constexpr,
     X_NUM_BUFS: gl.constexpr,
     W_NUM_BUFS: gl.constexpr,
     ACC_NUM_BUFS: gl.constexpr,
@@ -1144,6 +1148,7 @@ def ws_matmul_kernel(
     x_empty_bars, x_ready_bars = alloc_empty_ready_barriers(x_num_bufs, ready_two_ctas=use_2cta)
 
     w_num_bufs: gl.constexpr = W_NUM_BUFS
+    w_scale_num_bufs: gl.constexpr = w_num_bufs
     w_bufs = gl.allocate_shared_memory(
         w_desc.dtype,
         [w_num_bufs] + w_desc.block_type.shape,
@@ -1151,10 +1156,11 @@ def ws_matmul_kernel(
     )
     w_scale_bufs = gl.allocate_shared_memory(
         scale_desc.dtype,
-        [w_num_bufs] + scale_desc.block_type.shape,
+        [w_scale_num_bufs] + scale_desc.block_type.shape,
         scale_desc.layout,
     )
     w_empty_bars, w_ready_bars = alloc_empty_ready_barriers(w_num_bufs, ready_two_ctas=use_2cta)
+    w_scale_empty_bars = w_empty_bars
     w_scale_ready_bars = w_ready_bars
 
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], x_scale_layout)
@@ -1216,8 +1222,10 @@ def ws_matmul_kernel(
         w_scale_bufs=w_scale_bufs,
         w_empty_bars=w_empty_bars,
         w_ready_bars=w_ready_bars,
+        w_scale_empty_bars=w_scale_empty_bars,
         w_scale_ready_bars=w_scale_ready_bars,
         w_num_bufs=w_num_bufs,
+        w_scale_num_bufs=w_scale_num_bufs,
         #
         x_scale_tmem=x_scale_tmem,
         w_scale_tmem=w_scale_tmem,
@@ -1239,6 +1247,7 @@ def ws_matmul_kernel(
         num_blocks=num_blocks,
         #
         NUM_SMS=NUM_SMS,
+        NUM_WARPS=NUM_WARPS,
         USE_2CTA=use_2cta,
         BLOCK_M_PER_CTA=block_m_per_cta,
         BLOCK_M=BLOCK_M,
@@ -1383,6 +1392,7 @@ class KernelConfig:
     NUM_CTAS: int = 1
     X_NUM_BUFS: int = 5
     W_NUM_BUFS: int = 4
+    W_SCALE_NUM_BUFS: int = 0
     ACC_NUM_BUFS: int = 1
 
     NUM_WARPS: int = 8
@@ -1860,6 +1870,7 @@ def matmul(
         BLOCK_N=p.BLOCK_N,
         BLOCK_K=p.BLOCK_K,
         NUM_SMS=launch_grid,
+        NUM_WARPS=p.NUM_WARPS,
         X_NUM_BUFS=p.X_NUM_BUFS,
         W_NUM_BUFS=p.W_NUM_BUFS,
         ACC_NUM_BUFS=p.ACC_NUM_BUFS,

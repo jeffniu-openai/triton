@@ -1457,3 +1457,49 @@ and `1024`, under both simulated production routing and uniform routing.
   useful frontier should either change CTA ownership with a correct rank/local
   control model, or reduce the true 2CTA shared-memory/scale footprint without
   moving TMA into the MMA partition.
+
+## 2026-04-20 CTA-Pair Frontend Diagnosis And Scale-Ring Scratch
+
+- Added parent `NUM_WARPS` plumbing through `PartitionArgs` so scratch
+  descriptors can be configured consistently when parser candidates override
+  `num_warps`.
+- Subagent and local traceback analysis resolved the generic CTA-pair
+  `gl.warp_specialize` frontend error: implicit accumulator TMEM loads call
+  `blackwell.tensor_memory_descriptor.get_reg_layout()`, which requires a
+  worker-local `num_warps >= 4`. The earlier `ctapair:`/`ctampair:` smoke used
+  `l2m1`, so the accumulator-load owner had only one warp and failed before
+  lowering.
+- Reverted one experimental CTA-N pair layout to worker-local
+  `gl.num_warps()` and fixed `load_inputs_cta_npair_partition` to use the same
+  unsplit local row CGA layout as its descriptor. A 4-warp TMEM-owner N-pair
+  retry then passed the immediate frontend/layout verifier but timed out with
+  GPU 0 at full utilization:
+  `/tmp/moe_bmm1_ctapair_npair_4warp_layoutfix_smoke.csv` was not flushed.
+  Treat current CTA-pair modes `36/37/40/44` as unsafe without a deeper
+  rank-local barrier/layout redesign.
+- Independent subagent warps8 sweep on GPU 2:
+  `/tmp/moe_bmm1_warps8_uniform896_gpu2_20260420T0710Z.csv`. All 13 candidates
+  validated, none exceeded parity. The best row was only `0.69588x`
+  (`mmamc @ l4m1, regs64, la64, lw48, mma48`), so broad 8-warp retuning is not
+  a promising low-batch path.
+- Added scratch mode `wscaleind:` (`STRUCTURAL_MODE=45`) with an independent
+  W-scale shared-memory ring. The first version launch-failed because it
+  recycled the scale buffer with a plain `mbarrier.arrive()` immediately after
+  `tcgen05_copy`; changing the release to `blackwell.tcgen05_commit()` made the
+  protocol validate.
+- The independent W-scale ring is correct but too slow on hard uniform batch
+  `896`, local rank `4`: `/tmp/moe_bmm1_wscaleind_tune_uniform896.csv`.
+  `ws1/ws2/ws3/ws5` produced `0.40443x`, `0.65646x`, `0.79964x`, and
+  `0.93028x`; the normal split row in the same run was `0.97669x`. Decoupling
+  W-scale staging adds synchronization cost and does not solve occupancy.
+- Existing pipeline and split-scale variants are also not promotable:
+  `/tmp/moe_bmm1_pipe_modes_uniform896.csv`. `mmawpipe` was `0.40138x`
+  (`l2m1`) and `0.23712x` (8-warp), `mmaxpipe` was `0.73786x` (`w1m1`) and
+  `0.48122x` (8-warp), while `wscaleready`/`wscalefirst` were about
+  `0.95x`.
+- Current decision: no change here satisfies the `1.20x` criterion. Do not
+  promote CTA-pair, independent scale rings, 8-warp near-parity retuning, or
+  pipeline-owner variants into production selection. The next useful frontier
+  should either change persistent work ownership more substantially or split
+  route classes into separately tuned launches despite the launch-overhead
+  risk.

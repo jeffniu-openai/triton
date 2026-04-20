@@ -299,6 +299,7 @@ def config_dict(p):
         "occ": p.OCCUPANCY,
         "x": p.X_NUM_BUFS,
         "w": p.W_NUM_BUFS,
+        "ws": p.W_SCALE_NUM_BUFS,
         "acc": p.ACC_NUM_BUFS,
         "sub": p.SWIGLU_SUBTILE_FACTOR,
         "epi": p.EPILOGUE_BUFFER_DEPTH,
@@ -635,7 +636,7 @@ def load_inputs_fake_nsplit_partition(p: PartitionArgs):
 
 @gluon.jit
 def load_inputs_cta_npair_partition(p: PartitionArgs):
-    local_cga_layout: gl.constexpr = ((0, 1), )
+    local_cga_layout: gl.constexpr = ((0, 0), )
     offs_layout: gl.constexpr = gl.SliceLayout(
         dim=0,
         parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0], cga_layout=local_cga_layout),
@@ -1512,6 +1513,52 @@ def load_weights_scale_first_ready_partition(p: PartitionArgs):
 
             idx, phase = advance(idx, phase, p.w_num_bufs)
             issued += 1
+
+
+@gluon.jit
+def load_weights_independent_scale_partition(p: PartitionArgs):
+    tile_w_bytes: gl.constexpr = p.w_desc.nbytes_per_cta
+    tile_scale_bytes: gl.constexpr = p.scale_desc.nbytes_per_cta
+
+    w_idx = 0
+    w_phase = 1
+    w_issued = 0
+    scale_ring_idx = 0
+    scale_phase = 1
+    scale_issued = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_n, slice_idx = p.apply_weight_schedule(block_id)
+
+        scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+        scale_k_stride: gl.constexpr = p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
+        for ki in range(p.K_TILES):
+            off_k_scale = ki * scale_k_stride
+
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            mbarrier.wait(w_empty_bar, w_phase, pred=w_issued >= p.w_num_bufs)
+            mbarrier.expect(w_ready_bar, tile_w_bytes)
+            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, ki, pid_n, 0, 0], w_ready_bar, w_buf)
+
+            scale_empty_bar = p.w_scale_empty_bars.index(scale_ring_idx)
+            scale_ready_bar = p.w_scale_ready_bars.index(scale_ring_idx)
+            scale_buf = p.w_scale_bufs.index(scale_ring_idx)
+            mbarrier.wait(scale_empty_bar, scale_phase, pred=scale_issued >= p.w_scale_num_bufs)
+            mbarrier.expect(scale_ready_bar, tile_scale_bytes)
+            tma.async_copy_global_to_shared(
+                p.scale_desc,
+                [0, scale_idx, off_k_scale, 0, 0],
+                scale_ready_bar,
+                scale_buf,
+                multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+            )
+
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+            scale_ring_idx, scale_phase = advance(scale_ring_idx, scale_phase, p.w_scale_num_bufs)
+            w_issued += 1
+            scale_issued += 1
 
 
 @gluon.jit
@@ -3406,6 +3453,68 @@ def mma_split_scale_ready_partition(p: PartitionArgs):
 
 
 @gluon.jit
+def mma_independent_scale_partition(p: PartitionArgs):
+    x_idx = 0
+    x_phase = 0
+    w_idx = 0
+    w_phase = 0
+    scale_ring_idx = 0
+    scale_phase = 0
+    mma_idx = 0
+    mma_phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        acc_empty_bar = p.acc_empty_bars.index(mma_idx)
+        acc_ready_bar = p.acc_ready_bars.index(mma_idx)
+        acc_buf = p.acc_bufs.index(mma_idx)
+        mbarrier.wait(acc_empty_bar, mma_phase)
+
+        use_acc = False
+        for _ in range(p.K_TILES):
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            mbarrier.wait(w_ready_bar, w_phase)
+
+            scale_ready_bar = p.w_scale_ready_bars.index(scale_ring_idx)
+            scale_empty_bar = p.w_scale_empty_bars.index(scale_ring_idx)
+            scale_buf = p.w_scale_bufs.index(scale_ring_idx)
+            mbarrier.wait(scale_ready_bar, scale_phase)
+            blackwell.tcgen05_copy(
+                unswizzle_mx_scale(scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER, p.MXFP_BLOCK_SIZE),
+                p.w_scale_tmem,
+            )
+
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            mbarrier.wait(x_ready_bar, x_phase)
+
+            blackwell.tcgen05_mma_scaled(
+                w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                x_buf.permute((1, 0)),
+                acc_buf,
+                p.w_scale_tmem,
+                p.x_scale_tmem,
+                a_type="e2m1",
+                b_type="e4m3",
+                use_acc=use_acc,
+                multicast=p.USE_2CTA,
+            )
+            blackwell.tcgen05_commit(x_empty_bar)
+            blackwell.tcgen05_commit(w_empty_bar)
+            blackwell.tcgen05_commit(scale_empty_bar)
+
+            x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+            scale_ring_idx, scale_phase = advance(scale_ring_idx, scale_phase, p.w_scale_num_bufs)
+            use_acc = True
+
+        blackwell.tcgen05_commit(acc_ready_bar)
+        mma_idx, mma_phase = advance(mma_idx, mma_phase, p.acc_num_bufs)
+
+
+@gluon.jit
 def mma_direct_scale_partition(p: PartitionArgs):
     x_idx = 0
     x_phase = 0
@@ -4771,8 +4880,10 @@ def ws_matmul_combined_load_kernel(
     BLOCK_N: gl.constexpr,
     BLOCK_K: gl.constexpr,
     NUM_SMS: gl.constexpr,
+    NUM_WARPS: gl.constexpr,
     X_NUM_BUFS: gl.constexpr,
     W_NUM_BUFS: gl.constexpr,
+    W_SCALE_NUM_BUFS: gl.constexpr,
     ACC_NUM_BUFS: gl.constexpr,
     LOAD_ACTIVATION_WARPS: gl.constexpr,
     LOAD_WEIGHT_WARPS: gl.constexpr,
@@ -4816,11 +4927,12 @@ def ws_matmul_combined_load_kernel(
     scale_flat_n: gl.constexpr = N // SCALE_SIZE_OUTER
     scale_block_n_div: gl.constexpr = BLOCK_N // SCALE_SIZE_OUTER
     cta_npair: gl.constexpr = STRUCTURAL_MODE == 36 or STRUCTURAL_MODE == 37
-    cta_mpair: gl.constexpr = STRUCTURAL_MODE == 40
+    cta_mpair: gl.constexpr = STRUCTURAL_MODE == 40 or STRUCTURAL_MODE == 44
     fakens_pairw: gl.constexpr = STRUCTURAL_MODE == 38
     fakens_mmaepi: gl.constexpr = STRUCTURAL_MODE == 39
     mma_direct_scale: gl.constexpr = STRUCTURAL_MODE == 42
     dualblock_mma: gl.constexpr = STRUCTURAL_MODE == 43
+    independent_w_scale: gl.constexpr = STRUCTURAL_MODE == 45
     scheduled_grid_n: gl.constexpr = triton.cdiv(grid_n, 2) if cta_npair else grid_n
     scheduled_grid_m = (grid_m + 1) // 2 if cta_mpair else grid_m
     num_blocks = scheduled_grid_m * scheduled_grid_n
@@ -4862,7 +4974,11 @@ def ws_matmul_combined_load_kernel(
         [w_num_bufs] + w_desc.block_type.shape,
         w_desc.layout,
     )
-    w_scale_num_bufs: gl.constexpr = 1 if mma_direct_scale else w_num_bufs
+    w_scale_num_bufs: gl.constexpr = (
+        1 if mma_direct_scale else (
+            (W_SCALE_NUM_BUFS if W_SCALE_NUM_BUFS != 0 else w_num_bufs) if independent_w_scale else w_num_bufs
+        )
+    )
     w_scale_bufs = gl.allocate_shared_memory(
         scale_desc.dtype,
         [w_scale_num_bufs] + scale_desc.block_type.shape,
@@ -4880,10 +4996,16 @@ def ws_matmul_combined_load_kernel(
     w_empty_bars = alloc_barrier_ring(w_num_bufs, count=input_empty_count)
     w_ready_bars = alloc_barrier_ring(w_num_bufs, two_ctas=mma_two_ctas)
     if mma_direct_scale:
+        w_scale_empty_bars = w_empty_bars
         w_scale_ready_bars = alloc_barrier_ring(1, two_ctas=mma_two_ctas)
+    elif independent_w_scale:
+        w_scale_empty_bars = alloc_barrier_ring(w_scale_num_bufs)
+        w_scale_ready_bars = alloc_barrier_ring(w_scale_num_bufs, two_ctas=mma_two_ctas)
     elif split_w_scale_ready:
+        w_scale_empty_bars = w_empty_bars
         w_scale_ready_bars = alloc_barrier_ring(w_num_bufs, two_ctas=mma_two_ctas)
     else:
+        w_scale_empty_bars = w_empty_bars
         w_scale_ready_bars = w_ready_bars
 
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], x_scale_layout)
@@ -4966,8 +5088,10 @@ def ws_matmul_combined_load_kernel(
         w_scale_bufs=w_scale_bufs,
         w_empty_bars=w_empty_bars,
         w_ready_bars=w_ready_bars,
+        w_scale_empty_bars=w_scale_empty_bars,
         w_scale_ready_bars=w_scale_ready_bars,
         w_num_bufs=w_num_bufs,
+        w_scale_num_bufs=w_scale_num_bufs,
         x_scale_tmem=x_scale_tmem,
         w_scale_tmem=w_scale_tmem,
         w_scale_tmem_alt=w_scale_tmem_alt,
@@ -4985,6 +5109,7 @@ def ws_matmul_combined_load_kernel(
         SCALE_BLOCK_N_DIV=scale_block_n_div,
         num_blocks=num_blocks,
         NUM_SMS=NUM_SMS,
+        NUM_WARPS=NUM_WARPS,
         USE_2CTA=uses_2cta_layout,
         BLOCK_M_PER_CTA=block_m_per_cta,
         BLOCK_M=BLOCK_M,
@@ -5370,6 +5495,18 @@ def ws_matmul_combined_load_kernel(
             [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
             [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
         )
+    elif STRUCTURAL_MODE == 45:
+        gl.static_assert(W_SCALE_NUM_BUFS >= 1, "wscaleind needs at least one W-scale buffer")
+        gl.warp_specialize(
+            [
+                (epilogue_partition, (p, )),
+                (load_activations, (p, )),
+                (load_weights_independent_scale_partition, (p, )),
+                (mma_independent_scale_partition, (p, )),
+            ],
+            [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
+            [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
+        )
     elif STRUCTURAL_MODE == 33:
         gl.static_assert(W_NUM_BUFS >= 2, "mmawpipe needs at least two W buffers")
         gl.warp_specialize(
@@ -5422,12 +5559,13 @@ def ws_matmul_combined_load_kernel(
         gl.static_assert(gl.num_ctas() == 2, "ctapair2 requires a 2CTA launch")
         gl.warp_specialize(
             [
+                (noop_partition, (p, )),
                 (epilogue_cta_npair_partition, (p, )),
                 (load_inputs_cta_npair_partition, (p, )),
                 (mma_cta_npair_compute_partition, (p, )),
             ],
-            [LOAD_ACTIVATION_WARPS, MMA_WARPS],
-            [LOAD_ACTIVATION_REGS, MMA_REGS],
+            [STORE_HELPER_WARPS, LOAD_ACTIVATION_WARPS, MMA_WARPS],
+            [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, MMA_REGS],
         )
     elif STRUCTURAL_MODE == 38:
         gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "fakenspair uses local direct epilogue stores")
@@ -5465,6 +5603,19 @@ def ws_matmul_combined_load_kernel(
             ],
             [LOAD_ACTIVATION_WARPS, MMA_WARPS],
             [LOAD_ACTIVATION_REGS, MMA_REGS],
+        )
+    elif STRUCTURAL_MODE == 44:
+        gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "ctampair2 uses local direct epilogue stores")
+        gl.static_assert(gl.num_ctas() == 2, "ctampair2 requires a 2CTA launch")
+        gl.warp_specialize(
+            [
+                (noop_partition, (p, )),
+                (epilogue_cta_mpair_partition, (p, )),
+                (load_inputs_cta_mpair_partition, (p, )),
+                (mma_cta_mpair_compute_partition, (p, )),
+            ],
+            [STORE_HELPER_WARPS, LOAD_ACTIVATION_WARPS, MMA_WARPS],
+            [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, MMA_REGS],
         )
     else:
         if STRUCTURAL_MODE == 1:
@@ -5523,7 +5674,7 @@ def combined_load_matmul(
     x_block_offs, x_block_schedule = ex.get_block_schedule_tensors(a_ragged_metadata, p.BLOCK_M)
     expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, p.BLOCK_M)
     grid_n = triton.cdiv(n, p.BLOCK_N)
-    schedule_grid_m = triton.cdiv(expected_grid_m, 2) if structural_mode == 40 else expected_grid_m
+    schedule_grid_m = triton.cdiv(expected_grid_m, 2) if structural_mode in (40, 44) else expected_grid_m
     schedule_grid_n = triton.cdiv(grid_n, 2) if structural_mode in (36, 37) else grid_n
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
     sms *= p.OCCUPANCY
@@ -5569,7 +5720,7 @@ def combined_load_matmul(
 
     fake_nsplit = structural_mode == 15
     cta_npair = structural_mode in (36, 37)
-    cta_mpair = structural_mode == 40
+    cta_mpair = structural_mode in (40, 44)
     fakens_pairw = structural_mode == 38
     fakens_mmaepi = structural_mode == 39
     acc_cga_layout = ex.get_acc_cga_layout(p.NUM_CTAS)
@@ -5631,8 +5782,10 @@ def combined_load_matmul(
         BLOCK_N=p.BLOCK_N,
         BLOCK_K=p.BLOCK_K,
         NUM_SMS=launch_grid,
+        NUM_WARPS=p.NUM_WARPS,
         X_NUM_BUFS=p.X_NUM_BUFS,
         W_NUM_BUFS=p.W_NUM_BUFS,
+        W_SCALE_NUM_BUFS=p.W_SCALE_NUM_BUFS,
         ACC_NUM_BUFS=p.ACC_NUM_BUFS,
         LOAD_ACTIVATION_WARPS=p.LOAD_ACTIVATION_WARPS,
         LOAD_WEIGHT_WARPS=p.LOAD_WEIGHT_WARPS,
@@ -5770,6 +5923,9 @@ def parse_candidate(name: str, slice_size: int):
     elif name.startswith("wscalefirst:"):
         spec = name[len("wscalefirst:"):]
         mode = "wscalefirst"
+    elif name.startswith("wscaleind:"):
+        spec = name[len("wscaleind:"):]
+        mode = "wscaleind"
     elif name.startswith("mmawpipe:"):
         spec = name[len("mmawpipe:"):]
         mode = "mmawpipe"
@@ -5794,6 +5950,9 @@ def parse_candidate(name: str, slice_size: int):
     elif name.startswith("ctampair:"):
         spec = name[len("ctampair:"):]
         mode = "ctampair"
+    elif name.startswith("ctampair2:"):
+        spec = name[len("ctampair2:"):]
+        mode = "ctampair2"
     elif name.startswith("privsched:"):
         spec = name[len("privsched:"):]
         mode = "privsched"
@@ -5820,6 +5979,8 @@ def parse_candidate(name: str, slice_size: int):
                 updates["X_NUM_BUFS"] = int(option[1:])
             elif option.startswith("w") and option[1:].isdigit():
                 updates["W_NUM_BUFS"] = int(option[1:])
+            elif option.startswith("ws") and option[2:].isdigit():
+                updates["W_SCALE_NUM_BUFS"] = int(option[2:])
             elif option.startswith("acc") and option[3:].isdigit():
                 updates["ACC_NUM_BUFS"] = int(option[3:])
             elif option.startswith("bm") and option[2:].isdigit():
@@ -5925,9 +6086,12 @@ def parse_candidate(name: str, slice_size: int):
             updates.setdefault("EPILOGUE_BUFFER_DEPTH", 2)
             updates.setdefault("STORE_HELPER_WARPS", 1)
             updates.setdefault("STORE_HELPER_REGS", 32)
-        elif mode in ("ctapair", "ctapair2", "fakenspair", "fakensmmaepi", "ctampair"):
+        elif mode in ("ctapair", "ctapair2", "fakenspair", "fakensmmaepi", "ctampair", "ctampair2"):
             updates.setdefault("USE_DIRECT_EPILOGUE_STORE", True)
             updates.setdefault("SWIGLU_SUBTILE_FACTOR", 1)
+            if mode in ("ctapair2", "ctampair2"):
+                updates.setdefault("STORE_HELPER_WARPS", 1)
+                updates.setdefault("STORE_HELPER_REGS", 32)
         else:
             updates.setdefault("USE_DIRECT_EPILOGUE_STORE", True)
         updates.setdefault("REUSE_GATHER_INDICES", False)
@@ -5977,6 +6141,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
         "mmaxfirstbar",
         "wscaleready",
         "wscalefirst",
+        "wscaleind",
         "mmawpipe",
         "mmaxpipe",
         "mmastore",
@@ -5985,6 +6150,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
         "fakenspair",
         "fakensmmaepi",
         "ctampair",
+        "ctampair2",
         "privsched",
         "mmascale",
         "dualmma",
@@ -6034,6 +6200,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
                 "mmaxfirstbar": 30,
                 "wscaleready": 31,
                 "wscalefirst": 32,
+                "wscaleind": 45,
                 "mmawpipe": 33,
                 "mmaxpipe": 34,
                 "mmastore": 35,
@@ -6045,6 +6212,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
                 "privsched": 41,
                 "mmascale": 42,
                 "dualmma": 43,
+                "ctampair2": 44,
             }[mode],
         )
     return run_split_with_config(prepared, p, out)
