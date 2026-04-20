@@ -73,15 +73,21 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 00:05 UTC: removed
+  `python/examples/gluon/10-tmem-windowed-attention-score.py` from the
+  user-facing example suite. A fair optimized Triton mask-plus-row-max
+  baseline beat the standalone TMEM `load_max` version, and the only plausible
+  TMEM optimization, row-blocking, failed on true descriptor-view/row-anchor
+  support boundaries at `BLOCK_M=32` and `BLOCK_M=64`. The retained suite now
+  has six examples.
 - 2026-04-20 23:25 UTC: refreshed the Phase H example suite so every timed
   comparison that previously used PyTorch post-processing now uses plain
   Triton code without the new TMEM features. Router top-k uses a Triton top-2
   selector, LoRA uses a Triton update kernel, layout-as-epilogue uses a Triton
   reorder kernel, MLP side projection uses a Triton broad-side/gate kernel,
-  and attention uses a Triton mask-plus-row-max baseline. Correctness oracles
-  still use PyTorch. Validation: py-compile over all seven files and combined
-  pytest over `python/examples/gluon/05` through `11` passed `42 passed in
-  6.53s`; source benchmark comments were refreshed from local script runs.
+  and attention used a Triton mask-plus-row-max baseline before the attention
+  example was removed at the 00:05 UTC checkpoint. Correctness oracles still
+  use PyTorch.
 - 2026-04-20 20:21 UTC: tutorial polish added inline benchmark output and a
   precise "why this was not possible before" note. The tutorial now states
   that block-scaled MMA itself was preexisting, but the narrow
@@ -4859,13 +4865,15 @@ When resuming the initiative:
   complete. The subsequent 23:25 UTC checkpoint replaces the timed PyTorch
   wrapper/baseline caveats with plain Triton comparison paths.
 
-## Latest: 2026-04-20 23:25 UTC Phase H timed baselines rewritten
+## Latest: 2026-04-21 00:05 UTC attention score example removed
 
-- Timed comparisons in the Phase H examples no longer use PyTorch
-  post-processing. The rewritten baselines are plain Triton kernels without
-  the new TMEM features: router top-2, LoRA update, layout reorder, MLP side
-  gate, and attention mask-plus-row-max.
-- PyTorch remains as correctness oracle and input setup only.
-- Validation:
-  - py-compile passed for files `05` through `11`;
-  - focused pytest over the seven files passed `42 passed in 6.53s`.
+- Removed `python/examples/gluon/10-tmem-windowed-attention-score.py`.
+- Reason: after replacing the PyTorch baseline with an optimized plain Triton
+  mask-plus-row-max baseline, the standalone TMEM `load_max` path was slower
+  on the measured shapes.
+- Tried optimization: row-blocked TMEM variants at `BLOCK_M=32` and
+  `BLOCK_M=64`; both failed on actual descriptor-view/row-anchor support
+  boundaries, so there was no faster legal TMEM version to present.
+- The retained Phase H suite now has six examples. Validation: required
+  `make -j8` was no-op, py-compile passed for the retained six files, and
+  focused pytest passed `37 passed in 23.52s`.

@@ -99,19 +99,19 @@ The project is complete when:
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
-- Phase H, user-facing performance examples: complete for the seven planned
+- Phase H, user-facing performance examples: complete for the six retained
   example files. The source of truth is
   `tmem_example_implementation_plan_20260420.md`. Implemented examples:
   `05-tmem-moe-router.py`, `06-tmem-lora-fusion.py`,
   `07-tmem-candidate-head.py`, `08-tmem-layout-as-epilogue.py`,
-  `09-tmem-mlp-side-projection.py`,
-  `10-tmem-windowed-attention-score.py`, and
-  `11-tmem-ragged-expert-views.py`. Combined validation over those files
-  passed `42/42` at 2026-04-20 23:14 UTC. A 2026-04-20 23:25 UTC follow-up
-  replaced timed PyTorch post-processing baselines with plain Triton kernels
-  that do not use the new TMEM features: router top-2, LoRA update,
-  layout reorder, MLP side gate, and attention mask-plus-row-max. Combined
-  validation over the seven files passed again with `42 passed in 6.53s`.
+  `09-tmem-mlp-side-projection.py`, and `11-tmem-ragged-expert-views.py`.
+  The former `10-tmem-windowed-attention-score.py` was removed after a fair
+  Triton mask-plus-row-max baseline beat the TMEM `load_max` path on the
+  measured standalone shapes, and row-blocked TMEM variants hit true
+  descriptor-view/row-anchor support boundaries. The retained examples use
+  plain Triton non-TMEM kernels for post-processing comparisons where needed:
+  router top-2, LoRA update, layout reorder, and MLP side gate. Combined
+  validation over the retained six files passed `37 passed in 23.52s`.
 
 ## Current Clean-Negative Inventory
 
@@ -1024,3 +1024,13 @@ signal handling:
   correctness references and data setup. Py-compile passed for all seven files,
   combined pytest passed `42 passed in 6.53s`, and benchmark transcripts were
   refreshed from local script runs.
+
+- 2026-04-21 00:05 UTC: removed
+  `python/examples/gluon/10-tmem-windowed-attention-score.py`. Rebenchmarking
+  against the optimized plain Triton mask-plus-row-max baseline showed the
+  standalone TMEM `load_max` example remained slower. Attempts to improve
+  parallelism by row-blocking the TMEM tile at `BLOCK_M=32` and `BLOCK_M=64`
+  failed at compile time on real TMEM descriptor-view support boundaries, so
+  the example did not meet the performance bar for a user-facing example.
+  Required `make -j8` was no-op, py-compile passed for the retained six files,
+  and combined pytest passed `37 passed in 23.52s`.

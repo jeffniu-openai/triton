@@ -209,10 +209,10 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
     transcript;
   - this is not a full persistent grouped-MoE scheduler.
 
-## Example 5: Windowed Attention Score Tile With TMEM Reductions
+## Rejected Example: Windowed Attention Score Tile With TMEM Reductions
 
-- Status: implemented at 2026-04-20 22:45 UTC.
-- Proposed file: `python/examples/gluon/10-tmem-windowed-attention-score.py`.
+- Status: removed at 2026-04-21 00:05 UTC.
+- Former file: `python/examples/gluon/10-tmem-windowed-attention-score.py`.
 - New capability used:
   - noncanonical score-tile TMEM layouts;
   - descriptor/subview-compatible `ld.red` for row max where supported;
@@ -239,11 +239,16 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 - Benchmarks:
   - score-plus-row-max latency versus shared/register reduction baseline;
   - separate direct-ld.red and fallback-reduction shapes.
-- Implementation notes:
-  - implemented standalone score-tile row-max example with noncausal and
-    causal masking, a plain Triton mask-plus-row-max baseline, Blackwell Ultra
-    skip guard, tests, and inline benchmark transcript;
-  - kept separate from the full attention example.
+- Removal notes:
+  - the fair baseline is a plain Triton kernel that stores masked scores and
+    computes row max with `tl.max`;
+  - the original full-tile TMEM `load_max` path was consistently slower on the
+    documented standalone shapes;
+  - attempts to improve TMEM parallelism with row-blocked tiles at `BLOCK_M=32`
+    and `BLOCK_M=64` failed to compile because the required descriptor views
+    are not supported by the public TMEM row-anchor/load-store packet model;
+  - because the example could not beat the optimized non-TMEM Triton baseline,
+    it was removed from the user-facing example suite.
 
 ## Example 6: Fused Quantized MLP Side Projection
 
@@ -319,12 +324,11 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 3. Candidate-head projection and output-ordering example.
 4. Layout-as-epilogue store-order example.
 5. Fused MLP side projection.
-6. Windowed attention score/reduction example.
-7. Ragged grouped/MoE expert views.
+6. Ragged grouped/MoE expert views.
 
 This order starts with the strongest narrow scaled-MMAv5 wins, then expands to
-descriptor/view and reduction examples, and leaves the most coordination-heavy
-grouped and attention examples until reusable helper patterns exist.
+descriptor/view examples, and leaves the most coordination-heavy grouped
+example until reusable helper patterns exist.
 
 ## Progress Log
 
@@ -387,3 +391,12 @@ grouped and attention examples until reusable helper patterns exist.
   for all seven files, combined pytest over files `05` through `11` passed
   `42 passed in 6.53s`, and source comments were refreshed from local script
   benchmark runs.
+- 2026-04-21 00:05 UTC: removed
+  `python/examples/gluon/10-tmem-windowed-attention-score.py`. Rebenchmarking
+  against the optimized Triton mask-plus-row-max baseline showed the TMEM
+  `load_max` path was slower on the standalone score-tile workload. Row-blocked
+  TMEM variants at `BLOCK_M=32` and `BLOCK_M=64` failed to compile on true
+  descriptor-view/row-anchor support boundaries, so there was no defensible
+  faster TMEM version for this example. Required `make -j8` was no-op,
+  py-compile passed for the retained six files, and combined pytest passed
+  `37 passed in 23.52s`.

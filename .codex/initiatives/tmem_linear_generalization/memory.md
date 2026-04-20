@@ -13996,6 +13996,29 @@ rejection, not rescue
   - top-k, LoRA update, MLP gate, and layout reorder are separate plain Triton
     kernels rather than fused Gluon/TMEM epilogues;
   - candidate-head assumes selected rows are pre-staged;
-  - attention score is a small contract demonstration and is slower than the
-    plain Triton mask-plus-row-max kernel for the measured standalone shapes;
   - ragged experts are Python-scheduled, not a persistent grouped-MoE scheduler.
+
+## Current: 2026-04-21 00:05 UTC attention score example removed
+
+- Removed `python/examples/gluon/10-tmem-windowed-attention-score.py` from the
+  user-facing example suite.
+- Reason:
+  - the fair optimized baseline is a plain Triton kernel that stores masked
+    scores and computes row max with `tl.max`;
+  - the standalone TMEM `load_max` version remained slower on the measured
+    `M=128, N=64/128` causal and noncausal shapes;
+  - row-blocking was the only plausible optimization to improve TMEM
+    parallelism, but `BLOCK_M=32` failed because the TMEM descriptor view was
+    unsupported and `BLOCK_M=64` failed on required row anchors `32,64` not
+    being directly representable by public load/store packets.
+- The retained Phase H suite has six examples:
+  `05-tmem-moe-router.py`, `06-tmem-lora-fusion.py`,
+  `07-tmem-candidate-head.py`, `08-tmem-layout-as-epilogue.py`,
+  `09-tmem-mlp-side-projection.py`, and
+  `11-tmem-ragged-expert-views.py`.
+- Validation after removal:
+  - required `make -j8` was no-op;
+  - py-compile passed for the retained six files;
+  - combined pytest passed `37 passed in 23.52s` with
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-retained
+    PYTHONPATH=.:./python pytest -s --tb=short <six retained files>`.

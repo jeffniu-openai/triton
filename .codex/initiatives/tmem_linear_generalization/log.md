@@ -25716,3 +25716,28 @@ Open after this slice:
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-torchless
     PYTHONPATH=.:./python pytest -s --tb=short <seven files>`;
   - `git diff --check` passed before the documentation edits.
+
+## 2026-04-21 00:05 UTC: remove performance-negative attention score example
+
+- Deleted `python/examples/gluon/10-tmem-windowed-attention-score.py`.
+- Measurement:
+  - with the fair optimized baseline from the previous checkpoint, the
+    standalone TMEM `load_max` score-tile path remained slower than the plain
+    Triton mask-plus-row-max kernel on the documented `M=128, N=64/128`
+    causal and noncausal shapes.
+- Optimization attempts:
+  - changed the Gluon TMEM path from one full `128xN` tile program to
+    row-blocked TMEM tiles to improve parallelism;
+  - `BLOCK_M=32` failed at compile time because the descriptor view was not
+    supported for `32x64` or `32x128`;
+  - `BLOCK_M=64` failed at compile time because required row anchors `32,64`
+    are not directly representable by the public TMEM load/store packet model.
+- Decision:
+  - per the user-requested performance bar, there is no point keeping a
+    user-facing example whose fair baseline is faster, so the example was
+    tossed and the retained suite is the six examples with positive or useful
+    performance comparisons.
+- Validation:
+  - required `make -j8` was no-op;
+  - `python -m py_compile` passed for the retained six files;
+  - combined pytest over the retained six files passed `37 passed in 23.52s`.
