@@ -558,3 +558,30 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     tt.return
   }
 }
+
+// -----
+
+#blocked = #ttg.blocked<{sizePerThread = [1, 32], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
+#tmem_f32 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+#tmem_f16 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 2>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  // CHECK-LABEL: @partition_tmem_load_view_chain
+  tt.func @partition_tmem_load_view_chain() {
+    %alloc = ttng.tmem_alloc : () -> !ttg.memdesc<1x128x128xf32, #tmem_f32, #ttng.tensor_memory, mutable>
+    ttg.warp_specialize(%alloc)
+    default {
+      ttg.warp_yield
+    }
+    partition0(%arg0: !ttg.memdesc<1x128x128xf32, #tmem_f32, #ttng.tensor_memory, mutable>) num_warps(4) {
+      %c0 = arith.constant 0 : i32
+      %indexed = ttg.memdesc_index %arg0[%c0] : !ttg.memdesc<1x128x128xf32, #tmem_f32, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_f32, #ttng.tensor_memory, mutable>
+      %reinterpreted = ttg.memdesc_reinterpret %indexed : !ttg.memdesc<128x128xf32, #tmem_f32, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x256xf16, #tmem_f16, #ttng.tensor_memory, mutable>
+      %slice = ttng.tmem_subslice %reinterpreted {N = 0 : i32} : !ttg.memdesc<128x256xf16, #tmem_f16, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf16, #tmem_f16, #ttng.tensor_memory, mutable, 128x256>
+      // CHECK: ttng.tmem_load
+      %value = ttng.tmem_load %slice : !ttg.memdesc<128x128xf16, #tmem_f16, #ttng.tensor_memory, mutable, 128x256> -> tensor<128x128xf16, #blocked>
+      "use"(%value) : (tensor<128x128xf16, #blocked>) -> ()
+      ttg.warp_return
+    } : (!ttg.memdesc<1x128x128xf32, #tmem_f32, #ttng.tensor_memory, mutable>) -> ()
+    tt.return
+  }
+}

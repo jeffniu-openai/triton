@@ -59,6 +59,23 @@ template <typename... Args> bool node_isa(Node *node) {
   return node->isOp() && isa<Args...>(node->getOp());
 }
 
+Operation *getDefiningTMEMAlloc(Value value) {
+  while (Operation *defOp = value.getDefiningOp()) {
+    if (isa<ttng::TMEMAllocOp>(defOp))
+      return defOp;
+    if (defOp->hasTrait<OpTrait::MemDescViewTrait>()) {
+      value = defOp->getOperand(0);
+      continue;
+    }
+    if (auto subslice = dyn_cast<ttng::TMEMSubSliceOp>(defOp)) {
+      value = subslice.getSrc();
+      continue;
+    }
+    return nullptr;
+  }
+  return nullptr;
+}
+
 std::unique_ptr<Graph> buildGraph(Operation *region) {
   DenseMap<Operation *, Node *> nodes;
   DenseMap<std::pair<Operation *, size_t>, InputPort> operands;
@@ -718,15 +735,13 @@ DenseSet<Operation *> getTMEMAllocs(Partition *partition) {
       continue;
     Operation *alloc = nullptr;
     if (auto load = dyn_cast<ttng::TMEMLoadOp>(node->getOp())) {
-      alloc = load.getOperand(0).getDefiningOp();
+      alloc = getDefiningTMEMAlloc(load.getOperand(0));
     }
     if (auto store = dyn_cast<ttng::TMEMStoreOp>(node->getOp())) {
-      alloc = store.getOperand(0).getDefiningOp();
+      alloc = getDefiningTMEMAlloc(store.getOperand(0));
     }
-    if (alloc) {
-      assert(isa<ttng::TMEMAllocOp>(alloc));
+    if (alloc)
       result.insert(alloc);
-    }
   }
   return result;
 }

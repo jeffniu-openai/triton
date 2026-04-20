@@ -1703,3 +1703,74 @@ and `1024`, under both simulated production routing and uniform routing.
   two independent single-CTA tiles inside one 2CTA launch with a cheaper
   scheduler, or find a legal true-2CTA accumulator orientation whose last
   dimension is the epilogue fragment dimension.
+
+## 2026-04-20 TMEM View-Chain Patch And Aggressive Structural Probes
+
+- Updated the compiler scratch support for TMEM descriptor view chains because
+  the adjacent-N fragment experiments need `TMEMLoadOp`/`TMEMStoreOp` operands
+  that are no longer direct `ttng.tmem_alloc` results. `PartitionScheduling`
+  now walks through `ttg.memdesc_index`, `ttg.memdesc_reinterpret`,
+  `ttg.memdesc_reshape`/`trans`, and `ttng.tmem_subslice` to recover the
+  underlying TMEM allocation. `InterleaveTMem` treats `memdesc_reinterpret` as
+  a pure view, and `TensorMemoryAllocation` extends liveness through
+  `ttng.tmem_subslice`.
+- Added lit coverage for the view-chain fixes:
+  `test/TritonGPU/partition-scheduling.mlir` has a
+  `memdesc_index -> memdesc_reinterpret -> tmem_subslice -> tmem_load` path
+  inside `ttg.warp_specialize`; `test/TritonNvidiaGPU/interleave_tmem.mlir`
+  keeps interleaving through `memdesc_reinterpret`; and
+  `test/TritonNvidiaGPU/test_tensor_memory_allocation.mlir` checks that a
+  store through a reinterpreted subslice keeps the base allocation live so a
+  later allocation cannot reuse the same TMEM columns.
+- Validation so far:
+  - `make`
+  - `python3 -m py_compile python/examples/gluon/06-moe-bmm1-structural-explore.py`
+  - `git diff --check`
+  - `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/test_tensor_memory_allocation.mlir`
+  - `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/interleave_tmem.mlir`
+  - `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonGPU/partition-scheduling.mlir`
+- The compiler patch makes the permuted-fragment TMEM view chain legal enough
+  to reach runtime, but it does not make the current `x2n_permfrag:` kernel
+  promotable. Hard-row isolated probes still timeout or hang before producing
+  a valid CSV row:
+  `/tmp/moe_bmm1_structural_hardrow_x2n_permfrag_20260420.log`.
+- Retried `x2n_fused:` with `@bn128,l1m1,regs80,sr80` after the local-N
+  descriptor fix. The inline validation command on GPU 0 did not complete
+  within the 240s timeout, so the BN128 shared-X path remains a non-promotable
+  compile/hang candidate until it can validate quickly.
+- `ctalinear:` remains a useful control for "two independent 1CTA-like lanes
+  inside one 2CTA cluster", but the current direct M32 attempts hit a register
+  target cliff (`regs52` asks for `72/80+` depending options) and the BN128
+  retest is running under the GPU1 benchmark agent. Do not promote it without
+  a same-input hard-row timing win.
+- Fresh subagent review prioritized the next structural work as:
+  pre-fragmented adjacent-N accumulators that avoid `tmem_subslice` of a local
+  2CTA full accumulator, then a lane-private two-block 2CTA launch, then
+  single-launch route-class work stealing, then transition-only W reuse. The
+  shared theme is to avoid another broad buffer/register sweep; the remaining
+  hard row needs changed ownership or changed accumulator storage.
+- Same-input hard-row benchmark refreshes after the view-chain patch still do
+  not produce a promotable 2CTA path:
+  - GPU1 isolated artifact
+    `/tmp/moe_bmm1_structural_20260420_gpu1_091430_2441867_isolated.log`:
+    `1cta = 0.02782461 ms`, `selected = 0.02783320 ms`, explicit split
+    `b21 = 0.02896984 ms` (`0.96047x`), explicit split `b24_acc2 =
+    0.02905904 ms` (`0.95752x`). `ctalinear @bn128,l1m1,regs80,sr80`,
+    `ctalinear @bn128,l2m1,regs80,sr80`, and `x2n_fused
+    @bn128,l1m1,regs80,sr80` all hung in `torch.cuda.synchronize()` during
+    validation and were killed with exit status `143`.
+  - GPU2 transition-mode artifact
+    `/tmp/moe_bmm1_transition_modes_hardrow_20260420.log`:
+    `1cta = 0.02805212 ms`, explicit split `b21 = 0.02891449 ms`
+    (`0.97018x`), `phasepair @acc2 = 0.03070218 ms` (`0.91369x`), and
+    `xphaseprefetch = 0.02963246 ms` (`0.94667x`). The following `xpair`
+    validation hung in `torch.cuda.synchronize()` and the process was killed.
+  - GPU3 cta-linear tune artifact
+    `/tmp/moe_bmm1_ctalinear_tune_hardrow_20260420.log`: baseline
+    `1cta = 0.02796241 ms`; the first `ctalinear @bn128,warps8,l1m1`
+    candidate hung in `torch.cuda.synchronize()` and the process was killed.
+- Current decision: keep the compiler view-chain support because it is a real
+  correctness gap for TMEM views, but do not spend more fast-loop time on the
+  current `ctalinear` or BN128 adjacent-N shapes until their synchronization
+  hang is diagnosed. The next structural attempt should change accumulator
+  storage or scheduling more deeply rather than raising register targets.

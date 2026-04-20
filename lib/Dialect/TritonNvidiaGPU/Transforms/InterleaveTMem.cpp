@@ -140,8 +140,9 @@ std::pair<Value, AccessRange> findBufferAccess(Value a) {
     return {a, std::move(access)};
   }
 
-  // Trans and Reshape views don't change the access size.
-  if (isa<ttg::MemDescTransOp, ttg::MemDescReshapeOp>(defOp)) {
+  // Pure descriptor views don't change the underlying allocation.
+  if (isa<ttg::MemDescTransOp, ttg::MemDescReshapeOp,
+          ttg::MemDescReinterpretOp>(defOp)) {
     return findBufferAccess(defOp->getOperand(0));
   }
 
