@@ -80,6 +80,12 @@ When resuming the initiative:
   scaled-MMA FPSAN payload blockers recorded in `memory.md`, `log.md`,
   `completion_execution_tracker.md`, and the active handoff.
 
+- 2026-04-20 23:55 UTC: focused post-merge runtime recovery is green. FPSAN
+  scaled-MMA payload checks pass after fixing the mixed-format oracle, and the
+  remaining two-CTA scaled-copy/direct-multicast readback boundaries are
+  tracked as explicit xfails. See the active handoff for exact validation
+  commands and results.
+
 - 2026-04-21 00:30 UTC: consolidated the retained user-facing example suite
   into three non-overlapping files:
   `python/examples/gluon/05-tmem-moe-router.py` now covers compact sparse

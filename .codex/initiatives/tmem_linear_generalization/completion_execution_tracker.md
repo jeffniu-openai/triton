@@ -1061,3 +1061,14 @@ signal handling:
   checks fail for both legacy and linear accumulators. Next concrete
   implementation slice is to make the scale-copy tests respect the hardware
   boundary or extend the planner/API, then root-cause the FPSAN payload drift.
+
+- 2026-04-20 23:55 UTC: post-merge runtime recovery completed for the focused
+  scaled-MMA/copy surface. The FPSAN payload drift was an oracle merge bug and
+  is fixed by carrying separate A/B element types through
+  `_mm_scaled_payload_u32`. Two-CTA scaled-copy and 2x2 direct multicast
+  accumulator readback cases are now explicit xfails for documented
+  hardware/API boundaries. Validation passed for the focused runtime slices,
+  retained examples/tutorial, and a split 4-GPU selector over the affected
+  Gluon tests. Next concrete slice is final `make`/lit sanity, commit the
+  post-merge runtime follow-up, push, and then decide whether a broader
+  non-selector Gluon sweep is warranted.

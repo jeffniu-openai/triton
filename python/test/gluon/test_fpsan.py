@@ -1523,7 +1523,9 @@ def _dot_scaled_payload_u32(a_data: np.ndarray, b_data: np.ndarray, a_scale, b_s
 
 def _mm_scaled_payload_u32(a_u8: np.ndarray, b_u8: np.ndarray, a_scale_u8: np.ndarray, b_scale_u8: np.ndarray,
                            c_i32: np.ndarray = None, a_pack: int = 1, b_pack: int = 1,
-                           elem_type: str = "e2m1") -> np.ndarray:
+                           elem_type: str = "e2m1", elem_type_b: str | None = None) -> np.ndarray:
+    elem_type_a = elem_type
+    elem_type_b = elem_type if elem_type_b is None else elem_type_b
     a_scale = a_scale_u8.astype(np.uint64)
     b_scale = b_scale_u8.astype(np.uint64)
     c_u = _mix_f32_bits_to_payload_u32(c_i32).astype(np.uint64) if c_i32 is not None else None
@@ -1549,7 +1551,7 @@ def _mm_scaled_payload_u32(a_u8: np.ndarray, b_u8: np.ndarray, a_scale_u8: np.nd
         out[1::2, :] = (data.astype(np.uint64) >> np.uint64(4)) & np.uint64(0x0F)
         return out
 
-    def compute_payload_matrix(data: np.ndarray) -> np.ndarray:
+    def compute_payload_matrix(data: np.ndarray, elem_type: str) -> np.ndarray:
         if elem_type in ("e4m3", "e5m2"):
             one_bits = 0x38 if elem_type == "e4m3" else 0x3C
             payload = _mix_float_bits_to_payload_u64(data, 8, one_bits)
@@ -1560,8 +1562,8 @@ def _mm_scaled_payload_u32(a_u8: np.ndarray, b_u8: np.ndarray, a_scale_u8: np.nd
         raw_bf16 = (raw_scale & np.uint64(0xFF)) << np.uint64(7)
         return _mix_float_bits_to_payload_u64(raw_bf16, 16, 0x3F80)
 
-    a_payload = compute_payload_matrix(unpack_payload_matrix(a_u8, a_pack, pack_axis=1))
-    b_payload = compute_payload_matrix(unpack_payload_matrix(b_u8, b_pack, pack_axis=0))
+    a_payload = compute_payload_matrix(unpack_payload_matrix(a_u8, a_pack, pack_axis=1), elem_type_a)
+    b_payload = compute_payload_matrix(unpack_payload_matrix(b_u8, b_pack, pack_axis=0), elem_type_b)
     a_scale_payload = scale_payload_matrix(a_scale)
     b_scale_payload = scale_payload_matrix(b_scale)
 
@@ -2096,8 +2098,8 @@ def test_tcgen05_mma_scaled(device, elem_type_a, elem_type_b, layout_name, acc_l
 
         bar = gl.allocate_shared_memory(gl.int64, [1], gl.constexpr(mbarrier.MBarrierLayout()))
         mbarrier.init(bar, count=1)
-        tcgen05_mma_scaled(a_smem, b_mma, acc_tmem, a_scale_tmem, b_scale_tmem, TYPE_A, TYPE_B, use_acc=True)
-        tcgen05_commit(bar)
+        tcgen05_mma_scaled(a_smem, b_mma, acc_tmem, a_scale_tmem, b_scale_tmem, TYPE_A, TYPE_B, use_acc=True,
+                           mbarriers=[bar])
         mbarrier.wait(bar, phase=0)
         mbarrier.invalidate(bar)
 
@@ -2121,7 +2123,8 @@ def test_tcgen05_mma_scaled(device, elem_type_a, elem_type_b, layout_name, acc_l
     b_scale_bits = rs.randint(1, 4, size=(B, B // 32), dtype=np.int8)
     c_bits = rs.randint(-(2**31), 2**31 - 1, size=(B, B), dtype=np.int32)
     exp_bits = _mm_scaled_payload_u32(a_bits, b_ref_bits, a_scale_bits.view(np.uint8), b_scale_bits.view(np.uint8),
-                                      c_bits, a_pack=a_pack, b_pack=b_pack)
+                                      c_bits, a_pack=a_pack, b_pack=b_pack, elem_type=elem_type_a,
+                                      elem_type_b=elem_type_b)
 
     if elem_type_a == "e2m1":
         a = torch.tensor(a_bits, device="cuda", dtype=torch.uint8)

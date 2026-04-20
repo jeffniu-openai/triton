@@ -13,6 +13,15 @@
   commit is intentionally not finalized until these runtime blockers are
   classified or fixed.
 
+- Latest: 2026-04-20 23:55 UTC focused post-merge runtime recovery is green.
+  The scaled-MMA FPSAN payload mismatch was an oracle merge bug: mixed-format
+  tests now pass separate A and B element types to `_mm_scaled_payload_u32`.
+  Two-CTA scaled-copy tests that require broadcast scale copies through the
+  direct `tcgen05.copy.warpx4.32x128b` atom are explicit xfails, as is the
+  current two-CTA 2x2 direct multicast accumulator readback test using `auto`
+  TMEM load. Focused validation passed for FPSAN scaled MMA, scaled-copy
+  families, retained examples, tutorial, and a split 4-GPU affected selector.
+
 - Latest: 2026-04-20 20:21 UTC tutorial polish added the benchmark output
   inline as if the user had run the script, and added a concrete
   pre-generalization capability note. The new note is careful: block-scaled
