@@ -25622,3 +25622,28 @@ Open after this slice:
 - Next:
   - run `git diff --check`, commit/push, then implement windowed attention
     score/reduction.
+
+## 2026-04-20 22:45 UTC: implement TMEM attention score reduction example
+
+- Added `python/examples/gluon/10-tmem-windowed-attention-score.py`.
+- Algorithm:
+  - store a score tile in a tile-permuted `TensorMemoryLinearLayout`;
+  - optionally apply a causal window mask;
+  - use `tmem.load_max` to compute row maxima;
+  - compare with PyTorch max or mask-plus-max baseline.
+- Tests:
+  - `test_score_row_max_matches_torch` covers `N=64/128` and causal/noncausal;
+  - `test_score_row_max_benchmark_smoke` checks benchmark execution;
+  - tests are Blackwell Ultra-gated.
+- Validation:
+  - `python -m py_compile
+    python/examples/gluon/10-tmem-windowed-attention-score.py` passed;
+  - focused pytest passed `5 passed in 8.71s`;
+  - script benchmark:
+    `N=64` noncausal `0.88x`, causal `8.68x`;
+    `N=128` noncausal `0.76x`, causal `7.56x`.
+- Note:
+  - speedups are against an executable PyTorch baseline, not a fused custom
+    attention baseline.
+- Next:
+  - run `git diff --check`, commit/push, then implement ragged expert views.

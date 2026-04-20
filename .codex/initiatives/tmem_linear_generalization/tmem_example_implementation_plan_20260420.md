@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 22:31 UTC
+Last updated: 2026-04-20 22:45 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -207,8 +207,8 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Example 5: Windowed Attention Score Tile With TMEM Reductions
 
-- Status: implemented at 2026-04-20 22:31 UTC.
-- Proposed file: `python/examples/gluon/09-tmem-windowed-attention-score.py`.
+- Status: implemented at 2026-04-20 22:45 UTC.
+- Proposed file: `python/examples/gluon/10-tmem-windowed-attention-score.py`.
 - New capability used:
   - noncanonical score-tile TMEM layouts;
   - descriptor/subview-compatible `ld.red` for row max where supported;
@@ -236,8 +236,10 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - score-plus-row-max latency versus shared/register reduction baseline;
   - separate direct-ld.red and fallback-reduction shapes.
 - Implementation notes:
-  - keep this separate from the existing attention example unless/until its
-    synchronization and layout contracts are understood well enough to merge.
+  - implemented standalone score-tile row-max example with noncausal and
+    causal masking, PyTorch max baseline, Blackwell Ultra skip guard, tests,
+    and inline benchmark transcript;
+  - kept separate from the full attention example.
 
 ## Example 6: Fused Quantized MLP Side Projection
 
@@ -354,3 +356,9 @@ grouped and attention examples until reusable helper patterns exist.
   `python -m py_compile` passed, focused pytest passed `8 passed in 10.41s`,
   and the benchmark printed `S=32` `1.04x` and `S=64` `1.03x` over the padded
   `S=128` baseline.
+- 2026-04-20 22:45 UTC: implemented Example 5 as
+  `python/examples/gluon/10-tmem-windowed-attention-score.py`. Validation:
+  `python -m py_compile` passed, focused pytest passed `5 passed in 8.71s`,
+  and the benchmark printed noncausal rows near parity/slower than `torch.max`
+  and causal rows `8.68x`/`7.56x` faster than the executable PyTorch
+  mask-plus-max baseline.

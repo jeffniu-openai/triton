@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 22:31 UTC
+Last updated: 2026-04-20 22:45 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -990,3 +990,10 @@ signal handling:
   a broad-projection/gate wrapper, TTGIR checks, and inline benchmark
   transcript. Focused validation passed `8/8`. Next concrete slice: windowed
   attention score reductions.
+
+- 2026-04-20 22:45 UTC: implemented Phase H windowed attention score/reduction
+  example in `python/examples/gluon/10-tmem-windowed-attention-score.py`. The
+  example covers TMEM row-max reductions for noncausal and causal score tiles,
+  a PyTorch mask/max baseline, Blackwell Ultra gating, and inline benchmark
+  transcript. Focused validation passed `5/5`. Next concrete slice: ragged
+  expert views.

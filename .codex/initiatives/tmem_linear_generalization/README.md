@@ -4812,3 +4812,16 @@ When resuming the initiative:
   - `S=32` `1.04x`;
   - `S=64` `1.03x`.
 - Next Phase H slice: windowed attention score/reduction.
+
+## Latest: 2026-04-20 22:45 UTC attention score reduction example implemented
+
+- Added `python/examples/gluon/10-tmem-windowed-attention-score.py` as the
+  standalone score-tile row-max example.
+- Focused validation passed:
+  - py-compile;
+  - `pytest -s --tb=short
+    python/examples/gluon/10-tmem-windowed-attention-score.py` passed `5/5`.
+- Recorded benchmark output:
+  - `N=64` noncausal `0.88x`, causal `8.68x`;
+  - `N=128` noncausal `0.76x`, causal `7.56x`.
+- Next Phase H slice: ragged expert views.

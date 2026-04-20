@@ -13911,3 +13911,23 @@ rejection, not rescue
     `1.04x`; `S=64` compact `0.141 ms`, padded `0.145 ms`, `1.03x`.
 - Next:
   - implement windowed attention score/reduction example.
+
+## Current: 2026-04-20 22:45 UTC attention score reduction example implemented
+
+- Added `python/examples/gluon/10-tmem-windowed-attention-score.py`.
+- The example implements:
+  - standalone attention score-tile row max using `tmem.load_max`;
+  - noncausal and causal masking modes;
+  - PyTorch `torch.max` / mask-plus-max baseline;
+  - Blackwell Ultra skip guard.
+- Validation:
+  - py-compile passed;
+  - focused pytest passed `5 passed in 8.71s`.
+- Benchmark:
+  - `M=128 N=64`: noncausal `0.88x`, causal `8.68x`;
+  - `M=128 N=128`: noncausal `0.76x`, causal `7.56x`.
+- Caveat:
+  - causal speedups are against the executable PyTorch mask-plus-max baseline,
+    not a custom fused attention baseline.
+- Next:
+  - implement ragged expert views example.
