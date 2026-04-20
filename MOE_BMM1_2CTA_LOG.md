@@ -2053,3 +2053,18 @@ and `1024`, under both simulated production routing and uniform routing.
   - Conclusion: neither existing fragment mode is ready to tune; the next
     fragment attempt needs either a compiler/layout fix or a new epilogue that
     avoids TMEM subviews entirely.
+
+## 2026-04-20 M-Pair Drain Isolation
+
+- Added scratch `ctampair_drain` (`STRUCTURAL_MODE == 59`) to isolate M-pair
+  synchronization. It uses `load_inputs_cta_mpair_partition` and
+  `mma_cta_mpair_compute_partition`, then an epilogue worker only waits on
+  `acc_ready` and arrives `acc_empty` without reading TMEM or writing output.
+- Smoke command intentionally omitted `--validate` because the mode writes no
+  output:
+  `/tmp/moe_bmm1_ctampair_drain_smoke_20260420T1225Z.csv`.
+- Result: the drain mode still hung until timeout. This means the M-pair
+  blocker is in load/compute/accumulator synchronization, not in the SwiGLU
+  epilogue, global store, or fragment layout. Next M-pair work should reduce
+  further, for example one K tile, one buffer, or explicit debug counters around
+  X/W ready-empty phases.

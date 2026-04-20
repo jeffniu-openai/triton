@@ -3418,6 +3418,24 @@ def epilogue_cta_mpair_permfrag_partition(p: PartitionArgs):
 
 
 @gluon.jit
+def epilogue_cta_mpair_drain_partition(p: PartitionArgs):
+    idx = 0
+    phase = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pair_pid_m = block_id // p.GRID_N
+        rank = gl.cluster_cta_rank()
+        schedule_pid_m = pair_pid_m.to(gl.int32) * 2 + rank
+        active = schedule_pid_m < p.grid_m
+        if active:
+            acc_empty_bar = p.acc_empty_bars.index(idx)
+            acc_ready_bar = p.acc_ready_bars.index(idx)
+            mbarrier.wait(acc_ready_bar, phase)
+            mbarrier.arrive(acc_empty_bar)
+            idx, phase = advance(idx, phase, p.acc_num_bufs)
+
+
+@gluon.jit
 def epilogue_fake_nsplit_partition(p: PartitionArgs):
     idx = 0
     phase = 0
@@ -7119,7 +7137,7 @@ def ws_matmul_combined_load_kernel(
     cta_npair_like: gl.constexpr = (
         cta_npair or x2n_fused or x2n4 or x2n_mfrag or x2n_natfrag or x2n_helper or x2n_mmaepi or x2n_permfrag
     )
-    cta_mpair: gl.constexpr = STRUCTURAL_MODE == 40 or STRUCTURAL_MODE == 44 or STRUCTURAL_MODE == 58
+    cta_mpair: gl.constexpr = STRUCTURAL_MODE == 40 or STRUCTURAL_MODE == 44 or STRUCTURAL_MODE == 58 or STRUCTURAL_MODE == 59
     fakens_pairw: gl.constexpr = STRUCTURAL_MODE == 38
     fakens_mmaepi: gl.constexpr = STRUCTURAL_MODE == 39
     mma_direct_scale: gl.constexpr = STRUCTURAL_MODE == 42
@@ -8099,6 +8117,19 @@ def ws_matmul_combined_load_kernel(
             [STORE_HELPER_WARPS, LOAD_ACTIVATION_WARPS, MMA_WARPS],
             [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, MMA_REGS],
         )
+    elif STRUCTURAL_MODE == 59:
+        gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "ctampair_drain keeps direct allocation but writes no output")
+        gl.static_assert(gl.num_ctas() == 2, "ctampair_drain requires a 2CTA launch")
+        gl.warp_specialize(
+            [
+                (noop_partition, (p, )),
+                (epilogue_cta_mpair_drain_partition, (p, )),
+                (load_inputs_cta_mpair_partition, (p, )),
+                (mma_cta_mpair_compute_partition, (p, )),
+            ],
+            [STORE_HELPER_WARPS, LOAD_ACTIVATION_WARPS, MMA_WARPS],
+            [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, MMA_REGS],
+        )
     else:
         if STRUCTURAL_MODE == 1:
             gl.warp_specialize(
@@ -8169,7 +8200,7 @@ def combined_load_matmul(
         expected_grid_m = int(x_block_offs[-1].item())
     elif structural_mode == 48:
         actual_grid_m = int(x_block_offs[a_ragged_metadata.n_slices].item())
-    schedule_grid_m = triton.cdiv(expected_grid_m, 2) if structural_mode in (40, 44, 58) else expected_grid_m
+    schedule_grid_m = triton.cdiv(expected_grid_m, 2) if structural_mode in (40, 44, 58, 59) else expected_grid_m
     schedule_grid_n = (
         triton.cdiv(grid_n, 4) if structural_mode == 57 else (
             triton.cdiv(grid_n, 2) if structural_mode in (36, 37, 49, 51, 52, 53, 54, 56) else grid_n
@@ -8224,7 +8255,7 @@ def combined_load_matmul(
 
     fake_nsplit = structural_mode == 15
     cta_npair = structural_mode in (36, 37, 49, 51, 52, 53, 54, 55, 56, 57)
-    cta_mpair = structural_mode in (40, 44, 58)
+    cta_mpair = structural_mode in (40, 44, 58, 59)
     fakens_pairw = structural_mode == 38
     fakens_mmaepi = structural_mode == 39
     acc_cga_layout = ex.get_acc_cga_layout(p.NUM_CTAS)
@@ -8528,6 +8559,9 @@ def parse_candidate(name: str, slice_size: int):
     elif name.startswith("ctampair_permfrag:"):
         spec = name[len("ctampair_permfrag:"):]
         mode = "ctampair_permfrag"
+    elif name.startswith("ctampair_drain:"):
+        spec = name[len("ctampair_drain:"):]
+        mode = "ctampair_drain"
     elif name.startswith("privsched:"):
         spec = name[len("privsched:"):]
         mode = "privsched"
@@ -8682,6 +8716,7 @@ def parse_candidate(name: str, slice_size: int):
             "ctampair",
             "ctampair2",
             "ctampair_permfrag",
+            "ctampair_drain",
         ):
             x2n4_helper_config = mode == "x2n4" and updates.get("USE_DIRECT_EPILOGUE_STORE") is False
             updates.setdefault("USE_DIRECT_EPILOGUE_STORE", False if mode == "x2n_helper" else True)
@@ -8700,7 +8735,7 @@ def parse_candidate(name: str, slice_size: int):
             if mode in ("ctapair", "ctampair"):
                 updates.setdefault("NUM_WARPS", 8)
                 updates.setdefault("MMA_WARPS", 4)
-            if mode in ("ctapair2", "ctampair2", "ctampair_permfrag"):
+            if mode in ("ctapair2", "ctampair2", "ctampair_permfrag", "ctampair_drain"):
                 updates.setdefault("NUM_WARPS", 8)
                 updates.setdefault("STORE_HELPER_WARPS", 4)
                 updates.setdefault("STORE_HELPER_REGS", 32)
@@ -8798,6 +8833,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
         "ctampair",
         "ctampair2",
         "ctampair_permfrag",
+        "ctampair_drain",
         "privsched",
         "mmascale",
         "dualmma",
@@ -8866,6 +8902,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
                 "fakensmmaepi": 39,
                 "ctampair": 40,
                 "ctampair_permfrag": 58,
+                "ctampair_drain": 59,
                 "privsched": 41,
                 "mmascale": 42,
                 "dualmma": 43,
