@@ -25448,3 +25448,31 @@ Open after this slice:
   - script benchmark output: `N=32` `1.18x`, `N=64` `1.05x`.
 - Next:
   - commit and push this tutorial polish checkpoint.
+
+## 2026-04-20 21:07 UTC: open tracked TMEM examples implementation plan
+
+- User asked to document and track implementation/testing for each proposed
+  performance example as a large project.
+- Added `tmem_example_implementation_plan_20260420.md` with seven planned
+  `python/examples/gluon/` examples:
+  - MoE router skinny scaled projection with fused top-k;
+  - LoRA / adapter projection fusion;
+  - small-vocabulary / speculative-decode candidate head;
+  - ragged grouped/MoE expert output views;
+  - windowed attention score tile with TMEM reductions;
+  - fused quantized MLP side projection;
+  - layout-as-epilogue store in consumer order.
+- Each example entry records:
+  - proposed file path;
+  - new TMEM capability used;
+  - workload and shape grid;
+  - algorithm and layout plan;
+  - best pre-generalization baseline;
+  - correctness/shape/layout tests;
+  - benchmark requirements.
+- Updated `completion_execution_tracker.md` with Phase H and refreshed
+  `memory.md`, `handoff_2026-04-09.md`, and `README.md`.
+- No example implementation has started yet. Next slice is the projection-only
+  MoE router example with padded `N=128` baseline.
+- Validation:
+  - documentation-only checkpoint; run `git diff --check` before commit.

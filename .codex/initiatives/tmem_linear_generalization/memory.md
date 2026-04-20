@@ -13774,3 +13774,31 @@ rejection, not rescue
   - commit and push this checkpoint to `origin/codex/tmem`;
   - rebaseline remaining clean negatives; no active numbered linear-layout
     coverage gap remains after Gap #1, Gap #2, and Gap #3 closure.
+
+## Current: 2026-04-20 21:07 UTC examples follow-on project opened
+
+- User asked to turn the seven proposed performance uses of the new TMEM
+  capabilities into separate `python/examples/gluon/` examples with detailed
+  testing, shape coverage, benchmarks against the best pre-generalization code,
+  and detailed algorithm/layout descriptions.
+- Created `tmem_example_implementation_plan_20260420.md` as the source of
+  truth for that follow-on workstream.
+- Tracked examples:
+  - MoE router skinny scaled projection with fused top-k;
+  - LoRA / adapter projection fusion;
+  - small-vocabulary / speculative-decode candidate head;
+  - ragged grouped/MoE expert output views;
+  - windowed attention score tile with TMEM reductions;
+  - fused quantized MLP side projection;
+  - layout-as-epilogue store in consumer order.
+- Execution order starts with MoE router projection-only because it has the
+  clearest narrow scaled-MMAv5 performance story and a straightforward padded
+  `N=128` pre-generalization baseline.
+- Validation contract for each example:
+  - run required `make -j8` first, using the local `CPLUS_INCLUDE_PATH`
+    workaround if needed;
+  - py-compile the example;
+  - run focused pytest with `-s --tb=short`;
+  - run `git diff --check`;
+  - record benchmark commands and measured output in the plan before treating a
+    slice as complete.

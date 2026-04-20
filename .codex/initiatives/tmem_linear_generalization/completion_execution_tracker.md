@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 20:21 UTC
+Last updated: 2026-04-20 21:07 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -99,6 +99,15 @@ The project is complete when:
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
+- Phase H, user-facing performance examples: planned as a follow-on examples
+  project. The source of truth is
+  `tmem_example_implementation_plan_20260420.md`. It tracks seven separate
+  `python/examples/gluon/` examples: MoE router skinny projection/top-k, LoRA
+  adapter fusion, candidate-head projection, ragged expert views, windowed
+  attention score reductions, fused MLP side projection, and layout-as-epilogue
+  store ordering. Each example must include correctness tests, shape coverage,
+  a benchmark against the best pre-generalization baseline, and an algorithm
+  plus TMEM layout explanation.
 
 ## Current Clean-Negative Inventory
 
@@ -939,3 +948,9 @@ signal handling:
   `cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported`, and
   `cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
   passed as `3/3/3/1`; `git diff --check`.
+
+- 2026-04-20 21:07 UTC: opened Phase H as a tracked follow-on examples
+  workstream and added `tmem_example_implementation_plan_20260420.md`. No
+  example implementation has started. Next concrete implementation slice is
+  the projection-only MoE router example with a padded `N=128` baseline,
+  correctness tests, shape coverage, and benchmark transcript.

@@ -67,6 +67,9 @@ When resuming the initiative:
 - use `branch_cleanup_inventory_20260419.md` for the branch-wide cleanup audit
   against the `origin/main` merge-base and the executed artifact/shim pruning
   plan.
+- use `tmem_example_implementation_plan_20260420.md` for the follow-on
+  `python/examples/gluon/` implementation plan covering user-facing examples,
+  tests, shape coverage, pre-generalization baselines, and benchmark evidence.
 
 ## Current Backend Checkpoint
 
@@ -4718,3 +4721,21 @@ When resuming the initiative:
   by a verifier-only note after descriptor enumeration. See `memory.md`,
   `log.md`, and `handoff_2026-04-09.md` for the exact validation and next
   planner targets.
+## Latest: 2026-04-20 21:07 UTC user-facing examples implementation plan
+
+- Added `tmem_example_implementation_plan_20260420.md` as the source of truth
+  for a follow-on `python/examples/gluon/` examples project.
+- The plan tracks seven examples, each with required correctness tests, shape
+  coverage, benchmark baseline, and algorithm/layout explanation:
+  - MoE router skinny scaled projection with fused top-k;
+  - LoRA / adapter projection fusion;
+  - small-vocabulary / speculative-decode candidate head;
+  - ragged grouped/MoE expert output views;
+  - windowed attention score tile with TMEM reductions;
+  - fused quantized MLP side projection;
+  - layout-as-epilogue store in consumer order.
+- The next concrete implementation slice is the MoE router projection-only
+  example under `python/examples/gluon/`, comparing a narrow scaled-MMAv5
+  `TensorMemoryLinearLayout` accumulator path against the best old padded
+  `N=128` baseline.
+- This checkpoint is documentation-only. No example files have been added yet.
