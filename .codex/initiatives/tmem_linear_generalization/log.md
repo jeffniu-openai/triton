@@ -25542,3 +25542,35 @@ Open after this slice:
 - Next:
   - run `git diff --check`, commit/push, then implement Example 3
     candidate-head projection.
+
+## 2026-04-20 22:04 UTC: implement TMEM candidate-head example
+
+- Added `python/examples/gluon/07-tmem-candidate-head.py`.
+- Algorithm:
+  - assume selected candidate vocabulary rows are staged in candidate-list order;
+  - compute `hidden[M,K] @ selected_vocab[C,K].T` with MXFP8
+    `tcgen05_mma_scaled`;
+  - use a compact tile-permuted `TensorMemoryLinearLayout` accumulator for
+    `C=32/64`;
+  - compare against a padded `C=128` scaled-MMAv5 baseline.
+- Tests:
+  - `test_candidate_projection_matches_selected_vocab_order` covers `C=32/64`
+    and `K=128/256`;
+  - `test_candidate_padded_baseline_matches_compact` checks the padded baseline
+    leading columns against the compact path;
+  - TTGIR checks assert `tensor_memory_linear` and `ttng.tc_gen5_mma_scaled`;
+  - candidate ids are unsorted to make output-order intent explicit.
+- Validation:
+  - `python -m py_compile python/examples/gluon/07-tmem-candidate-head.py`
+    passed;
+  - focused pytest passed `6 passed in 9.71s`;
+  - script benchmark:
+    `C=32` compact `0.011 ms`, padded `0.013 ms`, `1.17x`;
+    `C=64` compact `0.013 ms`, padded `0.013 ms`, `1.03x`.
+- Note:
+  - PyTorch CUDA indexing is not implemented for `float8_e4m3fn`, so the test
+    harness stages candidate rows directly in candidate order instead of
+    gathering from a full float8 vocabulary tensor.
+- Next:
+  - run `git diff --check`, commit/push, then implement Example 4
+    layout-as-epilogue store ordering.

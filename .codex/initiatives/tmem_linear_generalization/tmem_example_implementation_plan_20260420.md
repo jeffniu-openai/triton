@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 21:51 UTC
+Last updated: 2026-04-20 22:04 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -139,7 +139,7 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Example 3: Small-Vocabulary / Speculative-Decode Candidate Head
 
-- Status: planned.
+- Status: implemented at 2026-04-20 22:04 UTC.
 - Proposed file: `python/examples/gluon/07-tmem-candidate-head.py`.
 - New capability used:
   - narrow scaled-MMAv5 accumulator fragments for candidate logits;
@@ -166,8 +166,11 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - candidate projection latency versus padded/reorder baseline;
   - include decode-like small `M` and batched speculative verification shapes.
 - Implementation notes:
-  - start without duplicate candidate ids if descriptor semantics make that a
-    separate gather contract.
+  - implemented compact selected-candidate projection for `C=32/64`, padded
+    `C=128` baseline, candidate-order tests, TTGIR checks, and inline benchmark
+    transcript;
+  - the example assumes candidate rows have already been staged in candidate
+    order. It does not implement an in-kernel vocabulary gather.
 
 ## Example 4: Ragged Grouped/MoE Expert Output Views
 
@@ -334,3 +337,8 @@ grouped and attention examples until reusable helper patterns exist.
   `python -m py_compile` passed, focused pytest passed `8 passed in 11.53s`,
   and the benchmark printed `R=32` `1.09x` and `R=64` `1.11x` over the padded
   `R=128` baseline.
+- 2026-04-20 22:04 UTC: implemented Example 3 as
+  `python/examples/gluon/07-tmem-candidate-head.py`. Validation:
+  `python -m py_compile` passed, focused pytest passed `6 passed in 9.71s`,
+  and the benchmark printed `C=32` `1.17x` and `C=64` `1.03x` over the padded
+  `C=128` baseline.

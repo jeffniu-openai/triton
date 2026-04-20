@@ -13856,3 +13856,24 @@ rejection, not rescue
     benchmark paths use PyTorch for `tmp @ up.T`.
 - Next:
   - implement Example 3 small-vocabulary/speculative-decode candidate head.
+
+## Current: 2026-04-20 22:04 UTC candidate-head example implemented
+
+- Added `python/examples/gluon/07-tmem-candidate-head.py`.
+- The example implements:
+  - compact selected-candidate MXFP8 projection for `C=32/64`;
+  - padded `C=128` scaled-MMAv5 baseline;
+  - candidate-order validation with deterministic unsorted candidate ids;
+  - tests for `C=32/64`, `K=128/256`, padded baseline agreement, and stable
+    TTGIR markers.
+- Validation:
+  - py-compile passed;
+  - focused pytest passed `6 passed in 9.71s`.
+- Benchmark:
+  - `M=4096 K=128`: `C=32` compact `0.011 ms`, padded `0.013 ms`, `1.17x`;
+    `C=64` compact `0.013 ms`, padded `0.013 ms`, `1.03x`.
+- Caveat:
+  - candidate rows are assumed to be staged in candidate order before the
+    kernel; the example does not implement in-kernel float8 vocabulary gather.
+- Next:
+  - implement Example 4 layout-as-epilogue store ordering.

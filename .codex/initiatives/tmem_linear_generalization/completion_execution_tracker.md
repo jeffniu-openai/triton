@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 21:51 UTC
+Last updated: 2026-04-20 22:04 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -969,3 +969,10 @@ signal handling:
   pre-generalization baseline, a full LoRA update wrapper, TTGIR checks, and
   inline benchmark transcript. Focused validation passed `8/8`. Next concrete
   slice: Example 3 candidate-head projection.
+
+- 2026-04-20 22:04 UTC: implemented Phase H Example 3 in
+  `python/examples/gluon/07-tmem-candidate-head.py`. The example covers compact
+  selected-candidate MXFP8 logits for `C=32/64`, `K=128/256`, padded `C=128`
+  baseline, candidate-order validation, TTGIR checks, and inline benchmark
+  transcript. Focused validation passed `6/6`. Next concrete slice: Example 4
+  layout-as-epilogue store ordering.

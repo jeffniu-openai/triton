@@ -4770,3 +4770,18 @@ When resuming the initiative:
   - `R=64` `1.11x`.
 - Next Phase H slice: Example 3 small-vocabulary / speculative-decode
   candidate head.
+
+## Latest: 2026-04-20 22:04 UTC candidate-head example implemented
+
+- Added `python/examples/gluon/07-tmem-candidate-head.py` as Phase H Example 3.
+- The example uses narrow MXFP8 scaled-MMAv5 accumulator fragments for compact
+  selected-candidate logits `C=32/64`, and compares against a padded `C=128`
+  baseline.
+- Focused validation passed:
+  - py-compile;
+  - `pytest -s --tb=short python/examples/gluon/07-tmem-candidate-head.py`
+    passed `6/6`.
+- Recorded benchmark output for `M=4096 K=128`:
+  - `C=32` `1.17x`;
+  - `C=64` `1.03x`.
+- Next Phase H slice: Example 4 layout-as-epilogue store ordering.
