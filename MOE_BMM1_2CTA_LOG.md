@@ -1573,3 +1573,35 @@ and `1024`, under both simulated production routing and uniform routing.
   next structural work should focus on a new ownership rewrite such as true
   N-shard/X-reuse or a tighter two-output fused body, not another scheduler-only
   wrapper.
+
+## 2026-04-20 Shared-X Adjacent-N Scratch
+
+- Added scratch `x2n_fused:` mode (`STRUCTURAL_MODE=49`) in
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`. The structure
+  pairs adjacent N tiles in one 2CTA cluster, gathers the activation tile once
+  from rank 0 with TMA multicast, and lets each CTA own one local N tile while
+  reusing the shared X tile.
+- Barrier/layout findings: using two-CTA CGA layout on the X empty barrier
+  fails verifier lowering for `tcgen05_commit` (`completion barrier cga_layout`
+  expected local layout). Using two-CTA CGA layout on the X ready barrier fails
+  `async_tma_gather` verifier lowering (`TMA barrier cga_layout` expected local
+  layout). The standard local X ready barrier plus an X empty arrival count of
+  `2` reaches PTXAS.
+- Odd `GRID_N` tails are handled by inactive ranks that only consume/release
+  X-ready stages, so the mode no longer requires an even N-grid. This is needed
+  for the GPT-OSS-120B shape `N=5760`, `BLOCK_N=256`, where `GRID_N=23`.
+- The fused epilogue version is not viable in its current form: a one-warp
+  owner fails frontend lowering because TMEM accumulator loads require
+  worker-local `num_warps >= 4`; the four-warp retry reaches PTXAS but follows
+  the same register cliff as `mmaepi:`.
+- The split-epilogue retry is also non-promotable. On hard uniform batch `896`,
+  local rank `4`, candidate
+  `x2n_fused:m32_bn256_sub1_direct_warps4_x5w6_b20_nomcscale_act2w1m1_regs52_epin1_b32@l1m1`
+  needed `80` registers with `maxnreg=52`; raising to `regs80` needed `136`;
+  raising to `regs160` needed `255`. No timing was collected because the mode
+  does not compile at a practical register target.
+- Current decision: shared-X adjacent-N reuse is structurally interesting but
+  not promotable with the existing epilogue/MMA live ranges. The next attempt
+  should either make the epilogue much narrower so shared-X can compile, or
+  pursue a different local ownership split that avoids the extra live X/N-tail
+  state.
