@@ -2005,3 +2005,41 @@ and `1024`, under both simulated production routing and uniform routing.
   unblocked work is either fixing x2n4 helper synchronization or building a new
   low-register M-pair/fragment epilogue that avoids sliced-TMEM verifier
   failures.
+
+## 2026-04-20 Follow-Up x2n4 And M-Pair Fragment Attempts
+
+- Followed up on the x2n4 helper hang:
+  - Removed a `gl.barrier()` inside `mma_x2n4_compute_partition`; a CTA-wide
+    barrier inside only the MMA warp-specialized partition is unsafe.
+  - Added descriptor-aware X-empty commits for x2n4 and a second X-empty commit
+    when the second local N tile is active, because each CTA rank issues two
+    MMAs against the same multicast X buffer.
+  - These changes did not resolve the hang. The resource-fitting wide helper
+    `x4w4` still timed out:
+    `/tmp/moe_bmm1_x2n4_helper_wide_x4w4_nobar_20260420T1105Z.csv`,
+    `/tmp/moe_bmm1_x2n4_helper_wide_x4w4_desc_20260420T1127Z.csv`, and
+    `/tmp/moe_bmm1_x2n4_helper_wide_x4w4_doublex_20260420T1134Z.csv`.
+  - Current interpretation: x2n4 has at least one remaining producer/consumer
+    mismatch beyond the obvious CTA barrier and X-empty arrival count. Do not
+    spend more benchmark time on x2n4 until the synchronization protocol is
+    simplified or instrumented.
+- Probed the separated M-pair family:
+  - Existing `ctampair2` with `sub4` does not immediately hang, but ptxas wants
+    `72` registers at a `48` cap:
+    `/tmp/moe_bmm1_ctampair2_sub4_smoke_20260420T1144Z.csv`.
+  - Raising the cap to `72` made ptxas request `120` registers, matching the
+    pattern seen in other full-tile epilogues:
+    `/tmp/moe_bmm1_ctampair2_sub4_regs72_20260420T1146Z.csv`.
+- Added scratch `ctampair_permfrag` (`STRUCTURAL_MODE == 58`) to combine
+  M-pair load/compute with a direct N-fragment epilogue modeled on
+  `x2n_permfrag`. This avoids M-sliced TMEM descriptors and processes
+  `BLOCK_N / SWIGLU_SUBTILE_FACTOR` columns at a time.
+  - First smoke exposed a launch-side descriptor classification miss for mode
+    58; fixed by treating it as an M-pair mode in the Python launch wrapper.
+  - After that fix, `ctampair_permfrag` compiled and launched but hung until
+    timeout:
+    `/tmp/moe_bmm1_ctampair_permfrag_smoke2_20260420T1201Z.csv`.
+  - Conclusion: M-pair scheduling still has a runtime synchronization issue
+    once it reaches executable code. A useful next M-pair attempt should first
+    reduce to a minimal no-epilogue or single-K smoke to isolate load/compute
+    barriers before adding fragment epilogues.
