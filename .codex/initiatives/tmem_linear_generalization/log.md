@@ -25689,3 +25689,30 @@ Open after this slice:
     `42 passed in 26.83s`.
 - Phase H is complete for the requested example suite. The individual examples
   document their measured benchmark transcripts and caveats.
+
+## 2026-04-20 23:25 UTC: replace timed PyTorch baselines in examples
+
+- Reworked the Phase H example suite so timed comparisons that previously used
+  PyTorch post-processing now use plain Triton kernels that do not depend on
+  the new TMEM capabilities:
+  - `05-tmem-moe-router.py`: router-level top-k uses a Triton top-2 selector;
+  - `06-tmem-lora-fusion.py`: the second `tmp @ up.T` stage uses a Triton
+    update kernel;
+  - `08-tmem-layout-as-epilogue.py`: canonical output is converted with a
+    Triton reorder kernel;
+  - `09-tmem-mlp-side-projection.py`: broad-side columns and sigmoid gating
+    use a Triton kernel;
+  - `10-tmem-windowed-attention-score.py`: the baseline stores masked scores
+    and computes row max with a plain Triton kernel.
+- PyTorch remains only as a correctness oracle and data-generation helper.
+- Refreshed inline benchmark transcripts from local script runs. The attention
+  example now explicitly documents that the isolated `load_max` stage is a
+  contract demonstration rather than a universal win over an in-register
+  Triton row reduction.
+- Validation:
+  - `python -m py_compile` passed for example files `05` through `11`;
+  - focused tests for the touched files passed;
+  - combined pytest over the seven files passed `42 passed in 6.53s` with
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-torchless
+    PYTHONPATH=.:./python pytest -s --tb=short <seven files>`;
+  - `git diff --check` passed before the documentation edits.

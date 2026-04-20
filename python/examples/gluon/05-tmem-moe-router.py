@@ -31,6 +31,7 @@ import math
 import pytest
 import torch
 import triton
+import triton.language as tl
 import triton.experimental.gluon as gluon
 import triton.experimental.gluon.language as gl
 from triton.experimental.gluon.language.nvidia.blackwell import (
@@ -196,9 +197,62 @@ def router_projection(hidden, weight, hidden_scale, weight_scale, k):
 
 
 def router_topk(hidden, weight, hidden_scale, weight_scale, k, top_k=2):
+    assert top_k == 2
     logits = router_projection(hidden, weight, hidden_scale, weight_scale, k)
-    scores, expert_ids = torch.topk(logits, top_k, dim=1)
+    scores = torch.empty((logits.shape[0], top_k), device="cuda", dtype=torch.float32)
+    expert_ids = torch.empty((logits.shape[0], top_k), device="cuda", dtype=torch.int64)
+    router_top2_into(logits, scores, expert_ids)
     return logits, scores, expert_ids
+
+
+@triton.jit
+def _top2_kernel(
+    logits,
+    scores,
+    expert_ids,
+    M: tl.constexpr,
+    E: tl.constexpr,
+    LOGITS_STRIDE_M: tl.constexpr,
+    LOGITS_STRIDE_N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs = rows[:, None] * LOGITS_STRIDE_M + tl.arange(0, E)[None, :] * LOGITS_STRIDE_N
+    mask = rows[:, None] < M
+    vals = tl.load(logits + offs, mask=mask, other=-float("inf"))
+
+    best = tl.max(vals, axis=1)
+    is_best = vals == best[:, None]
+    # Pick the lowest expert id for deterministic ties, matching torch.topk's
+    # value comparison for the non-tied random inputs used here.
+    expert_range = tl.arange(0, E)
+    best_id = tl.min(tl.where(is_best, expert_range[None, :], E), axis=1)
+    vals2 = tl.where(is_best, -float("inf"), vals)
+    second = tl.max(vals2, axis=1)
+    second_id = tl.min(tl.where(vals2 == second[:, None], expert_range[None, :], E), axis=1)
+
+    row_mask = rows < M
+    tl.store(scores + rows * 2, best, mask=row_mask)
+    tl.store(scores + rows * 2 + 1, second, mask=row_mask)
+    tl.store(expert_ids + rows * 2, best_id.to(tl.int64), mask=row_mask)
+    tl.store(expert_ids + rows * 2 + 1, second_id.to(tl.int64), mask=row_mask)
+
+
+def router_top2_into(logits, scores, expert_ids):
+    assert logits.shape[1] in (32, 64, 128)
+    assert scores.shape[1] == 2
+    grid = (triton.cdiv(logits.shape[0], 16), )
+    _top2_kernel[grid](
+        logits,
+        scores,
+        expert_ids,
+        logits.shape[0],
+        logits.shape[1],
+        logits.stride(0),
+        logits.stride(1),
+        BLOCK_M=16,
+    )
 
 
 def benchmark_router_projection(total_m=4096, num_experts=32, k=128, include_topk=False):
@@ -210,22 +264,29 @@ def benchmark_router_projection(total_m=4096, num_experts=32, k=128, include_top
 
     narrow_out = torch.empty((total_m, num_experts), device="cuda", dtype=torch.float32)
     padded_out = torch.empty((total_m, 128), device="cuda", dtype=torch.float32)
+    narrow_scores = torch.empty((total_m, 2), device="cuda", dtype=torch.float32)
+    padded_scores = torch.empty((total_m, 2), device="cuda", dtype=torch.float32)
+    narrow_ids = torch.empty((total_m, 2), device="cuda", dtype=torch.int64)
+    padded_ids = torch.empty((total_m, 2), device="cuda", dtype=torch.int64)
 
     def narrow():
         router_projection_into(hidden, weight, hidden_scale, weight_scale, narrow_out, num_experts, k)
         if include_topk:
-            torch.topk(narrow_out, 2, dim=1)
+            router_top2_into(narrow_out, narrow_scores, narrow_ids)
 
     def padded():
         router_projection_into(hidden, padded_weight, hidden_scale, padded_weight_scale, padded_out, 128, k)
         if include_topk:
-            torch.topk(padded_out[:, :num_experts], 2, dim=1)
+            router_top2_into(padded_out[:, :num_experts], padded_scores, padded_ids)
 
     narrow()
     padded()
     reference = hidden_ref @ weight_ref.T
     torch.testing.assert_close(narrow_out, reference, atol=1e-3, rtol=1e-3)
     torch.testing.assert_close(padded_out[:, :num_experts], narrow_out, atol=1e-3, rtol=1e-3)
+    if include_topk:
+        torch.testing.assert_close(padded_scores, narrow_scores, atol=0, rtol=0)
+        torch.testing.assert_close(padded_ids, narrow_ids, atol=0, rtol=0)
 
     narrow_ms = triton.testing.do_bench(narrow)
     padded_ms = triton.testing.do_bench(padded)
@@ -328,19 +389,18 @@ if __name__ == "__main__":
 #   --m 4096 --k 128 --experts 32 64
 # TMEM MoE router projection benchmark
 # ====================================
-# M=4096 E=32 K=128 | narrow=0.010 ms | padded E=128=0.013 ms | speedup=1.21x | useful=3.2 TFLOP/s
-# M=4096 E=64 K=128 | narrow=0.012 ms | padded E=128=0.013 ms | speedup=1.02x | useful=5.4 TFLOP/s
+# M=4096 E=32 K=128 | narrow=0.010 ms | padded E=128=0.012 ms | speedup=1.18x | useful=3.2 TFLOP/s
+# M=4096 E=64 K=128 | narrow=0.012 ms | padded E=128=0.012 ms | speedup=1.00x | useful=5.5 TFLOP/s
 #
 # $ CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-moe-router \
 #   PYTHONPATH=.:./python python python/examples/gluon/05-tmem-moe-router.py \
 #   --m 4096 --k 128 --experts 32 64 --include-topk
 # TMEM MoE router projection benchmark
 # ====================================
-# M=4096 E=32 K=128 + topk | narrow=0.039 ms | padded E=128=0.082 ms | speedup=2.11x | useful=0.9 TFLOP/s
-# M=4096 E=64 K=128 + topk | narrow=0.042 ms | padded E=128=0.085 ms | speedup=2.03x | useful=1.6 TFLOP/s
+# M=4096 E=32 K=128 + topk | narrow=0.015 ms | padded E=128=0.021 ms | speedup=1.39x | useful=2.2 TFLOP/s
+# M=4096 E=64 K=128 + topk | narrow=0.016 ms | padded E=128=0.022 ms | speedup=1.45x | useful=4.3 TFLOP/s
 # ```
 #
-# The `--include-topk` benchmark uses the same post-projection `torch.topk` for
-# both paths.  It is still a useful router-level comparison because the compact
-# TMEM projection feeds a smaller logits matrix into selection, but it is not an
-# in-kernel top-k fusion.
+# The `--include-topk` benchmark uses the same plain Triton top-2 kernel for
+# both paths. It is not a TMEM feature; it just keeps the router-level comparison
+# off PyTorch while showing the cost of selecting from compact logits.

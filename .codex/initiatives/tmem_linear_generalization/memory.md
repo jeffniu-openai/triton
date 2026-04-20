@@ -13970,9 +13970,32 @@ rejection, not rescue
   - combined pytest passed `42 passed in 26.83s` with
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-examples
     PYTHONPATH=.:./python pytest -s --tb=short <seven files>`.
-- Remaining caveats are documented in the examples and plan:
-  - top-k and LoRA second-stage paths use PyTorch wrappers rather than custom
-    in-kernel fusion;
+- Remaining caveats are documented in the examples and plan. This checkpoint
+  was superseded by the 2026-04-20 23:25 UTC rewrite that replaced timed
+  PyTorch post-processing baselines with plain Triton comparison kernels.
+
+## Current: 2026-04-20 23:25 UTC Phase H torchless timed baselines
+
+- User requested every example comparison that used Torch code be rewritten to
+  Triton/Gluon without the new TMEM features for a fairer baseline.
+- Updated timed paths:
+  - router top-k now uses a plain Triton top-2 selector for compact and padded
+    logits;
+  - LoRA second stage now uses a plain Triton update kernel for `tmp @ up.T`;
+  - layout-as-epilogue baseline now uses a plain Triton reorder kernel;
+  - MLP side projection now uses a plain Triton broad-side/gate kernel;
+  - attention score baseline now uses a plain Triton mask-plus-row-max kernel.
+- PyTorch remains in the examples as a correctness oracle and for data setup,
+  but not in the benchmarked comparison functions.
+- Broad validation after the rewrite:
+  - py-compile passed for all seven files;
+  - combined pytest passed `42 passed in 6.53s` with
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-torchless
+    PYTHONPATH=.:./python pytest -s --tb=short <seven files>`.
+- Current remaining caveats:
+  - top-k, LoRA update, MLP gate, and layout reorder are separate plain Triton
+    kernels rather than fused Gluon/TMEM epilogues;
   - candidate-head assumes selected rows are pre-staged;
-  - attention score speedups are against executable PyTorch baselines;
+  - attention score is a small contract demonstration and is slower than the
+    plain Triton mask-plus-row-max kernel for the measured standalone shapes;
   - ragged experts are Python-scheduled, not a persistent grouped-MoE scheduler.

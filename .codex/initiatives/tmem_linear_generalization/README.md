@@ -73,6 +73,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-20 23:25 UTC: refreshed the Phase H example suite so every timed
+  comparison that previously used PyTorch post-processing now uses plain
+  Triton code without the new TMEM features. Router top-k uses a Triton top-2
+  selector, LoRA uses a Triton update kernel, layout-as-epilogue uses a Triton
+  reorder kernel, MLP side projection uses a Triton broad-side/gate kernel,
+  and attention uses a Triton mask-plus-row-max baseline. Correctness oracles
+  still use PyTorch. Validation: py-compile over all seven files and combined
+  pytest over `python/examples/gluon/05` through `11` passed `42 passed in
+  6.53s`; source benchmark comments were refreshed from local script runs.
 - 2026-04-20 20:21 UTC: tutorial polish added inline benchmark output and a
   precise "why this was not possible before" note. The tutorial now states
   that block-scaled MMA itself was preexisting, but the narrow
@@ -4839,14 +4848,24 @@ When resuming the initiative:
 - All seven planned Phase H examples now have implementation files. Next step:
   broad validation across the new example files and final Phase H refresh.
 
-## Latest: 2026-04-20 23:14 UTC Phase H examples complete
+## Previous: 2026-04-20 23:14 UTC Phase H examples complete
 
 - All seven requested user-facing TMEM examples are implemented under
   `python/examples/gluon/`.
 - Combined validation passed:
   - py-compile over files `05` through `11`;
   - focused pytest over the seven files: `42 passed in 26.83s`.
-- The example plan, tracker, memory, log, and handoff now record Phase H as
-  complete, with caveats preserved for wrapper-based top-k/LoRA stages,
-  pre-staged candidate rows, executable PyTorch attention baselines, and the
-  Python-scheduled ragged expert demonstration.
+- The example plan, tracker, memory, log, and handoff record Phase H as
+  complete. The subsequent 23:25 UTC checkpoint replaces the timed PyTorch
+  wrapper/baseline caveats with plain Triton comparison paths.
+
+## Latest: 2026-04-20 23:25 UTC Phase H timed baselines rewritten
+
+- Timed comparisons in the Phase H examples no longer use PyTorch
+  post-processing. The rewritten baselines are plain Triton kernels without
+  the new TMEM features: router top-2, LoRA update, layout reorder, MLP side
+  gate, and attention mask-plus-row-max.
+- PyTorch remains as correctness oracle and input setup only.
+- Validation:
+  - py-compile passed for files `05` through `11`;
+  - focused pytest over the seven files passed `42 passed in 6.53s`.

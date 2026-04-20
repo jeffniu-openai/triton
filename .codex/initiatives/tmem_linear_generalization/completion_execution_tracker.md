@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 23:14 UTC
+Last updated: 2026-04-20 23:25 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -107,7 +107,11 @@ The project is complete when:
   `09-tmem-mlp-side-projection.py`,
   `10-tmem-windowed-attention-score.py`, and
   `11-tmem-ragged-expert-views.py`. Combined validation over those files
-  passed `42/42` at 2026-04-20 23:14 UTC.
+  passed `42/42` at 2026-04-20 23:14 UTC. A 2026-04-20 23:25 UTC follow-up
+  replaced timed PyTorch post-processing baselines with plain Triton kernels
+  that do not use the new TMEM features: router top-2, LoRA update,
+  layout reorder, MLP side gate, and attention mask-plus-row-max. Combined
+  validation over the seven files passed again with `42 passed in 6.53s`.
 
 ## Current Clean-Negative Inventory
 
@@ -1012,3 +1016,11 @@ signal handling:
   pytest over the seven files passed `42 passed in 26.83s`. Phase H is now
   complete for the requested example suite, with caveats recorded in the
   individual example files and plan.
+
+- 2026-04-20 23:25 UTC: Phase H timed comparisons were rewritten to remove
+  PyTorch post-processing from benchmark paths. Router top-k, LoRA update,
+  layout reorder, MLP side gate, and attention mask-plus-row-max now use plain
+  Triton kernels without the new TMEM features. PyTorch remains only for
+  correctness references and data setup. Py-compile passed for all seven files,
+  combined pytest passed `42 passed in 6.53s`, and benchmark transcripts were
+  refreshed from local script runs.

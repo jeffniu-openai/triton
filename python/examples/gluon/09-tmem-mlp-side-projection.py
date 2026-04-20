@@ -13,8 +13,9 @@ control signal:
 This example keeps the side projection compact with a narrow TMEM
 `TensorMemoryLinearLayout` accumulator for `S=32/64`.  The baseline computes the
 same side projection through a padded `S=128` scaled-MMAv5 tile and slices back
-to the useful side columns.  The broad projection is computed with PyTorch in
-both paths so the benchmark isolates the compact side-projection benefit.
+to the useful side columns.  A plain Triton gate kernel computes the matching
+broad side columns in both paths, so the benchmark isolates the compact
+side-projection benefit without timing PyTorch.
 """
 
 import argparse
@@ -24,6 +25,7 @@ from pathlib import Path
 import pytest
 import torch
 import triton
+import triton.language as tl
 
 
 _ROUTER_PATH = Path(__file__).with_name("05-tmem-moe-router.py")
@@ -55,10 +57,62 @@ def side_projection(x, side_w, x_scale, side_scale, k):
 
 def side_gated_output(x, side_w, x_scale, side_scale, x_ref, broad_w, k):
     side = side_projection(x, side_w, x_scale, side_scale, k)
-    broad = x_ref @ broad_w.T
-    out = broad.clone()
-    out[:, :side.shape[1]] = out[:, :side.shape[1]] * torch.sigmoid(side)
+    out = torch.empty_like(side)
+    side_gate_from_projection(x_ref, broad_w, side, out)
     return out
+
+
+@triton.jit
+def _side_gate_kernel(
+    x_ref,
+    broad_w,
+    side,
+    out,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    S: tl.constexpr,
+    SIDE_STRIDE_M: tl.constexpr,
+    SIDE_STRIDE_S: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_s = tl.program_id(1)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_s = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)
+    offs_k = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_S), tl.float32)
+    for k0 in range(0, K, BLOCK_K):
+        kidx = k0 + offs_k
+        a = tl.load(x_ref + offs_m[:, None] * K + kidx[None, :], mask=(offs_m[:, None] < M) & (kidx[None, :] < K), other=0.0)
+        b = tl.load(broad_w + offs_s[None, :] * K + kidx[:, None], mask=(offs_s[None, :] < S) & (kidx[:, None] < K), other=0.0)
+        acc += tl.dot(a, b, input_precision="ieee")
+    side_vals = tl.load(
+        side + offs_m[:, None] * SIDE_STRIDE_M + offs_s[None, :] * SIDE_STRIDE_S,
+        mask=(offs_m[:, None] < M) & (offs_s[None, :] < S),
+        other=0.0,
+    )
+    gate = 1.0 / (1.0 + tl.exp(-side_vals))
+    tl.store(out + offs_m[:, None] * S + offs_s[None, :], acc * gate, mask=(offs_m[:, None] < M) & (offs_s[None, :] < S))
+
+
+def side_gate_from_projection(x_ref, broad_w, side, out):
+    grid = (triton.cdiv(side.shape[0], 16), triton.cdiv(side.shape[1], 16))
+    _side_gate_kernel[grid](
+        x_ref,
+        broad_w,
+        side,
+        out,
+        side.shape[0],
+        x_ref.shape[1],
+        side.shape[1],
+        side.stride(0),
+        side.stride(1),
+        BLOCK_M=16,
+        BLOCK_S=16,
+        BLOCK_K=32,
+    )
 
 
 def benchmark_side_projection(total_m=4096, side_n=32, k=128, broad_n=128):
@@ -70,22 +124,23 @@ def benchmark_side_projection(total_m=4096, side_n=32, k=128, broad_n=128):
 
     compact_side = torch.empty((total_m, side_n), device="cuda", dtype=torch.float32)
     padded_side = torch.empty((total_m, 128), device="cuda", dtype=torch.float32)
+    compact_out = torch.empty_like(compact_side)
+    padded_out = torch.empty_like(compact_side)
 
     def compact():
         side_projection_into(x, side_w, x_scale, side_scale, compact_side, side_n, k)
-        broad = x_ref @ broad_w.T
-        broad[:, :side_n] * torch.sigmoid(compact_side)
+        side_gate_from_projection(x_ref, broad_w, compact_side, compact_out)
 
     def padded():
         side_projection_into(x, padded_side_w, x_scale, padded_side_scale, padded_side, 128, k)
-        broad = x_ref @ broad_w.T
-        broad[:, :side_n] * torch.sigmoid(padded_side[:, :side_n])
+        side_gate_from_projection(x_ref, broad_w, padded_side[:, :side_n], padded_out)
 
     compact()
     padded()
     ref_side = x_ref @ side_ref.T
     torch.testing.assert_close(compact_side, ref_side, atol=1e-3, rtol=1e-3)
     torch.testing.assert_close(padded_side[:, :side_n], compact_side, atol=1e-3, rtol=1e-3)
+    torch.testing.assert_close(compact_out, (x_ref @ broad_w[:side_n].T) * torch.sigmoid(ref_side), atol=1e-2, rtol=1e-2)
 
     compact_ms = triton.testing.do_bench(compact)
     padded_ms = triton.testing.do_bench(padded)
@@ -124,9 +179,7 @@ def test_side_gated_output_matches_torch(side_n):
     x, side_w, x_scale, side_scale, x_ref, side_ref, broad_w = make_side_inputs(total_m, side_n, k, broad_n)
 
     out = side_gated_output(x, side_w, x_scale, side_scale, x_ref, broad_w, k)
-    broad = x_ref @ broad_w.T
-    ref = broad.clone()
-    ref[:, :side_n] = ref[:, :side_n] * torch.sigmoid(x_ref @ side_ref.T)
+    ref = (x_ref @ broad_w[:side_n].T) * torch.sigmoid(x_ref @ side_ref.T)
 
     torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)
 
@@ -173,6 +226,6 @@ if __name__ == "__main__":
 #   --m 4096 --k 128 --n 128 --side 32 64
 # TMEM MLP side-projection benchmark
 # ==================================
-# M=4096 S=32 K=128 N=128 | compact=0.140 ms | padded S=128=0.146 ms | speedup=1.04x | useful=1.2 TFLOP/s
-# M=4096 S=64 K=128 N=128 | compact=0.141 ms | padded S=128=0.145 ms | speedup=1.03x | useful=1.4 TFLOP/s
+# M=4096 S=32 K=128 N=128 | compact=0.026 ms | padded S=128=0.027 ms | speedup=1.07x | useful=6.6 TFLOP/s
+# M=4096 S=64 K=128 N=128 | compact=0.033 ms | padded S=128=0.034 ms | speedup=1.02x | useful=6.0 TFLOP/s
 # ```

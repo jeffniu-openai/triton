@@ -11,7 +11,7 @@ directly in consumer order.
 This example uses a compact copy-style kernel rather than a full GEMM so the
 layout effect is isolated.  The optimized path writes the consumer-ordered
 output directly.  The baseline stores canonical order into an intermediate and
-uses the same PyTorch reorder the consumer would otherwise need.
+uses a plain Triton reorder kernel for the consumer-order conversion.
 """
 
 import argparse
@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 import triton
+import triton.language as tl
 import triton.experimental.gluon as gluon
 import triton.experimental.gluon.language as gl
 from triton.experimental.gluon.language.nvidia.blackwell import TensorMemoryLinearLayout, allocate_tensor_memory
@@ -90,9 +91,22 @@ def direct_consumer_order(inp, tile_n):
 def canonical_then_reorder(inp, tile_n):
     m, n = inp.shape
     tmp = torch.empty_like(inp)
+    out = torch.empty_like(inp)
     layout = make_tmem_tile_permuted_layout(m, n, tile_n)
     _canonical_store_kernel[(1, )](inp, tmp, layout, m, n, num_warps=4)
-    return tmp[:, consumer_permutation(n, tile_n, inp.device)]
+    _reorder_kernel[(triton.cdiv(tmp.numel(), 256), )](tmp, out, tmp.numel(), n, tile_n, BLOCK=256)
+    return out
+
+
+@triton.jit
+def _reorder_kernel(inp, out, total: tl.constexpr, N: tl.constexpr, TILE_N: tl.constexpr, BLOCK: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    cols = offs % N
+    src_cols = cols ^ TILE_N
+    src = (offs // N) * N + src_cols
+    vals = tl.load(inp + src, mask=mask)
+    tl.store(out + offs, vals, mask=mask)
 
 
 def benchmark_layout_epilogue(m=128, n=128, tile_n=32):
@@ -171,7 +185,7 @@ if __name__ == "__main__":
 #   --m 128 --n-max 256
 # TMEM layout-as-epilogue benchmark
 # =================================
-# M=128 N=64 tile_n=16 | direct=0.011 ms | canonical+reorder=0.095 ms | speedup=8.56x | bytes=32768
-# M=128 N=128 tile_n=32 | direct=0.017 ms | canonical+reorder=0.095 ms | speedup=5.61x | bytes=65536
-# M=128 N=256 tile_n=64 | direct=0.027 ms | canonical+reorder=0.095 ms | speedup=3.53x | bytes=131072
+# M=128 N=64 tile_n=16 | direct=0.011 ms | canonical+reorder=0.017 ms | speedup=1.56x | bytes=32768
+# M=128 N=128 tile_n=32 | direct=0.017 ms | canonical+reorder=0.017 ms | speedup=1.04x | bytes=65536
+# M=128 N=256 tile_n=64 | direct=0.027 ms | canonical+reorder=0.020 ms | speedup=0.74x | bytes=131072
 # ```

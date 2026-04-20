@@ -8,9 +8,10 @@ Attention kernels repeatedly reduce score tiles:
 
 This example isolates that score-tile stage.  It stores a windowed score tile
 in a tile-permuted `TensorMemoryLinearLayout` and uses `tmem.load_max` to
-compute the row maximum.  The baseline uses a normal PyTorch reduction on the
-same masked score tile, representing a path that materializes scores outside
-the TMEM reduction flow.
+compute the row maximum while restoring the masked scores.  The baseline is a
+plain Triton kernel that stores the masked scores to global memory and computes
+the row maximum with `tl.max`, representing the same dataflow without any new
+TMEM reduction capability.
 
 The example is intentionally separate from the full attention example so the
 TMEM reduction contract and benchmark are small and easy to inspect.
@@ -100,6 +101,42 @@ def masked_scores(scores, causal=False):
     return torch.where(cols <= (rows % n), scores, torch.full_like(scores, -float("inf")))
 
 
+@triton.jit
+def _triton_mask_row_max_kernel(
+    scores,
+    out_scores,
+    row_max,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    CAUSAL: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK_N)
+    vals = tl.load(scores + row * N + cols, mask=cols < N, other=-float("inf"))
+    if CAUSAL:
+        vals = tl.where(cols <= (row % N), vals, -float("inf"))
+    max_val = tl.max(vals, axis=0)
+    tl.store(out_scores + row * N + cols, vals, mask=(row < M) & (cols < N))
+    tl.store(row_max + row, max_val, mask=row < M)
+
+
+def triton_mask_row_max(scores, causal=False):
+    out_scores = torch.empty_like(scores)
+    row_max = torch.empty((scores.shape[0],), device="cuda", dtype=scores.dtype)
+    block_n = triton.next_power_of_2(scores.shape[1])
+    _triton_mask_row_max_kernel[(scores.shape[0], )](
+        scores,
+        out_scores,
+        row_max,
+        scores.shape[0],
+        scores.shape[1],
+        causal,
+        BLOCK_N=block_n,
+    )
+    return out_scores, row_max
+
+
 def benchmark_score_row_max(m=128, n=128, causal=False):
     torch.manual_seed(5)
     scores = torch.randn((m, n), device="cuda", dtype=torch.float32)
@@ -109,12 +146,15 @@ def benchmark_score_row_max(m=128, n=128, causal=False):
         score_row_max(scores, causal=causal, tile_n=tile_n)
 
     def baseline():
-        torch.max(masked_scores(scores, causal=causal), dim=1).values
+        triton_mask_row_max(scores, causal=causal)
 
     out_scores, direct_max = score_row_max(scores, causal=causal, tile_n=tile_n)
+    baseline_scores, baseline_max = triton_mask_row_max(scores, causal=causal)
     ref_scores = masked_scores(scores, causal=causal)
     torch.testing.assert_close(out_scores, ref_scores, atol=0, rtol=0)
     torch.testing.assert_close(direct_max, torch.max(ref_scores, dim=1).values, atol=0, rtol=0)
+    torch.testing.assert_close(baseline_scores, ref_scores, atol=0, rtol=0)
+    torch.testing.assert_close(baseline_max, direct_max, atol=0, rtol=0)
 
     direct_ms = triton.testing.do_bench(direct)
     baseline_ms = triton.testing.do_bench(baseline)
@@ -161,7 +201,7 @@ def _print_benchmark(args):
             print(
                 f"M={result['M']} N={result['N']} {suffix} | "
                 f"tmem_ldred={result['direct_ms']:.3f} ms | "
-                f"torch_max={result['baseline_ms']:.3f} ms | "
+                f"triton_mask_row_max={result['baseline_ms']:.3f} ms | "
                 f"speedup={result['speedup']:.2f}x"
             )
 
@@ -187,13 +227,14 @@ if __name__ == "__main__":
 #   --m 128 --n 64 128
 # TMEM windowed attention score benchmark
 # =======================================
-# M=128 N=64 noncausal | tmem_ldred=0.009 ms | torch_max=0.008 ms | speedup=0.88x
-# M=128 N=64 causal | tmem_ldred=0.008 ms | torch_max=0.069 ms | speedup=8.68x
-# M=128 N=128 noncausal | tmem_ldred=0.010 ms | torch_max=0.008 ms | speedup=0.76x
-# M=128 N=128 causal | tmem_ldred=0.009 ms | torch_max=0.071 ms | speedup=7.56x
+# M=128 N=64 noncausal | tmem_ldred=0.009 ms | triton_mask_row_max=0.007 ms | speedup=0.75x
+# M=128 N=64 causal | tmem_ldred=0.008 ms | triton_mask_row_max=0.007 ms | speedup=0.84x
+# M=128 N=128 noncausal | tmem_ldred=0.011 ms | triton_mask_row_max=0.007 ms | speedup=0.67x
+# M=128 N=128 causal | tmem_ldred=0.009 ms | triton_mask_row_max=0.007 ms | speedup=0.75x
 # ```
 #
-# The causal baseline materializes the causal mask before `torch.max`.  In a
-# full fused attention kernel the baseline would be a custom in-kernel
-# reduction, so these numbers are an executable layout/reduction demonstration
-# rather than a claim about all attention implementations.
+# The baseline is a plain Triton masking and row-max kernel without TMEM
+# reductions. This tiny isolated stage is a contract demonstration rather than
+# a claim that `load_max` beats every in-register row reduction; in a full fused
+# attention kernel, score generation and reduction would usually be scheduled
+# together.

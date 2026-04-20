@@ -12,8 +12,8 @@ block-scaled TMEM implementation commonly had to form a broad rank-128
 intermediate and slice the useful rank columns back out.  This example keeps
 the adapter intermediate compact for `R=32` and `R=64` using a tile-permuted
 `TensorMemoryLinearLayout` accumulator.  The second projection is performed
-with PyTorch so the example isolates the layout-sensitive TMEM win in the
-adapter down projection while still checking the full LoRA update.
+with a plain Triton kernel in both benchmark paths, so the comparison stays off
+PyTorch while still checking the full LoRA update.
 """
 
 import argparse
@@ -22,6 +22,7 @@ import math
 import pytest
 import torch
 import triton
+import triton.language as tl
 import triton.experimental.gluon as gluon
 import triton.experimental.gluon.language as gl
 from triton.experimental.gluon.language.nvidia.blackwell import (
@@ -175,8 +176,62 @@ def lora_down_projection_into(x, down, x_scale, down_scale, tmp, rank, k):
 def lora_update(x, down, x_scale, down_scale, up, base, alpha, k):
     rank = down.shape[0]
     tmp = torch.empty((x.shape[0], rank), device="cuda", dtype=torch.float32)
+    out = torch.empty_like(base)
     lora_down_projection_into(x, down, x_scale, down_scale, tmp, rank, k)
-    return base + alpha * (tmp @ up.T)
+    lora_update_from_tmp(tmp, up, base, out, alpha)
+    return out
+
+
+@triton.jit
+def _lora_update_kernel(
+    tmp,
+    up,
+    base,
+    out,
+    M: tl.constexpr,
+    R: tl.constexpr,
+    N: tl.constexpr,
+    TMP_STRIDE_M: tl.constexpr,
+    TMP_STRIDE_R: tl.constexpr,
+    ALPHA: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_r = tl.arange(0, BLOCK_R)
+    a = tl.load(
+        tmp + offs_m[:, None] * TMP_STRIDE_M + offs_r[None, :] * TMP_STRIDE_R,
+        mask=(offs_m[:, None] < M) & (offs_r[None, :] < R),
+        other=0.0,
+    )
+    b = tl.load(up + offs_n[None, :] * R + offs_r[:, None], mask=(offs_n[None, :] < N) & (offs_r[:, None] < R), other=0.0)
+    acc = tl.dot(a, b, input_precision="ieee")
+    base_vals = tl.load(base + offs_m[:, None] * N + offs_n[None, :], mask=(offs_m[:, None] < M) & (offs_n[None, :] < N), other=0.0)
+    tl.store(out + offs_m[:, None] * N + offs_n[None, :], base_vals + ALPHA * acc, mask=(offs_m[:, None] < M) & (offs_n[None, :] < N))
+
+
+def lora_update_from_tmp(tmp, up, base, out, alpha):
+    block_r = triton.next_power_of_2(tmp.shape[1])
+    grid = (triton.cdiv(tmp.shape[0], 16), triton.cdiv(up.shape[0], 16))
+    _lora_update_kernel[grid](
+        tmp,
+        up,
+        base,
+        out,
+        tmp.shape[0],
+        tmp.shape[1],
+        up.shape[0],
+        tmp.stride(0),
+        tmp.stride(1),
+        alpha,
+        BLOCK_M=16,
+        BLOCK_N=16,
+        BLOCK_R=block_r,
+    )
 
 
 def benchmark_lora(total_m=4096, rank=32, k=128, n=128, alpha=0.25):
@@ -188,21 +243,23 @@ def benchmark_lora(total_m=4096, rank=32, k=128, n=128, alpha=0.25):
 
     compact_tmp = torch.empty((total_m, rank), device="cuda", dtype=torch.float32)
     padded_tmp = torch.empty((total_m, 128), device="cuda", dtype=torch.float32)
+    compact_out = torch.empty_like(base)
+    padded_out = torch.empty_like(base)
 
     def compact():
         lora_down_projection_into(x, down, x_scale, down_scale, compact_tmp, rank, k)
-        base + alpha * (compact_tmp @ up.T)
+        lora_update_from_tmp(compact_tmp, up, base, compact_out, alpha)
 
     def padded():
         lora_down_projection_into(x, padded_down, x_scale, padded_down_scale, padded_tmp, 128, k)
-        base + alpha * (padded_tmp[:, :rank] @ up.T)
+        lora_update_from_tmp(padded_tmp[:, :rank], up, base, padded_out, alpha)
 
     compact()
     padded()
     ref_tmp = x_ref @ down_ref.T
     torch.testing.assert_close(compact_tmp, ref_tmp, atol=1e-3, rtol=1e-3)
     torch.testing.assert_close(padded_tmp[:, :rank], compact_tmp, atol=1e-3, rtol=1e-3)
-    torch.testing.assert_close(base + alpha * (compact_tmp @ up.T), base + alpha * (ref_tmp @ up.T), atol=1e-2, rtol=1e-2)
+    torch.testing.assert_close(compact_out, base + alpha * (ref_tmp @ up.T), atol=1e-2, rtol=1e-2)
 
     compact_ms = triton.testing.do_bench(compact)
     padded_ms = triton.testing.do_bench(padded)
@@ -289,10 +346,11 @@ if __name__ == "__main__":
 #   --m 4096 --k 128 --n 128 --ranks 32 64
 # TMEM LoRA adapter benchmark
 # ===========================
-# M=4096 R=32 K=128 N=128 | compact=0.125 ms | padded R=128=0.136 ms | speedup=1.09x | useful=0.5 TFLOP/s
-# M=4096 R=64 K=128 N=128 | compact=0.125 ms | padded R=128=0.138 ms | speedup=1.11x | useful=1.1 TFLOP/s
+# M=4096 R=32 K=128 N=128 | compact=0.024 ms | padded R=128=0.025 ms | speedup=1.02x | useful=2.8 TFLOP/s
+# M=4096 R=64 K=128 N=128 | compact=0.033 ms | padded R=128=0.034 ms | speedup=1.01x | useful=4.0 TFLOP/s
 # ```
 #
-# Both benchmark paths use PyTorch for the second `tmp @ up.T` projection.  The
-# comparison isolates the compact TMEM down-projection and the smaller
-# intermediate handed to the adapter update.
+# Both benchmark paths use the same plain Triton kernel for the second
+# `tmp @ up.T` projection. The comparison isolates the compact TMEM
+# down-projection and the smaller intermediate handed to the adapter update
+# without timing PyTorch in either path.

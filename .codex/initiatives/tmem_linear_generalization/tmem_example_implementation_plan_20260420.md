@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 23:14 UTC
+Last updated: 2026-04-20 23:25 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -80,9 +80,9 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 - Pre-generalization baseline:
   - padded `N=128` scaled-MMA accumulator followed by slicing/discarding unused
     logits;
-  - for fused top-k, baseline may materialize padded logits then run a PyTorch
-    or separate Triton/Gluon selection path if that was the strongest old
-    executable route.
+  - for router-level top-k, both paths materialize logits and run the same
+    plain Triton top-2 selector. The selector is intentionally not a new TMEM
+    feature; it keeps the timed comparison off PyTorch.
 - Tests:
   - exact top-1/top-2 agreement with PyTorch for deterministic ties;
   - logits agreement for all tested expert counts;
@@ -93,10 +93,10 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - record speedup over padded baseline and useful TFLOP/s for logits.
 - Implementation notes:
   - implemented the narrow projection kernel, padded `N=128` baseline,
-    PyTorch top-k wrapper for router-level comparison, correctness tests,
+    plain Triton top-2 wrapper for router-level comparison, correctness tests,
     K=128/256 shape coverage, TTGIR checks, and inline benchmark transcript;
   - the top-k path is not yet fused inside the Gluon kernel. It uses the same
-    `torch.topk` call for both compact and padded logits, so the benchmark
+    Triton selector for both compact and padded logits, so the benchmark
     captures the smaller-logits benefit but not a custom in-kernel selector.
 
 ## Example 2: LoRA / Adapter Projection Fusion
@@ -132,10 +132,11 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - report memory traffic avoided for the intermediate.
 - Implementation notes:
   - implemented compact MXFP8 down projection, padded `R=128` baseline,
-    full LoRA update wrapper using PyTorch for `tmp @ up.T`, shape coverage,
-    TTGIR checks, and inline benchmark transcript;
+    full LoRA update wrapper using a plain Triton `tmp @ up.T` update kernel,
+    shape coverage, TTGIR checks, and inline benchmark transcript;
   - the second projection is not fused into the Gluon kernel yet. The example
-    isolates the TMEM layout win for the low-rank intermediate.
+    isolates the TMEM layout win for the low-rank intermediate without timing
+    PyTorch in either benchmark path.
 
 ## Example 3: Small-Vocabulary / Speculative-Decode Candidate Head
 
@@ -240,14 +241,14 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - separate direct-ld.red and fallback-reduction shapes.
 - Implementation notes:
   - implemented standalone score-tile row-max example with noncausal and
-    causal masking, PyTorch max baseline, Blackwell Ultra skip guard, tests,
-    and inline benchmark transcript;
+    causal masking, a plain Triton mask-plus-row-max baseline, Blackwell Ultra
+    skip guard, tests, and inline benchmark transcript;
   - kept separate from the full attention example.
 
 ## Example 6: Fused Quantized MLP Side Projection
 
-- Status: planned.
-- Proposed file: `python/examples/gluon/10-tmem-mlp-side-projection.py`.
+- Status: implemented at 2026-04-20 22:31 UTC.
+- Proposed file: `python/examples/gluon/09-tmem-mlp-side-projection.py`.
 - New capability used:
   - narrow scaled-MMAv5 side projection next to a broad projection;
   - compact TMEM storage for side activations;
@@ -272,14 +273,14 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - report latency, useful TFLOP/s for side projection, and avoided memory
     writes.
 - Implementation notes:
-  - implemented compact side projection plus PyTorch broad projection/gate
+  - implemented compact side projection plus a plain Triton broad-side/gate
     wrapper, padded `S=128` side baseline, tests, TTGIR checks, and inline
     benchmark transcript.
 
 ## Example 7: Layout-As-Epilogue Store In Consumer Order
 
-- Status: planned.
-- Proposed file: `python/examples/gluon/11-tmem-layout-as-epilogue.py`.
+- Status: implemented at 2026-04-20 22:18 UTC.
+- Proposed file: `python/examples/gluon/08-tmem-layout-as-epilogue.py`.
 - New capability used:
   - accumulator `TensorMemoryLinearLayout` chosen to match a downstream consumer
     layout;
@@ -307,7 +308,7 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - direct consumer-order store versus canonical-store-plus-reorder baseline;
   - report end-to-end latency and bytes moved by removed reorder.
 - Implementation notes:
-  - implemented direct consumer-order store versus canonical-store-plus-PyTorch
+  - implemented direct consumer-order store versus canonical-store-plus-Triton
     reorder baseline, tests over `N=64/128/256`, and inline benchmark
     transcript.
 
@@ -376,3 +377,13 @@ grouped and attention examples until reusable helper patterns exist.
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-examples
   PYTHONPATH=.:./python pytest -s --tb=short` over the seven files passed
   `42 passed in 26.83s`.
+- 2026-04-20 23:25 UTC: rewrote every timed benchmark path that had used
+  PyTorch post-processing into plain Triton code without new TMEM features.
+  Router top-k now uses a Triton top-2 selector, LoRA uses a Triton update
+  kernel for `tmp @ up.T`, layout-as-epilogue uses a Triton reorder kernel,
+  MLP side projection uses a Triton broad-side/gate kernel, and attention uses
+  a Triton mask-plus-row-max baseline. Correctness references still use PyTorch.
+  Validation: focused tests for the touched examples passed, py-compile passed
+  for all seven files, combined pytest over files `05` through `11` passed
+  `42 passed in 6.53s`, and source comments were refreshed from local script
+  benchmark runs.
