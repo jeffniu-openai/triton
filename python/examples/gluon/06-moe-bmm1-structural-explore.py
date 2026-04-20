@@ -7338,6 +7338,7 @@ def ws_matmul_combined_load_kernel(
     elif STRUCTURAL_MODE == 36:
         gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "ctapair uses local direct epilogue stores")
         gl.static_assert(gl.num_ctas() == 2, "ctapair requires a 2CTA launch")
+        gl.static_assert(MMA_WARPS >= 4, "ctapair fused epilogue TMEM loads require at least four MMA warps")
         gl.warp_specialize(
             [
                 (noop_partition, (p, )),
@@ -7350,6 +7351,7 @@ def ws_matmul_combined_load_kernel(
     elif STRUCTURAL_MODE == 37:
         gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "ctapair2 uses local direct epilogue stores")
         gl.static_assert(gl.num_ctas() == 2, "ctapair2 requires a 2CTA launch")
+        gl.static_assert(STORE_HELPER_WARPS >= 4, "ctapair2 epilogue TMEM loads require at least four store-helper warps")
         gl.warp_specialize(
             [
                 (noop_partition, (p, )),
@@ -7511,6 +7513,7 @@ def ws_matmul_combined_load_kernel(
     elif STRUCTURAL_MODE == 40:
         gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "ctampair uses local direct epilogue stores")
         gl.static_assert(gl.num_ctas() == 2, "ctampair requires a 2CTA launch")
+        gl.static_assert(MMA_WARPS >= 4, "ctampair fused epilogue TMEM loads require at least four MMA warps")
         gl.warp_specialize(
             [
                 (noop_partition, (p, )),
@@ -7523,6 +7526,7 @@ def ws_matmul_combined_load_kernel(
     elif STRUCTURAL_MODE == 44:
         gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "ctampair2 uses local direct epilogue stores")
         gl.static_assert(gl.num_ctas() == 2, "ctampair2 requires a 2CTA launch")
+        gl.static_assert(STORE_HELPER_WARPS >= 4, "ctampair2 epilogue TMEM loads require at least four store-helper warps")
         gl.warp_specialize(
             [
                 (noop_partition, (p, )),
@@ -8110,8 +8114,12 @@ def parse_candidate(name: str, slice_size: int):
             if mode == "x2n_helper":
                 updates.setdefault("EPILOGUE_BUFFER_DEPTH", 2)
             updates.setdefault("NUM_CTAS", 2)
+            if mode in ("ctapair", "ctampair"):
+                updates.setdefault("NUM_WARPS", 8)
+                updates.setdefault("MMA_WARPS", 4)
             if mode in ("ctapair2", "ctampair2"):
-                updates.setdefault("STORE_HELPER_WARPS", 1)
+                updates.setdefault("NUM_WARPS", 8)
+                updates.setdefault("STORE_HELPER_WARPS", 4)
                 updates.setdefault("STORE_HELPER_REGS", 32)
             elif (
                 mode == "x2n_fused"
@@ -8411,6 +8419,12 @@ def main():
                             "error": repr(exc),
                         }
                     rows.append(row)
+                    out = Path(args.out)
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    with out.open("w", newline="") as f:
+                        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+                        writer.writeheader()
+                        writer.writerows(rows)
                     print(",".join(str(row[k]) for k in (
                         "routing", "seed", "local_rank", "batch_size", "candidate", "mode", "status",
                         "median_ms", "speedup_vs_1cta", "tflops", "tbps", "error")), flush=True)

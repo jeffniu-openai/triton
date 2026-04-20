@@ -1774,3 +1774,159 @@ and `1024`, under both simulated production routing and uniform routing.
   current `ctalinear` or BN128 adjacent-N shapes until their synchronization
   hang is diagnosed. The next structural attempt should change accumulator
   storage or scheduling more deeply rather than raising register targets.
+
+## 2026-04-20 Continuous Tuning Plan And Latest Hard-Row Evidence
+
+- Active success criterion: every batch size must have a 2CTA Gluon path at
+  least `1.20x` faster than the same-input 1CTA comparator before 2CTA can be
+  treated as solved or enabled for all sizes. Any row below `1.20x`, especially
+  uniform hard rows at batch `896`, remains unfinished optimization work.
+- Durable execution rule: do not voluntarily stop the turn while there are
+  plausible 2CTA tuning paths, uncommitted scratch-harness improvements,
+  benchmark runs in flight, or unrecorded benchmark/profiler results. If an
+  external limit forces handoff, record the branch, artifacts, active command,
+  current best rows, and exact next experiment here first.
+- Stable GPU2 same-input sweep artifact:
+  `/tmp/moe_bmm1_stable_sweep_gpu2_20260420T0925Z.csv`.
+  Best speedups were still far below target:
+  `256=1.01779x`, `512=1.06618x`, `896=1.00266x`,
+  `1024=1.07205x`, `1536=1.01493x`, `2048=1.08765x`.
+- Broad structural small-batch artifact:
+  `/tmp/moe_bmm1_structural_small_gpu2_20260420.csv`.
+  Best rows were `256=1.02926x`, `512=1.06192x`, and
+  `1024=1.07574x`, all from the explicit split `b24_acc2` family.
+- Broad structural hard-row artifact:
+  `/tmp/moe_bmm1_structural_896_gpu0_20260420.csv`.
+  The best measured row was `selected=1.00186x`; split, combined, multicast,
+  counted-barrier, and prefetch structural variants were all parity or slower.
+  This is the current bottleneck and needs a structural change or a much wider
+  schedule/shape discovery than the previous narrow sweeps.
+- Broad structural large-batch artifact:
+  `/tmp/moe_bmm1_structural_large_gpu3_20260420.csv`.
+  Best rows were `1536=1.04055x` from `splitws:selected` and
+  `2048=1.11257x` from `mmaxfirst:selected`. Large batches have useful 2CTA
+  headroom but still do not meet the `1.20x` criterion.
+- `ctapair`/`ctampair` diagnosis: fused-epilogue variants that run
+  `apply_bias_and_scale()` inside the MMA worker cannot use `MMA_WARPS=1`
+  because `acc_buf.load()` needs a power-of-two worker warp count `>=4`.
+  Split-epilogue `ctapair2`/`ctampair2` variants need
+  `STORE_HELPER_WARPS>=4` for the same reason. The scratch harness now has
+  local static asserts and parser defaults for those legality constraints.
+  Legal `@warps8` shapes currently hit PTXAS register cliffs (`136` registers
+  or worse), so this family needs register-lifetime reduction before promotion.
+- `x2n` ready-barrier experiment: setting the shared-X ready mbarrier to
+  `two_ctas=True` is invalid for TMA multicast. The compiler rejects
+  `ttng.async_tma_gather` because TMA expects a CGA barrier layout `[[1]]`;
+  `two_ctas=True` produces `[[0]]`. The hang in current BN128 x2n probes is
+  therefore not fixed by changing the ready-barrier allocation.
+- Active tuning plan:
+  1. Run standard-family hard-row sweeps for batch `896` over split,
+     splitws, counted barriers, multicast/control variants, `BLOCK_M`
+     alternatives, band values, buffer counts, and register targets while
+     avoiding known hang-prone x2n/ctalinear shapes.
+  2. Run larger-batch sweeps for `1536/2048` around `splitws:selected`,
+     `combinedw:selected`, `mmaxfirst:selected`, `mmamc:selected`,
+     `mmacount:selected`, and barrier-order variants because those are the
+     only families showing nontrivial headroom so far.
+  3. Keep `ctapair`/`ctampair` as structural probes only after the legal
+     warp-count patch; next useful work there is reducing full-epilogue
+     accumulator liveness, not simply raising `MAXNREG`.
+  4. Revisit adjacent-N shared-X only through a design that avoids full-tile
+     TMEM epilogue loads or fixes the local 2CTA TMEM fragment layout; do not
+     retry the invalid `two_ctas=True` ready-barrier path.
+  5. Promote a candidate only after same-input validation, paired timing
+     against 1CTA, and a broader batch sweep. Rows under `1.20x` stay in the
+     active queue.
+
+## 2026-04-20 Follow-Up Forced-2CTA Sweeps
+
+- GPU1 subagent artifact `/tmp/moe_bmm1_bs896_20260420T093204Z.csv` found a
+  best `1.03668x` row from
+  `mmaxfirst:...@bm32,b21,x5,w6,acc1,regs48,direct`, but that run used uniform
+  `local_rank=0`. Treat it as directional only; it is not the known hard
+  uniform rank-4 row.
+- GPU2 hard-rank forced-2CTA artifact
+  `/tmp/moe_bmm1_gpu2_hard896_forced2cta_20260420T093246Z.csv` checked the
+  same region on uniform `local_rank=4`. The best explicit 2CTA row was still
+  slower than 1CTA: `mmacount:m32_bn256...b21` at `0.97361x`, followed by
+  `mmabarw=0.97308x`, `mmabarx=0.97291x`, `mmamc=0.97176x`,
+  and `mmaxfirst=0.96923x`. Standard forced 2CTA remains non-promotable for
+  batch `896`.
+- The helper-store epilogue proposal was tested through the original split
+  kernel on the hard row. `sub4,epi2,sh1,sr32` reached only `0.93990x`; the
+  `sub2` helper path was much worse at `0.66477x`. Helper ownership alone does
+  not rescue slice `28`.
+- GPU0 `BN512` hard-rank artifact
+  `/tmp/moe_bmm1_gpu0_hard896_bn512_20260420T093357Z.csv` ruled out the wider
+  N tile for this row. Normal 4-warp `BN512` variants were about `0.68x`, and
+  the best 8-warp epilogue variant was only `0.76423x`. The extra N width
+  reduces tile count but creates too much per-tile work/live state for the
+  small-M hard row.
+- GPU3 larger-batch artifact `/tmp/moe_bmm1_focused_20260420T093329Z.csv`
+  improved the current large-batch frontier but did not reach target:
+  `1536` best was `mmaxfirst:selected@regs60` at `1.04268x`;
+  `2048` best was `splitws:selected@sh1,sr32` at `1.12241x`.
+- Scratch harness updates in progress:
+  - CSV rows are now flushed after every candidate so timeout-prone structural
+    probes preserve completed measurements.
+  - `ctapair`/`ctampair` mode branches now assert that the worker loading TMEM
+    has at least four warps, and parser defaults for those families use legal
+    8-warp/4-helper-warp shapes.
+  - A post-ready-wait `gl.barrier()` convergence experiment was temporarily
+    tested in the lane-private `ctalinear` compute path to check the mbarrier
+    stale-epoch deadlock hypothesis. The first BN128 `ctalinear` smoke still
+    stalled after the 1CTA row, so the scratch barrier change was reverted from
+    active code and kept only as a dead-end note.
+
+## 2026-04-20 Hard-Row Profiling And Dead-End Structural Checks
+
+- NCU reports:
+  `/tmp/moe_bmm1_ncu_hard896_1cta_20260420T093822Z.ncu-rep` and
+  `/tmp/moe_bmm1_ncu_hard896_2cta_mmacount_20260420T093837Z.ncu-rep`.
+  The profiler timings are inflated by collection overhead, but the relative
+  counters are useful:
+  - 1CTA hard row: duration `38.37 us`, compute throughput `54.58%`,
+    memory throughput `49.34%`, issue slots busy `33.09%`, achieved occupancy
+    `48.35%`, eligible warps/scheduler `0.75`, active warps/scheduler `7.72`,
+    registers/thread `64`, dynamic shared memory/block `114.43 KiB`.
+  - best forced 2CTA (`mmacount b21`): duration `39.84 us`, compute throughput
+    `50.89%`, memory throughput `48.51%`, issue slots busy `22.70%`, achieved
+    occupancy `24.11%`, eligible warps/scheduler `0.40`, active
+    warps/scheduler `3.84`, registers/thread `48`, dynamic shared
+    memory/block `113.88 KiB`.
+  - Interpretation: the hard-row 2CTA path does less instruction work but gives
+    up about half the active/eligible warp pool under the two-CTA cluster
+    launch. More bandwidth is not the missing ingredient; the current 2CTA
+    shape is scheduler/occupancy limited and does not create enough useful
+    work per cluster to pay for that loss.
+- GPU0 structural artifacts after the NCU pass:
+  - `/tmp/moe_bmm1_gpu0_hard896_structural2_20260420T093736Z.csv`:
+    `dualmma` was slower (`best 0.91498x`) and `mmascale` triggered an
+    unspecified launch failure. Do not include `mmascale` in broad sweeps until
+    isolated under `CUDA_LAUNCH_BLOCKING=1`.
+  - `/tmp/moe_bmm1_gpu0_hard896_structural3_20260420T093753Z.csv`:
+    `privsched` peaked at `0.94990x`, `pairsplit` at `0.94871x`,
+    `xphaseprefetch` at `0.95239x`, and fake-N variants were either a lowering
+    failure or very slow (`fakenspair=0.40067x`, `fakensmmaepi=0.24258x`).
+  - `/tmp/moe_bmm1_gpu0_hard896_warps8_20260420T093927Z.csv`:
+    8-warp `BN256` forced-2CTA variants were much worse (`~0.68x`). The
+    scheduler issue is not fixed by simply adding more warps to each CTA.
+  - `/tmp/moe_bmm1_gpu0_hard896_occ_20260420T093951Z.csv`:
+    persistent oversubscription above the current `occ2` regressed. `occ1`
+    underfilled badly (`~0.75x`); `occ3/occ4/occ5` were also slower.
+  - `/tmp/moe_bmm1_gpu0_hard896_bk_20260420T094013Z.csv`:
+    `BK64` violates the MX scale block-shape constraint, and `BK256` fails
+    layout assertions. `BLOCK_K` is not a viable quick lever in the current
+    descriptor path.
+  - `/tmp/moe_bmm1_gpu0_hard896_ctapair2_20260420T094028Z.csv`:
+    after the legal warp-count parser defaults, the first split-epilogue
+    `ctapair2` smoke still stalled during validation after the 1CTA row. This
+    confirms the pair-family blocker is a synchronization/register-ownership
+    problem beyond the original low-warp frontend error.
+- Updated active hypothesis: to beat 1CTA by `1.20x` at batch `896`, a 2CTA
+  kernel probably needs either a legal local-2CTA fragment epilogue that keeps
+  occupancy near 1CTA while reducing epilogue live state, or a fundamentally
+  different work mapping that creates more useful independent work per
+  two-CTA cluster. Wider tiles, more warps, more persistent programs, helper
+  store handoff, and existing route/pair/dual-block modes do not solve the
+  hard row.
