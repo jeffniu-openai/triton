@@ -73,13 +73,21 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 00:30 UTC: consolidated the retained user-facing example suite
+  into three non-overlapping files:
+  `python/examples/gluon/05-tmem-moe-router.py` now covers compact sparse
+  logits, selected candidate-head logits, and ragged expert output panels;
+  `python/examples/gluon/06-tmem-lora-fusion.py` now covers skinny side
+  projections for LoRA/adapters and MLP gates; and
+  `python/examples/gluon/08-tmem-layout-as-epilogue.py` remains the independent
+  layout-as-epilogue example. The standalone `07`, `09`, and `11` files were
+  retired after their tests and benchmark modes were merged.
 - 2026-04-21 00:05 UTC: removed
   `python/examples/gluon/10-tmem-windowed-attention-score.py` from the
   user-facing example suite. A fair optimized Triton mask-plus-row-max
   baseline beat the standalone TMEM `load_max` version, and the only plausible
   TMEM optimization, row-blocking, failed on true descriptor-view/row-anchor
-  support boundaries at `BLOCK_M=32` and `BLOCK_M=64`. The retained suite now
-  has six examples.
+  support boundaries at `BLOCK_M=32` and `BLOCK_M=64`.
 - 2026-04-20 23:25 UTC: refreshed the Phase H example suite so every timed
   comparison that previously used PyTorch post-processing now uses plain
   Triton code without the new TMEM features. Router top-k uses a Triton top-2
@@ -4877,3 +4885,24 @@ When resuming the initiative:
 - The retained Phase H suite now has six examples. Validation: required
   `make -j8` was no-op, py-compile passed for the retained six files, and
   focused pytest passed `37 passed in 23.52s`.
+
+## Latest: 2026-04-21 00:30 UTC example suite consolidated to three files
+
+- Retained examples:
+  - `python/examples/gluon/05-tmem-moe-router.py`: sparse logits, candidate-head
+    logits, and ragged expert panels.
+  - `python/examples/gluon/06-tmem-lora-fusion.py`: LoRA/adapters and MLP side
+    projections.
+  - `python/examples/gluon/08-tmem-layout-as-epilogue.py`: direct
+    consumer-order stores.
+- Removed standalone files after merging their implementation, tests, and script
+  modes into the retained examples:
+  - `python/examples/gluon/07-tmem-candidate-head.py`;
+  - `python/examples/gluon/09-tmem-mlp-side-projection.py`;
+  - `python/examples/gluon/11-tmem-ragged-expert-views.py`.
+- Validation:
+  - required `make -j8` was no-op;
+  - py-compile passed for the three retained files;
+  - focused pytest over the three retained files passed `37 passed in 23.47s`;
+  - script benchmark transcripts were refreshed from local runs of `05`, `06`,
+    and `08`.

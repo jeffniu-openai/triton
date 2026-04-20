@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 23:25 UTC
+Last updated: 2026-04-21 00:30 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -8,6 +8,20 @@ linear-layout backend capabilities into user-facing Gluon examples under
 must be an executable kernel or small example module with correctness coverage,
 shape coverage, benchmark output, and a baseline representing the best code path
 available before the TMEM linear-layout generalization work.
+
+Active suite after consolidation:
+
+- `python/examples/gluon/05-tmem-moe-router.py`: sparse logits, candidate-head
+  logits, and ragged expert panels.
+- `python/examples/gluon/06-tmem-lora-fusion.py`: LoRA/adapters and MLP side
+  projections.
+- `python/examples/gluon/08-tmem-layout-as-epilogue.py`: layout-as-epilogue
+  consumer-order stores.
+
+The standalone `07-tmem-candidate-head.py`,
+`09-tmem-mlp-side-projection.py`, and `11-tmem-ragged-expert-views.py` files
+were retired after their code, tests, and benchmark modes were merged into the
+three active examples.
 
 ## Success Criteria
 
@@ -59,7 +73,8 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Example 1: MoE Router Skinny Scaled Projection With Top-K
 
-- Status: projection/top-k wrapper implemented at 2026-04-20 21:34 UTC.
+- Status: consolidated sparse-logits example implemented; candidate-head and
+  ragged expert modes merged in at 2026-04-21 00:30 UTC.
 - Proposed file: `python/examples/gluon/05-tmem-moe-router.py`.
 - New capability used:
   - narrow scaled-MMAv5 accumulator fragments through
@@ -95,14 +110,17 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - implemented the narrow projection kernel, padded `N=128` baseline,
     plain Triton top-2 wrapper for router-level comparison, correctness tests,
     K=128/256 shape coverage, TTGIR checks, and inline benchmark transcript;
+  - merged selected candidate-head projection (`C=32/64`) and Python-scheduled
+    ragged expert panel modes into this file, preserving their compact-vs-padded
+    baselines, tests, and benchmark entry points;
   - the top-k path is not yet fused inside the Gluon kernel. It uses the same
     Triton selector for both compact and padded logits, so the benchmark
     captures the smaller-logits benefit but not a custom in-kernel selector.
 
 ## Example 2: LoRA / Adapter Projection Fusion
 
-- Status: compact down-projection/update wrapper implemented at
-  2026-04-20 21:51 UTC.
+- Status: consolidated skinny side projection example implemented; MLP side
+  projection/gate mode merged in at 2026-04-21 00:30 UTC.
 - Proposed file: `python/examples/gluon/06-tmem-lora-fusion.py`.
 - New capability used:
   - compact TMEM accumulator for the low-rank `X @ A.T` intermediate;
@@ -134,14 +152,18 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - implemented compact MXFP8 down projection, padded `R=128` baseline,
     full LoRA update wrapper using a plain Triton `tmp @ up.T` update kernel,
     shape coverage, TTGIR checks, and inline benchmark transcript;
+  - merged MLP side projection/gate mode into this file, preserving the compact
+    side projection, padded `S=128` baseline, plain Triton side-gate comparison,
+    tests, and benchmark entry point;
   - the second projection is not fused into the Gluon kernel yet. The example
     isolates the TMEM layout win for the low-rank intermediate without timing
     PyTorch in either benchmark path.
 
 ## Example 3: Small-Vocabulary / Speculative-Decode Candidate Head
 
-- Status: implemented at 2026-04-20 22:04 UTC.
-- Proposed file: `python/examples/gluon/07-tmem-candidate-head.py`.
+- Status: merged into `python/examples/gluon/05-tmem-moe-router.py` at
+  2026-04-21 00:30 UTC; standalone file retired.
+- Former file: `python/examples/gluon/07-tmem-candidate-head.py`.
 - New capability used:
   - narrow scaled-MMAv5 accumulator fragments for candidate logits;
   - descriptor/view-compatible output order so selected candidate logits can be
@@ -170,13 +192,15 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - implemented compact selected-candidate projection for `C=32/64`, padded
     `C=128` baseline, candidate-order tests, TTGIR checks, and inline benchmark
     transcript;
+  - code, tests, and benchmark mode now live in `05-tmem-moe-router.py`;
   - the example assumes candidate rows have already been staged in candidate
     order. It does not implement an in-kernel vocabulary gather.
 
 ## Example 4: Ragged Grouped/MoE Expert Output Views
 
-- Status: implemented at 2026-04-20 23:01 UTC.
-- Proposed file: `python/examples/gluon/11-tmem-ragged-expert-views.py`.
+- Status: merged into `python/examples/gluon/05-tmem-moe-router.py` at
+  2026-04-21 00:30 UTC; standalone file retired.
+- Former file: `python/examples/gluon/11-tmem-ragged-expert-views.py`.
 - New capability used:
   - descriptor-view chains over a shared TMEM arena;
   - physical bitcast/view support for per-expert accumulator slices;
@@ -207,6 +231,7 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
     narrow projection for each active expert, a precomputed padded `N=128`
     baseline, empty-expert coverage, correctness tests, and inline benchmark
     transcript;
+  - code, tests, and benchmark mode now live in `05-tmem-moe-router.py`;
   - this is not a full persistent grouped-MoE scheduler.
 
 ## Rejected Example: Windowed Attention Score Tile With TMEM Reductions
@@ -252,8 +277,9 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Example 6: Fused Quantized MLP Side Projection
 
-- Status: implemented at 2026-04-20 22:31 UTC.
-- Proposed file: `python/examples/gluon/09-tmem-mlp-side-projection.py`.
+- Status: merged into `python/examples/gluon/06-tmem-lora-fusion.py` at
+  2026-04-21 00:30 UTC; standalone file retired.
+- Former file: `python/examples/gluon/09-tmem-mlp-side-projection.py`.
 - New capability used:
   - narrow scaled-MMAv5 side projection next to a broad projection;
   - compact TMEM storage for side activations;
@@ -280,7 +306,8 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 - Implementation notes:
   - implemented compact side projection plus a plain Triton broad-side/gate
     wrapper, padded `S=128` side baseline, tests, TTGIR checks, and inline
-    benchmark transcript.
+    benchmark transcript;
+  - code, tests, and benchmark mode now live in `06-tmem-lora-fusion.py`.
 
 ## Example 7: Layout-As-Epilogue Store In Consumer Order
 
@@ -319,16 +346,13 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Execution Order
 
-1. MoE router skinny projection, projection-only first and top-k second.
-2. LoRA adapter fusion, compact intermediate first and full fusion second.
-3. Candidate-head projection and output-ordering example.
-4. Layout-as-epilogue store-order example.
-5. Fused MLP side projection.
-6. Ragged grouped/MoE expert views.
+1. Consolidated sparse logits and expert panels in `05-tmem-moe-router.py`.
+2. Consolidated skinny side projections in `06-tmem-lora-fusion.py`.
+3. Independent layout-as-epilogue stores in `08-tmem-layout-as-epilogue.py`.
 
-This order starts with the strongest narrow scaled-MMAv5 wins, then expands to
-descriptor/view examples, and leaves the most coordination-heavy grouped
-example until reusable helper patterns exist.
+The final suite keeps the strongest narrow scaled-MMAv5 wins, removes overlap
+between related side-projection examples, and keeps one independent
+descriptor/view-oriented layout example.
 
 ## Progress Log
 
@@ -400,3 +424,10 @@ example until reusable helper patterns exist.
   faster TMEM version for this example. Required `make -j8` was no-op,
   py-compile passed for the retained six files, and combined pytest passed
   `37 passed in 23.52s`.
+- 2026-04-21 00:30 UTC: consolidated the retained suite into three files.
+  Candidate-head and ragged expert modes moved into `05-tmem-moe-router.py`;
+  MLP side projection moved into `06-tmem-lora-fusion.py`; standalone `07`,
+  `09`, and `11` files were deleted. Required `make -j8` was no-op,
+  py-compile passed for the three retained files, focused pytest passed
+  `37 passed in 23.47s`, and benchmark transcripts were refreshed from local
+  runs of `05`, `06`, and `08`.

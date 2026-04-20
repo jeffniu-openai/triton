@@ -99,7 +99,15 @@ The project is complete when:
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
-- Phase H, user-facing performance examples: complete for the six retained
+- Phase H, user-facing performance examples: consolidating into the three
+  retained, non-overlapping example files requested by the user. The source of
+  truth is `tmem_example_implementation_plan_20260420.md`. Active files:
+  `05-tmem-moe-router.py`, `06-tmem-lora-fusion.py`, and
+  `08-tmem-layout-as-epilogue.py`. The standalone candidate-head, MLP side
+  projection, and ragged expert files were merged into `05`/`06`; the former
+  attention score example remains removed because it did not beat the optimized
+  plain Triton baseline.
+- Historical Phase H checkpoint: complete for the six retained
   example files. The source of truth is
   `tmem_example_implementation_plan_20260420.md`. Implemented examples:
   `05-tmem-moe-router.py`, `06-tmem-lora-fusion.py`,
@@ -1034,3 +1042,11 @@ signal handling:
   the example did not meet the performance bar for a user-facing example.
   Required `make -j8` was no-op, py-compile passed for the retained six files,
   and combined pytest passed `37 passed in 23.52s`.
+
+- 2026-04-21 00:30 UTC: started three-example consolidation requested by the
+  user. Merged candidate-head and ragged expert implementations into
+  `05-tmem-moe-router.py`, merged MLP side projection into
+  `06-tmem-lora-fusion.py`, and deleted the standalone `07`, `09`, and `11`
+  files. Required `make -j8` was no-op, py-compile passed for the three retained
+  files, focused pytest passed `37 passed in 23.47s`, and the three script
+  benchmark transcripts were refreshed from local runs.

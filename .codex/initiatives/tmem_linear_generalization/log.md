@@ -25741,3 +25741,23 @@ Open after this slice:
   - required `make -j8` was no-op;
   - `python -m py_compile` passed for the retained six files;
   - combined pytest over the retained six files passed `37 passed in 23.52s`.
+
+## 2026-04-21 00:30 UTC: consolidate retained examples into three files
+
+- User requested implementing the three-example proposal from the overlap
+  analysis.
+- Code changes in progress:
+  - merged candidate-head projection and ragged expert panel modes into
+    `python/examples/gluon/05-tmem-moe-router.py`;
+  - merged MLP side projection/gate modes into
+    `python/examples/gluon/06-tmem-lora-fusion.py`;
+  - kept `python/examples/gluon/08-tmem-layout-as-epilogue.py` as the
+    independent layout example;
+  - deleted standalone `07-tmem-candidate-head.py`,
+    `09-tmem-mlp-side-projection.py`, and
+    `11-tmem-ragged-expert-views.py`.
+- Validation:
+  - required `make -j8` was no-op;
+  - py-compile passed for the three retained files;
+  - focused pytest over the three retained files passed `37 passed in 23.47s`;
+  - refreshed inline benchmark transcripts from local script runs.

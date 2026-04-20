@@ -185,7 +185,7 @@ if __name__ == "__main__":
 #   --m 128 --n-max 256
 # TMEM layout-as-epilogue benchmark
 # =================================
-# M=128 N=64 tile_n=16 | direct=0.011 ms | canonical+reorder=0.017 ms | speedup=1.56x | bytes=32768
-# M=128 N=128 tile_n=32 | direct=0.017 ms | canonical+reorder=0.017 ms | speedup=1.04x | bytes=65536
-# M=128 N=256 tile_n=64 | direct=0.027 ms | canonical+reorder=0.020 ms | speedup=0.74x | bytes=131072
+# M=128 N=64 tile_n=16 | direct=0.011 ms | canonical+reorder=0.013 ms | speedup=1.13x | bytes=32768
+# M=128 N=128 tile_n=32 | direct=0.017 ms | canonical+reorder=0.015 ms | speedup=0.86x | bytes=65536
+# M=128 N=256 tile_n=64 | direct=0.027 ms | canonical+reorder=0.019 ms | speedup=0.69x | bytes=131072
 # ```

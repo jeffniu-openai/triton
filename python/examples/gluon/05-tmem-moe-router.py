@@ -1,17 +1,19 @@
 """
-TMEM MoE Router Projection
-==========================
+TMEM Sparse Logits And Expert Panels
+====================================
 
-This example implements the projection at the front of a mixture-of-experts
-router:
+This example implements compact sparse-logit projections for mixture-of-experts
+routers, constrained/speculative decode candidate heads, and ragged expert
+output panels:
 
     logits[M, E] = hidden[M, K] @ router_weight[E, K].T
 
-Routers are usually skinny.  Common expert counts such as 32 or 64 do not fill
-a broad 128-column accumulator tile.  Before the TMEM linear-layout
-generalization work, the practical scaled-MMAv5 path for this shape used a
-broad accumulator tile and discarded unused columns, or avoided the compact
-TMEM accumulator path entirely.
+These workloads are usually skinny.  Common expert counts, candidate counts,
+and per-expert output widths such as 32 or 64 do not fill a broad 128-column
+accumulator tile.  Before the TMEM linear-layout generalization work, the
+practical scaled-MMAv5 path for this shape used a broad accumulator tile and
+discarded unused columns, or avoided the compact TMEM accumulator path
+entirely.
 
 The optimized kernel below uses a tile-permuted `TensorMemoryLinearLayout` so a
 logical `E=32` router tile can be implemented with N=8 scaled-MMAv5 accumulator
@@ -19,10 +21,10 @@ fragments, and `E=64` with N=16 fragments.  Matrix-B scale storage still obeys
 the Blackwell public scale-fragment addressing granularity; the compiler
 rematerializes/pads that storage before lowering.
 
-The benchmark compares the compact router projection with the best
+The benchmarks compare compact sparse projections with the best
 pre-generalization baseline available for the same scaled-MMA hardware path: a
-padded `E=128` accumulator tile whose leading columns hold the useful expert
-logits.
+padded `N=128` accumulator tile whose leading columns hold the useful logits or
+expert output panel.
 """
 
 import argparse
@@ -303,6 +305,151 @@ def benchmark_router_projection(total_m=4096, num_experts=32, k=128, include_top
     }
 
 
+def make_candidate_inputs(total_m, candidate_count, k, vocab_size=512):
+    torch.manual_seed(2)
+    hidden, hidden_scale, hidden_ref = random_mxfp8_tensor(total_m, k)
+    # Use a deterministic nontrivial order so the test checks that output
+    # columns follow candidate-list order, not sorted token id order.
+    candidate_ids = torch.randperm(vocab_size, device="cuda")[:candidate_count]
+    selected, selected_scale, selected_ref = random_mxfp8_tensor(candidate_count, k)
+    return hidden, selected, hidden_scale, selected_scale, hidden_ref, selected_ref, candidate_ids
+
+
+def benchmark_candidate_head(total_m=4096, candidate_count=32, k=128):
+    hidden, selected, hidden_scale, selected_scale, hidden_ref, selected_ref, candidate_ids = make_candidate_inputs(
+        total_m, candidate_count, k
+    )
+    _, padded_selected, _, padded_selected_scale, _, padded_selected_ref = make_router_inputs(128, 128, k)
+    padded_selected[:candidate_count, :] = selected
+    padded_selected_scale[:candidate_count, :] = selected_scale
+    padded_selected_ref[:candidate_count, :] = selected_ref
+
+    compact_out = torch.empty((total_m, candidate_count), device="cuda", dtype=torch.float32)
+    padded_out = torch.empty((total_m, 128), device="cuda", dtype=torch.float32)
+
+    def compact():
+        router_projection_into(hidden, selected, hidden_scale, selected_scale, compact_out, candidate_count, k)
+
+    def padded():
+        router_projection_into(hidden, padded_selected, hidden_scale, padded_selected_scale, padded_out, 128, k)
+
+    compact()
+    padded()
+    reference = hidden_ref @ selected_ref.T
+    torch.testing.assert_close(compact_out, reference, atol=1e-3, rtol=1e-3)
+    torch.testing.assert_close(padded_out[:, :candidate_count], compact_out, atol=1e-3, rtol=1e-3)
+
+    compact_ms = triton.testing.do_bench(compact)
+    padded_ms = triton.testing.do_bench(padded)
+    useful_flops = 2 * total_m * candidate_count * k
+    return {
+        "M": total_m,
+        "C": candidate_count,
+        "K": k,
+        "compact_ms": compact_ms,
+        "padded_128_ms": padded_ms,
+        "speedup": padded_ms / compact_ms,
+        "useful_tflops": useful_flops * 1e-12 / (compact_ms * 1e-3),
+        "first_candidate": int(candidate_ids[0].item()),
+    }
+
+
+def make_expert_inputs(counts, output_widths, k):
+    torch.manual_seed(6)
+    experts = []
+    for expert_id, (tokens, width) in enumerate(zip(counts, output_widths)):
+        if tokens == 0:
+            experts.append(None)
+            continue
+        hidden, hidden_scale, hidden_ref = random_mxfp8_tensor(tokens, k)
+        weight, weight_scale, weight_ref = random_mxfp8_tensor(width, k)
+        experts.append((expert_id, hidden, weight, hidden_scale, weight_scale, hidden_ref, weight_ref))
+    return experts
+
+
+def compact_expert_outputs(experts, output_widths, k):
+    outputs = []
+    for expert, width in zip(experts, output_widths):
+        if expert is None:
+            outputs.append(None)
+            continue
+        _, hidden, weight, hidden_scale, weight_scale, _, _ = expert
+        outputs.append(router_projection(hidden, weight, hidden_scale, weight_scale, k))
+    return outputs
+
+
+def make_padded_experts(experts, output_widths, k):
+    padded_experts = []
+    for expert, width in zip(experts, output_widths):
+        if expert is None:
+            padded_experts.append(None)
+            continue
+        expert_id, hidden, weight, hidden_scale, weight_scale, hidden_ref, weight_ref = expert
+        _, padded_weight, _, padded_weight_scale, _, padded_weight_ref = make_router_inputs(128, 128, k)
+        padded_weight[:width, :] = weight
+        padded_weight_scale[:width, :] = weight_scale
+        padded_weight_ref[:width, :] = weight_ref
+        padded_experts.append((expert_id, hidden, padded_weight, hidden_scale, padded_weight_scale, hidden_ref, padded_weight_ref))
+    return padded_experts
+
+
+def precomputed_padded_expert_outputs(padded_experts, output_widths, k):
+    outputs = []
+    for expert, width in zip(padded_experts, output_widths):
+        if expert is None:
+            outputs.append(None)
+            continue
+        _, hidden, padded_weight, hidden_scale, padded_weight_scale, _, _ = expert
+        padded = router_projection(hidden, padded_weight, hidden_scale, padded_weight_scale, k)
+        outputs.append(padded[:, :width])
+    return outputs
+
+
+def reference_expert_outputs(experts):
+    refs = []
+    for expert in experts:
+        if expert is None:
+            refs.append(None)
+            continue
+        _, _, _, _, _, hidden_ref, weight_ref = expert
+        refs.append(hidden_ref @ weight_ref.T)
+    return refs
+
+
+def benchmark_ragged_experts(counts=(128, 256, 0, 128), output_widths=(32, 64, 32, 64), k=128):
+    experts = make_expert_inputs(counts, output_widths, k)
+    padded_experts = make_padded_experts(experts, output_widths, k)
+
+    def compact():
+        compact_expert_outputs(experts, output_widths, k)
+
+    def padded():
+        precomputed_padded_expert_outputs(padded_experts, output_widths, k)
+
+    compact_out = compact_expert_outputs(experts, output_widths, k)
+    padded_out = precomputed_padded_expert_outputs(padded_experts, output_widths, k)
+    refs = reference_expert_outputs(experts)
+    for compact_panel, padded_panel, ref_panel in zip(compact_out, padded_out, refs):
+        if ref_panel is None:
+            continue
+        torch.testing.assert_close(compact_panel, ref_panel, atol=1e-3, rtol=1e-3)
+        torch.testing.assert_close(padded_panel, compact_panel, atol=1e-3, rtol=1e-3)
+
+    compact_ms = triton.testing.do_bench(compact)
+    padded_ms = triton.testing.do_bench(padded)
+    useful_flops = sum(2 * tokens * width * k for tokens, width in zip(counts, output_widths))
+    return {
+        "experts": len(counts),
+        "active": sum(tokens > 0 for tokens in counts),
+        "tokens": sum(counts),
+        "K": k,
+        "compact_ms": compact_ms,
+        "padded_128_ms": padded_ms,
+        "speedup": padded_ms / compact_ms,
+        "useful_tflops": useful_flops * 1e-12 / (compact_ms * 1e-3),
+    }
+
+
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("num_experts", [32, 64])
 @pytest.mark.parametrize("k", [128, 256])
@@ -349,31 +496,107 @@ def test_router_padded_baseline_matches_narrow(num_experts):
     assert result["narrow_ms"] > 0
 
 
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("candidate_count", [32, 64])
+@pytest.mark.parametrize("k", [128, 256])
+def test_candidate_projection_matches_selected_vocab_order(candidate_count, k):
+    total_m = 512
+    hidden, selected, hidden_scale, selected_scale, hidden_ref, selected_ref, candidate_ids = make_candidate_inputs(
+        total_m, candidate_count, k
+    )
+
+    out = torch.empty((total_m, candidate_count), device="cuda", dtype=torch.float32)
+    compiled = router_projection_into(hidden, selected, hidden_scale, selected_scale, out, candidate_count, k)
+
+    torch.testing.assert_close(out, hidden_ref @ selected_ref.T, atol=1e-3, rtol=1e-3)
+    assert not torch.equal(candidate_ids, torch.sort(candidate_ids).values)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("candidate_count", [32, 64])
+def test_candidate_padded_baseline_matches_compact(candidate_count):
+    result = benchmark_candidate_head(total_m=512, candidate_count=candidate_count, k=128)
+    assert result["compact_ms"] > 0
+    assert result["padded_128_ms"] > 0
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_ragged_expert_outputs_match_torch():
+    counts = (128, 256, 0, 128)
+    output_widths = (32, 64, 32, 64)
+    k = 128
+    experts = make_expert_inputs(counts, output_widths, k)
+    compact_out = compact_expert_outputs(experts, output_widths, k)
+    refs = reference_expert_outputs(experts)
+    for compact_panel, ref_panel in zip(compact_out, refs):
+        if ref_panel is None:
+            assert compact_panel is None
+            continue
+        torch.testing.assert_close(compact_panel, ref_panel, atol=1e-3, rtol=1e-3)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_ragged_expert_padded_baseline_matches_compact():
+    result = benchmark_ragged_experts()
+    assert result["compact_ms"] > 0
+    assert result["padded_128_ms"] > 0
+
+
 def _print_benchmark(args):
-    print("TMEM MoE router projection benchmark")
-    print("====================================")
-    for num_experts in args.experts:
-        result = benchmark_router_projection(
-            total_m=args.m,
-            num_experts=num_experts,
-            k=args.k,
-            include_topk=args.include_topk,
-        )
-        suffix = " + topk" if result["include_topk"] else ""
+    if args.mode in ("router", "all"):
+        print("TMEM sparse router benchmark")
+        print("============================")
+        for include_topk in ([False, True] if args.mode == "all" else [args.include_topk]):
+            for num_experts in args.experts:
+                result = benchmark_router_projection(
+                    total_m=args.m,
+                    num_experts=num_experts,
+                    k=args.k,
+                    include_topk=include_topk,
+                )
+                suffix = " + topk" if result["include_topk"] else ""
+                print(
+                    f"M={result['M']} E={result['E']} K={result['K']}{suffix} | "
+                    f"narrow={result['narrow_ms']:.3f} ms | "
+                    f"padded E=128={result['padded_128_ms']:.3f} ms | "
+                    f"speedup={result['speedup']:.2f}x | "
+                    f"useful={result['useful_tflops']:.1f} TFLOP/s"
+                )
+    if args.mode in ("candidate", "all"):
+        print("TMEM candidate-head benchmark")
+        print("=============================")
+        for candidate_count in args.candidates:
+            result = benchmark_candidate_head(total_m=args.m, candidate_count=candidate_count, k=args.k)
+            print(
+                f"M={result['M']} C={result['C']} K={result['K']} | "
+                f"compact={result['compact_ms']:.3f} ms | "
+                f"padded C=128={result['padded_128_ms']:.3f} ms | "
+                f"speedup={result['speedup']:.2f}x | "
+                f"useful={result['useful_tflops']:.1f} TFLOP/s | "
+                f"first_candidate={result['first_candidate']}"
+            )
+    if args.mode in ("ragged", "all"):
+        print("TMEM ragged expert panel benchmark")
+        print("==================================")
+        result = benchmark_ragged_experts(k=args.k)
         print(
-            f"M={result['M']} E={result['E']} K={result['K']}{suffix} | "
-            f"narrow={result['narrow_ms']:.3f} ms | "
-            f"padded E=128={result['padded_128_ms']:.3f} ms | "
+            f"experts={result['experts']} active={result['active']} tokens={result['tokens']} K={result['K']} | "
+            f"compact={result['compact_ms']:.3f} ms | "
+            f"padded N=128={result['padded_128_ms']:.3f} ms | "
             f"speedup={result['speedup']:.2f}x | "
             f"useful={result['useful_tflops']:.1f} TFLOP/s"
         )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Benchmark the TMEM MoE router projection example.")
+    parser = argparse.ArgumentParser(description="Benchmark compact TMEM sparse logits and expert panels.")
     parser.add_argument("--m", type=int, default=4096)
     parser.add_argument("--k", type=int, default=128)
+    parser.add_argument("--mode", choices=["router", "candidate", "ragged", "all"], default="all")
     parser.add_argument("--experts", type=int, nargs="+", default=[32, 64])
+    parser.add_argument("--candidates", type=int, nargs="+", default=[32, 64])
     parser.add_argument("--include-topk", action="store_true")
     args = parser.parse_args()
     if not is_blackwell():
@@ -384,23 +607,24 @@ if __name__ == "__main__":
 # On one GB200-class run:
 #
 # ```
-# $ CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-moe-router \
-#   PYTHONPATH=.:./python python python/examples/gluon/05-tmem-moe-router.py \
-#   --m 4096 --k 128 --experts 32 64
-# TMEM MoE router projection benchmark
-# ====================================
-# M=4096 E=32 K=128 | narrow=0.010 ms | padded E=128=0.012 ms | speedup=1.18x | useful=3.2 TFLOP/s
-# M=4096 E=64 K=128 | narrow=0.012 ms | padded E=128=0.012 ms | speedup=1.00x | useful=5.5 TFLOP/s
-#
-# $ CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-moe-router \
-#   PYTHONPATH=.:./python python python/examples/gluon/05-tmem-moe-router.py \
-#   --m 4096 --k 128 --experts 32 64 --include-topk
-# TMEM MoE router projection benchmark
-# ====================================
-# M=4096 E=32 K=128 + topk | narrow=0.015 ms | padded E=128=0.021 ms | speedup=1.39x | useful=2.2 TFLOP/s
-# M=4096 E=64 K=128 + topk | narrow=0.016 ms | padded E=128=0.022 ms | speedup=1.45x | useful=4.3 TFLOP/s
+# $ CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-sparse-logits \
+#   PYTHONPATH=.:./python python python/examples/gluon/05-tmem-moe-router.py --mode all \
+#   --m 4096 --k 128 --experts 32 64 --candidates 32 64
+# TMEM sparse router benchmark
+# ============================
+# M=4096 E=32 K=128 | narrow=0.011 ms | padded E=128=0.013 ms | speedup=1.17x | useful=3.0 TFLOP/s
+# M=4096 E=64 K=128 | narrow=0.013 ms | padded E=128=0.013 ms | speedup=1.01x | useful=5.2 TFLOP/s
+# M=4096 E=32 K=128 + topk | narrow=0.015 ms | padded E=128=0.018 ms | speedup=1.14x | useful=2.2 TFLOP/s
+# M=4096 E=64 K=128 + topk | narrow=0.017 ms | padded E=128=0.018 ms | speedup=1.10x | useful=4.0 TFLOP/s
+# TMEM candidate-head benchmark
+# =============================
+# M=4096 C=32 K=128 | compact=0.011 ms | padded C=128=0.013 ms | speedup=1.18x | useful=3.0 TFLOP/s | first_candidate=63
+# M=4096 C=64 K=128 | compact=0.013 ms | padded C=128=0.013 ms | speedup=1.01x | useful=5.2 TFLOP/s | first_candidate=63
+# TMEM ragged expert panel benchmark
+# ==================================
+# experts=4 active=3 tokens=512 K=128 | compact=0.074 ms | padded N=128=0.109 ms | speedup=1.48x | useful=0.1 TFLOP/s
 # ```
 #
 # The `--include-topk` benchmark uses the same plain Triton top-2 kernel for
-# both paths. It is not a TMEM feature; it just keeps the router-level comparison
-# off PyTorch while showing the cost of selecting from compact logits.
+# both router paths. It is not a TMEM feature; it just keeps the router-level
+# comparison off PyTorch while showing the cost of selecting from compact logits.

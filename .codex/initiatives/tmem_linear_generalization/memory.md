@@ -14022,3 +14022,30 @@ rejection, not rescue
   - combined pytest passed `37 passed in 23.52s` with
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-retained
     PYTHONPATH=.:./python pytest -s --tb=short <six retained files>`.
+
+## Current: 2026-04-21 00:30 UTC three-example consolidation in progress
+
+- User requested the final suite be the three most compelling, non-overlapping
+  examples rather than separate files for each related pattern.
+- Active retained files:
+  - `python/examples/gluon/05-tmem-moe-router.py`: compact sparse logits,
+    candidate-head logits, and ragged expert panels.
+  - `python/examples/gluon/06-tmem-lora-fusion.py`: LoRA/adapters and MLP side
+    projections.
+  - `python/examples/gluon/08-tmem-layout-as-epilogue.py`: layout-as-epilogue
+    consumer-order stores.
+- Standalone files retired after merging their code, tests, and benchmark modes:
+  - `python/examples/gluon/07-tmem-candidate-head.py`;
+  - `python/examples/gluon/09-tmem-mlp-side-projection.py`;
+  - `python/examples/gluon/11-tmem-ragged-expert-views.py`.
+- Validation:
+  - required `make -j8` was no-op;
+  - py-compile passed for the three retained files;
+  - focused pytest over the three retained files passed `37 passed in 23.47s`
+    with `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-phaseh-three PYTHONPATH=.:./python
+    pytest -s --tb=short python/examples/gluon/05-tmem-moe-router.py
+    python/examples/gluon/06-tmem-lora-fusion.py
+    python/examples/gluon/08-tmem-layout-as-epilogue.py`;
+  - script benchmark transcripts for `05`, `06`, and `08` were refreshed from
+    local runs.
