@@ -1605,3 +1605,37 @@ and `1024`, under both simulated production routing and uniform routing.
   should either make the epilogue much narrower so shared-X can compile, or
   pursue a different local ownership split that avoids the extra live X/N-tail
   state.
+
+## 2026-04-20 Shared-X Fragment-Epilogue And BN128 Probes
+
+- Added scratch `x2n_mfrag:` mode (`STRUCTURAL_MODE=51`) in
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`. It keeps the
+  shared-X adjacent-N loader and compute path, but tries to load accumulator
+  TMEM in M fragments (`sub4`) before bias/SwiGLU/store so the full
+  accumulator tile is not live in the epilogue.
+- The first inferred fragment load reached the TMEM verifier and printed legal
+  fragment layouts, confirming the slice shape was recognized. Switching to
+  the first printed layout still failed the `ttng.tmem_load` result verifier.
+  The likely blocker is the local 2CTA accumulator CGA layout: slicing the last
+  TMEM dimension produces a degenerate local block basis (`block = [[0, 0]]`)
+  that the load verifier does not accept for this path.
+- A variant that allocated `x2n_mfrag` accumulator TMEM with no CGA layout was
+  rejected earlier in TTIR verification because the 2CTA warp-specialize
+  context requires a 2-CTA-per-CGA memory layout. That rules out simply
+  dropping the local CGA layout to make M-fragment slices legal.
+- A full-tile explicit TMEM-load scratch was also tested internally and then
+  left unexposed as a parser candidate: its first local layout aborts in layout
+  construction because the full `[256, 32]` layout is not surjective. Do not use
+  full-tile explicit TMEM load as the next path.
+- Subagent-proposed `BN128` shared-X adjacent-N was tested by running
+  `x2n_fused:` with `@bn128`. It fails before PTXAS:
+  `tcgen05_mma_scaled does not support blockM=64`. The current scaled-MMA
+  operand/layout path therefore cannot use `BLOCK_N=128` as the quick way to
+  halve the per-CTA epilogue live range.
+- Smaller-M shared-X did not rescue compilation. With `BLOCK_M=16`, `regs80`
+  still needed `136` registers and `regs128` escalated to `232`, so M-size-only
+  tuning does not avoid the epilogue register cliff.
+- Current decision: M-fragment epilogue is still the most promising way to
+  attack the register cliff, but it needs a layout-level fix for local 2CTA
+  TMEM slicing or a different accumulator orientation. `BN128` and simple M16
+  retuning are non-promotable with the current scaled-MMA path.
