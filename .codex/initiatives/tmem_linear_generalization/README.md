@@ -4799,3 +4799,16 @@ When resuming the initiative:
   - `N=128` `5.61x`;
   - `N=256` `3.53x`.
 - Next Phase H slice: fused MLP side-projection.
+
+## Latest: 2026-04-20 22:31 UTC MLP side-projection example implemented
+
+- Added `python/examples/gluon/09-tmem-mlp-side-projection.py` as the compact
+  side/control projection example.
+- Focused validation passed:
+  - py-compile;
+  - `pytest -s --tb=short python/examples/gluon/09-tmem-mlp-side-projection.py`
+    passed `8/8`.
+- Recorded benchmark output for `M=4096 K=128 N=128`:
+  - `S=32` `1.04x`;
+  - `S=64` `1.03x`.
+- Next Phase H slice: windowed attention score/reduction.

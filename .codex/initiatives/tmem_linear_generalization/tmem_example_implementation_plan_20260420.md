@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 22:18 UTC
+Last updated: 2026-04-20 22:31 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -207,7 +207,7 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
 
 ## Example 5: Windowed Attention Score Tile With TMEM Reductions
 
-- Status: planned.
+- Status: implemented at 2026-04-20 22:31 UTC.
 - Proposed file: `python/examples/gluon/09-tmem-windowed-attention-score.py`.
 - New capability used:
   - noncanonical score-tile TMEM layouts;
@@ -267,8 +267,9 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - report latency, useful TFLOP/s for side projection, and avoided memory
     writes.
 - Implementation notes:
-  - choose a simple activation/gate first; avoid overfitting to one model's MLP
-    formula until the layout win is clear.
+  - implemented compact side projection plus PyTorch broad projection/gate
+    wrapper, padded `S=128` side baseline, tests, TTGIR checks, and inline
+    benchmark transcript.
 
 ## Example 7: Layout-As-Epilogue Store In Consumer Order
 
@@ -348,3 +349,8 @@ grouped and attention examples until reusable helper patterns exist.
   `python -m py_compile` passed, focused pytest passed `5 passed in 7.07s`,
   and the benchmark printed `8.56x`, `5.61x`, and `3.53x` over the
   canonical-output plus reorder baseline for `N=64/128/256`.
+- 2026-04-20 22:31 UTC: implemented Example 6 as
+  `python/examples/gluon/09-tmem-mlp-side-projection.py`. Validation:
+  `python -m py_compile` passed, focused pytest passed `8 passed in 10.41s`,
+  and the benchmark printed `S=32` `1.04x` and `S=64` `1.03x` over the padded
+  `S=128` baseline.

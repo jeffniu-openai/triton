@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 22:18 UTC
+Last updated: 2026-04-20 22:31 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -983,3 +983,10 @@ signal handling:
   PyTorch reorder baseline, and inline benchmark transcript. Focused
   validation passed `5/5`. Next concrete slice: Example 5 fused MLP
   side-projection.
+
+- 2026-04-20 22:31 UTC: implemented Phase H MLP side-projection example in
+  `python/examples/gluon/09-tmem-mlp-side-projection.py`. The example covers
+  compact side projections `S=32/64`, `K=128/256`, a padded `S=128` baseline,
+  a broad-projection/gate wrapper, TTGIR checks, and inline benchmark
+  transcript. Focused validation passed `8/8`. Next concrete slice: windowed
+  attention score reductions.

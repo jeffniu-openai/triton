@@ -13893,3 +13893,21 @@ rejection, not rescue
     canonical-output plus reorder.
 - Next:
   - implement fused MLP side-projection example.
+
+## Current: 2026-04-20 22:31 UTC MLP side-projection example implemented
+
+- Added `python/examples/gluon/09-tmem-mlp-side-projection.py`.
+- The example implements:
+  - compact MXFP8 side projection for `S=32/64`;
+  - padded `S=128` scaled-MMAv5 baseline;
+  - broad PyTorch projection plus side-gated output wrapper;
+  - tests for `S=32/64`, `K=128/256`, gated output correctness, padded
+    baseline agreement, and stable TTGIR markers.
+- Validation:
+  - py-compile passed;
+  - focused pytest passed `8 passed in 10.41s`.
+- Benchmark:
+  - `M=4096 K=128 N=128`: `S=32` compact `0.140 ms`, padded `0.146 ms`,
+    `1.04x`; `S=64` compact `0.141 ms`, padded `0.145 ms`, `1.03x`.
+- Next:
+  - implement windowed attention score/reduction example.

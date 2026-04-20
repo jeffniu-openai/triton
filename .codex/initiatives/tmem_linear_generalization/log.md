@@ -25598,3 +25598,27 @@ Open after this slice:
 - Next:
   - run `git diff --check`, commit/push, then implement fused MLP
     side-projection.
+
+## 2026-04-20 22:31 UTC: implement TMEM MLP side-projection example
+
+- Added `python/examples/gluon/09-tmem-mlp-side-projection.py`.
+- Algorithm:
+  - compute compact MXFP8 side/control projection `side[M,S]` for `S=32/64`;
+  - compare against padded `S=128` scaled-MMAv5 side projection;
+  - use PyTorch for the broad projection and sigmoid side gate in both paths.
+- Tests:
+  - `test_side_projection_matches_torch` covers `S=32/64` and `K=128/256`;
+  - `test_side_gated_output_matches_torch` checks the broad-plus-side output;
+  - `test_side_projection_padded_baseline_matches_compact` checks baseline
+    leading columns;
+  - TTGIR checks assert `tensor_memory_linear` and `ttng.tc_gen5_mma_scaled`.
+- Validation:
+  - `python -m py_compile python/examples/gluon/09-tmem-mlp-side-projection.py`
+    passed;
+  - focused pytest passed `8 passed in 10.41s`;
+  - script benchmark:
+    `S=32` compact `0.140 ms`, padded `0.146 ms`, `1.04x`;
+    `S=64` compact `0.141 ms`, padded `0.145 ms`, `1.03x`.
+- Next:
+  - run `git diff --check`, commit/push, then implement windowed attention
+    score/reduction.
