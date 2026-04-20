@@ -1326,6 +1326,38 @@ and `1024`, under both simulated production routing and uniform routing.
   different ownership model or a lower-level fix to increase eligible work
   without introducing the pair/schedule stalls measured here.
 
+## 2026-04-20 Epilogue Ownership And Late Banded Retuning
+
+- Added an `mmaepi:` scratch attempt that fuses the direct epilogue into the
+  MMA partition to remove the separate accumulator handoff. The initial
+  three-partition form and a four-partition no-op lead form were both rejected
+  by `gl.warp_specialize` lowering in the rank-4 smoke
+  `/tmp/moe_bmm1_mmaepi_smoke2.csv`. Treat this as a lowering/API constraint,
+  not a measured performance result.
+- Ran a direct epilogue/subtile sweep on the hard uniform batch `896` ranks in
+  `/tmp/moe_bmm1_epilogue_subtile_hard_ranks.csv`:
+  - rank 3 best: `0.97496x`
+    (`B21/sub2`)
+  - rank 4 best: `1.00004x`
+    (`B24/acc2/regs68/epin0`)
+  - rank 5 best: `0.98241x`
+    (`B24/acc2/epin0`)
+  - rank 7 best: `1.00160x`
+    (`B24/acc2/epin0`)
+- Expanded around `epin0`, bands, register caps, `acc2`, and X/W depth on
+  separate rank groups:
+  - `/tmp/moe_bmm1_epin0_band_regs_rank35.csv`: rank 3 still preferred the
+    plain W6/B21 near-miss at `0.97529x`, while rank 5 reached a local small
+    win (`1.00413x`) with `B22/acc2/regs68/epin0`.
+  - `/tmp/moe_bmm1_epin0_band_regs_rank47.csv`: rank 4 best was only
+    `0.97444x` and rank 7 best was `0.99675x` in that run. The earlier
+    near-parity rank-4/7 points are not stable enough to drive selector policy.
+- Decision: epilogue ownership and band/register retuning can move individual
+  hard routes by a few percent, but they do not solve the hard rank-3 route and
+  remain far below the `1.20x` requirement. `X_NUM_BUFS=6` is consistently
+  disastrous in this family (`~0.69x-0.73x` on hard ranks); W5 variants also
+  regress.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases

@@ -441,6 +441,11 @@ def run_split_with_config(prepared, p, out: torch.Tensor):
 
 
 @gluon.jit
+def noop_partition(p: PartitionArgs):
+    pass
+
+
+@gluon.jit
 def load_inputs_partition(p: PartitionArgs):
     local_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
     offs_layout: gl.constexpr = gl.SliceLayout(
@@ -1956,6 +1961,106 @@ def mma_scale_prefetch_partition(p: PartitionArgs):
 
 
 @gluon.jit
+def mma_fused_epilogue_partition(p: PartitionArgs):
+    x_idx = 0
+    x_phase = 0
+    w_idx = 0
+    w_phase = 0
+    acc_idx = 0
+    acc_phase = 0
+
+    x_scale = 1.0 if p.x_scale_ptr is None else gl.load(p.x_scale_ptr)
+    w_scale = 1.0 if p.w_scale_ptr is None else gl.load(p.w_scale_ptr)
+    acc_scale = x_scale * w_scale
+    out_recip = 1.0 / gl.load(p.out_scale_ptr)
+
+    num_warps: gl.constexpr = gl.num_warps()
+    warps_n: gl.constexpr = 1 if p.FORCE_EPILOGUE_WARPS_N1 else (2 if num_warps >= 8 and p.BLOCK_N >= 256 else 1)
+    split_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
+    split_layout: gl.constexpr = gl.BlockedLayout(
+        [1, 4],
+        [1, 32],
+        [num_warps // warps_n, warps_n],
+        [1, 0],
+        cga_layout=split_cga_layout,
+    )
+    bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
+    store_layout: gl.constexpr = get_store_layout(p)
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_m = pid_m * p.BLOCK_M
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        out_off_n_packed = pid_n * (p.BLOCK_N // p.REDUCTION_N // 4)
+        off_n = pid_n * p.BLOCK_N
+
+        acc_ready_bar = p.acc_ready_bars.index(acc_idx)
+        acc_buf = p.acc_bufs.index(acc_idx)
+
+        use_acc = False
+        for _ in range(p.K_TILES):
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            scale_buf = p.w_scale_bufs.index(w_idx)
+            mbarrier.wait(w_ready_bar, w_phase)
+
+            blackwell.tcgen05_copy(
+                unswizzle_mx_scale(scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER, p.MXFP_BLOCK_SIZE),
+                p.w_scale_tmem,
+            )
+
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            mbarrier.wait(x_ready_bar, x_phase)
+
+            blackwell.tcgen05_mma_scaled(
+                w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                x_buf.permute((1, 0)),
+                acc_buf,
+                p.w_scale_tmem,
+                p.x_scale_tmem,
+                a_type="e2m1",
+                b_type="e4m3",
+                use_acc=use_acc,
+            )
+            blackwell.tcgen05_commit(x_empty_bar)
+            blackwell.tcgen05_commit(w_empty_bar)
+
+            x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+            use_acc = True
+
+        blackwell.tcgen05_commit(acc_ready_bar)
+        mbarrier.wait(acc_ready_bar, acc_phase)
+        acc_idx, acc_phase = advance(acc_idx, acc_phase, p.acc_num_bufs)
+
+        offs_bias_n = off_n + gl.arange(0, p.BLOCK_N, layout=bias_layout)
+        bias = gl.convert_layout(
+            gl.expand_dims(gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n), axis=0),
+            split_layout,
+        )
+        acc_regs = acc_buf.load().permute((1, 0))
+        acc = gl.convert_layout(acc_regs, split_layout)
+        acc_packed = float2.pack(acc, axis=1)
+        bias_packed = float2.pack(bias, axis=1)
+        bias_packed = float2.Float2Tensor(gl.convert_layout(bias_packed.value, acc_packed.value.type.layout))
+        acc_packed = float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
+
+        epilogue_direct_store(
+            p,
+            acc_packed,
+            out_recip,
+            off_m,
+            out_off_n_packed,
+            shape_m,
+            slice_offset,
+            store_layout,
+        )
+
+
+@gluon.jit
 def mma_transition_pair_partition(p: PartitionArgs):
     x_idx = 0
     x_phase = 0
@@ -2788,6 +2893,18 @@ def ws_matmul_combined_load_kernel(
             [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
             [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
         )
+    elif STRUCTURAL_MODE == 21:
+        gl.static_assert(USE_DIRECT_EPILOGUE_STORE, "mmaepi uses direct stores inside the MMA partition")
+        gl.warp_specialize(
+            [
+                (noop_partition, (p, )),
+                (load_activations, (p, )),
+                (load_weights, (p, )),
+                (mma_fused_epilogue_partition, (p, )),
+            ],
+            [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
+            [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
+        )
     else:
         if STRUCTURAL_MODE == 1:
             gl.warp_specialize(
@@ -3035,6 +3152,9 @@ def parse_candidate(name: str, slice_size: int):
     elif name.startswith("scaleprefetch:"):
         spec = name[len("scaleprefetch:"):]
         mode = "scaleprefetch"
+    elif name.startswith("mmaepi:"):
+        spec = name[len("mmaepi:"):]
+        mode = "mmaepi"
     elif name.startswith("split:"):
         spec = name[len("split:"):]
         mode = "split"
@@ -3178,6 +3298,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
         "xpair",
         "xpairsched",
         "scaleprefetch",
+        "mmaepi",
     ):
         return combined_load_matmul(
             a=prepared.x,
@@ -3211,6 +3332,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
                 "xpair": 18,
                 "xpairsched": 19,
                 "scaleprefetch": 20,
+                "mmaepi": 21,
             }[mode],
         )
     return run_split_with_config(prepared, p, out)
