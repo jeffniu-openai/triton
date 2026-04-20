@@ -182,15 +182,7 @@ struct CatOpConversion : public ConvertOpToLLVMPattern<CatOp> {
     for (Value v : rhsVals)
       retVals.push_back(v);
 
-    if (retVals.size() != strippedDstLayout.getInDimSize(kReg)) {
-      return op->emitError()
-             << "tt.cat lowering expected "
-             << strippedDstLayout.getInDimSize(kReg)
-             << " (non-broadcast) register values for the result, but got "
-             << retVals.size()
-             << ". (hint: this usually means the operands/result encodings are "
-                "incompatible for the current CatOp lowering)";
-    }
+    assert(retVals.size() == strippedDstLayout.getInDimSize(kReg));
 
     // Re-introduce broadcasting if the destination expects it.
     if (!removeBroadcastDst.isIdentity())
@@ -320,12 +312,8 @@ struct ReshapeOpConversion : public ConvertOpToLLVMPattern<ReshapeOp> {
   matchAndRewrite(ReshapeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
-    if (triton::gpu::isExpensiveView(op.getSrc().getType(), op.getType())) {
-      return emitOptionalError(loc,
-                               "expensive view not supported on reshape op");
-    }
+    assert(!isExpensiveView(op.getSrc().getType(), op.getType()));
     auto resultTy = cast<RankedTensorType>(op.getType());
-    auto srcTy = cast<RankedTensorType>(op.getSrc().getType());
     auto typeConverter = getTypeConverter();
     auto vals = unpackLLElements(loc, adaptor.getSrc(), rewriter);
     Value ret = packLLElements(loc, typeConverter, vals, rewriter, resultTy);
@@ -475,7 +463,6 @@ struct BroadcastOpConversion
     auto srcLayout = srcTy.getEncoding();
     auto resultLayout = resultTy.getEncoding();
     auto srcShape = srcTy.getShape();
-    auto resultShape = resultTy.getShape();
     unsigned rank = srcTy.getRank();
     auto typeConverter = getTypeConverter();
     assert(rank == resultTy.getRank());
@@ -510,7 +497,7 @@ struct MemDescIndexOpConversion
   matchAndRewrite(triton::gpu::MemDescIndexOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
-    auto *ctx = op->getContext();
+    MLIRContext *ctx = op->getContext();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto srcTy = op.getSrc().getType();
     auto dstTy = op.getResult().getType();
@@ -630,7 +617,6 @@ struct MemDescSubsliceOpConversion
     auto opOffsetVals = op.getOffsets();
 
     auto base = smemObj.getBase();
-    auto elemPtrTy = base.getType();
     // Accumulate the logical offsets
     SmallVector<Value> offsetVals;
     for (auto [oldOffVal, opOff] :

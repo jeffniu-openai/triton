@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-20 23:34 UTC upstream-main merge is in progress. Fetched
+  and merged `upstream/main` at `2c7ce4925d37802dd84dfde1f6458cae19485617`
+  into `codex/tmem` from pre-merge
+  `c9166449eeaad20516a3f831c0899c56d91f9fc8`. Build and conflicted lit
+  validation are green, and a real merge regression in `ttng.tmem_copy`
+  barrier lowering was fixed by emitting `tcgen05.commit` for the optional
+  barrier operand. Runtime validation still has two open blockers: two-CTA
+  scaled copy tests that request broadcast scale layouts beyond the current
+  `tcgen05.copy.warpx4.32x128b` hardware-realizable canonical block basis, and
+  scaled-MMA FPSAN payload mismatches across accumulator layouts. The merge
+  commit is intentionally not finalized until these runtime blockers are
+  classified or fixed.
+
 - Latest: 2026-04-20 20:21 UTC tutorial polish added the benchmark output
   inline as if the user had run the script, and added a concrete
   pre-generalization capability note. The new note is careful: block-scaled

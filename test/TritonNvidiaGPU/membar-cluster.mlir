@@ -408,7 +408,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   // CHECK: ttng.cluster_barrier
   // CHECK-NEXT: ttng.fence_mbarrier_init_release_cluster
   // CHECK-NEXT: ttng.async_tma_copy_global_to_local
-  tt.func @convert_layout_trivial_then_tma_multicast_cluster_barrier(%input: tensor<64x128xf16, #blockedTmaSrc>, %desc: !tt.tensordesc<tensor<64x128xf16, #nvmmaTma>>) -> tensor<64x128xf16, #blockedTmaDst> {
+  tt.func @convert_layout_trivial_then_tma_multicast_cluster_barrier(%input: tensor<64x128xf16, #blockedTmaSrc>, %desc: !tt.tensordesc<64x128xf16, #nvmmaTma>) -> tensor<64x128xf16, #blockedTmaDst> {
     %c0 = arith.constant 0 : i32
     %true = arith.constant true
     %barrier = ttg.local_alloc : () -> !ttg.memdesc<1xi64, #barrierEncTma, #smem, mutable>
@@ -416,7 +416,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %cvt = ttg.convert_layout %input : tensor<64x128xf16, #blockedTmaSrc> -> tensor<64x128xf16, #blockedTmaDst>
     %dst = ttg.local_alloc : () -> !ttg.memdesc<64x128xf16, #nvmmaTma, #smem, mutable>
     ttng.async_tma_copy_global_to_local %desc[%c0, %c0] %dst, %barrier, %true {multicast} :
-        !tt.tensordesc<tensor<64x128xf16, #nvmmaTma>>, !ttg.memdesc<1xi64, #barrierEncTma, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmmaTma, #smem, mutable>
+        !tt.tensordesc<64x128xf16, #nvmmaTma>, !ttg.memdesc<1xi64, #barrierEncTma, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmmaTma, #smem, mutable>
     ttng.wait_barrier %barrier, %c0 deps %dst :
         !ttg.memdesc<1xi64, #barrierEncTma, #smem, mutable>,
         !ttg.memdesc<64x128xf16, #nvmmaTma, #smem, mutable>
@@ -514,7 +514,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   // CHECK-NEXT: ttng.cluster_barrier
   // CHECK-NEXT: ttng.wait_barrier
   // CHECK: tt.return
-  tt.func @cluster_tma_multicast_with_per_cta_barrier(%desc: !tt.tensordesc<tensor<64x128xf16, #nvmma>>) -> tensor<64x128xf16, #blocked> {
+  tt.func @cluster_tma_multicast_with_per_cta_barrier(%desc: !tt.tensordesc<64x128xf16, #nvmma>) -> tensor<64x128xf16, #blocked> {
     %c0 = arith.constant 0 : i32
     %true = arith.constant true
     %cst = arith.constant dense<0.000000e+00> : tensor<64x128xf16, #blocked>
@@ -522,7 +522,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %barrier = ttg.local_alloc : () -> !ttg.memdesc<2xi64, #barrierEnc, #smem, mutable>
     ttng.init_barrier %barrier, 1 : !ttg.memdesc<2xi64, #barrierEnc, #smem, mutable>
     ttng.async_tma_copy_global_to_local %desc[%c0, %c0] %buf, %barrier, %true {multicast} :
-      !tt.tensordesc<tensor<64x128xf16, #nvmma>>, !ttg.memdesc<2xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
+      !tt.tensordesc<64x128xf16, #nvmma>, !ttg.memdesc<2xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
     ttng.wait_barrier %barrier, %c0 deps %buf :
       !ttg.memdesc<2xi64, #barrierEnc, #smem, mutable>,
       !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
@@ -540,7 +540,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   // CHECK-NEXT: ttng.fence_mbarrier_init_release_cluster
   // CHECK-NEXT: ttng.cluster_barrier {relaxed = true}
   // CHECK: tt.return
-  tt.func @no_cluster_tma_without_multicast(%desc: !tt.tensordesc<tensor<64x128xf16, #nvmma>>) -> tensor<64x128xf16, #blocked> {
+  tt.func @no_cluster_tma_without_multicast(%desc: !tt.tensordesc<64x128xf16, #nvmma>) -> tensor<64x128xf16, #blocked> {
     %c0 = arith.constant 0 : i32
     %true = arith.constant true
     %cst = arith.constant dense<0.000000e+00> : tensor<64x128xf16, #blocked>
@@ -548,7 +548,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %barrier = ttg.local_alloc : () -> !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable>
     ttng.init_barrier %barrier, 1 : !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable>
     ttng.async_tma_copy_global_to_local %desc[%c0, %c0] %buf, %barrier, %true :
-      !tt.tensordesc<tensor<64x128xf16, #nvmma>>, !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
+      !tt.tensordesc<64x128xf16, #nvmma>, !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
     ttng.wait_barrier %barrier, %c0 deps %buf :
       !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable>,
       !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
@@ -585,7 +585,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   // CHECK-NEXT: ttng.async_tma_copy_global_to_local
   // CHECK-NEXT: ttng.cluster_barrier
   // CHECK-NEXT: ttng.wait_barrier
-  tt.func @cluster_barrier_unpredicated_wait(%desc: !tt.tensordesc<tensor<64x128xf16, #nvmma_unpred>>) -> tensor<64x128xf16, #blocked_unpred> {
+  tt.func @cluster_barrier_unpredicated_wait(%desc: !tt.tensordesc<64x128xf16, #nvmma_unpred>) -> tensor<64x128xf16, #blocked_unpred> {
     %c0 = arith.constant 0 : i32
     %true = arith.constant true
 
@@ -594,7 +594,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     // a lifetime start
     %a = ttg.local_alloc {allocation.offset = 0 : i32} : () -> !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable>
     ttng.async_tma_copy_global_to_local %desc[%c0, %c0] %a, %barrier, %true {multicast} :
-      !tt.tensordesc<tensor<64x128xf16, #nvmma_unpred>>, !ttg.memdesc<1xi64, #barrierEncUnpred, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable>
+      !tt.tensordesc<64x128xf16, #nvmma_unpred>, !ttg.memdesc<1xi64, #barrierEncUnpred, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable>
     ttng.wait_barrier %barrier, %c0 : !ttg.memdesc<1xi64, #barrierEncUnpred, #smem, mutable>
     %t = ttg.local_load %a : !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable> -> tensor<64x128xf16, #blocked_unpred>
     ttg.local_dealloc %a : !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable>
@@ -603,7 +603,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     // b lifetime start
     %b = ttg.local_alloc {allocation.offset = 0 : i32} : () -> !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable>
     ttng.async_tma_copy_global_to_local %desc[%c0, %c0] %b, %barrier, %true {multicast} :
-      !tt.tensordesc<tensor<64x128xf16, #nvmma_unpred>>, !ttg.memdesc<1xi64, #barrierEncUnpred, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable>
+      !tt.tensordesc<64x128xf16, #nvmma_unpred>, !ttg.memdesc<1xi64, #barrierEncUnpred, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable>
     ttng.wait_barrier %barrier, %c0 : !ttg.memdesc<1xi64, #barrierEncUnpred, #smem, mutable>
     %t2 = ttg.local_load %b : !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable> -> tensor<64x128xf16, #blocked_unpred>
     ttg.local_dealloc %b : !ttg.memdesc<64x128xf16, #nvmma_unpred, #smem, mutable>
@@ -636,7 +636,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   // CHECK-NEXT: ttng.wait_barrier
   // CHECK: ttg.local_store
   // CHECK: tt.return
-  tt.func @no_cluster_when_same_allocation(%desc: !tt.tensordesc<tensor<64x128xf16, #nvmma>>) -> tensor<64x128xf16, #blocked> {
+  tt.func @no_cluster_when_same_allocation(%desc: !tt.tensordesc<64x128xf16, #nvmma>) -> tensor<64x128xf16, #blocked> {
     %c0 = arith.constant 0 : i32
     %true = arith.constant true
     %cst = arith.constant dense<0.000000e+00> : tensor<64x128xf16, #blocked>
@@ -644,7 +644,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %barrier = ttg.local_alloc : () -> !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable>
     ttng.init_barrier %barrier, 1 : !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable>
     ttng.async_tma_copy_global_to_local %desc[%c0, %c0] %buf, %barrier, %true {multicast} :
-      !tt.tensordesc<tensor<64x128xf16, #nvmma>>, !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
+      !tt.tensordesc<64x128xf16, #nvmma>, !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
     ttng.wait_barrier %barrier, %c0 deps %buf :
       !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable>,
       !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
@@ -688,7 +688,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
   // CHECK-NEXT: ttng.tc_gen5_mma
   // CHECK-NEXT: ttng.cluster_barrier
   // CHECK-NEXT: ttng.wait_barrier
-  tt.func @example_matmul(%a_desc: !tt.tensordesc<tensor<256x16xf16, #sharedA>>, %b_desc: !tt.tensordesc<tensor<16x64xf16, #sharedB>>) {
+  tt.func @example_matmul(%a_desc: !tt.tensordesc<256x16xf16, #sharedA>, %b_desc: !tt.tensordesc<16x64xf16, #sharedB>) {
     %c0 = arith.constant 0 : i32
     %c1 = arith.constant 1 : i32
     %true = arith.constant true
@@ -709,9 +709,9 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
       ttng.barrier_expect %bTMA, 5120, %true : !ttg.memdesc<1xi64, #barrierTMA, #smem, mutable>
       %offs = arith.muli %k_i32, %c16 : i32
       ttng.async_tma_copy_global_to_local %a_desc[%c0, %offs] %smem_a, %bTMA, %true :
-        !tt.tensordesc<tensor<256x16xf16, #sharedA>>, !ttg.memdesc<1xi64, #barrierTMA, #smem, mutable> -> !ttg.memdesc<256x16xf16, #sharedA, #smem, mutable>
+        !tt.tensordesc<256x16xf16, #sharedA>, !ttg.memdesc<1xi64, #barrierTMA, #smem, mutable> -> !ttg.memdesc<256x16xf16, #sharedA, #smem, mutable>
       ttng.async_tma_copy_global_to_local %b_desc[%offs, %c0] %smem_b, %bTMA, %true :
-        !tt.tensordesc<tensor<16x64xf16, #sharedB>>, !ttg.memdesc<1xi64, #barrierTMA, #smem, mutable> -> !ttg.memdesc<16x64xf16, #sharedB, #smem, mutable>
+        !tt.tensordesc<16x64xf16, #sharedB>, !ttg.memdesc<1xi64, #barrierTMA, #smem, mutable> -> !ttg.memdesc<16x64xf16, #sharedB, #smem, mutable>
       ttng.wait_barrier %bTMA, %phase, %true deps %smem_a, %smem_b :
         !ttg.memdesc<1xi64, #barrierTMA, #smem, mutable>,
         !ttg.memdesc<256x16xf16, #sharedA, #smem, mutable>,
@@ -760,7 +760,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   // CHECK-NEXT: ttng.async_tma_copy_global_to_local
   // CHECK-NEXT: ttng.cluster_barrier
   // CHECK-NEXT: ttng.wait_barrier
-  tt.func @cluster_barrier_between_lifetimes_same_offset(%desc: !tt.tensordesc<tensor<64x128xf16, #nvmma>>) -> tensor<64x128xf16, #blocked> {
+  tt.func @cluster_barrier_between_lifetimes_same_offset(%desc: !tt.tensordesc<64x128xf16, #nvmma>) -> tensor<64x128xf16, #blocked> {
     %c0 = arith.constant 0 : i32
     %true = arith.constant true
 
@@ -769,7 +769,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     // a lifetime start
     %a = ttg.local_alloc {allocation.offset = 0 : i32} : () -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
     ttng.async_tma_copy_global_to_local %desc[%c0, %c0] %a, %barrier, %true {multicast} :
-      !tt.tensordesc<tensor<64x128xf16, #nvmma>>, !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
+      !tt.tensordesc<64x128xf16, #nvmma>, !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
     ttng.wait_barrier %barrier, %c0 deps %a :
       !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable>,
       !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
@@ -780,7 +780,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     // b lifetime start
     %b = ttg.local_alloc {allocation.offset = 0 : i32} : () -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
     ttng.async_tma_copy_global_to_local %desc[%c0, %c0] %b, %barrier, %true {multicast} :
-      !tt.tensordesc<tensor<64x128xf16, #nvmma>>, !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
+      !tt.tensordesc<64x128xf16, #nvmma>, !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable> -> !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>
     ttng.wait_barrier %barrier, %c0 deps %b :
       !ttg.memdesc<1xi64, #barrierEnc, #smem, mutable>,
       !ttg.memdesc<64x128xf16, #nvmma, #smem, mutable>

@@ -25761,3 +25761,37 @@ Open after this slice:
   - py-compile passed for the three retained files;
   - focused pytest over the three retained files passed `37 passed in 23.47s`;
   - refreshed inline benchmark transcripts from local script runs.
+
+## 2026-04-20 23:34 UTC: upstream main merge in progress
+
+- Fetched `upstream/main` from `https://github.com/triton-lang/triton` at
+  `2c7ce4925d37802dd84dfde1f6458cae19485617` and merged it into
+  `codex/tmem` from pre-merge HEAD
+  `c9166449eeaad20516a3f831c0899c56d91f9fc8`.
+- Resolved conflicts in TMEM dialect declarations/lowering, Gluon tests,
+  warp specialization, and conflicted MLIR fixtures. Important semantic
+  resolution: `ttng.tmem_copy` keeps the new optional barrier operand and its
+  LLVM lowering now emits a `tcgen05.commit` completion operation when that
+  operand is present; the initial merge had parsed the operand but erased the
+  op without signaling the barrier.
+- Validation now green:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`;
+  - `lit -v` for `test/Analysis/test-membar-ttng.mlir`,
+    `test/Conversion/tritongpu_to_llvm_blackwell.mlir`,
+    `test/TritonGPU/invalid.mlir`, `test/TritonNvidiaGPU/invalid.mlir`,
+    `test/TritonNvidiaGPU/membar-cluster.mlir`, and
+    `test/TritonNvidiaGPU/tmem_layouts.mlir` passed `6/6`;
+  - `python -m py_compile python/test/gluon/test_core.py
+    python/test/gluon/test_fpsan.py` passed.
+- Runtime validation still has open failures:
+  - two-CTA `test_mma_scaled_tcgen05_copy*` cases using scale copies can hit
+    the branch's clean unsupported diagnostic for broadcast
+    `tcgen05.copy.warpx4.32x128b` scale layouts without the canonical
+    `[[128, 0]]` TMEM block basis;
+  - `python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled` currently
+    produces payload bits that disagree with `_mm_scaled_payload_u32` for both
+    legacy and linear accumulator layouts.
+- Next concrete slice: decide whether the two-CTA scale-copy tests should use
+  register/TMEM stores for broadcast scales, split copy coverage to only
+  hardware-realizable canonical layouts, or extend the copy planner/API; then
+  root-cause the FPSAN payload mismatch before broad runtime sweeps.

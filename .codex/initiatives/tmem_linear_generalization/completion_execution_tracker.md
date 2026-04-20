@@ -1050,3 +1050,14 @@ signal handling:
   files. Required `make -j8` was no-op, py-compile passed for the three retained
   files, focused pytest passed `37 passed in 23.47s`, and the three script
   benchmark transcripts were refreshed from local runs.
+
+- 2026-04-20 23:34 UTC: active phase is upstream-main merge recovery. Merged
+  `upstream/main` at `2c7ce4925d37802dd84dfde1f6458cae19485617` into
+  `codex/tmem` from pre-merge `c9166449eeaad20516a3f831c0899c56d91f9fc8`.
+  Completed build and conflicted lit recovery: `make -j8` passed with the host
+  C++ include path, and the six conflicted lit files passed. Open validation
+  blockers are runtime-only: two-CTA scale-copy tests now hit the clean
+  unsupported broadcast `warpx4` copy boundary, and scaled-MMA FPSAN payload
+  checks fail for both legacy and linear accumulators. Next concrete
+  implementation slice is to make the scale-copy tests respect the hardware
+  boundary or extend the planner/API, then root-cause the FPSAN payload drift.

@@ -73,6 +73,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-20 23:34 UTC: upstream-main merge recovery is active. The branch has
+  merged `upstream/main` at `2c7ce4925d37802dd84dfde1f6458cae19485617` and
+  has no unresolved textual conflicts. Build and conflicted lit validation are
+  green; runtime Gluon validation still has open two-CTA scaled-copy and
+  scaled-MMA FPSAN payload blockers recorded in `memory.md`, `log.md`,
+  `completion_execution_tracker.md`, and the active handoff.
+
 - 2026-04-21 00:30 UTC: consolidated the retained user-facing example suite
   into three non-overlapping files:
   `python/examples/gluon/05-tmem-moe-router.py` now covers compact sparse

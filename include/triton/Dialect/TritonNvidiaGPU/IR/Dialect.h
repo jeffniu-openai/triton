@@ -30,6 +30,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -76,6 +77,7 @@ inline bool getModuleTwoCTAs(Operation *op) {
 
 struct TensorMemory : public SideEffects::Resource::Base<TensorMemory> {
   StringRef getName() const final { return "<TensorMemory>"; }
+  SideEffects::Resource *getParent() const override { return nullptr; }
 };
 
 struct TMemAllocation {
@@ -503,6 +505,20 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &memLayout,
                                 bool allowSplitNFastPath = true);
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlan(const LinearLayout &ll);
+
+SmallVector<uint16_t> getCTABroadcastMasks(bool twoCTAs, ValueRange descs);
+
+// Compact encoding of a CTA multicast group for a given broadcast mask:
+// `fixedBits` selects the CTA-id bits that identify the group leader, and
+// `pattern` is the recipient bitset for leader CTA 0 before shifting to the
+// current group.
+struct TMAMulticastMaskEncoding {
+  uint32_t fixedBits;
+  uint32_t pattern;
+};
+
+TMAMulticastMaskEncoding getTMAMulticastMaskEncoding(int numCTAs,
+                                                     uint16_t broadcastBits);
 
 } // namespace mlir::triton::nvidia_gpu
 
