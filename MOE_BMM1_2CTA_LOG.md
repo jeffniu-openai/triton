@@ -1058,6 +1058,81 @@ and `1024`, under both simulated production routing and uniform routing.
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
 
+## 2026-04-20 20% Criterion And Paired W-Reuse Scratch Kernels
+
+- Updated `AGENTS.md` to record the stronger success criterion: 2CTA must be
+  at least `1.20x` faster than the 1CTA comparator for every batch size before
+  the workstream is considered finished, and authorized subagent usage should
+  be used aggressively for research, tuning, benchmarking, profiling, and
+  verification.
+- Subagent rehydration found that the current selector still leaves generated
+  sweep slices `4,5,6,7,8,10,12,14,28` on 1CTA. It also highlighted that
+  already-enabled low slices are only small wins under current evidence
+  (`~1.00x-1.03x` for batches `512..1024`, depending on route), so the new
+  `1.20x` target requires structural improvement rather than only enabling
+  the slice-28 near-miss family.
+- Existing W6/direct hard-rank recheck:
+  `/tmp/moe_bmm1_20pct_slice28_hard_probe1.csv`
+  - Command: `make`, then
+    `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/root/code/triton/python:/root/code/triton/python/triton_kernels python /tmp/moe_bmm1_pair_tune_cached.py --batches 896 --routing uniform --seeds 0 --local-ranks 3 4 5 7 --candidates 1cta selected ...W6/B20..B26... --rep 400 --validate --shuffle`.
+  - Best results remained far below the `1.20x` target: hard ranks 3/4/5
+    still preferred 1CTA or were below parity; rank 7 reached only `1.006x`
+    for `x5w6/B24/acc2/regs48`.
+- Added paired W-reuse scratch modes to
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`:
+  - `pair:` uses one combined producer that issues W once per K tile and
+    immediately applies it to two X tiles when the launch-grid-aware schedule
+    can place same-`(slice,pid_n)` blocks in consecutive iterations of the same
+    persistent program.
+  - `pairsplit:` preserves separate activation and weight producers while using
+    the same paired schedule and a paired MMA consumer.
+  - Added minimal M16 direct bases for paired experiments.
+- Paired W-reuse legality and tuning artifacts:
+  - `/tmp/moe_bmm1_pair_reuse_compile_rank4.csv`: first `pair:` compile and
+    correctness gate passed, but rank 4 was `0.860x`.
+  - `/tmp/moe_bmm1_pair_reuse_split_compile_rank4.csv`: `pairsplit:` improved
+    the paired structure to `0.933x`, still slower than the original split W6
+    candidate.
+  - `/tmp/moe_bmm1_pairsplit_tune_rank4_rep120.csv`: M32 paired split tuning
+    across `x`, `w`, `acc`, multicast, warp, and register options peaked around
+    `0.934x`; larger X rings and 8-warp variants were much slower.
+  - `/tmp/moe_bmm1_pairsplit_m16_rank4_rep100.csv`: M16 paired split improved
+    the old M16 direct base from `0.747x` to `0.856x`, but remained far below
+    the M32 split baseline and 1CTA.
+  - `/tmp/moe_bmm1_pairsplit_hard_ranks_rep200.csv`: best paired split
+    candidates across hard ranks were still regressions (`~0.925x-0.958x`).
+  - Decision: paired W reuse is legal but not competitive in this form. At
+    M32/batch-896 the paired schedule covers only about `20%` of blocks, so the
+    upside is too small; M16 increases pairable work but starts from a much
+    slower tile.
+- Disabled-small-batch probe:
+  `/tmp/moe_bmm1_small_disabled_probe_rank4_rep200.csv`
+  - Uniform rank 4, batches `128..448`, same-input cached harness, `rep=200`.
+  - `x5w6/regs48` produced mild wins for batches `128..384`
+    (`1.02x-1.05x`) but batch `448` still regressed (`0.966x`). This is useful
+    evidence for future selector work, but still far below the `1.20x` target.
+- Occupancy and wider-N checks:
+  - `/tmp/moe_bmm1_w6_occupancy_recheck_rep300.csv`: explicit W6
+    `occ3/occ4` variants were much slower on hard ranks; occupancy alone is
+    not the fix.
+  - `/tmp/moe_bmm1_warps8_w6_rank4_rep160.csv`: 8-warp W6 split variants were
+    `~0.69x`, much worse than four-warps.
+  - `/tmp/moe_bmm1_wide_n_rank4_rep200.csv`: `BN384` candidates are illegal
+    with the current scale descriptor (`Shape element 4 must be a power of 2`),
+    and `BN512` candidates are consistently slower.
+- NCU sample, GPU 0, uniform batch `896`, seed `0`, rank `4`:
+  - 2CTA W6/B21 command:
+    `CUDA_VISIBLE_DEVICES=0 ... ncu --target-processes all --kernel-name-base function --kernel-name regex:.*ws_matmul_kernel.* --launch-count 1 --metrics gpu__time_duration.sum,sm__throughput.avg.pct_of_peak_sustained_elapsed,dram__throughput.avg.pct_of_peak_sustained_elapsed,lts__throughput.avg.pct_of_peak_sustained_elapsed,smsp__warps_active.avg.pct_of_peak_sustained_active python /tmp/moe_bmm1_pair_tune.py --batches 896 --routing uniform --seeds 0 --local-ranks 4 --candidates m32_bn256_sub1_direct_warps4_x5w6_b21_act2w1m1_regs48_epin1_b32 --rep 1`.
+  - 2CTA W6/B21 sample: `40.64 us`, SM throughput `51.70%`, DRAM
+    throughput `47.48%`, L2 throughput `35.87%`, active warps `24.09%`.
+  - 1CTA comparator sample: `37.31 us`, SM throughput `55.62%`, DRAM
+    throughput `50.71%`, L2 throughput `38.27%`, active warps `48.27%`.
+  - Conclusion: the hard-rank 2CTA W6 path is not only memory limited; it has
+    materially lower active-warps and lower SM throughput than 1CTA. Future
+    source work should change CTA/layout/epilogue ownership or in-kernel work
+    decomposition, not just add occupancy, warps, wider N, or paired scheduling
+    on top of the current M32 shape.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases

@@ -39,6 +39,74 @@ epilogue_store_partition = ex.epilogue_store_partition
 mma_partition = ex.mma_partition
 unswizzle_mx_scale = ex.unswizzle_mx_scale
 
+_dynamic_pair_w_reuse_tile_schedule_cache: dict[tuple[int, int, int, int], torch.Tensor] = {}
+
+
+def _pack_full_tile(pid_m: int, pid_n: int, slice_idx: int) -> int:
+    return slice_idx | (pid_m << 16) | (pid_n << 32)
+
+
+def get_pair_w_reuse_tile_schedule_tensor(
+    ragged_metadata,
+    block_size: int,
+    grid_n: int,
+    launch_grid: int,
+) -> torch.Tensor:
+    key = (id(ragged_metadata), block_size, grid_n, launch_grid)
+    cached = _dynamic_pair_w_reuse_tile_schedule_cache.get(key)
+    if cached is not None:
+        return cached
+
+    block_offs, block_schedule = ex.get_block_schedule_tensors(ragged_metadata, block_size)
+    grid_m = int(block_offs[ragged_metadata.n_slices].item())
+    num_blocks = grid_m * grid_n
+    block_schedule_cpu = block_schedule.cpu().tolist()
+
+    grouped: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
+    singles: list[tuple[int, int, int]] = []
+    for schedule_pid_m in range(grid_m):
+        m_entry = int(block_schedule_cpu[schedule_pid_m])
+        slice_idx = m_entry & 0xFFFF
+        pid_m = m_entry >> 16
+        for pid_n in range(grid_n):
+            grouped.setdefault((slice_idx, pid_n), []).append((pid_m, pid_n, slice_idx))
+
+    pairs: list[tuple[tuple[int, int, int], tuple[int, int, int]]] = []
+    for entries in grouped.values():
+        entries.sort()
+        i = 0
+        while i + 1 < len(entries):
+            pairs.append((entries[i], entries[i + 1]))
+            i += 2
+        if i < len(entries):
+            singles.append(entries[i])
+
+    schedule: list[tuple[int, int, int] | None] = [None] * num_blocks
+    pair_idx = 0
+    column = 0
+    while pair_idx < len(pairs) and (column + 1) * launch_grid < num_blocks:
+        for program_id in range(launch_grid):
+            first = program_id + column * launch_grid
+            second = first + launch_grid
+            if second >= num_blocks or pair_idx >= len(pairs):
+                break
+            schedule[first], schedule[second] = pairs[pair_idx]
+            pair_idx += 1
+        column += 2
+
+    for pair in pairs[pair_idx:]:
+        singles.extend(pair)
+    single_iter = iter(singles)
+    for idx, entry in enumerate(schedule):
+        if entry is None:
+            schedule[idx] = next(single_iter)
+
+    packed_schedule = [_pack_full_tile(*entry) for entry in schedule if entry is not None]
+    assert len(packed_schedule) == num_blocks
+    tile_schedule = torch.tensor(packed_schedule, dtype=torch.int64, device=ragged_metadata.slice_sizes.device)
+    _dynamic_pair_w_reuse_tile_schedule_cache[key] = tile_schedule
+    return tile_schedule
+
 
 @dataclass(frozen=True)
 class LogicalCase:
@@ -163,6 +231,48 @@ def make_candidate(name: str, slice_size: int):
         return base
     if name == "selected":
         return ex.select_kernel_config(slice_size)
+    if name == "m16_bn256_sub1_direct_warps4_x8w5_act1w1m1_regs52_epin1_b22":
+        return replace(
+            base,
+            BLOCK_M=16,
+            BLOCK_N=256,
+            NUM_CTAS=2,
+            NUM_WARPS=4,
+            X_NUM_BUFS=8,
+            W_NUM_BUFS=5,
+            SWIGLU_SUBTILE_FACTOR=1,
+            LOAD_ACTIVATION_WARPS=1,
+            LOAD_WEIGHT_WARPS=1,
+            MMA_WARPS=1,
+            LOAD_ACTIVATION_REGS=40,
+            LOAD_WEIGHT_REGS=32,
+            MMA_REGS=32,
+            MAXNREG=52,
+            BAND_N=22,
+            FORCE_EPILOGUE_WARPS_N1=True,
+            USE_DIRECT_EPILOGUE_STORE=True,
+        )
+    if name == "m16_bn256_sub1_direct_warps4_x10w5_act1w1m1_regs52_epin1_b22":
+        return replace(
+            base,
+            BLOCK_M=16,
+            BLOCK_N=256,
+            NUM_CTAS=2,
+            NUM_WARPS=4,
+            X_NUM_BUFS=10,
+            W_NUM_BUFS=5,
+            SWIGLU_SUBTILE_FACTOR=1,
+            LOAD_ACTIVATION_WARPS=1,
+            LOAD_WEIGHT_WARPS=1,
+            MMA_WARPS=1,
+            LOAD_ACTIVATION_REGS=40,
+            LOAD_WEIGHT_REGS=32,
+            MMA_REGS=32,
+            MAXNREG=52,
+            BAND_N=22,
+            FORCE_EPILOGUE_WARPS_N1=True,
+            USE_DIRECT_EPILOGUE_STORE=True,
+        )
 
     prefix = None
     xbuf = None
@@ -484,6 +594,361 @@ def load_inputs_wfirst_partition(p: PartitionArgs):
             w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
             x_issued += 1
             w_issued += 1
+
+
+@gluon.jit
+def load_pair_reuse_inputs_partition(p: PartitionArgs):
+    local_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
+    offs_layout: gl.constexpr = gl.SliceLayout(
+        dim=0,
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0], cga_layout=local_cga_layout),
+    )
+    tile_x_bytes: gl.constexpr = p.x_desc.block_type.nbytes * (p.BLOCK_M_PER_CTA if p.USE_2CTA else p.BLOCK_M)
+    tile_w_bytes: gl.constexpr = p.w_desc.nbytes_per_cta
+    tile_scale_bytes: gl.constexpr = p.scale_desc.nbytes_per_cta
+    bytes_per_w_stage: gl.constexpr = tile_w_bytes + tile_scale_bytes
+    scale_k_stride: gl.constexpr = p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
+
+    x_idx = 0
+    x_phase = 1
+    x_issued = 0
+    w_idx = 0
+    w_phase = 1
+    w_issued = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        prev_block_id = block_id - p.NUM_SMS
+        has_prev = block_id >= p.NUM_SMS
+        safe_prev_block_id = gl.where(has_prev, prev_block_id, block_id)
+        _, prev_pid_n, prev_slice_idx, _ = p.apply_block_schedule(safe_prev_block_id)
+        is_second_reuse = has_prev & (prev_pid_n == pid_n) & (prev_slice_idx == slice_idx)
+
+        should_issue = is_second_reuse == False
+        if should_issue:
+            next_block_id = block_id + p.NUM_SMS
+            has_next = next_block_id < p.num_blocks
+            safe_next_block_id = gl.where(has_next, next_block_id, block_id)
+            next_pid_m, next_pid_n, next_slice_idx, next_slice_offset = p.apply_block_schedule(safe_next_block_id)
+            pair_next = has_next & (next_pid_n == pid_n) & (next_slice_idx == slice_idx)
+
+            off_m = pid_m * p.BLOCK_M
+            shape_m = gl.load(p.x_slice_sizes + slice_idx)
+            offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+            mask_m = offs_m < shape_m
+            offs_x_m = gl.load(
+                p.gather_indx_ptr + slice_offset + offs_m,
+                mask=mask_m,
+                other=p.x_desc.shape[0],
+            )
+
+            next_off_m = next_pid_m * p.BLOCK_M
+            next_shape_m = gl.load(p.x_slice_sizes + next_slice_idx)
+            next_offs_m = next_off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+            next_mask_m = next_offs_m < next_shape_m
+            next_offs_x_m = gl.load(
+                p.gather_indx_ptr + next_slice_offset + next_offs_m,
+                mask=next_mask_m,
+                other=p.x_desc.shape[0],
+            )
+
+            scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+
+            for ki in range(p.K_TILES):
+                off_k_x = ki * p.BLOCK_K
+                off_k_scale = ki * scale_k_stride
+
+                x_empty_bar = p.x_empty_bars.index(x_idx)
+                x_ready_bar = p.x_ready_bars.index(x_idx)
+                x_buf = p.x_bufs.index(x_idx)
+                w_empty_bar = p.w_empty_bars.index(w_idx)
+                w_ready_bar = p.w_ready_bars.index(w_idx)
+                w_buf = p.w_bufs.index(w_idx)
+                scale_buf = p.w_scale_bufs.index(w_idx)
+
+                mbarrier.wait(x_empty_bar, x_phase, pred=x_issued >= p.x_num_bufs)
+                mbarrier.wait(w_empty_bar, w_phase, pred=w_issued >= p.w_num_bufs)
+
+                mbarrier.expect(x_ready_bar, tile_x_bytes)
+                tma.async_gather(
+                    p.x_desc,
+                    offs_x_m,
+                    off_k_x,
+                    x_ready_bar,
+                    x_buf,
+                    multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
+                )
+
+                mbarrier.expect(w_ready_bar, bytes_per_w_stage)
+                tma.async_copy_global_to_shared(p.w_desc, [slice_idx, ki, pid_n, 0, 0], w_ready_bar, w_buf)
+                tma.async_copy_global_to_shared(
+                    p.scale_desc,
+                    [0, scale_idx, off_k_scale, 0, 0],
+                    w_ready_bar,
+                    scale_buf,
+                    multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+                )
+
+                next_x_idx, next_x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+                if pair_next:
+                    next_x_empty_bar = p.x_empty_bars.index(next_x_idx)
+                    next_x_ready_bar = p.x_ready_bars.index(next_x_idx)
+                    next_x_buf = p.x_bufs.index(next_x_idx)
+                    mbarrier.wait(next_x_empty_bar, next_x_phase, pred=(x_issued + 1) >= p.x_num_bufs)
+                    mbarrier.expect(next_x_ready_bar, tile_x_bytes)
+                    tma.async_gather(
+                        p.x_desc,
+                        next_offs_x_m,
+                        off_k_x,
+                        next_x_ready_bar,
+                        next_x_buf,
+                        multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
+                    )
+                    x_idx, x_phase = advance(next_x_idx, next_x_phase, p.x_num_bufs)
+                    x_issued += 2
+                else:
+                    x_idx = next_x_idx
+                    x_phase = next_x_phase
+                    x_issued += 1
+
+                w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+                w_issued += 1
+
+
+@gluon.jit
+def load_pair_reuse_activations_partition(p: PartitionArgs):
+    local_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
+    offs_layout: gl.constexpr = gl.SliceLayout(
+        dim=0,
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0], cga_layout=local_cga_layout),
+    )
+    tile_x_bytes: gl.constexpr = p.x_desc.block_type.nbytes * (p.BLOCK_M_PER_CTA if p.USE_2CTA else p.BLOCK_M)
+
+    x_idx = 0
+    x_phase = 1
+    x_issued = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        prev_block_id = block_id - p.NUM_SMS
+        has_prev = block_id >= p.NUM_SMS
+        safe_prev_block_id = gl.where(has_prev, prev_block_id, block_id)
+        _, prev_pid_n, prev_slice_idx, _ = p.apply_block_schedule(safe_prev_block_id)
+        is_second_reuse = has_prev & (prev_pid_n == pid_n) & (prev_slice_idx == slice_idx)
+
+        should_issue = is_second_reuse == False
+        if should_issue:
+            next_block_id = block_id + p.NUM_SMS
+            has_next = next_block_id < p.num_blocks
+            safe_next_block_id = gl.where(has_next, next_block_id, block_id)
+            next_pid_m, next_pid_n, next_slice_idx, next_slice_offset = p.apply_block_schedule(safe_next_block_id)
+            pair_next = has_next & (next_pid_n == pid_n) & (next_slice_idx == slice_idx)
+
+            off_m = pid_m * p.BLOCK_M
+            shape_m = gl.load(p.x_slice_sizes + slice_idx)
+            offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+            mask_m = offs_m < shape_m
+            offs_x_m = gl.load(
+                p.gather_indx_ptr + slice_offset + offs_m,
+                mask=mask_m,
+                other=p.x_desc.shape[0],
+            )
+
+            next_off_m = next_pid_m * p.BLOCK_M
+            next_shape_m = gl.load(p.x_slice_sizes + next_slice_idx)
+            next_offs_m = next_off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+            next_mask_m = next_offs_m < next_shape_m
+            next_offs_x_m = gl.load(
+                p.gather_indx_ptr + next_slice_offset + next_offs_m,
+                mask=next_mask_m,
+                other=p.x_desc.shape[0],
+            )
+
+            for ki in range(p.K_TILES):
+                off_k_x = ki * p.BLOCK_K
+
+                x_empty_bar = p.x_empty_bars.index(x_idx)
+                x_ready_bar = p.x_ready_bars.index(x_idx)
+                x_buf = p.x_bufs.index(x_idx)
+
+                mbarrier.wait(x_empty_bar, x_phase, pred=x_issued >= p.x_num_bufs)
+                mbarrier.expect(x_ready_bar, tile_x_bytes)
+                tma.async_gather(
+                    p.x_desc,
+                    offs_x_m,
+                    off_k_x,
+                    x_ready_bar,
+                    x_buf,
+                    multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
+                )
+
+                next_x_idx, next_x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+                if pair_next:
+                    next_x_empty_bar = p.x_empty_bars.index(next_x_idx)
+                    next_x_ready_bar = p.x_ready_bars.index(next_x_idx)
+                    next_x_buf = p.x_bufs.index(next_x_idx)
+                    mbarrier.wait(next_x_empty_bar, next_x_phase, pred=(x_issued + 1) >= p.x_num_bufs)
+                    mbarrier.expect(next_x_ready_bar, tile_x_bytes)
+                    tma.async_gather(
+                        p.x_desc,
+                        next_offs_x_m,
+                        off_k_x,
+                        next_x_ready_bar,
+                        next_x_buf,
+                        multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
+                    )
+                    x_idx, x_phase = advance(next_x_idx, next_x_phase, p.x_num_bufs)
+                    x_issued += 2
+                else:
+                    x_idx = next_x_idx
+                    x_phase = next_x_phase
+                    x_issued += 1
+
+
+@gluon.jit
+def load_pair_reuse_weights_partition(p: PartitionArgs):
+    tile_w_bytes: gl.constexpr = p.w_desc.nbytes_per_cta
+    tile_scale_bytes: gl.constexpr = p.scale_desc.nbytes_per_cta
+    bytes_per_stage: gl.constexpr = tile_w_bytes + tile_scale_bytes
+    scale_k_stride: gl.constexpr = p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
+
+    idx = 0
+    phase = 1
+    issued = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_n, slice_idx = p.apply_weight_schedule(block_id)
+        prev_block_id = block_id - p.NUM_SMS
+        has_prev = block_id >= p.NUM_SMS
+        safe_prev_block_id = gl.where(has_prev, prev_block_id, block_id)
+        prev_pid_n, prev_slice_idx = p.apply_weight_schedule(safe_prev_block_id)
+        is_second_reuse = has_prev & (prev_pid_n == pid_n) & (prev_slice_idx == slice_idx)
+
+        should_issue = is_second_reuse == False
+        if should_issue:
+            scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+            for ki in range(p.K_TILES):
+                off_k_scale = ki * scale_k_stride
+
+                w_empty_bar = p.w_empty_bars.index(idx)
+                w_ready_bar = p.w_ready_bars.index(idx)
+                w_buf = p.w_bufs.index(idx)
+                scale_buf = p.w_scale_bufs.index(idx)
+
+                mbarrier.wait(w_empty_bar, phase, pred=issued >= p.w_num_bufs)
+                mbarrier.expect(w_ready_bar, bytes_per_stage)
+                tma.async_copy_global_to_shared(p.w_desc, [slice_idx, ki, pid_n, 0, 0], w_ready_bar, w_buf)
+                tma.async_copy_global_to_shared(
+                    p.scale_desc,
+                    [0, scale_idx, off_k_scale, 0, 0],
+                    w_ready_bar,
+                    scale_buf,
+                    multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+                )
+
+                idx, phase = advance(idx, phase, p.w_num_bufs)
+                issued += 1
+
+
+@gluon.jit
+def mma_pair_reuse_partition(p: PartitionArgs):
+    x_idx = 0
+    x_phase = 0
+    w_idx = 0
+    w_phase = 0
+    mma_idx = 0
+    mma_phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        _, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
+        prev_block_id = block_id - p.NUM_SMS
+        has_prev = block_id >= p.NUM_SMS
+        safe_prev_block_id = gl.where(has_prev, prev_block_id, block_id)
+        _, prev_pid_n, prev_slice_idx, _ = p.apply_block_schedule(safe_prev_block_id)
+        is_second_reuse = has_prev & (prev_pid_n == pid_n) & (prev_slice_idx == slice_idx)
+
+        should_process = is_second_reuse == False
+        if should_process:
+            next_block_id = block_id + p.NUM_SMS
+            has_next = next_block_id < p.num_blocks
+            safe_next_block_id = gl.where(has_next, next_block_id, block_id)
+            _, next_pid_n, next_slice_idx, _ = p.apply_block_schedule(safe_next_block_id)
+            pair_next = has_next & (next_pid_n == pid_n) & (next_slice_idx == slice_idx)
+
+            acc_empty_bar = p.acc_empty_bars.index(mma_idx)
+            acc_ready_bar = p.acc_ready_bars.index(mma_idx)
+            acc_buf = p.acc_bufs.index(mma_idx)
+            mbarrier.wait(acc_empty_bar, mma_phase)
+
+            next_mma_idx, next_mma_phase = advance(mma_idx, mma_phase, p.acc_num_bufs)
+            next_acc_empty_bar = p.acc_empty_bars.index(next_mma_idx)
+            next_acc_ready_bar = p.acc_ready_bars.index(next_mma_idx)
+            next_acc_buf = p.acc_bufs.index(next_mma_idx)
+            mbarrier.wait(next_acc_empty_bar, next_mma_phase, pred=pair_next)
+
+            use_acc = False
+            for _ in range(p.K_TILES):
+                w_ready_bar = p.w_ready_bars.index(w_idx)
+                w_empty_bar = p.w_empty_bars.index(w_idx)
+                w_buf = p.w_bufs.index(w_idx)
+                scale_buf = p.w_scale_bufs.index(w_idx)
+                mbarrier.wait(w_ready_bar, w_phase)
+
+                blackwell.tcgen05_copy(
+                    unswizzle_mx_scale(scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER, p.MXFP_BLOCK_SIZE),
+                    p.w_scale_tmem,
+                )
+
+                x_ready_bar = p.x_ready_bars.index(x_idx)
+                x_empty_bar = p.x_empty_bars.index(x_idx)
+                x_buf = p.x_bufs.index(x_idx)
+                mbarrier.wait(x_ready_bar, x_phase)
+
+                blackwell.tcgen05_mma_scaled(
+                    w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                    x_buf.permute((1, 0)),
+                    acc_buf,
+                    p.w_scale_tmem,
+                    p.x_scale_tmem,
+                    a_type="e2m1",
+                    b_type="e4m3",
+                    use_acc=use_acc,
+                )
+                blackwell.tcgen05_commit(x_empty_bar)
+
+                next_x_idx, next_x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+                if pair_next:
+                    next_x_ready_bar = p.x_ready_bars.index(next_x_idx)
+                    next_x_empty_bar = p.x_empty_bars.index(next_x_idx)
+                    next_x_buf = p.x_bufs.index(next_x_idx)
+                    mbarrier.wait(next_x_ready_bar, next_x_phase)
+                    blackwell.tcgen05_mma_scaled(
+                        w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                        next_x_buf.permute((1, 0)),
+                        next_acc_buf,
+                        p.w_scale_tmem,
+                        p.x_scale_tmem,
+                        a_type="e2m1",
+                        b_type="e4m3",
+                        use_acc=use_acc,
+                    )
+                    blackwell.tcgen05_commit(next_x_empty_bar)
+                    x_idx, x_phase = advance(next_x_idx, next_x_phase, p.x_num_bufs)
+                else:
+                    x_idx = next_x_idx
+                    x_phase = next_x_phase
+
+                blackwell.tcgen05_commit(w_empty_bar)
+                w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+                use_acc = True
+
+            blackwell.tcgen05_commit(acc_ready_bar)
+            blackwell.tcgen05_commit(next_acc_ready_bar, pred=pair_next)
+            if pair_next:
+                mma_idx, mma_phase = advance(next_mma_idx, next_mma_phase, p.acc_num_bufs)
+            else:
+                mma_idx = next_mma_idx
+                mma_phase = next_mma_phase
 
 
 @gluon.jit
@@ -882,6 +1347,29 @@ def ws_matmul_combined_load_kernel(
             [LOAD_ACTIVATION_WARPS, MMA_WARPS],
             [LOAD_ACTIVATION_REGS, MMA_REGS],
         )
+    elif STRUCTURAL_MODE == 5:
+        gl.static_assert(ACC_NUM_BUFS >= 2, "paired W reuse requires two accumulator buffers")
+        gl.warp_specialize(
+            [
+                (epilogue_partition, (p, )),
+                (load_pair_reuse_inputs_partition, (p, )),
+                (mma_pair_reuse_partition, (p, )),
+            ],
+            [LOAD_ACTIVATION_WARPS, MMA_WARPS],
+            [LOAD_ACTIVATION_REGS, MMA_REGS],
+        )
+    elif STRUCTURAL_MODE == 6:
+        gl.static_assert(ACC_NUM_BUFS >= 2, "paired W reuse requires two accumulator buffers")
+        gl.warp_specialize(
+            [
+                (epilogue_partition, (p, )),
+                (load_pair_reuse_activations_partition, (p, )),
+                (load_pair_reuse_weights_partition, (p, )),
+                (mma_pair_reuse_partition, (p, )),
+            ],
+            [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
+            [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
+        )
     else:
         if STRUCTURAL_MODE == 1:
             gl.warp_specialize(
@@ -942,18 +1430,28 @@ def combined_load_matmul(
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
     sms *= p.OCCUPANCY
     launch_grid = max(1, min(max(1, sms // p.NUM_CTAS), expected_grid_m * grid_n))
-    x_tile_schedule = (
-        ex.get_full_tile_schedule_tensor(
+    if structural_mode in (5, 6):
+        x_tile_schedule = get_pair_w_reuse_tile_schedule_tensor(
             a_ragged_metadata,
             p.BLOCK_M,
             grid_n,
-            use_planar_snake=p.USE_PLANAR_SNAKE,
-            grid_minor_dim=p.GRID_MINOR_DIM,
-            grid_tile_width=p.GRID_TILE_WIDTH,
-            band_n=p.BAND_N,
+            launch_grid,
         )
-        if p.USE_FULL_TILE_SCHEDULE else ex.get_dummy_full_tile_schedule_tensor(a_ragged_metadata.slice_sizes.device)
-    )
+        use_full_tile_schedule = True
+    else:
+        x_tile_schedule = (
+            ex.get_full_tile_schedule_tensor(
+                a_ragged_metadata,
+                p.BLOCK_M,
+                grid_n,
+                use_planar_snake=p.USE_PLANAR_SNAKE,
+                grid_minor_dim=p.GRID_MINOR_DIM,
+                grid_tile_width=p.GRID_TILE_WIDTH,
+                band_n=p.BAND_N,
+            )
+            if p.USE_FULL_TILE_SCHEDULE else ex.get_dummy_full_tile_schedule_tensor(a_ragged_metadata.slice_sizes.device)
+        )
+        use_full_tile_schedule = p.USE_FULL_TILE_SCHEDULE
     grid = (launch_grid, )
 
     acc_cga_layout = ex.get_acc_cga_layout(p.NUM_CTAS)
@@ -1027,7 +1525,7 @@ def combined_load_matmul(
         GRID_MINOR_DIM=p.GRID_MINOR_DIM,
         GRID_TILE_WIDTH=p.GRID_TILE_WIDTH,
         BAND_N=p.BAND_N,
-        USE_FULL_TILE_SCHEDULE=p.USE_FULL_TILE_SCHEDULE,
+        USE_FULL_TILE_SCHEDULE=use_full_tile_schedule,
         X_GATHER_MULTICAST=p.X_GATHER_MULTICAST,
         W_SCALE_MULTICAST=p.W_SCALE_MULTICAST,
         FORCE_EPILOGUE_WARPS_N1=p.FORCE_EPILOGUE_WARPS_N1,
@@ -1062,6 +1560,12 @@ def parse_candidate(name: str, slice_size: int):
     elif name.startswith("mmax:"):
         spec = name[len("mmax:"):]
         mode = "mmax"
+    elif name.startswith("pair:"):
+        spec = name[len("pair:"):]
+        mode = "pair"
+    elif name.startswith("pairsplit:"):
+        spec = name[len("pairsplit:"):]
+        mode = "pairsplit"
     else:
         spec = None
         mode = ""
@@ -1145,6 +1649,8 @@ def parse_candidate(name: str, slice_size: int):
                 updates.setdefault("LOAD_ACTIVATION_REGS", 32)
                 updates.setdefault("LOAD_WEIGHT_REGS", 32)
                 updates.setdefault("MMA_REGS", 32)
+        if mode in ("pair", "pairsplit"):
+            updates.setdefault("ACC_NUM_BUFS", 2)
         p = replace(
             p,
             USE_DIRECT_EPILOGUE_STORE=True,
@@ -1161,7 +1667,7 @@ def parse_candidate(name: str, slice_size: int):
 
 def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
     pc = ex.make_precision_config(prepared)
-    if mode in ("combined", "combinedx", "combinedw", "mmaw", "mmax"):
+    if mode in ("combined", "combinedx", "combinedw", "mmaw", "mmax", "pair", "pairsplit"):
         return combined_load_matmul(
             a=prepared.x,
             b=prepared.w,
@@ -1172,7 +1678,15 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
             c=out,
             fused_activation=prepared.fused_activation,
             p=p,
-            structural_mode={"combined": 0, "mmaw": 1, "mmax": 2, "combinedx": 3, "combinedw": 4}[mode],
+            structural_mode={
+                "combined": 0,
+                "mmaw": 1,
+                "mmax": 2,
+                "combinedx": 3,
+                "combinedw": 4,
+                "pair": 5,
+                "pairsplit": 6,
+            }[mode],
         )
     return run_split_with_config(prepared, p, out)
 
