@@ -932,6 +932,191 @@ def load_pair_reuse_weights_partition(p: PartitionArgs):
 
 
 @gluon.jit
+def is_full_m_tile(pid_m, shape_m, BLOCK_M: gl.constexpr):
+    return (pid_m + 1) * BLOCK_M <= shape_m
+
+
+@gluon.jit
+def load_transition_pair_activations_partition(p: PartitionArgs):
+    local_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
+    offs_layout: gl.constexpr = gl.SliceLayout(
+        dim=0,
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0], cga_layout=local_cga_layout),
+    )
+    tile_x_bytes: gl.constexpr = p.x_desc.block_type.nbytes * (p.BLOCK_M_PER_CTA if p.USE_2CTA else p.BLOCK_M)
+
+    x_idx = 0
+    x_phase = 1
+    x_issued = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        cur_full = is_full_m_tile(pid_m, shape_m, p.BLOCK_M)
+
+        prev_block_id = block_id - p.NUM_SMS
+        has_prev = block_id >= p.NUM_SMS
+        safe_prev_block_id = gl.where(has_prev, prev_block_id, block_id)
+        prev_pid_m, prev_pid_n, prev_slice_idx, _ = p.apply_block_schedule(safe_prev_block_id)
+        prev_shape_m = gl.load(p.x_slice_sizes + prev_slice_idx)
+        prev_full = is_full_m_tile(prev_pid_m, prev_shape_m, p.BLOCK_M)
+        is_second_pair = has_prev & (prev_pid_n == pid_n) & (prev_slice_idx == slice_idx) & (prev_full != cur_full)
+
+        should_issue = is_second_pair == False
+        if should_issue:
+            next_block_id = block_id + p.NUM_SMS
+            has_next = next_block_id < p.num_blocks
+            safe_next_block_id = gl.where(has_next, next_block_id, block_id)
+            next_pid_m, next_pid_n, next_slice_idx, next_slice_offset = p.apply_block_schedule(safe_next_block_id)
+            next_shape_m = gl.load(p.x_slice_sizes + next_slice_idx)
+            next_full = is_full_m_tile(next_pid_m, next_shape_m, p.BLOCK_M)
+            pair_next = has_next & (next_pid_n == pid_n) & (next_slice_idx == slice_idx) & (cur_full != next_full)
+
+            off_m = pid_m * p.BLOCK_M
+            offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+            mask_m = offs_m < shape_m
+            offs_x_m = gl.load(
+                p.gather_indx_ptr + slice_offset + offs_m,
+                mask=mask_m,
+                other=p.x_desc.shape[0],
+            )
+
+            next_off_m = next_pid_m * p.BLOCK_M
+            next_offs_m = next_off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
+            next_mask_m = next_offs_m < next_shape_m
+            next_offs_x_m = gl.load(
+                p.gather_indx_ptr + next_slice_offset + next_offs_m,
+                mask=next_mask_m,
+                other=p.x_desc.shape[0],
+            )
+
+            for ki in range(p.K_TILES):
+                off_k_x = ki * p.BLOCK_K
+
+                x_empty_bar = p.x_empty_bars.index(x_idx)
+                x_ready_bar = p.x_ready_bars.index(x_idx)
+                x_buf = p.x_bufs.index(x_idx)
+
+                mbarrier.wait(x_empty_bar, x_phase, pred=x_issued >= p.x_num_bufs)
+                mbarrier.expect(x_ready_bar, tile_x_bytes)
+                tma.async_gather(
+                    p.x_desc,
+                    offs_x_m,
+                    off_k_x,
+                    x_ready_bar,
+                    x_buf,
+                    multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
+                )
+
+                next_x_idx, next_x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+                if pair_next:
+                    next_x_empty_bar = p.x_empty_bars.index(next_x_idx)
+                    next_x_ready_bar = p.x_ready_bars.index(next_x_idx)
+                    next_x_buf = p.x_bufs.index(next_x_idx)
+                    mbarrier.wait(next_x_empty_bar, next_x_phase, pred=(x_issued + 1) >= p.x_num_bufs)
+                    mbarrier.expect(next_x_ready_bar, tile_x_bytes)
+                    tma.async_gather(
+                        p.x_desc,
+                        next_offs_x_m,
+                        off_k_x,
+                        next_x_ready_bar,
+                        next_x_buf,
+                        multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
+                    )
+                    x_idx, x_phase = advance(next_x_idx, next_x_phase, p.x_num_bufs)
+                    x_issued += 2
+                else:
+                    x_idx = next_x_idx
+                    x_phase = next_x_phase
+                    x_issued += 1
+
+
+@gluon.jit
+def load_transition_pair_weights_partition(p: PartitionArgs):
+    tile_w_bytes: gl.constexpr = p.w_desc.nbytes_per_cta
+    tile_scale_bytes: gl.constexpr = p.scale_desc.nbytes_per_cta
+    bytes_per_stage: gl.constexpr = tile_w_bytes + tile_scale_bytes
+    scale_k_stride: gl.constexpr = p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
+
+    idx = 0
+    phase = 1
+    issued = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        cur_full = is_full_m_tile(pid_m, shape_m, p.BLOCK_M)
+
+        prev_block_id = block_id - p.NUM_SMS
+        has_prev = block_id >= p.NUM_SMS
+        safe_prev_block_id = gl.where(has_prev, prev_block_id, block_id)
+        prev_pid_m, _, prev_slice_idx, _ = p.apply_block_schedule(safe_prev_block_id)
+        prev_shape_m = gl.load(p.x_slice_sizes + prev_slice_idx)
+        prev_full = is_full_m_tile(prev_pid_m, prev_shape_m, p.BLOCK_M)
+        is_second_pair = has_prev & (prev_full != cur_full)
+
+        should_issue = is_second_pair == False
+        if should_issue:
+            next_block_id = block_id + p.NUM_SMS
+            has_next = next_block_id < p.num_blocks
+            safe_next_block_id = gl.where(has_next, next_block_id, block_id)
+            next_pid_m, next_pid_n, next_slice_idx, _ = p.apply_block_schedule(safe_next_block_id)
+            next_shape_m = gl.load(p.x_slice_sizes + next_slice_idx)
+            next_full = is_full_m_tile(next_pid_m, next_shape_m, p.BLOCK_M)
+            pair_next = has_next & (cur_full != next_full)
+
+            scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+            next_scale_idx = next_slice_idx * p.SCALE_FLAT_N + next_pid_n * p.SCALE_BLOCK_N_DIV
+
+            for ki in range(p.K_TILES):
+                off_k_scale = ki * scale_k_stride
+
+                w_empty_bar = p.w_empty_bars.index(idx)
+                w_ready_bar = p.w_ready_bars.index(idx)
+                w_buf = p.w_bufs.index(idx)
+                scale_buf = p.w_scale_bufs.index(idx)
+
+                mbarrier.wait(w_empty_bar, phase, pred=issued >= p.w_num_bufs)
+                mbarrier.expect(w_ready_bar, bytes_per_stage)
+                tma.async_copy_global_to_shared(p.w_desc, [slice_idx, ki, pid_n, 0, 0], w_ready_bar, w_buf)
+                tma.async_copy_global_to_shared(
+                    p.scale_desc,
+                    [0, scale_idx, off_k_scale, 0, 0],
+                    w_ready_bar,
+                    scale_buf,
+                    multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+                )
+
+                next_idx, next_phase = advance(idx, phase, p.w_num_bufs)
+                if pair_next:
+                    next_w_empty_bar = p.w_empty_bars.index(next_idx)
+                    next_w_ready_bar = p.w_ready_bars.index(next_idx)
+                    next_w_buf = p.w_bufs.index(next_idx)
+                    next_scale_buf = p.w_scale_bufs.index(next_idx)
+                    mbarrier.wait(next_w_empty_bar, next_phase, pred=(issued + 1) >= p.w_num_bufs)
+                    mbarrier.expect(next_w_ready_bar, bytes_per_stage)
+                    tma.async_copy_global_to_shared(
+                        p.w_desc,
+                        [next_slice_idx, ki, next_pid_n, 0, 0],
+                        next_w_ready_bar,
+                        next_w_buf,
+                    )
+                    tma.async_copy_global_to_shared(
+                        p.scale_desc,
+                        [0, next_scale_idx, off_k_scale, 0, 0],
+                        next_w_ready_bar,
+                        next_scale_buf,
+                        multicast=p.USE_2CTA and p.W_SCALE_MULTICAST,
+                    )
+                    idx, phase = advance(next_idx, next_phase, p.w_num_bufs)
+                    issued += 2
+                else:
+                    idx = next_idx
+                    phase = next_phase
+                    issued += 1
+
+
+@gluon.jit
 def apply_bias_and_scale_explicit_tmem_load(
     p: PartitionArgs,
     idx,
@@ -1383,6 +1568,237 @@ def mma_pair_reuse_partition(p: PartitionArgs):
             safe_next_block_id = gl.where(has_next, next_block_id, block_id)
             _, next_pid_n, next_slice_idx, _ = p.apply_block_schedule(safe_next_block_id)
             pair_next = has_next & (next_pid_n == pid_n) & (next_slice_idx == slice_idx)
+
+            acc_empty_bar = p.acc_empty_bars.index(mma_idx)
+            acc_ready_bar = p.acc_ready_bars.index(mma_idx)
+            acc_buf = p.acc_bufs.index(mma_idx)
+            mbarrier.wait(acc_empty_bar, mma_phase)
+
+            next_mma_idx, next_mma_phase = advance(mma_idx, mma_phase, p.acc_num_bufs)
+            next_acc_empty_bar = p.acc_empty_bars.index(next_mma_idx)
+            next_acc_ready_bar = p.acc_ready_bars.index(next_mma_idx)
+            next_acc_buf = p.acc_bufs.index(next_mma_idx)
+            mbarrier.wait(next_acc_empty_bar, next_mma_phase, pred=pair_next)
+
+            use_acc = False
+            for _ in range(p.K_TILES):
+                w_ready_bar = p.w_ready_bars.index(w_idx)
+                w_empty_bar = p.w_empty_bars.index(w_idx)
+                w_buf = p.w_bufs.index(w_idx)
+                scale_buf = p.w_scale_bufs.index(w_idx)
+                mbarrier.wait(w_ready_bar, w_phase)
+
+                blackwell.tcgen05_copy(
+                    unswizzle_mx_scale(scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER, p.MXFP_BLOCK_SIZE),
+                    p.w_scale_tmem,
+                )
+
+                x_ready_bar = p.x_ready_bars.index(x_idx)
+                x_empty_bar = p.x_empty_bars.index(x_idx)
+                x_buf = p.x_bufs.index(x_idx)
+                mbarrier.wait(x_ready_bar, x_phase)
+
+                blackwell.tcgen05_mma_scaled(
+                    w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                    x_buf.permute((1, 0)),
+                    acc_buf,
+                    p.w_scale_tmem,
+                    p.x_scale_tmem,
+                    a_type="e2m1",
+                    b_type="e4m3",
+                    use_acc=use_acc,
+                )
+                blackwell.tcgen05_commit(x_empty_bar)
+
+                next_x_idx, next_x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+                if pair_next:
+                    next_x_ready_bar = p.x_ready_bars.index(next_x_idx)
+                    next_x_empty_bar = p.x_empty_bars.index(next_x_idx)
+                    next_x_buf = p.x_bufs.index(next_x_idx)
+                    mbarrier.wait(next_x_ready_bar, next_x_phase)
+                    blackwell.tcgen05_mma_scaled(
+                        w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                        next_x_buf.permute((1, 0)),
+                        next_acc_buf,
+                        p.w_scale_tmem,
+                        p.x_scale_tmem,
+                        a_type="e2m1",
+                        b_type="e4m3",
+                        use_acc=use_acc,
+                    )
+                    blackwell.tcgen05_commit(next_x_empty_bar)
+                    x_idx, x_phase = advance(next_x_idx, next_x_phase, p.x_num_bufs)
+                else:
+                    x_idx = next_x_idx
+                    x_phase = next_x_phase
+
+                blackwell.tcgen05_commit(w_empty_bar)
+                w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+                use_acc = True
+
+            blackwell.tcgen05_commit(acc_ready_bar)
+            blackwell.tcgen05_commit(next_acc_ready_bar, pred=pair_next)
+            if pair_next:
+                mma_idx, mma_phase = advance(next_mma_idx, next_mma_phase, p.acc_num_bufs)
+            else:
+                mma_idx = next_mma_idx
+                mma_phase = next_mma_phase
+
+
+@gluon.jit
+def mma_transition_pair_partition(p: PartitionArgs):
+    x_idx = 0
+    x_phase = 0
+    w_idx = 0
+    w_phase = 0
+    mma_idx = 0
+    mma_phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, _, slice_idx, _ = p.apply_block_schedule(block_id)
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        cur_full = is_full_m_tile(pid_m, shape_m, p.BLOCK_M)
+
+        prev_block_id = block_id - p.NUM_SMS
+        has_prev = block_id >= p.NUM_SMS
+        safe_prev_block_id = gl.where(has_prev, prev_block_id, block_id)
+        prev_pid_m, _, prev_slice_idx, _ = p.apply_block_schedule(safe_prev_block_id)
+        prev_shape_m = gl.load(p.x_slice_sizes + prev_slice_idx)
+        prev_full = is_full_m_tile(prev_pid_m, prev_shape_m, p.BLOCK_M)
+        is_second_pair = has_prev & (prev_full != cur_full)
+
+        should_process = is_second_pair == False
+        if should_process:
+            next_block_id = block_id + p.NUM_SMS
+            has_next = next_block_id < p.num_blocks
+            safe_next_block_id = gl.where(has_next, next_block_id, block_id)
+            next_pid_m, _, next_slice_idx, _ = p.apply_block_schedule(safe_next_block_id)
+            next_shape_m = gl.load(p.x_slice_sizes + next_slice_idx)
+            next_full = is_full_m_tile(next_pid_m, next_shape_m, p.BLOCK_M)
+            pair_next = has_next & (cur_full != next_full)
+
+            acc_empty_bar = p.acc_empty_bars.index(mma_idx)
+            acc_ready_bar = p.acc_ready_bars.index(mma_idx)
+            acc_buf = p.acc_bufs.index(mma_idx)
+            mbarrier.wait(acc_empty_bar, mma_phase)
+
+            next_mma_idx, next_mma_phase = advance(mma_idx, mma_phase, p.acc_num_bufs)
+            next_acc_empty_bar = p.acc_empty_bars.index(next_mma_idx)
+            next_acc_ready_bar = p.acc_ready_bars.index(next_mma_idx)
+            next_acc_buf = p.acc_bufs.index(next_mma_idx)
+            mbarrier.wait(next_acc_empty_bar, next_mma_phase, pred=pair_next)
+
+            use_acc = False
+            for _ in range(p.K_TILES):
+                w_ready_bar = p.w_ready_bars.index(w_idx)
+                w_empty_bar = p.w_empty_bars.index(w_idx)
+                w_buf = p.w_bufs.index(w_idx)
+                scale_buf = p.w_scale_bufs.index(w_idx)
+                mbarrier.wait(w_ready_bar, w_phase)
+
+                blackwell.tcgen05_copy(
+                    unswizzle_mx_scale(scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER, p.MXFP_BLOCK_SIZE),
+                    p.w_scale_tmem,
+                )
+
+                x_ready_bar = p.x_ready_bars.index(x_idx)
+                x_empty_bar = p.x_empty_bars.index(x_idx)
+                x_buf = p.x_bufs.index(x_idx)
+                mbarrier.wait(x_ready_bar, x_phase)
+
+                blackwell.tcgen05_mma_scaled(
+                    w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                    x_buf.permute((1, 0)),
+                    acc_buf,
+                    p.w_scale_tmem,
+                    p.x_scale_tmem,
+                    a_type="e2m1",
+                    b_type="e4m3",
+                    use_acc=use_acc,
+                )
+                blackwell.tcgen05_commit(x_empty_bar)
+                blackwell.tcgen05_commit(w_empty_bar)
+
+                next_x_idx, next_x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+                next_w_idx, next_w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+                if pair_next:
+                    next_w_ready_bar = p.w_ready_bars.index(next_w_idx)
+                    next_w_empty_bar = p.w_empty_bars.index(next_w_idx)
+                    next_w_buf = p.w_bufs.index(next_w_idx)
+                    next_scale_buf = p.w_scale_bufs.index(next_w_idx)
+                    mbarrier.wait(next_w_ready_bar, next_w_phase)
+                    blackwell.tcgen05_copy(
+                        unswizzle_mx_scale(next_scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER,
+                                           p.MXFP_BLOCK_SIZE),
+                        p.w_scale_tmem,
+                    )
+
+                    next_x_ready_bar = p.x_ready_bars.index(next_x_idx)
+                    next_x_empty_bar = p.x_empty_bars.index(next_x_idx)
+                    next_x_buf = p.x_bufs.index(next_x_idx)
+                    mbarrier.wait(next_x_ready_bar, next_x_phase)
+                    blackwell.tcgen05_mma_scaled(
+                        next_w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
+                        next_x_buf.permute((1, 0)),
+                        next_acc_buf,
+                        p.w_scale_tmem,
+                        p.x_scale_tmem,
+                        a_type="e2m1",
+                        b_type="e4m3",
+                        use_acc=use_acc,
+                    )
+                    blackwell.tcgen05_commit(next_x_empty_bar)
+                    blackwell.tcgen05_commit(next_w_empty_bar)
+                    x_idx, x_phase = advance(next_x_idx, next_x_phase, p.x_num_bufs)
+                    w_idx, w_phase = advance(next_w_idx, next_w_phase, p.w_num_bufs)
+                else:
+                    x_idx = next_x_idx
+                    x_phase = next_x_phase
+                    w_idx = next_w_idx
+                    w_phase = next_w_phase
+
+                use_acc = True
+
+            blackwell.tcgen05_commit(acc_ready_bar)
+            blackwell.tcgen05_commit(next_acc_ready_bar, pred=pair_next)
+            if pair_next:
+                mma_idx, mma_phase = advance(next_mma_idx, next_mma_phase, p.acc_num_bufs)
+            else:
+                mma_idx = next_mma_idx
+                mma_phase = next_mma_phase
+
+
+@gluon.jit
+def mma_transition_reuse_pair_partition(p: PartitionArgs):
+    x_idx = 0
+    x_phase = 0
+    w_idx = 0
+    w_phase = 0
+    mma_idx = 0
+    mma_phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        cur_full = is_full_m_tile(pid_m, shape_m, p.BLOCK_M)
+
+        prev_block_id = block_id - p.NUM_SMS
+        has_prev = block_id >= p.NUM_SMS
+        safe_prev_block_id = gl.where(has_prev, prev_block_id, block_id)
+        prev_pid_m, prev_pid_n, prev_slice_idx, _ = p.apply_block_schedule(safe_prev_block_id)
+        prev_shape_m = gl.load(p.x_slice_sizes + prev_slice_idx)
+        prev_full = is_full_m_tile(prev_pid_m, prev_shape_m, p.BLOCK_M)
+        is_second_pair = has_prev & (prev_pid_n == pid_n) & (prev_slice_idx == slice_idx) & (prev_full != cur_full)
+
+        should_process = is_second_pair == False
+        if should_process:
+            next_block_id = block_id + p.NUM_SMS
+            has_next = next_block_id < p.num_blocks
+            safe_next_block_id = gl.where(has_next, next_block_id, block_id)
+            next_pid_m, next_pid_n, next_slice_idx, _ = p.apply_block_schedule(safe_next_block_id)
+            next_shape_m = gl.load(p.x_slice_sizes + next_slice_idx)
+            next_full = is_full_m_tile(next_pid_m, next_shape_m, p.BLOCK_M)
+            pair_next = has_next & (next_pid_n == pid_n) & (next_slice_idx == slice_idx) & (cur_full != next_full)
 
             acc_empty_bar = p.acc_empty_bars.index(mma_idx)
             acc_ready_bar = p.acc_ready_bars.index(mma_idx)
@@ -2010,6 +2426,18 @@ def ws_matmul_combined_load_kernel(
             [LOAD_ACTIVATION_WARPS, MMA_WARPS],
             [LOAD_ACTIVATION_REGS, MMA_REGS],
         )
+    elif STRUCTURAL_MODE == 16:
+        gl.static_assert(ACC_NUM_BUFS >= 2, "phasepair needs two accumulator buffers")
+        gl.warp_specialize(
+            [
+                (epilogue_partition, (p, )),
+                (load_transition_pair_activations_partition, (p, )),
+                (load_pair_reuse_weights_partition, (p, )),
+                (mma_transition_reuse_pair_partition, (p, )),
+            ],
+            [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
+            [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
+        )
     else:
         if STRUCTURAL_MODE == 1:
             gl.warp_specialize(
@@ -2234,6 +2662,9 @@ def parse_candidate(name: str, slice_size: int):
     elif name.startswith("fakens:"):
         spec = name[len("fakens:"):]
         mode = "fakens"
+    elif name.startswith("phasepair:"):
+        spec = name[len("phasepair:"):]
+        mode = "phasepair"
     elif name.startswith("split:"):
         spec = name[len("split:"):]
         mode = "split"
@@ -2340,7 +2771,7 @@ def parse_candidate(name: str, slice_size: int):
                 updates.setdefault("LOAD_ACTIVATION_REGS", 32)
                 updates.setdefault("LOAD_WEIGHT_REGS", 32)
                 updates.setdefault("MMA_REGS", 32)
-        if mode in ("pair", "pairsplit"):
+        if mode in ("pair", "pairsplit", "phasepair"):
             updates.setdefault("ACC_NUM_BUFS", 2)
         updates.setdefault("USE_DIRECT_EPILOGUE_STORE", True)
         updates.setdefault("REUSE_GATHER_INDICES", False)
@@ -2372,6 +2803,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
         "mmacount",
         "natural",
         "fakens",
+        "phasepair",
     ):
         return combined_load_matmul(
             a=prepared.x,
@@ -2400,6 +2832,7 @@ def run_with_candidate(prepared, p, mode: str, out: torch.Tensor):
                 "mmacount": 13,
                 "natural": 14,
                 "fakens": 15,
+                "phasepair": 16,
             }[mode],
         )
     return run_split_with_config(prepared, p, out)

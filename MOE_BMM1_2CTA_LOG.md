@@ -1234,6 +1234,48 @@ and `1024`, under both simulated production routing and uniform routing.
   Physically changing the W descriptor/block shape to 128 would become a
   half-width logical MMA tile, not a true 256-column 2CTA kernel.
 
+## 2026-04-20 Phase-Pair And Late-Stage Retuning
+
+- Added a `phasepair:` scratch mode to
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`. The intent was to
+  exploit the earlier finding that full-only and spill-only subroutes are much
+  closer to parity than the combined route by pairing adjacent full/spill
+  transitions inside the persistent loop while preserving the proven W-reuse
+  producer protocol.
+- Correctness passed for uniform batch `896`, seed `0`, local rank `4`, but
+  the hard-rank sweep showed the structure is a regression:
+  `/tmp/moe_bmm1_phasepair_hard_ranks.csv`.
+  Best `phasepair:` speedups were rank 3 `0.91569x`, rank 4 `0.95414x`,
+  rank 5 `0.94106x`, and rank 7 `0.95437x`. The ordinary split baseline in
+  the same run remained better, with best split speedups rank 3 `0.97521x`,
+  rank 4 `1.00056x`, rank 5 `0.95167x`, and rank 7 `0.98931x`.
+- Rechecked wider register caps and accumulator buffering around the current
+  near-miss:
+  - `/tmp/moe_bmm1_reg_ext_rank4.csv`: `MAXNREG=68` with
+    `la48,lw40,mma40` gave a small rank-4 local improvement (`0.97416x`) but
+    still did not reach parity.
+  - `/tmp/moe_bmm1_regs68_hard_ranks.csv`: the best fixed-rank hard-route
+    points stayed below parity: rank 3 `0.97647x`, rank 4 `0.97372x`, rank 5
+    `0.96741x`, and rank 7 `0.98509x`.
+  - `/tmp/moe_bmm1_regs68_reuse_fullsched_hard_ranks.csv`: `reuse` and
+    `fullsched` did not convert the register-cap gain into a broad win. The
+    best rank-7 point reached only `0.98981x`; ranks 3-5 remained below
+    parity.
+- Rechecked M64 alternatives with the same hard routes in
+  `/tmp/moe_bmm1_m64_regs68_hard_ranks.csv`. The best rows were still the M32
+  split baseline; tested M64 rows remained materially slower and are not a
+  promising route to the `1.20x` target.
+- Additional structural constraints confirmed during this slice:
+  - `BLOCK_K=256` remains illegal for the gather operand because the implied
+    shared-memory swizzle would need an unsupported 256-byte swizzle.
+  - Two-warp variants remain illegal because Gluon requires
+    `num_warps >= 4`.
+- Decision: `phasepair:` is useful as a scratch diagnostic but not promotable.
+  It did not solve the transition-overlap hypothesis and should not be used as
+  selector policy. The next candidate needs to change the amount or ownership
+  of resident work more fundamentally than transition pairing, late register
+  retuning, `reuse`, `fullsched`, M64, BK256, or two-warp variants.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases
