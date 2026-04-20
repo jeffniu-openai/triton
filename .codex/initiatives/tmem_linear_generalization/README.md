@@ -4739,3 +4739,18 @@ When resuming the initiative:
   `TensorMemoryLinearLayout` accumulator path against the best old padded
   `N=128` baseline.
 - This checkpoint is documentation-only. No example files have been added yet.
+
+## Latest: 2026-04-20 21:34 UTC MoE router example implemented
+
+- Added `python/examples/gluon/05-tmem-moe-router.py` as Phase H Example 1.
+- The example uses narrow MXFP8 scaled-MMAv5 accumulator fragments through a
+  tile-permuted `TensorMemoryLinearLayout` for `E=32/64` router logits, and
+  compares against a padded `E=128` broad-TMEM baseline.
+- Focused validation passed:
+  - py-compile;
+  - `pytest -s --tb=short python/examples/gluon/05-tmem-moe-router.py`
+    passed `8/8`.
+- Recorded benchmark output:
+  - projection-only `M=4096 K=128`: `E=32` `1.21x`, `E=64` `1.02x`;
+  - projection plus top-k wrapper: `E=32` `2.11x`, `E=64` `2.03x`.
+- Next Phase H slice: Example 2 LoRA / adapter projection fusion.

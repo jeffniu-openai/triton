@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 21:07 UTC
+Last updated: 2026-04-20 21:34 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -954,3 +954,11 @@ signal handling:
   example implementation has started. Next concrete implementation slice is
   the projection-only MoE router example with a padded `N=128` baseline,
   correctness tests, shape coverage, and benchmark transcript.
+
+- 2026-04-20 21:34 UTC: implemented Phase H Example 1 in
+  `python/examples/gluon/05-tmem-moe-router.py`. The example covers narrow
+  MXFP8 router projection for `E=32/64`, `K=128/256`, a padded `E=128`
+  pre-generalization baseline, PyTorch top-k wrapper validation, TTGIR
+  checks for `tensor_memory_linear` and `ttng.tc_gen5_mma_scaled`, and inline
+  benchmark transcripts. Focused validation passed `8/8`. Next concrete slice:
+  Example 2 LoRA / adapter projection fusion.

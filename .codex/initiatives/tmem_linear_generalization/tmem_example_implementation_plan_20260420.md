@@ -1,6 +1,6 @@
 # TMEM Example Implementation Plan
 
-Last updated: 2026-04-20 21:07 UTC
+Last updated: 2026-04-20 21:34 UTC
 
 This document tracks a follow-on project to turn the completed TMEM
 linear-layout backend capabilities into user-facing Gluon examples under
@@ -57,9 +57,9 @@ CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu2 PYTHONPA
 CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group 4 python/examples/gluon/
 ```
 
-## Example 1: MoE Router Skinny Scaled Projection With Fused Top-K
+## Example 1: MoE Router Skinny Scaled Projection With Top-K
 
-- Status: planned.
+- Status: projection/top-k wrapper implemented at 2026-04-20 21:34 UTC.
 - Proposed file: `python/examples/gluon/05-tmem-moe-router.py`.
 - New capability used:
   - narrow scaled-MMAv5 accumulator fragments through
@@ -92,8 +92,12 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gpu3 PYTHONPA
   - report projection-only and projection-plus-top-k timings;
   - record speedup over padded baseline and useful TFLOP/s for logits.
 - Implementation notes:
-  - start with top-1 to keep the first slice bounded;
-  - add top-2 after the projection kernel and correctness surface are stable.
+  - implemented the narrow projection kernel, padded `N=128` baseline,
+    PyTorch top-k wrapper for router-level comparison, correctness tests,
+    K=128/256 shape coverage, TTGIR checks, and inline benchmark transcript;
+  - the top-k path is not yet fused inside the Gluon kernel. It uses the same
+    `torch.topk` call for both compact and padded logits, so the benchmark
+    captures the smaller-logits benefit but not a custom in-kernel selector.
 
 ## Example 2: LoRA / Adapter Projection Fusion
 
@@ -314,3 +318,10 @@ grouped and attention examples until reusable helper patterns exist.
   is Example 1 projection-only MoE router under `python/examples/gluon/` with a
   padded `N=128` baseline, correctness tests, shape sweep, and benchmark
   transcript.
+- 2026-04-20 21:34 UTC: implemented Example 1 as
+  `python/examples/gluon/05-tmem-moe-router.py`. Validation:
+  `make -j8` had no work after the include-path workaround,
+  `python -m py_compile` passed, focused pytest passed `8 passed in 12.21s`,
+  projection benchmark printed `E=32` `1.21x` and `E=64` `1.02x`, and
+  projection plus top-k wrapper benchmark printed `E=32` `2.11x` and
+  `E=64` `2.03x` over the padded `E=128` baseline.

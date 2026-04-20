@@ -13802,3 +13802,33 @@ rejection, not rescue
   - run `git diff --check`;
   - record benchmark commands and measured output in the plan before treating a
     slice as complete.
+
+## Current: 2026-04-20 21:34 UTC MoE router example implemented
+
+- Added `python/examples/gluon/05-tmem-moe-router.py`.
+- The example implements:
+  - MXFP8 router projection into a narrow tile-permuted
+    `TensorMemoryLinearLayout` accumulator for `E=32/64`;
+  - padded `E=128` scaled-MMAv5 baseline representing the best old broad-TMEM
+    path;
+  - top-k wrapper using `torch.topk` on compact versus padded logits;
+  - tests for `E=32/64`, `K=128/256`, top-k agreement, padded baseline
+    agreement, and stable TTGIR markers.
+- Validation:
+  - required `make -j8` with include-path workaround had no work;
+  - `python -m py_compile python/examples/gluon/05-tmem-moe-router.py`
+    passed;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-moe-router
+    PYTHONPATH=.:./python pytest -s --tb=short
+    python/examples/gluon/05-tmem-moe-router.py` passed `8 passed in 12.21s`.
+- Benchmarks:
+  - projection-only, `M=4096 K=128`: `E=32` narrow `0.010 ms`, padded
+    `0.013 ms`, `1.21x`; `E=64` narrow `0.012 ms`, padded `0.013 ms`,
+    `1.02x`;
+  - projection plus top-k wrapper: `E=32` `2.11x`; `E=64` `2.03x`.
+- Caveat:
+  - top-k is not fused inside the Gluon kernel; both paths use the same
+    post-projection `torch.topk`, so the measured router-level benefit comes
+    from feeding a smaller logits matrix into selection.
+- Next:
+  - implement Example 2 LoRA / adapter projection fusion.

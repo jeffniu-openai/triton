@@ -25476,3 +25476,37 @@ Open after this slice:
   MoE router example with padded `N=128` baseline.
 - Validation:
   - documentation-only checkpoint; run `git diff --check` before commit.
+
+## 2026-04-20 21:34 UTC: implement TMEM MoE router example
+
+- Added `python/examples/gluon/05-tmem-moe-router.py`.
+- Algorithm:
+  - compute `hidden[M,K] @ router_weight[E,K].T` with MXFP8
+    `tcgen05_mma_scaled`;
+  - use a tile-permuted `TensorMemoryLinearLayout` accumulator so `E=32`
+    uses N=8 fragments and `E=64` uses N=16 fragments under the hood;
+  - compare against a padded `E=128` baseline that models the best
+    pre-generalization broad-TMEM scaled-MMA path.
+- Tests:
+  - `test_router_projection_matches_torch` covers `E=32/64` and `K=128/256`;
+  - `test_router_topk_matches_torch` checks top-2 scores and ids against
+    PyTorch;
+  - `test_router_padded_baseline_matches_narrow` checks the padded baseline
+    leading columns against the compact path;
+  - TTGIR checks assert `tensor_memory_linear` and `ttng.tc_gen5_mma_scaled`.
+- Validation:
+  - required `make -j8` with include-path workaround: no work;
+  - `python -m py_compile python/examples/gluon/05-tmem-moe-router.py` passed;
+  - focused pytest passed `8 passed in 12.21s`;
+  - projection-only script benchmark:
+    `E=32` narrow `0.010 ms`, padded `0.013 ms`, `1.21x`;
+    `E=64` narrow `0.012 ms`, padded `0.013 ms`, `1.02x`;
+  - projection plus top-k wrapper benchmark:
+    `E=32` narrow `0.039 ms`, padded `0.082 ms`, `2.11x`;
+    `E=64` narrow `0.042 ms`, padded `0.085 ms`, `2.03x`.
+- Note:
+  - top-k currently uses the same post-projection `torch.topk` for both paths;
+    this is a router-level compact-logits benchmark, not a custom in-kernel
+    top-k fusion.
+- Next:
+  - run `git diff --check`, commit/push, then implement Example 2 LoRA fusion.
