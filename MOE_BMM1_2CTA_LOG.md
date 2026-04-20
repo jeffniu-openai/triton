@@ -1183,6 +1183,57 @@ and `1024`, under both simulated production routing and uniform routing.
   flexible parser as diagnostics, but the next winning attempt needs a more
   fundamental work decomposition than the current M32/BN256 2CTA split.
 
+## 2026-04-20 Natural And Fake-N-Split Scratch Kernels
+
+- Classified a natural `[BLOCK_M, BLOCK_N]` accumulator rewrite:
+  - BM64/BM128 natural 2CTA is illegal because scaled MMAv5 rejects the
+    resulting per-CTA M instruction shape (`32` or `64` rows). A subagent
+    confirmed that a separate natural-only kernel would not fix this; legal
+    natural true-2CTA needs `BLOCK_M / CTA == 128`.
+  - BM256 natural compiled only after using a compatible W-scale TMEM layout,
+    but the 2CTA result failed correctness with large, structured N-block
+    mismatches. The same natural path with `NUM_CTAS=1` validated but was very
+    slow (`0.185x` versus the 1CTA comparator), so natural 2CTA is now guarded
+    with a static assertion in the scratch harness rather than left as an
+    unsafe benchmark mode.
+  - Artifacts:
+    `/tmp/moe_bmm1_natural_bm256_smoke.csv`,
+    `/tmp/moe_bmm1_natural_bm256_smoke2.csv`,
+    `/tmp/moe_bmm1_natural_bm256_smoke3.csv`,
+    `/tmp/moe_bmm1_natural_bm256_sub1_smoke.csv`, and
+    `/tmp/moe_bmm1_natural_1cta_smoke.csv`.
+- Added a correct `fakens:` scratch mode:
+  - `NUM_CTAS=2`, transposed accumulator `[BLOCK_N, BLOCK_M]`, CGA-split N,
+    but `TensorMemoryLayout(two_ctas=False)` so each CTA issues regular
+    one-CTA MMA for its local N shard. X uses a degenerate `((0, 0),)` CGA
+    layout so both CTAs see the full M tile, while W/W-scale remain N-local.
+  - Correctness passed on uniform batch `896`, rank `4`.
+  - First point was slow (`0.640x`), but tuning W5 recovered to only
+    `~0.900x`; W6 remained around `0.62x-0.65x`, and 8-warp fake-N-split was
+    not competitive.
+  - Artifacts:
+    `/tmp/moe_bmm1_fakens_smoke.csv`,
+    `/tmp/moe_bmm1_fakens_smoke2.csv`,
+    `/tmp/moe_bmm1_fakens_smoke3.csv`, and
+    `/tmp/moe_bmm1_fakens_rank4_sweep.csv`. A post-guard smoke in
+    `/tmp/moe_bmm1_fakens_postguard_smoke.csv` passed correctness and measured
+    the best W5 fake-N-split point at `0.905x`.
+- Rechecked several structural axes around the current near-miss:
+  - `/tmp/moe_bmm1_splitws_rank4_recheck.csv`: split producer and `splitws`
+    controls remained below parity; best was still around `0.966x`.
+  - `/tmp/moe_bmm1_bk256_rank4_smoke.csv`: `BLOCK_K=256` is illegal for this
+    gather operand because the layout would require a 256-byte swizzle.
+  - `/tmp/moe_bmm1_warps2_rank4.csv`: two-warp variants are illegal because
+    Gluon requires `num_warps >= 4`.
+  - `/tmp/moe_bmm1_reg_ext_rank4.csv` and
+    `/tmp/moe_bmm1_regs68_hard_ranks.csv`: wider register caps found small
+    route-specific improvements (`MAXNREG=68`, `acc2/B24` helped ranks 4/5/7)
+    but still did not reach parity, much less the `1.20x` target.
+- Subagent W-local investigation concluded the existing true-2CTA W path
+  already uses CGA shape-per-CTA shared storage for logical `BLOCK_N=256`.
+  Physically changing the W descriptor/block shape to 128 would become a
+  half-width logical MMA tile, not a true 256-column 2CTA kernel.
+
 ## Next Frontier
 
 - Uniform slice `28` / batch `896` needs a structural change that increases
