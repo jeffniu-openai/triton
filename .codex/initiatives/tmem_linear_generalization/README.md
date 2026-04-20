@@ -81,7 +81,8 @@ When resuming the initiative:
   pre-test `make -j8` was attempted first but the local CMake build directory
   is empty and lacks `build.ninja`, so runtime pytest was not run in this
   checkpoint. Direct import was also blocked by the unbuilt local
-  `triton._C.libtriton.getenv` symbol.
+  `triton._C.libtriton.getenv` symbol. Tutorial checkpoint commit:
+  `4e96b6d40`, pushed to `origin/codex/tmem`.
 - 2026-04-20 17:03 UTC: executed the two cleanup follow-ups from the branch
   audit. Rebaselined the current clean-negative inventory:
   `reports_clean_unsupported` is `91/1594`; combined

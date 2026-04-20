@@ -557,7 +557,8 @@ signal handling:
   tutorial for the branch feature suite. Validation was limited to py-compile
   because required `make -j8` failed immediately on an empty local CMake build
   directory with no `build.ninja`; direct import also failed on the unbuilt
-  local `triton._C.libtriton.getenv` symbol.
+  local `triton._C.libtriton.getenv` symbol. Tutorial checkpoint commit
+  `4e96b6d40` was pushed to `origin/codex/tmem`.
 
 ## Progress
 

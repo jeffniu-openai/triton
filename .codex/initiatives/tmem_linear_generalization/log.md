@@ -25380,6 +25380,7 @@ Open after this slice:
   - `python -m py_compile
     python/tutorials/gluon/15-tmem-linear-layout-generalization.py` passed.
 - Next:
+  - tutorial checkpoint commit `4e96b6d40` was pushed to `origin/codex/tmem`;
   - after the build directory is regenerated, run focused tutorial pytest with
     `pytest -s --tb=short python/tutorials/gluon/15-tmem-linear-layout-generalization.py`;
   - no support-bearing implementation work was opened by this tutorial pass.

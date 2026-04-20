@@ -14,7 +14,8 @@
   `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12` has no
   `build.ninja`; a direct import attempt also failed because the unbuilt local
   `triton._C.libtriton` module lacks `getenv`. No pytest was run after those
-  build blockers.
+  build blockers. Tutorial checkpoint commit `4e96b6d40` was pushed to
+  `origin/codex/tmem`.
 
 - Latest: 2026-04-20 17:03 UTC cleanup follow-ups executed. Rebaselined the
   current clean-negative inventory after the artifact cleanup and test naming
