@@ -1930,3 +1930,78 @@ and `1024`, under both simulated production routing and uniform routing.
   two-CTA cluster. Wider tiles, more warps, more persistent programs, helper
   store handoff, and existing route/pair/dual-block modes do not solve the
   hard row.
+
+## 2026-04-20 Structural x2n4 Helper And Hard-Row Tuning
+
+- Subagent reviews converged on the same diagnosis: the current hard row is
+  scheduler/occupancy limited, not bandwidth limited. The recommended high-risk
+  structural branch was an `x2n4` shared-X, four-N-tile supergroup that amortizes
+  the gathered activation tile across two adjacent N tiles per CTA rank, with a
+  helper-store fallback to avoid the direct epilogue's 200+ register pressure.
+- Implemented scratch `STRUCTURAL_MODE == 57` in
+  `python/examples/gluon/06-moe-bmm1-structural-explore.py`:
+  - `load_inputs_x2n4_partition` schedules `ceil(GRID_N / 4)` N groups,
+    multicasts X from rank 0, and loads up to two W/W-scale tiles per CTA rank.
+  - `mma_x2n4_compute_partition` computes up to two accumulators per persistent
+    block using the shared X tile and alternate W-scale TMEM for the second N
+    tile.
+  - `epilogue_x2n4_partition` keeps the direct-store path available for compile
+    pressure experiments.
+  - `epilogue_x2n4_handoff_partition` and
+    `epilogue_x2n4_store_partition` add a helper-store path selected with
+    `x2n4:...@helper`.
+- x2n4 validation outcomes:
+  - Direct `x2n4` is not currently viable: the direct epilogue still triggers
+    ptxas register allocation failures around `200-255` registers in earlier
+    smokes.
+  - Non-wide helper `sub4` with a 4-warp handoff reaches TMEM lowering but
+    fails the verifier at the sliced accumulator load:
+    `/tmp/moe_bmm1_x2n4_helper_sub4_w4_20260420T1015Z.csv`.
+  - Wide helper `sub2` initially exceeded shared memory by `233736 > 232448`
+    bytes for `x5w6`: `/tmp/moe_bmm1_x2n4_helper_wide_w4_20260420T1015Z.csv`.
+  - Reducing to `x4w5` or even `x4w4` fits resources and launches, but hangs
+    until timeout during validation:
+    `/tmp/moe_bmm1_x2n4_helper_wide_x4w5_20260420T1021Z.csv` and
+    `/tmp/moe_bmm1_x2n4_helper_wide_x4w4_20260420T1028Z.csv`.
+    Increasing helper depth to `epi4` also hangs:
+    `/tmp/moe_bmm1_x2n4_helper_wide_x4w4_epi4_20260420T1038Z.csv`.
+  - Conclusion: x2n4 now has useful scaffolding, but the helper path has a real
+    synchronization/order bug and the non-wide path is blocked by TMEM
+    sub-slice layout verification. Do not promote x2n4 until a single
+    validation pass completes.
+- Permuted-fragment epilogue follow-up:
+  - Replaced the explicit `acc_sub.get_reg_layout(instr_variant="32x32b")`
+    call inside the static fragment loop with implicit `acc_sub.load()` to avoid
+    frontend layout extraction from an indexed reinterpret view.
+  - The plain-load probe still timed out before writing a row:
+    `/tmp/moe_bmm1_permfrag_plainload_20260420T1048Z.log`. Treat
+    `x2n_permfrag` as compile/lowering blocked.
+- Hard-row tuning results against `batch=896`, uniform routing, `local_rank=3`,
+  seed `0`:
+  - Direct fragmented split epilogue is the closest compiling family but still
+    below parity. `/tmp/moe_bmm1_hard896_subfrag_direct_20260420T1030Z.csv`
+    measured `split@sub4,regs56` at `0.97960x` versus 1CTA.
+  - Expanded sub4/band/staging sweep
+    `/tmp/moe_bmm1_hard896_split_sub4_tune_20260420T1033Z.csv` found
+    `fullsched` best at only `0.97587x`; `b16/b20/b21/b24/b32` and
+    `x4w5/x5w5/x6w5` all stayed below parity.
+  - `combined` inline/nomc variants in
+    `/tmp/moe_bmm1_hard896_occ_tune2_20260420T1016Z.csv` were about
+    `0.912-0.913x`. Raising x2n_fused register caps made ptxas demand
+    `120-136` registers, so that branch is not a low-reg rescue.
+  - `BM16` worsened the hard row (`~0.76x` split, `~0.73x` combined) in
+    `/tmp/moe_bmm1_hard896_m16_20260420T1051Z.csv`.
+  - `BN128` is rejected by the existing 2CTA width assertion, `BN384` is not a
+    legal descriptor shape, and earlier `BN512` measurements were much slower.
+  - `ctalinear` wants at least `88` registers and then balloons to `168` when
+    allowed more cap; do not prioritize it without a lower-register rewrite.
+  - `ctampair` with the intended `w1m4` split hangs after the 1CTA row,
+    matching the earlier M-pair synchronization blocker.
+  - `routesplit` is dominated by two-kernel overhead (`~0.07x`) in
+    `/tmp/moe_bmm1_hard896_routesplit_20260420T1058Z.csv`.
+- Current frontier: no candidate in this slice met parity, let alone the
+  `1.20x` success gate. The least-bad measured hard-row candidate remains a
+  direct split-epilogue `sub4`/`fullsched` shape around `0.976-0.980x`. The next
+  unblocked work is either fixing x2n4 helper synchronization or building a new
+  low-register M-pair/fragment epilogue that avoids sliced-TMEM verifier
+  failures.
