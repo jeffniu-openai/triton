@@ -331,6 +331,73 @@ Every structural fuzz case records:
   temporary `XFAIL`/future positive lowering if dynamic indexing is meant to
   be supported.
 
+### Lane R4-A Round 4, Helper/Control-Flow Expansion
+
+- Time: 2026-04-21 09:00 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_helper_cf_round4.md`
+- Scope: expand and minimize `FZ-20260421-0002` through false-branch control
+  flow, mixed tensor+memdesc captures, tuple-like captures, 16x64b/16x128b
+  layout pressure, chain1/chain2 boundaries, nested helper returns, and
+  no-helper inline comparisons.
+- Result: no backend repair attempted; found additional stable same-bucket
+  chain0 miscompiles and a tighter boundary.
+- Key findings:
+  - false-branch chain0 reaches `16x128b` and `[128,128]` with stable
+    runtime mismatches;
+  - tuple-like `(memdesc_view, tensor_bias)` capture reproduces the chain0
+    mixed-capture miscompile;
+  - layout-conversion pressure reaches `16x128b`;
+  - helper boundaries are not required: helper, nested helper, dispatcher-body,
+    and true no-helper inline chain0 all fail with the same `8064/8192`
+    mismatch pattern;
+  - chain1 and chain2 rows pass across the same control-flow, tuple-capture,
+    `16x64b`, `16x128b`, and layout-pressure probes.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - temporary harness collected `24` nodeids;
+  - four-GPU sweep reported `11 failed, 13 passed`;
+  - representative failing and passing nodeids were rerun in fresh pytest
+    processes.
+- Recommended additional strict xfail sentinels:
+  `generic-pass-dynamic-if-chain0-false-16x128b`,
+  `generic-pass-dynamic-if-chain0-inline`,
+  `generic-pass-tuple-mixed-captures-chain0`, and
+  `generic-pass-layout-conversion-pressure-chain0-16x128b`.
+
+### Lane R4-D Round 4, 2CTA Indexed ld.red Opcode Selection
+
+- Time: 2026-04-21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_2cta_round4.md`
+- Scope: expand `FZ-20260421-0004` around resource-valid 2CTA indexed-view
+  provenance, non-min reductions, abs/NaN modifiers, row/col permutations,
+  descriptor chain0/1/2, and resource/clean diagnostic boundaries.
+- Result: no backend repair attempted; all 37 rows that reached runtime and
+  opcode inspection passed the runtime oracle but emitted plain
+  `tcgen05.ld.sync...` instead of hardware `tcgen05.ld.red...`.
+- Key findings:
+  - direct 2CTA indexed `max`, `abs`, and NaN-propagating reductions lose
+    `ld.red` just like the existing checked-in `min` sentinel;
+  - the plain-load fallback spans `N=32/64/128`, chain0/1/2, and row/col
+    layout permutations that are runtime-correct;
+  - row/col permutation chain1 variants found an adjacent compiler crash in
+    `TritonNvidiaGPUOptimizeTMemLayoutsPass` with a row/col vs row/col/block
+    dimension mismatch;
+  - `M=512,N=32` produced a clean TMEM encoding/CGA-layout diagnostic boundary.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - temporary probe collected `42` nodeids;
+  - four-GPU sweep reported `11 + 11 + 11 + 9` discovery failures;
+  - representative opcode mismatches, compiler crash, and diagnostic boundary
+    were rerun in fresh pytest processes;
+  - existing checked-in 2CTA indexed sentinel reported `1 xfailed`, and the
+    full-parent 2CTA positive reported `1 passed`.
+- Recommended additional strict xfail sentinels:
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max`,
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs`, and
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan`.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -396,6 +463,19 @@ Every structural fuzz case records:
     `/tmp/tmem_expansion_round2_confirm_cf_if_false.log`,
     `/tmp/tmem_expansion_round2_confirm_cf_if_false_16x64.log`, and
     `/tmp/tmem_expansion_round2_confirm_cf_layout_pressure.log`.
+- Round 4 expansion:
+  - false-branch chain0 also miscompiles under `16x128b` for `[128,64]` and
+    `[128,128]`;
+  - tuple-like `(memdesc_view, tensor_bias)` capture reproduces the chain0
+    mixed-capture failure;
+  - layout-pressure chain0 also miscompiles under `16x128b`;
+  - helper boundaries are not required: true no-helper inline chain0 fails
+    identically to helper and nested-helper forms;
+  - chain1 and chain2 variants passed across the same 16x64b/16x128b,
+    tuple-capture, and layout-pressure probes, so the active boundary is
+    chain0-specific in this harness;
+  - report:
+    `.codex/initiatives/tmem_linear_generalization/agents/fuzz_helper_cf_round4.md`.
 
 ### FZ-20260421-0003: ld/st descriptor-view chains miscompile
 
