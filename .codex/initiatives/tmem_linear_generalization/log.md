@@ -26903,3 +26903,11 @@ Open after this slice:
   - exact selector run on `CUDA_VISIBLE_DEVICES=2`,
     `TRITON_CACHE_DIR=/tmp/triton-cache-local-r9-sentinels` reported
     `3 xfailed`.
+
+## 2026-04-21: TMEM lit sanity check during fuzzing
+
+- Ran a cheap compiler-only lit sanity pass while runtime fuzzing lanes were
+  active.
+- Command:
+  `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+- Result: `3/3` passed.
