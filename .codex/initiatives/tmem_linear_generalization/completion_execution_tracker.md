@@ -3597,3 +3597,52 @@ discovery.
   from `35.613s` wall to `12.071s` wall. No compiler crash, false unsupported
   diagnostic, verifier drift, runtime miscompile, hang, or new independent
   `FZ-*`.
+
+- 2026-04-21: Round 53 local structural guardrail completed. Report:
+  `agents/fuzz_round53_local_structural_guardrail.md`. Required `make -j8`
+  was a no-op. The checked-in structural TMEM fuzzer passed as
+  `9 passed, 24 xfailed`, with strict xfails remaining in existing
+  `FZ-20260421-0001` through `FZ-20260421-0009` buckets and existing `R5-C`.
+  No XPASS, signature drift, runtime miscompile, process contamination, or new
+  independent `FZ-*`.
+
+- 2026-04-21: Round 53 higher-rank descriptor runtime slice completed.
+  Report: `agents/fuzz_round53_higher_rank_descriptor_runtime.md`. Required
+  `make -j8` was a no-op. Selector over rank-5 descriptors, higher-rank
+  slices, multidimensional slices, half-row views, direct higher-rank replay,
+  `load_red` replay, and 2CTA variants collected `112` rows and completed
+  split-4 as `92 passed, 20 skipped, 0 failed`. No compiler crash,
+  unexpected unsupported diagnostic, verifier drift, runtime miscompile, hang,
+  or new independent `FZ-*`.
+
+- 2026-04-21: Round 53 compiler/lit lane completed. Report:
+  `agents/fuzz_round53_compiler_lit_lane.md`. Required `make -j8` and
+  `ninja triton-opt` were no-ops. Focused TMEM lit sweep completed as
+  `13 passed, 1 failed`, with the sole failure classified as existing
+  `FZ-20260421-0016`. Proxy/mbarrier/invalid diagnostics passed as
+  `9 passed`. Direct Blackwell conversion exited `0`. Minimized repros for
+  `FZ-20260421-0016` and `FZ-20260421-0017` were revalidated; f64 hit the
+  same `FZ-0017` bitwidth assertion, and f32 control stayed on the existing
+  indexed TMEM view-chain diagnostic surface. No new independent `FZ-*`.
+
+- 2026-04-21: Round 53 generator gap lane completed. Report:
+  `agents/fuzz_round53_generator_gap_lane.md`. Required `make -j8` was a
+  no-op, and the temporary Round 25 dynamic generator plus Round 43
+  plain/scaled sequence probe py-compiled. Dynamic descriptor/control-flow
+  generator ran `22` rows; plain/scaled MMAv5 sequence probe ran `5` rows;
+  high-CGA dtype/layout pytest slice passed as `17 passed`; scaled
+  descriptor-view slice passed as `4 passed`. Aggregate classification:
+  `48` rows total, with `30` pass/green, `8` existing `FZ-20260421-0001`,
+  `7` existing `FZ-20260421-0002`, `3` clean boundaries, and `0` new
+  `FZ-*` candidates. No checked-in tests or backend code changed.
+
+- 2026-04-21: Round 53 structural/runtime lane completed. Report:
+  `agents/fuzz_round53_structural_runtime_lane.md`. Required `make -j8` was a
+  no-op. Structural fuzzer split-4 aggregate stayed at
+  `9 passed, 24 xfailed`; higher-rank descriptor runtime selector collected
+  `79` rows and completed as `59 passed, 20 skipped`; scaled/narrow
+  accumulator descriptor selector collected `29` rows and passed as
+  `29 passed`; disposable structural permutation probe ran five additional
+  row/column permutation rows and passed as `5 passed`. No XPASS, compiler
+  crash, verifier drift, false unsupported diagnostic, runtime miscompile, or
+  new independent `FZ-*`.

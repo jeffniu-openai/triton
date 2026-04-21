@@ -32242,3 +32242,88 @@ Open after this slice:
 - Classification: no new compiler crash, unexpected unsupported case,
   verifier drift, clean diagnostic regression, hang, runtime miscompile, or
   independent `FZ-*`.
+
+## 2026-04-21: Round 53 local structural guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round53_local_structural_guardrail.md`.
+- Required `make -j8` was a no-op.
+- Checked-in structural TMEM fuzzer:
+  `9 passed, 24 xfailed`.
+- Strict xfails remained in existing `FZ-20260421-0001` through
+  `FZ-20260421-0009` buckets and existing `R5-C`.
+- Classification: no XPASS, signature drift, compiler crash, runtime
+  miscompile, process contamination, or independent `FZ-*`.
+
+## 2026-04-21: Round 53 higher-rank descriptor runtime slice
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round53_higher_rank_descriptor_runtime.md`.
+- Required `make -j8` was a no-op.
+- Collection selector over rank-5 descriptors, higher-rank slices,
+  multidimensional slices, half-row views, direct higher-rank replay,
+  `load_red` replay, and 2CTA variants:
+  `112/1615` collected.
+- Split-4 runtime result:
+  `92 passed, 20 skipped, 0 failed`.
+- Classification: no compiler crash, unexpected unsupported diagnostic,
+  verifier drift, runtime miscompile, process contamination, hang, or
+  independent `FZ-*`.
+
+## 2026-04-21: Round 53 compiler/lit lane
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round53_compiler_lit_lane.md`.
+- Required `make -j8` and `ninja triton-opt` were no-ops.
+- Focused checked-in TMEM lit sweep:
+  `13 passed, 1 failed`; the failure is existing `FZ-20260421-0016`.
+- Proxy/mbarrier/invalid diagnostics sweep:
+  `9 passed`.
+- Direct Blackwell conversion probe:
+  exit `0`.
+- Minimized repros:
+  `FZ-20260421-0016` reproduced, `FZ-20260421-0017` reproduced for i64, f64
+  hit the same `FZ-0017` bitwidth assertion, and f32 stayed on the existing
+  indexed TMEM view-chain diagnostic surface.
+- Classification: no new independent `FZ-*`.
+
+## 2026-04-21: Round 53 generator gap lane
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round53_generator_gap_lane.md`.
+- Required `make -j8` was a no-op.
+- Temporary probe syntax checks:
+  `/tmp/tmem_structural_generator_dynamic_round25.py` and
+  `/tmp/tmem_plain_scaled_sequence_round43_probe.py` py-compiled.
+- Dynamic descriptor/control-flow generator:
+  `22` rows.
+- Plain/scaled MMAv5 sequence probe:
+  `5` rows.
+- High-CGA dtype/layout pytest slice:
+  `17 passed`.
+- Scaled descriptor-view pytest slice:
+  `4 passed`.
+- Aggregate classification:
+  `48` rows total, `30` pass/green, `8` existing `FZ-20260421-0001`,
+  `7` existing `FZ-20260421-0002`, `3` clean boundaries, `0` new `FZ-*`
+  candidates.
+- Classification: the next useful generator gap is directly crossing dynamic
+  descriptor SSA with legal 2CTA positive layouts; no backend repair was
+  attempted.
+
+## 2026-04-21: Round 53 structural/runtime lane
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round53_structural_runtime_lane.md`.
+- Required `make -j8` was a no-op.
+- Structural fuzzer split-4 aggregate:
+  `9 passed, 24 xfailed`.
+- Higher-rank descriptor runtime selector:
+  `79/1615` collected, `59 passed, 20 skipped`.
+- Scaled/narrow accumulator descriptor selector:
+  `29/1615` collected, `29 passed`.
+- Disposable structural permutation probe:
+  `5 passed`, covering additional ld/st and `ld.red` row/column permutation
+  combinations with seeds `0x530001` through `0x530102`.
+- Classification: no XPASS, compiler crash, verifier drift, false unsupported
+  diagnostic, clean-boundary drift, runtime miscompile, or independent `FZ-*`.
