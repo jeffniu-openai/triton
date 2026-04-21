@@ -2201,6 +2201,18 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no new bucket. Checked-in copy rows remain green next to
   Lane AI's temporary multi-region mbarrier composition fuzzing.
 
+### Round 14 local structural-fuzzer smoke gate
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_smoke_round14b.md`
+- Required build: `make -j8` no-op.
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+- Result: `9 passed, 24 xfailed in 10.00s`.
+- Classification: no new bucket. The checked-in structural-fuzzer sentinels
+  remain stable.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

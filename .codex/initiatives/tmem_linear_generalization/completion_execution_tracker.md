@@ -1809,3 +1809,8 @@ signal handling:
   `(cp_no_scales_warpx2 or cp_no_scales_twocta or cp_scales_warpx4 or cp_scales) and not reports`
   selector collected `135/1615` and passed split-4 as `135 passed`; no new
   bucket.
+
+- 2026-04-21: local structural-fuzzer smoke gate wrote
+  `agents/fuzz_local_structural_smoke_round14b.md`. Full
+  `python/test/gluon/test_tmem_structural_fuzzer.py` reported
+  `9 passed, 24 xfailed`; no new bucket.

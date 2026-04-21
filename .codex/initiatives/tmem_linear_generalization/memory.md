@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local Round 14 structural-fuzzer smoke gate stayed
+  stable. Report: `agents/fuzz_local_structural_smoke_round14b.md`. Required
+  `make -j8` was a no-op. Full
+  `python/test/gluon/test_tmem_structural_fuzzer.py` on GPU 0 with stable
+  cache reported `9 passed, 24 xfailed in 10.00s`. No new bucket; checked-in
+  strict sentinels still classify to the existing `FZ-*` owners.
+
 - Latest: 2026-04-21 local Round 14 copy risk selector stayed green while
   Lane AI probed copy/mbarrier composition. Report:
   `agents/fuzz_local_copy_risk_round14.md`. Required `make -j8` was a no-op.

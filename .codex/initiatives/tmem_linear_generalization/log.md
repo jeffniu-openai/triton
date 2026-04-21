@@ -28128,3 +28128,16 @@ Open after this slice:
 - Classification: no new bucket. Checked-in no-scales `warpx2`, two-CTA
   no-scales copy, scales `warpx4`, and scaled-MMA scale-copy setup rows stayed
   green.
+
+## 2026-04-21: Round 14 local structural-fuzzer smoke gate
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_smoke_round14b.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+- Result: `9 passed, 24 xfailed in 10.00s`.
+- Classification: no new bucket. The expected xfail diagnostics remained tied
+  to the existing structural-fuzzer `FZ-*` owners.
