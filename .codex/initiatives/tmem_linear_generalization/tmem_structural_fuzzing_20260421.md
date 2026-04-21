@@ -2605,6 +2605,16 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 24 local compiler lit baseline
+
+- Time: 2026-04-21 13:30 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_lit_baseline_round24.md`
+- Result:
+  `4` lit tests passed: TMEM layouts, MMAv5 lowering, interleave TMEM, and
+  memdesc subview split.
+- Classification: no compiler-only regression or new `FZ-*` bucket.
+
 ### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
 
 - Time: 2026-04-21 12:58 UTC

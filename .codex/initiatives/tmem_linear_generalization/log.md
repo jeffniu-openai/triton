@@ -28773,6 +28773,20 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 13:30 UTC: Round 24 local compiler lit baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_lit_baseline_round24.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` and `ninja triton-opt` were no-ops.
+- Lit tests passed:
+  - `TritonNvidiaGPU/tmem_layouts.mlir`;
+  - `TritonNvidiaGPU/mma_lowering.mlir`;
+  - `TritonNvidiaGPU/interleave_tmem.mlir`;
+  - `TritonGPU/memdesc-subview-split.mlir`.
+- Classification: no compiler-only regression or new `FZ-*` bucket.
+
 ## 2026-04-21 11:54 UTC: Round 18 local MMAv5 and scaled-MMAv5 selector
 
 - Wrote

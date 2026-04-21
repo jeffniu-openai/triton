@@ -15757,6 +15757,12 @@ rejection, not rescue
   (`81p/27s`, `98p/10s`, `108p`, `106p`). No new bucket; ordinary checked-in
   2CTA/multicast/high-CGA runtime coverage remains green/skipped as expected.
 
+- Local Round 24 compact lit baseline wrote
+  `agents/fuzz_local_lit_baseline_round24.md`. Required `make -j8` and
+  `ninja triton-opt` were no-ops. Four lit tests passed:
+  `tmem_layouts.mlir`, `mma_lowering.mlir`, `interleave_tmem.mlir`, and
+  `memdesc-subview-split.mlir`. No new bucket.
+
 - Round 22 Lane BA wrote
   `agents/fuzz_scaled_dynamic_scales_round22.md`. No new independent `FZ-*`.
   Temporary probe `/tmp/tmem_scaled_dynamic_scales_round22_probe.py` ran
