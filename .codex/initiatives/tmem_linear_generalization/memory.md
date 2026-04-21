@@ -17265,3 +17265,10 @@ rejection, not rescue
   positive/clean-unsupported rows and passed as `33 passed`. Aggregate:
   `141 passed, 0 failed, 0 skipped`; no new independent `FZ-*`; backend
   repair remains deferred.
+
+- Round 62 local convolution/router examples lane wrote
+  `agents/fuzz_round62_local_examples_convolution_router_lane.md`. Required
+  `make -j8` was a no-op. Broad collection over convolution and TMEM MoE
+  router found `64` tests; focused exact selector collected `12` and ran
+  split-4 as `12 passed, 0 failed, 0 skipped`. No new independent `FZ-*`;
+  backend repair remains deferred.

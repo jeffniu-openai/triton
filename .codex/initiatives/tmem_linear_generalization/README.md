@@ -6469,7 +6469,7 @@ When resuming the initiative:
   rows `123 passed, 74 skipped`, and the checked-in structural fuzzer stayed
   stable as `9 passed, 24 xfailed`.
 
-## Latest: 2026-04-21 Round 61 adversarial fuzzing
+## Previous: 2026-04-21 Round 61 adversarial fuzzing
 
 - Frontend/structural lane wrote
   `agents/fuzz_round61_frontend_structural_lane.md`. Frontend selector
@@ -6493,6 +6493,14 @@ When resuming the initiative:
   scale descriptor, narrow-view, and clean diagnostic rows and passed as
   `108 passed`; selector B collected `33/1615` two-CTA copy/view rows and
   passed as `33 passed`. Aggregate: `141 passed, 0 failed, 0 skipped`.
+
+## Latest: 2026-04-21 Round 62 examples continuation
+
+- Local convolution/router examples lane wrote
+  `agents/fuzz_round62_local_examples_convolution_router_lane.md`.
+  Convolution plus TMEM MoE router collected `64` tests; a focused selector
+  collected `12` and ran split-4 as `12 passed, 0 failed, 0 skipped`. No new
+  independent `FZ-*`; no repairs attempted.
 
 ## Previous: 2026-04-21 Round 60 frontend, examples, and random runtime fuzzing
 

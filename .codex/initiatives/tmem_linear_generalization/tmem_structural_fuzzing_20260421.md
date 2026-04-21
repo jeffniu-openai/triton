@@ -4470,3 +4470,19 @@ remain family-specific and consume a bounded subset of the inventory.
   no compiler crash, verifier drift, false unsupported diagnostic,
   clean-boundary drift, opcode assertion failure, runtime miscompile, hang,
   process/device contamination, or new independent `FZ-*`.
+
+### Round 62 local convolution/router examples lane
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round62_local_examples_convolution_router_lane.md`
+- Scope:
+  convolution example rows plus TMEM MoE router projection, top-k,
+  padded-baseline, candidate projection, and ragged expert output checks.
+- Result:
+  broad collection found `64` tests; focused exact selector collected `12`
+  and ran split-4 as `12 passed, 0 failed, 0 skipped`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, example-level correctness regression, or new independent
+  `FZ-*`.

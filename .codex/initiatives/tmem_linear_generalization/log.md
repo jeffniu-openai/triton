@@ -33079,3 +33079,18 @@ Open after this slice:
   no compiler crash, verifier drift, false unsupported diagnostic,
   clean-boundary drift, opcode assertion failure, runtime miscompile, hang,
   process/device contamination, or new independent `FZ-*`.
+
+## 2026-04-21: Round 62 local convolution/router examples lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round62_local_examples_convolution_router_lane.md`.
+- Required `make -j8` was a no-op.
+- Broad collection over `02-convolution.py` and `05-tmem-moe-router.py`
+  discovered `64` tests.
+- Focused exact selector collected `12` tests.
+- Split-4 runtime result:
+  `12 passed, 0 failed, 0 skipped`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, example-level correctness regression, or new independent
+  `FZ-*`.

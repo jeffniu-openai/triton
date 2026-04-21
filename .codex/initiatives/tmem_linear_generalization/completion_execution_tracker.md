@@ -4045,3 +4045,9 @@ discovery.
   `108 passed`; selector B collected `33/1615` and passed split-4 as
   `33 passed`. Aggregate: `141 passed, 0 failed, 0 skipped`. No new
   independent `FZ-*`.
+
+- 2026-04-21: Round 62 local convolution/router examples lane completed.
+  Report: `agents/fuzz_round62_local_examples_convolution_router_lane.md`.
+  Required `make -j8` was a no-op. Broad collection found `64` tests; focused
+  selector collected `12` and ran split-4 as `12 passed, 0 failed, 0 skipped`.
+  No new independent `FZ-*`.
