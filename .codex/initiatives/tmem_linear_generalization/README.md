@@ -7,7 +7,27 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:21 UTC Round 14 Lane AI completed
+Latest fuzzing checkpoint: 2026-04-21 11:24 UTC local Round 14
+twoCTA/high-CGA runtime sweep. Report:
+`agents/fuzz_local_twocta_highcga_round14.md`. Required `make -j8` was a
+no-op. Runtime-matrix selector
+`(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
+collected `331/1615` rows and passed split-4 as `294 passed, 37 skipped`.
+Adjacent high-CGA core controls in `test_core.py` reported `3 passed`. No
+runtime miscompile, compiler crash, false unsupported diagnostic, or new
+independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 11:23 UTC Round 14 Lane AJ completed
+high-CGA mixed ownership fuzzing. Report:
+`agents/fuzz_high_cga_mixed_ownership_round14.md`. Required `make -j8` was a
+no-op. Local 1CTA/2CTA `ld/st`, `ld.red`, and copy rows in 4/8/16 CTA launch
+contexts stayed classified under existing `FZ-20260421-0010`; the legal
+mixed 2CTA no-scales descriptor-chain copy plus scales copy still reproduced
+existing `FZ-20260421-0014` in the full proxy-fence reproducer pipeline.
+High-CGA MMAv5/TMA-MMA/scaled-MMAv5 controls passed `9/9`, matmul two-CTA
+pass controls stayed clean, and no new independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 11:21 UTC Round 14 Lane AI completed
 copy/mbarrier composition fuzzing. Report:
 `agents/fuzz_copy_mbarrier_composition_round14.md`. Required `make -j8` was a
 no-op. Checked-in copy baseline selector

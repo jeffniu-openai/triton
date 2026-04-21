@@ -70,6 +70,24 @@ The project is complete when:
   independent legal 2CTA no-scales copy/mbarrier regions, direct or
   descriptor-chain, without scales copy. No runtime miscompile and no new
   independent `FZ-*` bucket was found.
+  2026-04-21 11:23 UTC Lane AJ completed high-CGA mixed ownership fuzzing
+  without backend repairs. Report:
+  `agents/fuzz_high_cga_mixed_ownership_round14.md`. Required `make -j8` was
+  a no-op. Local 1CTA/2CTA `ld/st`, `ld.red`, and copy rows in 4/8/16 CTA
+  launch contexts stayed under existing `FZ-20260421-0010`; the legal 2CTA
+  mixed copy/scales row and full saved reproducer stayed under existing
+  `FZ-20260421-0014`. Adjacent high-CGA MMAv5/TMA-MMA/scaled-MMAv5 controls
+  passed `9/9`; `triton-nvidia-check-matmul-two-cta` controls propagated
+  `"ttng.two-ctas" = true` for 8/16 CTA consistent modules. No new
+  independent `FZ-*` bucket was assigned, and backend repair remains deferred.
+  2026-04-21 11:24 UTC local Round 14 twoCTA/high-CGA runtime sweep stayed
+  green. Report: `agents/fuzz_local_twocta_highcga_round14.md`.
+  Runtime-matrix selector
+  `(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
+  collected `331/1615` rows and passed split-4 as
+  `294 passed, 37 skipped`. Adjacent high-CGA `test_core.py` controls reported
+  `3 passed`. No runtime miscompile, compiler crash, false unsupported
+  diagnostic, or new independent `FZ-*` bucket was found.
   2026-04-21 08:30 UTC Lane E2 promoted FZ-20260421-0001 and
   FZ-20260421-0002 into checked-in strict xfail runtime coverage in
   `python/test/gluon/test_tmem_structural_fuzzer.py`, with exact fresh-process

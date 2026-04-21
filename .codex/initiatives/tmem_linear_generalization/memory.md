@@ -1,5 +1,28 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:24 UTC local Round 14 twoCTA/high-CGA runtime sweep
+  stayed green. Report:
+  `agents/fuzz_local_twocta_highcga_round14.md`. Required `make -j8` was a
+  no-op. Runtime-matrix selector
+  `(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
+  collected `331/1615` rows and passed split-4 as `294 passed, 37 skipped`.
+  Adjacent high-CGA `test_core.py` controls reported `3 passed`. No runtime
+  miscompile, compiler crash, false unsupported diagnostic, or new independent
+  `FZ-*` bucket was found.
+
+- Latest: 2026-04-21 11:23 UTC Round 14 Lane AJ completed high-CGA mixed
+  ownership fuzzing. Report:
+  `agents/fuzz_high_cga_mixed_ownership_round14.md`. Required `make -j8` was
+  a no-op. Fresh Python/Gluon and compiler-pass probes classified local
+  1CTA/2CTA `ld/st`, `ld.red`, and copy rows in 4/8/16 CTA launch contexts as
+  existing `FZ-20260421-0010`, reconfirmed legal 2CTA mixed copy/scales
+  proxy-fence aborts as existing `FZ-20260421-0014`, and kept adjacent
+  high-CGA MMAv5/TMA-MMA/scaled-MMAv5 controls green as `9 passed`. Raw
+  `triton-nvidia-check-matmul-two-cta` controls for 8/16 CTA consistent
+  two-CTA MMA modules propagated `"ttng.two-ctas" = true`; the saved
+  `FZ-0014` raw input passed check+proxy-fence only but failed through the
+  full reproducer pipeline. No new independent `FZ-*` bucket was assigned.
+
 - Latest: 2026-04-21 11:21 UTC Round 14 Lane AI completed copy/mbarrier
   composition fuzzing. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Required `make -j8` was

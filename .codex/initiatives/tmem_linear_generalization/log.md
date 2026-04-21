@@ -28166,3 +28166,44 @@ Open after this slice:
   `/tmp/tmem_copy_mbarrier_round14_ai002_chain_two_copy_fail.mlir`.
 - No runtime wrong-result/miscompile and no new independent `FZ-*` bucket was
   found.
+
+## 2026-04-21 11:24 UTC: Round 14 local twoCTA/high-CGA runtime sweep
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_twocta_highcga_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Runtime-matrix selector
+  `(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
+  collected `331/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `294 passed, 37 skipped`:
+  - GPU 0 / group 1: `56 passed, 27 skipped`;
+  - GPU 1 / group 2: `73 passed, 10 skipped`;
+  - GPU 2 / group 3: `83 passed`;
+  - GPU 3 / group 4: `82 passed`.
+- Adjacent exact high-CGA core controls in `test_core.py` reported
+  `3 passed in 4.34s`.
+- Classification: no runtime miscompile, compiler crash, false unsupported
+  diagnostic, or new independent `FZ-*` bucket was found.
+
+## 2026-04-21 11:23 UTC: Round 14 Lane AJ high-CGA mixed ownership fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_mixed_ownership_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Reused the inherited high-CGA gate probe and AD mixed copy/scales probe with
+  fresh subprocesses and stable caches. Direct high-CGA rows classified as
+  existing `FZ-20260421-0010`; the legal 2CTA mixed no-scales descriptor-chain
+  copy plus scales copy stayed existing `FZ-20260421-0014`.
+- Adjacent high-CGA controls passed: `4` MMAv5 multicast/commit rows, `2` TMA
+  multicast rows, and `3` scaled-MMAv5 scale-copy+MMA rows.
+- Compiler-pass checks around `triton-nvidia-check-matmul-two-cta` stayed
+  clean: 8/16 CTA consistent two-CTA MMA modules gained `"ttng.two-ctas" =
+  true`, and the saved `FZ-0014` raw input passed check+proxy-fence only while
+  still failing through `--run-reproducer`.
+- No runtime wrong-result/miscompile and no new independent `FZ-*` bucket was
+  found.
