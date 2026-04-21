@@ -60,6 +60,14 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 13:45 UTC Round 36 tile-permuted and structural fuzzer guardrail
+  completed. Artifact: `agents/fuzz_tile_structural_guardrail_round36.md`.
+  Checked-in structural fuzzer stayed stable as `9 passed, 24 xfailed`.
+  Selector `tile_permuted and not reports and not resource and not m64`
+  collected `151/1615` and passed split-4 as `151 passed`. No compiler crash,
+  false unsupported diagnostic, opcode absence, runtime miscompile, xfail
+  drift, clean-boundary regression, or new independent `FZ-*`; backend repair
+  remains deferred.
   2026-04-21 13:40 UTC Round 36 narrow-shape and clean-diagnostic guardrail
   completed. Artifact: `agents/fuzz_narrow_clean_guardrail_round36.md`.
   Required `make -j8` was a no-op. Selector

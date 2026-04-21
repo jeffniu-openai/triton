@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 13:45 UTC Round 36 tile-permuted and structural fuzzer
+  guardrail completed. Report:
+  `agents/fuzz_tile_structural_guardrail_round36.md`. Checked-in structural
+  fuzzer passed/stably xfailed as `9 passed, 24 xfailed`; expected xfail
+  reproducer output remains existing cataloged signal such as
+  `FZ-20260421-0001`. Selector
+  `tile_permuted and not reports and not resource and not m64` collected
+  `151/1615` and passed split-4 as `151 passed` (`38/38/38/37`). No compiler
+  crash, false unsupported diagnostic, opcode absence, runtime miscompile,
+  xfail drift, clean-boundary regression, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 13:40 UTC Round 36 narrow-shape and clean-diagnostic
   checked-in runtime guardrail completed. Report:
   `agents/fuzz_narrow_clean_guardrail_round36.md`. Required `make -j8` was a

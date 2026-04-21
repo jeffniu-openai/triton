@@ -7,7 +7,14 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 36 narrow-shape and
+Latest fuzzing checkpoint: 2026-04-21 Round 36 tile-permuted and structural
+fuzzer guardrail completed. Report:
+`agents/fuzz_tile_structural_guardrail_round36.md`. Checked-in structural
+fuzzer stayed stable as `9 passed, 24 xfailed`. Selector
+`tile_permuted and not reports and not resource and not m64` collected
+`151/1615` and passed split-4 as `151 passed`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 36 narrow-shape and
 clean-diagnostic checked-in guardrail completed. Report:
 `agents/fuzz_narrow_clean_guardrail_round36.md`. Required `make -j8` was a
 no-op. Selector

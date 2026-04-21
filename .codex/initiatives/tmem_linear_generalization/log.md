@@ -30766,6 +30766,22 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 13:45 UTC: Round 36 tile-permuted and structural fuzzer guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_tile_structural_guardrail_round36.md`.
+- Checked-in structural fuzzer:
+  `9 passed, 24 xfailed` split as `5/4 xfailed`, `2/7 xfailed`,
+  `2/7 xfailed`, and `6 xfailed`.
+- Tile-permuted checked-in selector:
+  `tile_permuted and not reports and not resource and not m64`.
+- Collection: `151/1615`.
+- Tile-permuted split-4 result: `151 passed` (`38/38/38/37` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, xfail drift, clean-boundary regression, or new
+  independent `FZ-*`. Backend repair remains deferred while discovery lanes
+  continue.
+
 ## 2026-04-21 13:40 UTC: Round 36 narrow-shape and clean-diagnostic guardrail
 
 - Wrote
