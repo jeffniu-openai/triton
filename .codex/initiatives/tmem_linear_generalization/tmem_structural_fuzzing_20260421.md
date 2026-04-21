@@ -1907,6 +1907,40 @@ remain family-specific and consume a bounded subset of the inventory.
   over-strict destination-layout lowering gap rather than cache noise or an
   existing opcode/allocator/high-CGA bucket.
 
+### Round 13 Local, LD/ST Descriptor Selection
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_descriptor_round13.md`
+- Scope: checked-in `ld/st` descriptor roundtrips, descriptor-composition
+  chains, row/column-permuted descriptor parents, two-CTA descriptor parents,
+  and subword descriptor chains, excluding `reports_*` clean-diagnostic rows.
+- Result: no new `FZ-*`. The selector collected `142/1615` and split-4 ran as
+  `64 passed, 78 skipped`. This is a green-control lane for runtime descriptor
+  selection outside FPSAN/plain-MMAv5 and outside `ld.red`; it did not
+  reproduce `FZ-20260421-0011` or the new `FZ-20260421-0012` unsupported-dst
+  diagnostic.
+- Follow-up: broader selector
+  `ldst and (descriptor_chain or x1 or subword or replay)` collected
+  `261/1615` and split-4 passed as `191 passed, 70 skipped`, covering x1
+  f32/i32/subword rows, two-CTA x1 descriptor chains, subword pack/unpack,
+  descriptor-chain roundtrips, replay rows, and rank5/higher-rank descriptor
+  rows.
+
+### Round 13 Local, MMAv5 Descriptor/View Selection
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_descriptor_view_round13.md`
+- Scope: checked-in MMAv5 indexed accumulator views, lifted
+  `linear_unit_parent` parents, `use_acc` true/false rows, TMA-backed
+  transposed-B descriptor inputs, shared scale descriptor-view rows, and a
+  scaled-MMAv5 indexed narrow accumulator-view control.
+- Result: no new `FZ-*`. The selector collected `37/1615` and split-4 passed
+  as `37 passed`, strengthening the classification that
+  `FZ-20260421-0011` is FPSAN-specific runtime outer descriptor selection
+  feeding plain MMAv5 rather than a general MMAv5 descriptor/view issue.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

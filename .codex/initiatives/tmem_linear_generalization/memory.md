@@ -15015,6 +15015,22 @@ rejection, not rescue
 - Local copy/subword selector
   `cp_no_scales and (subword or packed or warpx2 or rowcol_permuted or
   dense_shared)` collected `106/1615` and passed split-4 as `106 passed`.
+- Local `ld/st` descriptor-selection runtime sweep
+  `agents/fuzz_ldst_descriptor_round13.md` found no new `FZ-*`: selector
+  `ldst and (descriptor_roundtrip or descriptor_compositions or descriptor_chain or runtime_selector or rowcol_permuted or tile_selector) and not reports`
+  collected `142/1615` and split-4 ran as `64 passed, 78 skipped`. Descriptor
+  roundtrips/compositions, row/column-permuted descriptor parents, two-CTA
+  descriptor parents, and subword descriptor chains did not reproduce
+  `FZ-20260421-0011` or `FZ-20260421-0012`.
+  Follow-up selector `ldst and (descriptor_chain or x1 or subword or replay)`
+  collected `261/1615` and split-4 ran as `191 passed, 70 skipped`.
+- Local MMAv5 descriptor/view runtime sweep
+  `agents/fuzz_mma_descriptor_view_round13.md` found no new `FZ-*`: selector
+  `mma_twocta_indexed_acc_view or mma_twocta_tma_tf32_b_transposed_descriptor or mma_scaled_shared_scale_descriptor_view_auto_tmem_copy or mma_scaled_indexed_acc_identity_narrow_view_format_use_acc`
+  collected `37/1615` and split-4 passed as `37 passed`. Non-FPSAN indexed
+  accumulator views, lifted `linear_unit_parent` parents, `use_acc`
+  true/false rows, TMA transposed-B descriptor rows, and one scaled-MMAv5
+  indexed narrow control did not reproduce `FZ-20260421-0011`.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 

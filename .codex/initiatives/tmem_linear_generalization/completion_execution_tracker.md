@@ -476,6 +476,24 @@ The project is complete when:
   failures reproduce as over-strict unsupported destination-layout lowering for
   M64 row-permuted reductions while nearby column-permuted controls pass.
   Report: `agents/fuzz_ldred_m64_permuted_round13.md`.
+  2026-04-21 local `ld/st` descriptor-selection runtime sweep found no new
+  `FZ-*`: selector
+  `ldst and (descriptor_roundtrip or descriptor_compositions or descriptor_chain or runtime_selector or rowcol_permuted or tile_selector) and not reports`
+  collected `142/1615` and split-4 ran as `64 passed, 78 skipped`.
+  Descriptor roundtrips/compositions, row/column-permuted descriptor parents,
+  two-CTA descriptor parents, and subword descriptor chains did not reproduce
+  the FPSAN MMAv5 runtime-index mismatch or the M64 `ld.red` unsupported-dst
+  diagnostic. Report: `agents/fuzz_ldst_descriptor_round13.md`.
+  Follow-up selector `ldst and (descriptor_chain or x1 or subword or replay)`
+  collected `261/1615` and split-4 ran as `191 passed, 70 skipped`.
+  2026-04-21 local MMAv5 descriptor/view runtime sweep found no new `FZ-*`:
+  selector
+  `mma_twocta_indexed_acc_view or mma_twocta_tma_tf32_b_transposed_descriptor or mma_scaled_shared_scale_descriptor_view_auto_tmem_copy or mma_scaled_indexed_acc_identity_narrow_view_format_use_acc`
+  collected `37/1615` and split-4 passed as `37 passed`. Non-FPSAN indexed
+  accumulator views, lifted `linear_unit_parent` parents, `use_acc`
+  true/false rows, TMA transposed-B descriptor rows, and one scaled-MMAv5
+  indexed narrow control did not reproduce `FZ-20260421-0011`. Report:
+  `agents/fuzz_mma_descriptor_view_round13.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

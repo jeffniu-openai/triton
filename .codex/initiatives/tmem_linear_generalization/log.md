@@ -27734,6 +27734,48 @@ Open after this slice:
   candidate is currently classified as an M64 row-permuted `ld.red` false
   unsupported / over-strict destination-layout lowering gap.
 
+## 2026-04-21: Round 13 local ld/st descriptor-selection sweep
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_descriptor_round13.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Required `make -j8` was a no-op.
+- Checked-in selector:
+  `ldst and (descriptor_roundtrip or descriptor_compositions or descriptor_chain or runtime_selector or rowcol_permuted or tile_selector) and not reports`
+  collected `142/1615`.
+- Split-4 runtime result: group 1/GPU 0 `36 passed`; group 2/GPU 1
+  `10 passed, 26 skipped`; group 3/GPU 2 `36 skipped`; group 4/GPU 3
+  `18 passed, 16 skipped`.
+- Aggregate: `64 passed, 78 skipped`, no failures. Descriptor
+  roundtrips/compositions, row/column-permuted descriptor parents, two-CTA
+  descriptor parents, and subword descriptor chains did not reproduce
+  `FZ-20260421-0011` or `FZ-20260421-0012`.
+- Follow-up selector:
+  `ldst and (descriptor_chain or x1 or subword or replay)` collected
+  `261/1615`.
+- Follow-up split-4 result after required `make -j8` per shard:
+  - group 1/GPU 0: `66 passed, 1549 deselected in 27.90s`;
+  - group 2/GPU 1: `21 passed, 45 skipped, 1549 deselected in 42.80s`;
+  - group 3/GPU 2: `45 passed, 21 skipped, 1549 deselected in 56.78s`;
+  - group 4/GPU 3: `59 passed, 4 skipped, 1552 deselected in 15.76s`.
+- Follow-up aggregate: `191 passed, 70 skipped`, no failures.
+
+## 2026-04-21: Round 13 local MMAv5 descriptor/view sweep
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_descriptor_view_round13.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Required `make -j8` was a no-op.
+- Checked-in selector:
+  `mma_twocta_indexed_acc_view or mma_twocta_tma_tf32_b_transposed_descriptor or mma_scaled_shared_scale_descriptor_view_auto_tmem_copy or mma_scaled_indexed_acc_identity_narrow_view_format_use_acc`
+  collected `37/1615`.
+- Split-4 runtime result: group 1/GPU 0 `10 passed`; group 2/GPU 1
+  `10 passed`; group 3/GPU 2 `10 passed`; group 4/GPU 3 `7 passed`.
+- Aggregate: `37 passed`, no failures. Non-FPSAN indexed accumulator views,
+  lifted `linear_unit_parent` parents, `use_acc` true/false rows, TMA
+  transposed-B descriptor rows, and one scaled-MMAv5 indexed narrow control did
+  not reproduce `FZ-20260421-0011`.
+
 ## 2026-04-21: local copy/subword runtime slice
 
 - Ran checked-in runtime-matrix copy/subword coverage while the custom
