@@ -14949,6 +14949,31 @@ rejection, not rescue
   - stress ld/st read-only descriptor views where roundtrips mask bugs;
   - expand 2CTA indexed ld.red provenance and non-min reductions.
 
+## Current: 2026-04-21 10:28 UTC structural fuzzing clean-boundary replay
+
+- Active campaign mode remains discovery-only; do not start backend repairs
+  while new findings continue unless the user explicitly pivots.
+- Current pushed HEAD before this local checkpoint was `88bea611f`.
+- Round 12 active subagents at this point:
+  - Lane U: ld.red row/column/opcode fuzzing;
+  - Lane W: generic pass/view interaction fuzzing.
+- Local sanity while those lanes ran:
+  - required `make -j8` was a no-op on each shard;
+  - checked-in `reports_clean_unsupported` runtime-matrix selector passed
+    split-4 across GPUs 0-3 with stable caches as `19/25/24/24`, aggregate
+    `92 passed`;
+  - durations reused from
+    `/tmp/tmem_local_r10_clean_diagnostics_durations.json`.
+- No new bucket was found in this clean-boundary replay.
+- Lane U completed after this local replay. The report
+  `agents/fuzz_ldred_rowcol_round12.md` found no new independent `FZ-*` and
+  no runtime miscompile across `94` rows: `42` pass, `19` `FZ-0004` opcode
+  fallback, `14` `FZ-0008` optimizer abort, `13` `FZ-0005/0009`
+  allocator/resource, and `6` clean TMEM OOR boundaries.
+- Next action remains continuous fuzzing: integrate Lane U/W reports when they
+  finish, commit/push every meaningful checkpoint, then launch the next
+  non-overlapping fuzz lane.
+
 ## Current: 2026-04-21 08:50 UTC structural fuzzing Round 4 promoted sentinels
 
 - Active campaign mode remains discovery-only; do not start backend repairs

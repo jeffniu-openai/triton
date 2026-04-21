@@ -27479,3 +27479,35 @@ Open after this slice:
 - Command:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short 'python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max]' 'python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash' 'python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_scaled_mma_acc_subslice_control_flow[mma-scaled-fz20260421-0007-subslice-if-n64-selector0]'`
 - Result: `3 xfailed in 4.59s`.
+
+## 2026-04-21: local clean-boundary selector replay
+
+- Reran the checked-in `reports_clean_unsupported` runtime-matrix selector as
+  a clean-boundary sanity slice while Round 12 ld.red and generic-view
+  subagent lanes were active. No backend or compiler repairs were attempted.
+- Required `make -j8` was a no-op for each shard.
+- Command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --splitting-algorithm=least_duration --durations-path /tmp/tmem_local_r10_clean_diagnostics_durations.json -k 'reports_clean_unsupported' python/test/gluon/test_tmem_runtime_matrix.py`
+- Result:
+  - group 1/GPU 0: `19 passed`;
+  - group 2/GPU 1: `25 passed, 1590 deselected in 6.42s`;
+  - group 3/GPU 2: `24 passed, 1591 deselected in 6.63s`;
+  - group 4/GPU 3: `24 passed, 1591 deselected in 6.39s`.
+- Aggregate: `92 passed`. No new bucket was found; clean-diagnostic coverage
+  remains stable.
+
+## 2026-04-21: Round 12 Lane U ld.red row/column/opcode fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_rowcol_round12.md`.
+- Classification: no new independent `FZ-*` bucket and no runtime miscompile.
+- Temporary probe `/tmp/tmem_ldred_rowcol_round12_probe.py` ran `94` rows in
+  fresh subprocesses with stable caches after required `make -j8` no-op.
+- Final classification: `42` pass, `19` `FZ-20260421-0004` opcode fallbacks,
+  `14` `FZ-20260421-0008` optimizer aborts, `13` `FZ-20260421-0005/0009`
+  allocator/resource failures, and `6` clean TMEM OutOfResources boundaries.
+- Bucket evidence broadened existing ld.red coverage across 2CTA indexed and
+  column-chain `min`/`max.abs.NaN`, row-chain permutations through `N=128`,
+  and 1CTA `M=256` indexed/row-chain/column-chain reductions.

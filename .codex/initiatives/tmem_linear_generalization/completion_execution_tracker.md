@@ -395,6 +395,16 @@ The project is complete when:
   2026-04-21 local exact structural xfail sample stayed stable:
   `FZ-20260421-0004`, `FZ-20260421-0009`, and `FZ-20260421-0007` exact nodeids
   reported `3 xfailed in 4.59s`.
+  2026-04-21 local clean-boundary selector replay stayed green:
+  `reports_clean_unsupported` passed split-4 across GPUs 0-3 with stable
+  caches as `19/25/24/24`, aggregate `92 passed`; durations reused from
+  `/tmp/tmem_local_r10_clean_diagnostics_durations.json`.
+  2026-04-21 Round 12 Lane U completed ld.red row/column/opcode fuzzing
+  without backend repairs. No new independent `FZ-*` and no runtime
+  miscompile. Probe total: `94` rows classified as `42` pass, `19`
+  `FZ-20260421-0004`, `14` `FZ-20260421-0008`, `13`
+  `FZ-20260421-0005/0009`, and `6` clean TMEM OOR boundaries. Report:
+  `agents/fuzz_ldred_rowcol_round12.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

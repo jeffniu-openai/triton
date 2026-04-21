@@ -1706,6 +1706,34 @@ remain family-specific and consume a bounded subset of the inventory.
   requirements and no-scales `warpx2` subword packed-lane storage-model
   requirements. No new independent copy-family bucket.
 
+### Round 12 Lane U, ld.red row/column/opcode fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_rowcol_round12.md`
+- Required build: `make -j8` no-op.
+- Temporary probe:
+  `/tmp/tmem_ldred_rowcol_round12_probe.py`.
+- Scope: 94 subprocess-isolated `tcgen05.ld.red` rows over 1CTA direct,
+  1CTA indexed, 1CTA descriptor chains, 2CTA direct controls, 2CTA indexed,
+  2CTA row chains, 2CTA column chains, row/column permutations, `N` from `2`
+  through `512`, and `min`/`max.abs.NaN` modifier variants where supported.
+- Result: no new independent `FZ-*` bucket and no runtime miscompile.
+- Final classification:
+  - `42` pass;
+  - `19` `FZ-20260421-0004` opcode-fallback rows where runtime values were
+    correct but PTX/LLIR emitted plain `tcgen05.ld` instead of `.ld.red`;
+  - `14` `FZ-20260421-0008` optimizer abort rows in
+    `TritonNvidiaGPUOptimizeTMemLayoutsPass` with the known row/col/block
+    dimension mismatch;
+  - `13` `FZ-20260421-0005/0009` allocator/resource failures for 1CTA
+    `M=256` indexed and chained reductions;
+  - `6` clean TMEM OutOfResources boundaries.
+- Bucket expansion: broadens `FZ-20260421-0004` across 2CTA indexed and
+  column-chain `min` and `max.abs.NaN` plus one row-chain permutation,
+  broadens `FZ-20260421-0008` through `N=128` and multiple row permutations,
+  and broadens `FZ-20260421-0005/0009` across narrow and wide `N`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
