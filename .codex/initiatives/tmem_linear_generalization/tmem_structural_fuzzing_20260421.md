@@ -74,6 +74,24 @@ remain family-specific and consume a bounded subset of the inventory.
   generalizes to `M256xN256,w4`; matching `w8` rows diagnose clean
   shared-memory OOR.
 
+### Round 33 Local, FZ-0018 PTX artifact capture
+
+- Time: 2026-04-21 13:13 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_fz0018_ptx_round33.md`
+- Scope: preserve standalone IR/PTX artifacts for the failing direct
+  `M128xN512,w4` FZ-0018 row and replay ptxas outside the Python runtime
+  harness.
+- Result: `TRITON_REPRODUCER_PATH` produced no MLIR reproducer because the
+  failure is ptxas/cubin-stage. `TRITON_KERNEL_DUMP=1` preserved
+  `direct_kernel.ttgir`, `direct_kernel.llir`, and `direct_kernel.ptx` under
+  `/tmp/tmem_fz0018_dump/...`. Standalone `ptxas-blackwell` replay on the
+  dumped PTX exits `255` with the FZ-0018 register-allocation failure. Passing
+  dumped controls show `M128xN512` column-reversed hardware `.ld.red` assembles
+  with `96` registers/eight `.ld.red` PTX occurrences and `M64xN512` assembles
+  with `255` registers/four `.ld.red` occurrences, so the issue is not simply
+  "all 255-register kernels fail."
+
 ### Round 32 Lane, Subword/Narrow-Shape Python Runtime TMEM
 
 - Time: 2026-04-21 12:57 UTC
@@ -1778,7 +1796,9 @@ remain family-specific and consume a bounded subset of the inventory.
   files under `/tmp/tmem_ldred_extremes_round31/`; Round 32 minimizer
   `/tmp/tmem_ldred_fz0018_min_round32.py`,
   `/tmp/tmem_ldred_fz0018_min_round32/summary.json`, and per-case logs under
-  `/tmp/tmem_ldred_fz0018_min_round32/`.
+  `/tmp/tmem_ldred_fz0018_min_round32/`; Round 33 PTX capture
+  `/tmp/tmem_fz0018_dump/.../direct_kernel.{ttgir,llir,ptx}` and passing
+  control dumps under `/tmp/tmem_fz0018_dump_compare_pass/`.
 - Repair guidance: add a compiler-only minimizer and decide whether the correct
   outcome is supported codegen with a better resource plan or an earlier clean
   resource diagnostic. Backend repair is intentionally deferred during the
