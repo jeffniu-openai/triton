@@ -1676,6 +1676,36 @@ remain family-specific and consume a bounded subset of the inventory.
   pins FPSAN instrumentation; include dynamic-slice and constexpr-index green
   controls next to it.
 
+### Round 12 Lane V, copy descriptor/addressing fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_descriptor_round12.md`
+- Required build: `make -j8` no-op.
+- Checked-in copy/scales selector:
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_warpx2 or cp_scales or cp_128x128 or cp_no_scales_linear_subword or cp_no_scales_twocta_layout_in_4cta_context'`
+  selected `128/1615` tests and passed split-4 as `32/32/32/32`.
+- Fresh-process probe:
+  `/tmp/tmem_copy_descriptor_round12_probe.py` reported `6` pass,
+  `3` `FZ-20260421-0010`, and one harness capture limitation that exact
+  pytest later confirmed as the known scales descriptor-view clean boundary.
+- Positive opcode checks:
+  - no-scales 1CTA `warpx2::01_23` f32 emitted matching
+    `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b`;
+  - no-scales indexed `warpx2::02_13` i32 emitted matching
+    `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b`;
+  - no-scales 2CTA `warpx2::01_23` slice-index emitted matching
+    `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b`;
+  - linear subword i8 emitted `tcgen05.cp.cta_group::1.128x256b`;
+  - scales `warpx4` 1CTA/2CTA direct rows emitted matching
+    `tcgen05.cp.cta_group::1.warpx4.32x128b`.
+- `FZ-20260421-0010` copy evidence: no-scales 2CTA copy in 4/8/16 CTA launch
+  contexts still rejects with `Layout has 2 CTAs per CGA, but the context
+  requires Y CTAs per CGA`.
+- Clean boundaries stayed clean for scales descriptor-view row-order/footprint
+  requirements and no-scales `warpx2` subword packed-lane storage-model
+  requirements. No new independent copy-family bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

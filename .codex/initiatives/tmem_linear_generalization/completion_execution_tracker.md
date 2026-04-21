@@ -386,6 +386,15 @@ The project is complete when:
   across GPUs 0-3 selected `9/9/9/6` tests and reported aggregate
   `33 passed`. Durations were stored at
   `/tmp/tmem_local_r12_cp_scales_nonreports_durations.json`.
+  2026-04-21 Round 12 Lane V completed copy descriptor/addressing fuzzing
+  without backend repairs. No new independent `FZ-*`. Checked-in copy/scales
+  runtime slice selected `128/1615` and passed `128/128`; fresh-process probe
+  classified `6` pass, `3` `FZ-20260421-0010` high-CGA no-scales copy rows,
+  and one harness capture limitation later confirmed clean. Report:
+  `agents/fuzz_copy_descriptor_round12.md`.
+  2026-04-21 local exact structural xfail sample stayed stable:
+  `FZ-20260421-0004`, `FZ-20260421-0009`, and `FZ-20260421-0007` exact nodeids
+  reported `3 xfailed in 4.59s`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

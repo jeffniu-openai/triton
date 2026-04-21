@@ -27453,3 +27453,29 @@ Open after this slice:
   - group 3/GPU 2: `9 passed, 1606 deselected in 6.38s`;
   - group 4/GPU 3: `6 passed, 1609 deselected in 5.16s`.
 - Aggregate: `33 passed`. No new bucket was found.
+
+## 2026-04-21: Round 12 Lane V copy descriptor/addressing fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_descriptor_round12.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Checked-in copy/scales selector selected `128/1615` and passed `128/128`
+  split across GPUs 0-3.
+- Fresh-process custom probe found `6` pass, `3` `FZ-20260421-0010` high-CGA
+  no-scales copy rows, and one harness capture limitation later confirmed
+  clean by exact pytest.
+- Positive opcode checks covered no-scales `warpx2::01_23`,
+  `warpx2::02_13` indexed, 2CTA `warpx2::01_23` slice-index, no-scales
+  subword, and scales `warpx4` direct copy.
+- Clean boundaries stayed specific for scales descriptor-view row-order and
+  no-scales `warpx2` subword packed-lane storage-model requirements.
+
+## 2026-04-21: local structural exact xfail sample
+
+- Ran three exact checked-in structural-fuzzer xfail nodeids as a compact
+  stability sample around current active buckets.
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short 'python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max]' 'python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash' 'python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_scaled_mma_acc_subslice_control_flow[mma-scaled-fz20260421-0007-subslice-if-n64-selector0]'`
+- Result: `3 xfailed in 4.59s`.

@@ -12,6 +12,23 @@
   `9`, `9`, `9`, and `6` tests; aggregate result `33 passed`. Durations were
   stored at `/tmp/tmem_local_r12_cp_scales_nonreports_durations.json`.
 
+- Latest: 2026-04-21 completed Round 12 Lane V copy descriptor/addressing
+  fuzzing. Report: `agents/fuzz_copy_descriptor_round12.md`. No new
+  independent `FZ-*`. Checked-in copy/scales runtime slice selected
+  `128/1615` and passed `128/128` split across GPUs 0-3. Fresh-process custom
+  probe classified `6` pass, `3` `FZ-20260421-0010` high-CGA no-scales copy
+  rows, and one harness capture limitation later confirmed clean by exact
+  pytest. Positive opcode checks covered `warpx2::01_23`, indexed
+  `warpx2::02_13`, 2CTA `warpx2::01_23` slice-index, no-scales subword, and
+  scales `warpx4`; clean boundaries stayed specific for scales descriptor
+  view and warpx2 subword packed-lane rows.
+
+- Latest: 2026-04-21 local exact structural xfail sample stayed stable:
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max`,
+  `test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash`, and
+  `mma-scaled-fz20260421-0007-subslice-if-n64-selector0` reported
+  `3 xfailed in 4.59s`.
+
 - Latest: 2026-04-21 local post-report structural-fuzzer smoke gate stayed
   green. Required `make -j8` reported no work to do. Command:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
