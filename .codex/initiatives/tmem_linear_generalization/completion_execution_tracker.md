@@ -88,6 +88,14 @@ The project is complete when:
   existing `FZ-0001`, `FZ-0016`, and `FZ-0017` across `18` MLIR probes and
   three pass modes. Results: `18` passes, `23` clean diagnostics, `12`
   assertion/stack-dump aborts, and `1` late illegal-op failure.
+  2026-04-21 12:57 UTC Round 32 subword/narrow-shape Python runtime TMEM
+  fuzzing completed. Artifacts: `agents/fuzz_subword_narrow_round32.md` and
+  `agents/fuzz_sub32_python_round32.md`. Required `make -j8` was a no-op.
+  Results: subword/copy/diagnostic split-4 sweep `79 passed`; supported
+  f32/i32 narrow/control split-4 sweep `60 passed`; sibling temporary
+  Python/Gluon dtype roundtrip probe `80 passed`. No new independent `FZ-*`;
+  this is a green guardrail around `FZ-0017`, which remains isolated to
+  encoded 64-bit non-reduction TMEM load/store lowering under this coverage.
   2026-04-21 Round 32 scaled-MMAv5 2CTA runtime guardrail completed.
   Artifact: `agents/fuzz_scaled_twocta_round32.md`. Selector
   `mma_scaled and twocta and not reports and not resource` passed split-4 as
@@ -96,6 +104,10 @@ The project is complete when:
   Artifact: `agents/fuzz_local_scales_copy_clean_round31.md`. Selector
   `(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`
   passed split-4 as `55 passed`; no new bucket.
+  2026-04-21 Round 31b compiler-boundary reduction/scale follow-up completed.
+  Artifact: `agents/fuzz_compiler_boundaries_round31b.md`. No new bucket;
+  dynamic indexed reduction/scale loads expand `FZ-0001`, and unencoded
+  reduction load results expand `FZ-0016`.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline
@@ -2506,3 +2518,23 @@ signal handling:
   sharpen `FZ-0001`, `FZ-0016`, and `FZ-0017`. Next compiler-only slice should
   extend the same matrix to reduction loads, scale TMEM layouts, and
   descriptor-view chains while keeping TMEM consumers live.
+
+- 2026-04-21 13:00 UTC: Round 31b compiler boundary follow-up completed.
+  Report: `agents/fuzz_compiler_boundaries_round31b.md`. Ran `8` generated
+  reduction/load and scale-layout MLIR cases through verifier, optimize, and
+  lower modes after `make -j8`. Results after manual classification: `6`
+  passes, `15` clean diagnostics or known late illegal-op failures, and `3`
+  assertion aborts. No new bucket; classifications sharpen `FZ-0001` and
+  `FZ-0016`, and confirm clean `i64 ld.red` / scale-copy diagnostics.
+
+- 2026-04-21 12:54 UTC: Round 31 ld.red descriptor/layout extremes completed.
+  Report: `agents/fuzz_ldred_extremes_round31.md`. Temporary subprocess
+  runtime probe covered `23` M/N extremes, row/col permutations, direct and
+  indexed roots, descriptor-view chains, explicit variants, invalid 2CTA
+  ownership, and resource boundaries. Result: `15` pass, `3` existing
+  `FZ-0012`, `1` existing `FZ-0010`, `2` clean resource boundaries, and `2`
+  new `FZ-20260421-0018` candidate rows. `FZ-0018` is direct `M128xN512`
+  hardware `ld.red` reaching ptxas register allocation failure; `M64xN512`
+  passes and `M128xN512` with `num_warps=8` cleanly reports shared-memory
+  OOR. Checked-in ld.red selector stayed stable as `237 passed, 6 failed`,
+  all known `FZ-0012`.

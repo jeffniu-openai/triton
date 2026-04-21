@@ -55,6 +55,52 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ## Round Log
 
+### Round 32 Lane, Subword/Narrow-Shape Python Runtime TMEM
+
+- Time: 2026-04-21 12:57 UTC
+- Reports:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_subword_narrow_round32.md`
+  and
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_sub32_python_round32.md`
+- Scope: Python/Gluon runtime fuzzing around `f16`, `bf16`, `i16`, `i8`,
+  `f32`, and `i32` TMEM load/store/copy paths, narrow N and x1 packed forms,
+  descriptor chains, indexed/subslice views, 1CTA/2CTA layouts, and clean
+  diagnostics for packed/subword hardware or layout boundaries.
+- Result: no new independent `FZ-*` bucket. Split-4 subword/copy/diagnostic
+  sweep passed as `79 passed`; supported f32/i32 narrow/control sweep passed
+  as `60 passed`; sibling temporary Python/Gluon dtype roundtrip probe passed
+  as `80 passed`. Combined evidence: `219` rows, with no compiler crash,
+  false unsupported diagnostic, opcode mismatch, or runtime miscompile. The
+  bitwidth crash cataloged by `FZ-20260421-0017` remains isolated to encoded
+  `i64`/`f64` non-reduction TMEM load/store lowering under the covered
+  neighborhood.
+
+### Round 32 Local, ld/st narrow and half-row runtime guardrail
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_narrow_round32.md`
+- Scope: checked-in runtime rows around `ld/st` narrow `N=32`, half-row,
+  `i32` broad-layout, and subword-adjacent `16x128b` / `16x256b` variants.
+- Result: no new independent `FZ-*` bucket. Selector
+  `ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip`
+  collected `141/1615` rows and passed split-4 as `141 passed`.
+
+### Round 31 Lane, ld.red descriptor/layout extremes
+
+- Time: 2026-04-21 12:54 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_extremes_round31.md`
+- Scope: temporary runtime probe for f32 `ld.red` M/N extremes, row/column
+  basis permutations, explicit instruction variants, indexed descriptor roots,
+  descriptor-view chains, invalid 2CTA ownership, clean resource boundaries,
+  and opcode consistency.
+- Result: new candidate `FZ-20260421-0018`. The temporary matrix produced
+  `15` passes, `3` existing `FZ-20260421-0012`, `1` existing
+  `FZ-20260421-0010`, `2` clean resource boundaries, and `2`
+  `FZ-20260421-0018` rows. Checked-in `ld_red and not reports and not resource`
+  stayed stable as `237 passed, 6 failed`, all known `FZ-0012`.
+
 ### Round 32 Local, scaled-MMAv5 2CTA runtime guardrail
 
 - Time: 2026-04-21
@@ -78,6 +124,21 @@ remain family-specific and consume a bounded subset of the inventory.
   and passed split-4 as `55 passed`, covering scales copy rows and clean
   unsupported/error diagnostics adjacent to Round 31 scaled operand and
   compiler-boundary fuzzing.
+
+### Round 31b Compiler Boundary Follow-Up, reduction and scale layouts
+
+- Time: 2026-04-21 13:00 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_boundaries_round31b.md`
+- Scope: compiler-only MLIR probes for live `ttng.tmem_load` reductions,
+  tensor-memory scale layouts, dynamic `ttg.memdesc_index` into reduction and
+  scale consumers, 64-bit reduction diagnostics, and scale copy boundaries.
+- Result: no new independent `FZ-*` bucket. Across `8` MLIR cases and three
+  compiler modes, the matrix produced `6` passes, `15` clean diagnostics or
+  known late illegal-op failures, and `3` existing unencoded-tensor verifier
+  aborts. Dynamic indexed reduction/scale loads expand `FZ-20260421-0001`;
+  unencoded reduction load results expand `FZ-20260421-0016`; non-f32
+  reduction and scale-copy wrong-source/layout rows stayed clean diagnostics.
 
 ### Round 31 Lane, scaled-MMAv5 TMEM descriptor operands
 

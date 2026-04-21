@@ -30210,6 +30210,20 @@ Open after this slice:
   rows remain green next to Round 31 scaled operand and compiler-boundary
   fuzzing.
 
+## 2026-04-21: Round 31b compiler-boundary reduction/scale follow-up
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_boundaries_round31b.md`.
+- Generated `8` MLIR probes under `/tmp/tmem_compiler_boundaries_round31b`
+  and ran verify, optimize, and allocation/LLVM conversion modes with
+  `triton-opt`.
+- Result across the matrix: `6` passes, `15` clean diagnostics or known late
+  illegal-op failures, and `3` existing unencoded-tensor verifier aborts.
+- Classification: no new independent `FZ-*`. Live dynamic-index reduction and
+  scale consumers expand existing `FZ-0001`; unencoded reduction load results
+  expand existing `FZ-0016`; non-f32 reduction and scale-copy wrong-source or
+  unsupported-layout rows stayed clean diagnostics.
+
 ## 2026-04-21: Round 31 local descriptor and copy guardrails
 
 - Wrote:
@@ -30273,3 +30287,65 @@ Open after this slice:
   `i64` load and `f64` store via the same `bitwidth == 32` assertion.
 - Clean boundaries confirmed for malformed subslice, reshape, transpose, wrong
   `tmem_load` source memory space, and wrong `tmem_copy` source memory space.
+
+## 2026-04-21: Round 31b compiler boundary follow-up
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_boundaries_round31b.md`.
+- Required `make -j8` was a no-op before probes.
+- Generated `8` follow-up MLIR probes under
+  `/tmp/tmem_compiler_boundaries_round31b` and ran verifier, TMEM-layout
+  optimize, and allocation+LLVM modes.
+- Corrected matrix after manual classification: `6` passes, `15` clean
+  diagnostics or known late illegal-op failures, and `3` assertion aborts.
+- No new independent `FZ-*` bucket. The lane expands `FZ-20260421-0001` to
+  live reduction-load and scale-load dynamic-index consumers; expands
+  `FZ-20260421-0016` to mixed-result reduction loads with unencoded tensors;
+  confirms `i64 ld.red` rejects cleanly with the f32-only diagnostic; and
+  confirms scale-copy wrong-source / unsupported shared-layout cases diagnose
+  cleanly.
+
+## 2026-04-21: Round 31 ld.red descriptor/layout extremes
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_extremes_round31.md`.
+- Required `make -j8` was a no-op.
+- Temporary runtime artifacts live under `/tmp/tmem_ldred_extremes_round31`;
+  the subprocess harness executed `23` f32 `ld.red` rows spanning M/N
+  extremes, row/column basis permutations, direct and indexed roots,
+  descriptor-view chains, explicit variants, invalid 2CTA ownership, and clean
+  resource boundaries.
+- Probe result: `15` pass, `3` existing `FZ-20260421-0012`, `1` existing
+  `FZ-20260421-0010`, `2` clean resource boundaries, and `2` new
+  `FZ-20260421-0018` candidate rows.
+- New candidate `FZ-20260421-0018`: direct `M128xN512` f32 hardware `ld.red`
+  reaches `ptxas-blackwell` register allocation failure (`register count of
+  '255'`) instead of a clean compiler/resource diagnostic. The same shape with
+  `num_warps=8` reports clean shared-memory OOR, and `M64xN512` executes
+  correctly with hardware `ld.red`, so this is independent of known
+  `FZ-0012` M64 destination-layout planning.
+- Checked-in guardrail selector
+  `ld_red and not reports and not resource` completed split-4 as
+  `237 passed, 6 failed`; all six failures are unchanged `FZ-0012`.
+
+## 2026-04-21: Round 32 subword/narrow-shape Python runtime fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_subword_narrow_round32.md`.
+- Integrated sibling temporary Python/Gluon dtype roundtrip report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_sub32_python_round32.md`.
+- Required `make -j8` was a no-op before probes.
+- Runtime subword/copy/diagnostic split-4 sweep covered subword `ld/st`, x1
+  packed forms, descriptor chains, copy exact-width rows, linear and 2CTA copy
+  views, and expected clean diagnostics for packed/subword impossible copy
+  layouts. Result: `79 passed`.
+- Supported 32-bit narrow/control split-4 sweep covered f32/i32 no-scale copy
+  rows across narrow N, indexed/subslice views, and 1CTA/2CTA codegen rows.
+  Result: `60 passed`.
+- Sibling temporary Python/Gluon roundtrip probe under `/tmp/tmem_sub32_round32`
+  passed `80` dtype/layout/view rows across `float32`, `float16`, `bfloat16`,
+  `int32`, `int16`, `int8`, `uint8`, and `bool`.
+- Classification: no new independent `FZ-*`. Combined `219` rows keep
+  `FZ-20260421-0017` isolated to encoded `i64`/`f64` non-reduction TMEM
+  load/store lowering under the covered subword and supported-32-bit
+  neighborhood.

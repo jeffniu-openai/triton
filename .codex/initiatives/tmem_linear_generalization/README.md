@@ -8,7 +8,8 @@ current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
 Latest fuzzing checkpoint: 2026-04-21 Round 31-32 scaled-MMAv5 operand lane,
-local guardrails, and compiler-boundary fuzzing. Reports:
+local guardrails, compiler-boundary fuzzing, and subword/narrow-shape runtime
+fuzzing. Reports:
 `agents/fuzz_scaled_operand_round31.md`,
 `agents/fuzz_scaled_twocta_round32.md`,
 `agents/fuzz_local_descriptor_mix_round31.md`,
@@ -16,7 +17,11 @@ local guardrails, and compiler-boundary fuzzing. Reports:
 `agents/fuzz_local_scales_copy_clean_round31.md`,
 `agents/fuzz_python_descriptor_views_round31.md`, and
 `agents/fuzz_structural_rerun_round31.md`, plus
-`agents/fuzz_compiler_boundaries_round31.md`. The scaled operand lane found no
+`agents/fuzz_compiler_boundaries_round31.md`,
+`agents/fuzz_compiler_boundaries_round31b.md`,
+`agents/fuzz_sub32_python_round32.md`,
+`agents/fuzz_subword_narrow_round32.md`, and
+`agents/fuzz_ldred_extremes_round31.md`. The scaled operand lane found no
 new bucket and revalidated existing `FZ-0013`, `FZ-0015`, and `FZ-0010`
 boundaries; the 2CTA scaled-MMAv5 guardrail passed as `28 passed`;
 descriptor-heavy `ld.red` plus scaled-MMAv5 rows passed as `54 passed`;
@@ -26,9 +31,18 @@ scales-copy and clean-boundary rows passed as `55 passed`;
 Python descriptor-view frontend probing expanded existing `FZ-0017` with `48`
 64-bit `ASSERT_BITWIDTH_32` rows next to `40` passing 32-bit controls; the
 checked-in structural fuzzer stayed stable as `9 passed, 24 xfailed`; and the
-compiler-boundary lane sharpened existing `FZ-0001`, `FZ-0016`, and
-`FZ-0017`. No new independent `FZ-*` bucket was found. Round 31 subagents are
-still running `ld.red` extreme and descriptor-chain-shape lanes.
+compiler-boundary lanes sharpened existing `FZ-0001`, `FZ-0016`, and
+`FZ-0017`, including reduction-load and scale-layout follow-up probes. The
+subword/narrow-shape lane ran `219` Python/Gluon runtime rows across sub-32-bit
+and 32-bit `ld/st`/copy paths, descriptor views, 1CTA/2CTA rows, and clean
+diagnostics, all passing or diagnosing as expected. The `ld.red` extremes lane
+ran `23` f32 runtime rows with torch reference and opcode checks; `15` passed,
+`3` reproduced existing `FZ-0012`, `1` reproduced existing `FZ-0010`, `2` were
+clean resource boundaries, and `2` established new candidate
+`FZ-20260421-0018`: direct `M128xN512` hardware `ld.red` reaches ptxas register
+allocation failure instead of a clean resource diagnostic, while `M64xN512`
+passes and `M128xN512` with `num_warps=8` reports clean shared-memory OOR.
+Round 31 subagents are still running descriptor-chain-shape lanes.
 
 Previous fuzzing checkpoint: 2026-04-21 Round 26-28 discovery lanes. Reports:
 `agents/fuzz_high_cga_scaled_round26.md`,

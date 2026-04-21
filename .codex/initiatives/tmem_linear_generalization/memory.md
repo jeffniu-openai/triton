@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 12:57 UTC Round 32 subword/narrow-shape Python runtime
+  TMEM fuzzing completed. Reports:
+  `agents/fuzz_subword_narrow_round32.md` and sibling
+  `agents/fuzz_sub32_python_round32.md`. Required `make -j8` was a no-op.
+  Split-4 subword/copy/diagnostic sweep passed as `79 passed`; supported
+  f32/i32 narrow/control sweep passed as `60 passed`; sibling temporary
+  Python/Gluon dtype roundtrip probe passed as `80 passed`. Combined evidence:
+  `219` rows, no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*`. This keeps
+  `FZ-20260421-0017` isolated to encoded `i64`/`f64` non-reduction TMEM
+  load/store lowering for now.
+
 - Latest: 2026-04-21 Round 32 local scaled-MMAv5 2CTA guardrail completed.
   Report: `agents/fuzz_scaled_twocta_round32.md`. Required `make -j8` was a
   no-op. Selector `mma_scaled and twocta and not reports and not resource`
@@ -13,6 +25,14 @@
   Selector
   `(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`
   collected `55/1615` and passed split-4 as `55 passed`; no new bucket.
+
+- Latest: 2026-04-21 13:00 UTC Round 31b compiler-boundary follow-up
+  completed. Report: `agents/fuzz_compiler_boundaries_round31b.md`. It
+  extended the compiler-only matrix to reduction loads and scale layouts:
+  `8` MLIR cases across three pass modes produced `6` passes, `15` clean
+  diagnostics or known late illegal-op failures, and `3` existing unencoded
+  verifier aborts. No new bucket; dynamic indexed reduction/scale loads expand
+  `FZ-0001`, and unencoded reduction load results expand `FZ-0016`.
 
 - Latest: 2026-04-21 12:51 UTC Round 31 compiler-boundary lane completed.
   Report: `agents/fuzz_compiler_boundaries_round31.md`. It generated `18`
@@ -16341,3 +16361,26 @@ rejection, not rescue
   load/store now aborts at verifier time on `bitwidth == 32`. Clean
   diagnostics were confirmed for malformed subslice/reshape/transpose and
   wrong memory-space `tmem_load`/`tmem_copy` operands.
+
+- Round 31b compiler boundary follow-up wrote
+  `agents/fuzz_compiler_boundaries_round31b.md`. Generated `8` reduction/load
+  and scale-layout probes under `/tmp/tmem_compiler_boundaries_round31b`.
+  No new independent bucket. `FZ-20260421-0001` now includes live reduction
+  load and scale load dynamic-index compiler-only repros; `FZ-20260421-0016`
+  includes mixed-result `ld.red` with unencoded tensors; `i64 ld.red` rejects
+  cleanly with the f32-only diagnostic; and scale-copy wrong-source plus
+  unsupported shared-layout rows produce clean diagnostics.
+
+- Round 31 ld.red descriptor/layout extremes wrote
+  `agents/fuzz_ldred_extremes_round31.md`. Required `make -j8` was a no-op.
+  A temporary subprocess runtime probe under
+  `/tmp/tmem_ldred_extremes_round31` executed `23` f32 `ld.red` rows with
+  torch reference and PTX/LLIR opcode checks: `15` passed, `3` reproduced
+  existing `FZ-20260421-0012`, `1` reproduced existing `FZ-20260421-0010`,
+  `2` were clean resource boundaries, and `2` established new candidate
+  `FZ-20260421-0018`. `FZ-0018` is direct `M128xN512` hardware `ld.red`
+  reaching `ptxas-blackwell` register allocation failure with register count
+  `255`; `M64xN512` passes with four `16x32bx2.x64` reductions and
+  `M128xN512` with `num_warps=8` reports clean shared-memory OOR. The
+  checked-in selector `ld_red and not reports and not resource` stayed at
+  `237 passed, 6 failed`, with only unchanged `FZ-0012` failures.
