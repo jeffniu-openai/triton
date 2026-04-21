@@ -3233,3 +3233,33 @@ discovery.
   as `7 passed, 11 xfailed`. No XPASS, unexpected failure, compiler crash,
   false unsupported diagnostic, opcode mismatch, runtime miscompile, or new
   independent `FZ-*`.
+
+- 2026-04-21 14:35 UTC: Round 45 dynamic copy sentinel lane completed.
+  Report: `agents/fuzz_dynamic_copy_sentinel_round45.md`. Required
+  `make -j8` was a no-op. The minimized branch-selected linear-copy dynamic
+  descriptor row (`f32`, `M=128`, `N=4`, lifted
+  `_make_tmem_linear_layout(128, 4)`) reproduces existing
+  `FZ-20260421-0001` as a late illegal `ttg.memdesc_index` feeding
+  `ttng.tmem_copy`/`ttng.tmem_load`. Dynamic branch-selected
+  `warpx2::{01_23,02_13}` copy descriptors, including a
+  `slice(...).index(0)` chain, passed as positive controls. No new
+  independent `FZ-*`.
+
+- 2026-04-21 14:38 UTC: Round 45 runtime-matrix breadth lane completed.
+  Report: `agents/fuzz_runtime_matrix_breadth_round45.md`. Required
+  `make -j8` was a no-op. Positive descriptor/scaled/copy selector collected
+  `452/1615` and completed split-4 as `428 passed, 24 skipped`; isolated
+  diagnostic/resource boundary selector collected `103/1615` and passed as
+  `103 passed`; compact `test_core.py` TMA/MMAv5/scaled-copy selector
+  collected `20/18114` and passed as `20 passed`. No compiler crash, runtime
+  wrong-result, false unsupported diagnostic, boundary drift, or new
+  independent `FZ-*`.
+
+- 2026-04-21 14:41 UTC: Round 45 high-CGA/M64 breadth probe completed.
+  Report: `agents/fuzz_high_cga_m64_breadth_round45.md`. Required `make -j8`
+  was a no-op. Mixed selector over `ld_red_m64`, `mma_m64`, two-CTA TMA
+  transposed descriptors, high-CGA clean-boundary, and scale descriptor-view
+  CGA rows produced `86 passed, 6 failed, 1523 deselected`. All six failures
+  match existing `FZ-20260421-0012` M64 f32 `tcgen05.ld.red`
+  destination-layout planner gaps; adjacent high-CGA/two-CTA positives stayed
+  green. No new independent `FZ-*`.

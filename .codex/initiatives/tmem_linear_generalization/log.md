@@ -31632,3 +31632,47 @@ Open after this slice:
 - Classification: no runtime wrong-result miscompile, opcode mismatch, process
   abort, false unsupported diagnostic, or new independent `FZ-*` bucket.
   Backend repair remains deferred.
+
+## 2026-04-21 14:35 UTC: Round 45 dynamic copy sentinel sharpening
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_copy_sentinel_round45.md`.
+- Required `make -j8` was a no-op.
+- Minimized dynamic branch-selected linear-copy descriptor failure to `f32`,
+  `M=128`, `N=4`, lifted `_make_tmem_linear_layout(128, 4)`.
+- Failure signature remains existing `FZ-20260421-0001`: late LLVM conversion
+  sees illegal live `ttg.memdesc_index` from a control-flow-yielded TMEM
+  memdesc feeding `ttng.tmem_copy` and `ttng.tmem_load`.
+- Branch-selected `warpx2::{01_23,02_13}` copy descriptors passed as positive
+  controls, including `02_13` through `slice(...).index(0)`.
+- Static linear and static `warpx2` runtime-matrix contrasts passed. No new
+  independent `FZ-*`; backend repair remains deferred.
+
+## 2026-04-21 14:38 UTC: Round 45 runtime-matrix breadth sweep
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_runtime_matrix_breadth_round45.md`.
+- Required `make -j8` was a no-op.
+- Positive descriptor/scaled/copy selector:
+  `452/1615` collected, split-4 result `428 passed, 24 skipped`.
+- Isolated diagnostic/resource selector:
+  `103/1615` collected, split-4 result `103 passed`.
+- Compact `test_core.py` TMA/MMAv5/scaled-copy selector:
+  `20/18114` collected, split-4 result `20 passed`.
+- Classification: no compiler crash, runtime wrong-result, false unsupported
+  diagnostic, known-red leak into the positive lane, boundary drift, or new
+  independent `FZ-*`.
+
+## 2026-04-21 14:41 UTC: Round 45 high-CGA/M64 breadth probe
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_m64_breadth_round45.md`.
+- Required `make -j8` was a no-op.
+- Mixed selector:
+  `ld_red_m64 or mma_m64 or twocta_tma_tf32_b_transposed_descriptor or cp_no_scales_twocta_layout_in_4cta_context or ldst_scales_descriptor_view_cga_roundtrip`.
+- Result: `86 passed, 6 failed, 1523 deselected`.
+- The six failures are existing `FZ-20260421-0012` M64 f32 `tcgen05.ld.red`
+  destination-layout planner gaps for row-reversed and row-rotate/column
+  even-odd layouts in default and explicit split-N paths.
+- Adjacent M64 MMA, two-CTA TMA descriptor, high-CGA clean-boundary, and scale
+  descriptor-view CGA rows stayed green. No new independent `FZ-*`.
