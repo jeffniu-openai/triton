@@ -1,3 +1,17 @@
+## 2026-04-21 14:12 UTC: Round 41 full structural fuzzer guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_full_guardrail_round41.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Full checked-in structural fuzzer command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
+- Result: `9 passed, 24 xfailed in 8.20s`.
+- Classification: no XPASS, unexpected failure, compiler crash outside
+  expected xfail rows, runtime miscompile, or new independent `FZ-*`. Visible
+  xfail output matched expected `FZ-20260421-0001` late illegal
+  `ttg.memdesc_index` diagnostics.
+
 ## 2026-04-21 14:10 UTC: Round 39 high-rank descriptor-chain subagent lane
 
 - Integrated subagent report

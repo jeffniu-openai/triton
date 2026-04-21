@@ -60,6 +60,14 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:12 UTC Round 41 full structural fuzzer guardrail completed.
+  Artifact: `agents/fuzz_structural_full_guardrail_round41.md`. Required
+  `make -j8` reported `no work to do`. Full
+  `python/test/gluon/test_tmem_structural_fuzzer.py` passed as
+  `9 passed, 24 xfailed`; visible xfail output matched expected
+  `FZ-20260421-0001` late illegal `ttg.memdesc_index` diagnostics. No XPASS,
+  unexpected failure, compiler crash outside expected xfail rows, runtime
+  miscompile, or new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 14:10 UTC Round 39 high-rank descriptor-chain subagent lane
   integrated. Artifact: `agents/fuzz_high_rank_chain_shapes_round39.md`;
   subagent commit `a82c17ce3`. Required `make -j8` reported `no work to do`.
