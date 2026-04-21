@@ -3437,3 +3437,11 @@ discovery.
   as `8 passed`. No new evidence for `FZ-20260421-0010`,
   `FZ-20260421-0014`, or descriptor-consumer buckets; no new independent
   `FZ-*`.
+
+- 2026-04-21 14:51 UTC: Round 50 mixed exact runtime smoke completed. Report:
+  `agents/fuzz_mixed_exact_runtime_round50.md`. Required `make -j8` was a
+  no-op. After correcting a stale two-CTA TMA parametrized nodeid, exact smoke
+  over static `warpx2` copy, scaled B-scale descriptor-view rematerialization,
+  rank-5 unit-parent `ld/st`, and two-CTA TMA B-transposed TF32 descriptor
+  path passed as `4 passed`. No compiler crash, runtime miscompile, nodeid
+  drift after correction, or new independent `FZ-*`.

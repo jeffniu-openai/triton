@@ -31961,3 +31961,17 @@ Open after this slice:
   `8 passed`.
 - Classification: no new `FZ-20260421-0010`,
   `FZ-20260421-0014`, scaled descriptor-consumer leak, or independent `FZ-*`.
+
+## 2026-04-21 14:51 UTC: Round 50 mixed exact runtime smoke
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mixed_exact_runtime_round50.md`.
+- Required `make -j8` was a no-op.
+- First attempt used stale nonexistent nodeid
+  `test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor[legacy-32-32]`
+  and ran no tests; collection showed the valid nearby
+  `[linear-32-32]` row.
+- Corrected exact smoke result:
+  `4 passed`.
+- Classification: no compiler crash, runtime miscompile, nodeid drift after
+  correction, or new independent `FZ-*`.
