@@ -112,6 +112,10 @@ Newest clean/xfail stability selector:
 structural xfail selector collected `208/1648` and completed as
 `197 passed, 11 xfailed`; no unexpected pass/fail.
 
+Newest local descriptor baseline: `agents/fuzz_local_higher_rank_round21.md`.
+Higher-rank/multidim descriptor selector collected `102/1615` and completed as
+`82 passed, 20 skipped`; no new bucket.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and

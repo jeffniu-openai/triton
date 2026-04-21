@@ -1,5 +1,11 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 12:47 UTC local Round 21 higher-rank/multidim descriptor
+  selector completed. Report: `agents/fuzz_local_higher_rank_round21.md`.
+  Selector collected `102/1615` and completed as `82 passed, 20 skipped`; no
+  runtime miscompile, compiler crash, unexpected unsupported diagnostic, or new
+  `FZ-*` bucket.
+
 - Latest: 2026-04-21 12:30 UTC local Round 20 descriptor roundtrip and
   copy/scales selector completed. Report:
   `agents/fuzz_local_roundtrip_copy_round20.md`. Selector

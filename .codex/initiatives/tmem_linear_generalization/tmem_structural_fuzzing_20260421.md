@@ -2659,6 +2659,19 @@ remain family-specific and consume a bounded subset of the inventory.
   outside known rows, compiler crash outside known xfails, or new independent
   `FZ-*`.
 
+### Round 21 local higher-rank and multidim descriptor selector
+
+- Time: 2026-04-21 12:47 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_higher_rank_round21.md`
+- Selector:
+  `(higher_rank or multidim_slice or half_rows or rank5 or ldst_descriptor_higher_rank) and not reports`
+  collected `102/1615`.
+- Split-4 result:
+  `82 passed, 20 skipped`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

@@ -2073,3 +2073,7 @@ signal handling:
   expected. Report: `agents/fuzz_local_clean_xfail_round20.md`. Selector
   collected `208/1648` and completed as `197 passed, 11 xfailed`; no unexpected
   pass/fail and no new bucket.
+
+- 2026-04-21 12:47 UTC: local Round 21 higher-rank/multidim descriptor selector
+  completed. Report: `agents/fuzz_local_higher_rank_round21.md`. Selector
+  collected `102/1615` and completed as `82 passed, 20 skipped`; no new bucket.

@@ -28846,6 +28846,25 @@ Open after this slice:
 - Classification: no unexpected pass, unexpected failure, runtime miscompile,
   compiler crash outside known xfail rows, or new independent `FZ-*`.
 
+## 2026-04-21 12:47 UTC: Round 21 local higher-rank/multidim selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_higher_rank_round21.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector
+  `(higher_rank or multidim_slice or half_rows or rank5 or ldst_descriptor_higher_rank) and not reports`
+  collected `102/1615`.
+- Split-4 result with stable per-GPU caches:
+  `82 passed, 20 skipped`:
+  - GPU 0 / group 1: `26 passed`;
+  - GPU 1 / group 2: `26 passed`;
+  - GPU 2 / group 3: `7 passed, 19 skipped`;
+  - GPU 3 / group 4: `23 passed, 1 skipped`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote
