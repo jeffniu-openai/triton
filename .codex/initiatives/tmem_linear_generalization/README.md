@@ -5764,3 +5764,15 @@ When resuming the initiative:
   `4 passed, 1611 deselected`. This remains a green checked-in nearby control
   for the report-only `FZ-20260421-0013` scale descriptor-view miscompile
   bucket.
+
+## Latest: 2026-04-21 Round 26 local ld.red slice
+
+- Local Round 26 `ld.red` runtime slice wrote
+  `agents/fuzz_local_ldred_round26.md`. Selector
+  `ld_red and not reports and not resource` collected `243/1615` rows and
+  executed split-4 as `237 passed, 6 failed`.
+- All six failures are the known `FZ-20260421-0012` M64 f32 row-permuted
+  destination-layout planner gap (`unsupported dst layout`). Nearby identity,
+  column-only, M128, descriptor-chain, non-f32 software-reduce, and compatible
+  hardware-reduce controls passed. No new bucket or changed failure mode was
+  found.

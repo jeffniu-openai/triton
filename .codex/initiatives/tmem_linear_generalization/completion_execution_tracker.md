@@ -2286,3 +2286,11 @@ signal handling:
   `FZ-20260421-0010` CTA-count diagnostics and no new crash/miscompile. The
   scaled-MMAv5/local-view attempt was harness-limited before the local check.
   Local scaled-layout selector rerun stayed green as `91 passed`.
+
+- 2026-04-21 15:05 UTC: local Round 26 `ld.red` runtime slice completed.
+  Report: `agents/fuzz_local_ldred_round26.md`. Required `make -j8` was a
+  no-op. Selector `ld_red and not reports and not resource` collected
+  `243/1615` and ran split-4 as `237 passed, 6 failed`. The six failures are
+  existing `FZ-20260421-0012` M64 row-permuted `unsupported dst layout` rows;
+  no new bucket or changed failure mode was found. Continue Round 26 subagent
+  lanes and local non-overlapping runtime slices.

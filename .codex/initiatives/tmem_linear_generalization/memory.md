@@ -16063,3 +16063,14 @@ rejection, not rescue
   `least_duration` splitting after an ad hoc duration-store race was noticed.
   Stable result: `91 passed` across groups `11/58/11/11`, still green outside
   excluded `FZ-20260421-0015` rows.
+
+## Current: 2026-04-21 Round 26 local ld.red slice
+
+- Local Round 26 `ld.red` runtime slice wrote
+  `agents/fuzz_local_ldred_round26.md`. Selector
+  `ld_red and not reports and not resource` collected `243/1615` rows and ran
+  split-4 as `237 passed, 6 failed`. All six failures are the known
+  `FZ-20260421-0012` M64 f32 row-permuted destination-layout planner gap
+  (`unsupported dst layout`), with nearby identity, column-only, M128,
+  descriptor-chain, non-f32 software-reduce, and compatible hardware-reduce
+  controls passing. No new bucket or changed failure mode was found.

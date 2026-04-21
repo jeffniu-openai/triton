@@ -55,6 +55,20 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ## Round Log
 
+### Round 26 Local, ld.red Runtime Slice
+
+- Time: 2026-04-21 15:05 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldred_round26.md`
+- Scope: checked-in runtime-matrix `ld.red` rows selected by
+  `ld_red and not reports and not resource`.
+- Result: no new independent `FZ-*` bucket. The selector collected `243` rows;
+  split-4 execution produced `237` passing rows and `6` failures. All failures
+  are the known `FZ-20260421-0012` M64 f32 row-permuted destination-layout
+  planner gap (`unsupported dst layout`).
+- Note: this run intentionally stayed in discovery/cataloging mode; no backend
+  repair was attempted.
+
 ### Round 0, Campaign Setup
 
 - Time: 2026-04-21 08:18 UTC

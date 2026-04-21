@@ -28561,6 +28561,25 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 15:05 UTC: Round 26 local ld.red runtime slice
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldred_round26.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector `ld_red and not reports and not resource` collected `243/1615`
+  runtime-matrix rows.
+- Split-4 result with stable per-GPU caches:
+  `237 passed, 6 failed`:
+  - GPU 0 / group 1: `55 passed, 6 failed`;
+  - GPU 1 / group 2: `61 passed`;
+  - GPU 2 / group 3: `61 passed`;
+  - GPU 3 / group 4: `60 passed`.
+- Classification: no new independent `FZ-*` bucket. The six failures are the
+  known `FZ-20260421-0012` M64 row-permuted `ld.red` destination-layout
+  planner gap with `unsupported dst layout`; nearby controls passed.
+
 ## 2026-04-21 12:25 UTC: Round 25 high-CGA mixed ownership
 
 - Wrote
