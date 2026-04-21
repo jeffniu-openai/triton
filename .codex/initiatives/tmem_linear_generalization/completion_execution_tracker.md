@@ -60,6 +60,29 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:16 UTC Round 42 `ld.red` positive layout guardrail completed.
+  Artifact: `agents/fuzz_ldred_positive_layout_round42.md`. Selector
+  `(ld_red_identity_linear_layout or ld_red_tile_permuted_linear_layout or
+  ld_red_col_permuted_linear_layout or ld_red_row_permuted_linear_layout or
+  ld_red_rowcol_permuted_n_sweep or
+  ld_red_explicit_compatible_layout_variants) and not reports and not resource
+  and not non_f32 and not descriptor_chain and not m64` collected `60/1615`
+  rows and passed split-4 as `60 passed` (`15/15/15/15`). No compiler crash,
+  false unsupported diagnostic, opcode absence, runtime miscompile,
+  unexpected pass/fail transition, or new independent `FZ-*`; backend repair
+  remains deferred.
+  2026-04-21 14:16 UTC Round 41 subword/non-f32 descriptor-chain lane
+  integrated. Artifact: `agents/fuzz_subword_descriptor_chains_round41.md`.
+  Required `make -j8` reported `no work to do`. Checked-in selector over
+  subword `ld/st`, x1/narrow clean boundaries, subword copy, non-f32 `ld.red`,
+  f16/f8/i8 MMAv5/scaled-MMAv5, core descriptor-chain, and packed f16 rows
+  collected `388/19762` and passed/stably skipped split-4 as
+  `385 passed, 3 skipped`. Compiler-only probes reproduced only existing
+  `FZ-20260421-0017` for encoded `i64`/`f64` descriptor-view non-reduction
+  load/store; non-f32 `ld.red` remained a clean f32-only diagnostic, and
+  `i64`/`f64` copy passed. No compiler crash, false unsupported diagnostic,
+  opcode absence, clean-boundary drift, runtime miscompile, or new independent
+  `FZ-*`; backend repair remains deferred.
   2026-04-21 14:15 UTC Round 41 M64 descriptor-chain oracle lane integrated.
   Artifact: `agents/fuzz_m64_descriptor_oracle_round41.md`. Required
   `make -j8` reported `no work to do`. The Round 39 unpromoted
