@@ -2618,6 +2618,19 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 20 local 2CTA MMAv5 and scaled accumulator-subslice selector
+
+- Time: 2026-04-21 12:35 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_twocta_round20.md`
+- Selector:
+  `((mma_twocta and (indexed_acc_view or acc_subslice_view_plain_kinds or plain_kinds_use_acc or tma_tf32_b_transposed_descriptor_use_acc)) or (mma_scaled and twocta_acc_subslice)) and not reports and not clean`
+  collected `90/1615`.
+- Split-4 result:
+  `90 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

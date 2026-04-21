@@ -28783,6 +28783,25 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 12:35 UTC: Round 20 local 2CTA MMAv5/scaled selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_twocta_round20.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op from the immediately preceding local work.
+- Selector
+  `((mma_twocta and (indexed_acc_view or acc_subslice_view_plain_kinds or plain_kinds_use_acc or tma_tf32_b_transposed_descriptor_use_acc)) or (mma_scaled and twocta_acc_subslice)) and not reports and not clean`
+  collected `90/1615`.
+- Split-4 result with stable per-GPU caches:
+  `90 passed`:
+  - GPU 0 / group 1: `23 passed`;
+  - GPU 1 / group 2: `23 passed`;
+  - GPU 2 / group 3: `23 passed`;
+  - GPU 3 / group 4: `21 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

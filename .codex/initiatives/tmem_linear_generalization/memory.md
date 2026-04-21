@@ -8,6 +8,12 @@
   miscompile, compiler crash, unexpected unsupported diagnostic, or new
   `FZ-*` bucket.
 
+- Latest: 2026-04-21 12:35 UTC local Round 20 2CTA MMAv5/scaled accumulator
+  subslice selector passed. Report: `agents/fuzz_local_mma_twocta_round20.md`.
+  Selector collected `90/1615` and completed as `90 passed`; no runtime
+  miscompile, compiler crash, unexpected unsupported diagnostic, or new
+  `FZ-*` bucket.
+
 - Latest: 2026-04-21 12:18 UTC Lane AU completed the plain-only proxy-fence
   reproducer comparison. Report:
   `agents/fuzz_proxy_fence_plain_reproducer_round19.md`. Saved MLIR:

@@ -95,6 +95,10 @@ Newest local green baseline: `agents/fuzz_local_roundtrip_copy_round20.md`.
 Descriptor roundtrip/copy/scales selector collected `102/1615` and completed
 as `51 passed, 51 skipped`; no new bucket.
 
+Additional Round 20 green baseline: `agents/fuzz_local_mma_twocta_round20.md`.
+2CTA MMAv5/scaled accumulator-subslice selector collected `90/1615` and passed
+as `90 passed`; no new bucket.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and
