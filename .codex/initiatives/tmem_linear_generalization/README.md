@@ -7,7 +7,15 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 37 load/store positive guardrail
+Latest fuzzing checkpoint: 2026-04-21 Round 37 high-CGA ownership subagent
+lane integrated. Report: `agents/fuzz_high_cga_ownership_round37.md`.
+Checked-in high-CGA/multicast selector collected `28` rows and passed split-4
+as `28 passed`; build-tree lit `TritonNvidiaGPU/membar-cluster.mlir` passed;
+focused MMAv5, scaled-MMAv5, TMA, mbarrier, and scale-copy controls passed.
+Temporary ownership probe classified `15/15` expected diagnostics as existing
+`FZ-20260421-0010`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 37 load/store positive guardrail
 completed. Report:
 `agents/fuzz_ldst_positive_guardrail_round37.md`. Selector
 `ldst and not reports and not resource and not roundtrip and not clean`

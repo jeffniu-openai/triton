@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:08 UTC Round 37 high-CGA ownership subagent lane
+  integrated. Report: `agents/fuzz_high_cga_ownership_round37.md`. Required
+  `make -j8` was a no-op. Checked-in high-CGA/multicast selector collected
+  `28` rows across `test_tmem_structural_fuzzer.py`,
+  `test_tmem_runtime_matrix.py`, and `test_core.py` and passed split-4 as
+  `28 passed`. Build-tree `lit -v test/TritonNvidiaGPU/membar-cluster.mlir`
+  passed after `ninja triton-opt`. Focused MMAv5, scaled-MMAv5, TMA,
+  mbarrier, and scale-copy controls passed. Temporary probe
+  `/tmp/tmem_high_cga_ownership_round37_probe.py` classified `15/15`
+  expected diagnostics as existing `FZ-20260421-0010`; no missed
+  `getModuleTwoCTAs` propagation bug, compiler crash, runtime miscompile, or
+  new independent `FZ-*`.
+
 - Latest: 2026-04-21 14:05 UTC Round 37 load/store positive guardrail
   completed. Report:
   `agents/fuzz_ldst_positive_guardrail_round37.md`. Selector

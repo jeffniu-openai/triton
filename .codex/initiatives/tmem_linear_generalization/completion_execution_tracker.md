@@ -60,6 +60,14 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:08 UTC Round 37 high-CGA ownership subagent lane integrated.
+  Artifact: `agents/fuzz_high_cga_ownership_round37.md`. Checked-in
+  high-CGA/multicast selector collected `28` rows and passed split-4 as
+  `28 passed`; build-tree `membar-cluster.mlir` lit passed; focused MMAv5,
+  scaled-MMAv5, TMA, mbarrier, scale-copy, and shared-scale descriptor
+  controls passed. Temporary ownership probe classified `15/15` expected
+  diagnostics as existing `FZ-20260421-0010`; no missed `getModuleTwoCTAs`
+  propagation bug or new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 14:05 UTC Round 37 load/store positive guardrail completed.
   Artifact: `agents/fuzz_ldst_positive_guardrail_round37.md`. Selector
   `ldst and not reports and not resource and not roundtrip and not clean`

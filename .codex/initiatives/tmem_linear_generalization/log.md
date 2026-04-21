@@ -30766,6 +30766,29 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:08 UTC: Round 37 high-CGA ownership subagent lane integrated
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_ownership_round37.md`.
+- Required `make -j8` was a no-op in the subagent lane.
+- Checked-in selector:
+  `layout_in_4cta_context or cta8 or cta16 or high_cga or multicast or twocta_tma`
+  over `python/test/gluon/test_tmem_structural_fuzzer.py`,
+  `python/test/gluon/test_tmem_runtime_matrix.py`, and
+  `python/test/gluon/test_core.py`.
+- Collection/result: `28` selected rows, split-4 as `28 passed`.
+- Lit control:
+  `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/membar-cluster.mlir`
+  passed.
+- Focused checked-in controls for MMAv5, scaled-MMAv5, TMA multicast, mbarrier,
+  scale-copy, and shared-scale descriptor auto-copy passed.
+- Temporary probe:
+  `/tmp/tmem_high_cga_ownership_round37_probe.py`; result
+  `expected_diagnostics=15/15`.
+- Classification: no missed `getModuleTwoCTAs` propagation bug or new
+  independent `FZ-*`; local 1CTA/2CTA non-MMA TMEM work in 4/8/16 CTA launch
+  contexts remains existing `FZ-20260421-0010`.
+
 ## 2026-04-21 14:05 UTC: Round 37 load/store positive guardrail
 
 - Wrote
