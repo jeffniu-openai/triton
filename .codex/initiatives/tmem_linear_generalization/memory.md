@@ -15037,6 +15037,14 @@ rejection, not rescue
   `17 passed`, including scales CGA rows and the clean 4CTA copy diagnostic.
 - Local scaled descriptor sanity selected `32/1615` and passed split-4 as
   `32 passed`.
+- Structural fuzzer smoke gate stayed stable after required `make -j8` no-op:
+  `9 passed, 24 xfailed in 8.15s`.
+- Lane AA completed `FZ-20260421-0012` expansion. The report
+  `agents/fuzz_ldred_fz0012_round14.md` found no new independent bucket, but
+  broadened `FZ-0012` to effective non-identity M64 `ld.red` row bases across
+  `N in {32,64,128,256}`, column permutations, modifiers, explicit load
+  variants, and descriptor-preserving chains. Grid classification: `38` pass,
+  `86` `FZ-0012`, `5` `FZ-0010`, and `4` harness-limited rows.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 

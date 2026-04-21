@@ -503,6 +503,16 @@ The project is complete when:
   2026-04-21 local scaled descriptor sanity selected `32/1615` and passed
   split-4 as `32 passed`; durations stored at
   `/tmp/tmem_local_r14_scaled_descriptor_durations.json`.
+  2026-04-21 structural fuzzer smoke gate stayed stable after required
+  `make -j8` no-op: `9 passed, 24 xfailed in 8.15s`.
+  2026-04-21 Round 14 Lane AA broadened `FZ-20260421-0012` without backend
+  repairs. Checked-in `ld_red_m64 and not reports` collected `39/1615` and
+  split-4 ran as `33 passed, 6 failed`; temporary `133`-row grid classified
+  as `38` pass, `86` `FZ-20260421-0012`, `5` `FZ-20260421-0010`, and `4`
+  descriptor-permute harness-limited rows. The bucket now covers effective
+  non-identity M64 row bases across `N`, column permutations, modifiers,
+  explicit variants, and descriptor-preserving chains. Report:
+  `agents/fuzz_ldred_fz0012_round14.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

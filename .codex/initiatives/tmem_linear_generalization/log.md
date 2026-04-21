@@ -27826,6 +27826,38 @@ Open after this slice:
   - group 4/GPU 3: `8 passed, 1607 deselected in 5.10s`.
 - Aggregate: `32 passed`. No new bucket was found.
 
+## 2026-04-21: Round 14 structural fuzzer smoke gate
+
+- Reran the full checked-in structural fuzzer while Lane AA and Lane AB were
+  active. No backend or compiler repairs were attempted.
+- Required `make -j8` was a no-op.
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+- Result: `9 passed, 24 xfailed in 8.15s`.
+
+## 2026-04-21: Round 14 Lane AA FZ-0012 expansion
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_fz0012_round14.md`.
+- Classification: no additional independent `FZ-*` bucket, but
+  `FZ-20260421-0012` is broad, not a six-row artifact.
+- Required `make -j8` was a no-op.
+- Checked-in selector `ld_red_m64 and not reports` collected `39/1615` and
+  split-4 ran as `33 passed, 6 failed`.
+- Temporary subprocess-isolated grid ran `133` rows and classified as
+  `38` pass, `86` `FZ-20260421-0012`, `5` `FZ-20260421-0010`, and `4`
+  descriptor-permute harness-limited rows.
+- Updated `FZ-20260421-0012` owner: M64 `tcgen05.ld.red`
+  destination-layout lowering rejects effective non-identity row bases across
+  `N in {32,64,128,256}`, column permutations, `min`/`max`,
+  `abs`/NaN modifiers, explicit variants `32x32b`, `auto`, `16x32bx2`,
+  `32x32b_splitn`, and descriptor-preserving `slice`/`reshape` chains.
+- Nearby controls stayed green for row-identity M64 column permutations,
+  explicit M64 row-identity column controls, and M128 direct row-permuted
+  layouts. Attempted two-CTA M64-style rows mapped to existing `FZ-0010`.
+
 ## 2026-04-21: local copy/subword runtime slice
 
 - Ran checked-in runtime-matrix copy/subword coverage while the custom

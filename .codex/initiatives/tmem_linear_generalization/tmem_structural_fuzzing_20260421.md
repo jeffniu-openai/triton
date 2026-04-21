@@ -1971,6 +1971,44 @@ remain family-specific and consume a bounded subset of the inventory.
 - Result: `32/1615` collected and split-4 passed as `32 passed`; no new
   `FZ-*` bucket.
 
+### Round 14 structural fuzzer smoke gate
+
+- Time: 2026-04-21
+- Required build: `make -j8` no-op.
+- Scope: full checked-in structural fuzzer.
+- Result:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+  reported `9 passed, 24 xfailed in 8.15s`.
+
+### Round 14 Lane AA, FZ-0012 ld.red expansion
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_fz0012_round14.md`
+- Required build: `make -j8` no-op.
+- Scope: broadened and minimized `FZ-20260421-0012` across direct M64
+  `ld.red`, explicit load variants, modifiers, descriptor-preserving chains,
+  attempted two-CTA rows, and nearby row-identity column-permuted and M128
+  row-permuted controls.
+- Result: no additional independent `FZ-*` bucket, but `FZ-20260421-0012`
+  broadens substantially.
+- Checked-in M64 selector `ld_red_m64 and not reports` collected `39/1615`
+  and split-4 ran as `33 passed, 6 failed`.
+- Temporary subprocess-isolated grid ran `133` rows:
+  - `38` pass;
+  - `86` `FZ-20260421-0012`;
+  - `5` `FZ-20260421-0010`;
+  - `4` descriptor-permute harness-limited rows.
+- Updated classification:
+  `FZ-20260421-0012` covers M64 `tcgen05.ld.red` destination-layout lowering
+  rejecting effective non-identity row bases across `N in {32,64,128,256}`,
+  column permutations, `min`/`max`, `abs`/NaN modifiers, explicit variants
+  `32x32b`, `auto`, `16x32bx2`, `32x32b_splitn`, and descriptor-preserving
+  `slice`/`reshape` chains.
+- Green controls: row-identity M64 column permutations passed, explicit M64
+  row-identity column controls passed, and M128 direct row-permuted controls
+  passed. Attempted two-CTA M64-style rows mapped to existing `FZ-0010`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
