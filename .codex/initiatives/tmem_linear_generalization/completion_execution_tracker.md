@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 09:11 UTC
+Last updated: 2026-04-21 09:13 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -131,6 +131,16 @@ The project is complete when:
   `FZ-20260421-0003` f16 subword read-only miscompile, and clean unsupported
   descriptor-view diagnostics. Report:
   `agents/fuzz_generator_ldst_ldred_round7.md`.
+  2026-04-21 09:13 UTC Round 7 Lane C completed copy/readback discovery
+  without backend repairs. `/tmp/tmem_copy_readback_round7_probe.py` covered
+  no-scales `warpx2` descriptor-view copy/readback positives,
+  `warpx2::02_13` clean unsupported diagnostics, packed/subword clean
+  diagnostics, descriptor-chain `ld.red` readback, scales `warpx4`, and the
+  two-CTA-layout/four-CTA-context clean error. No stable new
+  backend/compiler failure was found and no `FZ-*` id was assigned. Report:
+  `agents/fuzz_copy_readback_round7.md`. Validation: required `make -j8`
+  no-op, probe py-compile, `/tmp` launcher six cases passed, and four-GPU
+  selector sweep passed `28` selected tests per group.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -1008,6 +1008,28 @@ remain family-specific and consume a bounded subset of the inventory.
   subprocess-isolated strict xfail. Do not add an in-process strict xfail for
   this row.
 
+### Round 7 Lane C, copy and copy-readback generator gaps
+
+- Time: 2026-04-21 09:13 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_readback_round7.md`
+- Scope: deterministic `/tmp` launcher for copy descriptor-view chains plus
+  immediate readback behavior, covering no-scales `warpx2` positives,
+  no-scales `warpx2::02_13` clean diagnostics, packed/subword boundaries,
+  copy-adjacent `ld.red` readback, scales `warpx4`, and two-CTA layout in a
+  larger-CGA context.
+- Result: no stable new backend/compiler failure was found. Positive
+  descriptor-view copy/readback rows and clean diagnostic rows stayed green.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_copy_readback_round7_probe.py` py-compiled;
+  - `/tmp` launcher passed six deterministic launch cases;
+  - four-GPU selector sweep passed as `28 passed, 1587 deselected` on each
+    group.
+- Classification note: early custom combined-kernel attempts failed at
+  harness construction, not at a backend surface, and were not assigned
+  `FZ-*` ids.
+
 ## Repro Queue
 
 - FZ-20260421-0001 is now covered by checked-in Python runtime xfail repros;
@@ -1037,3 +1059,6 @@ remain family-specific and consume a bounded subset of the inventory.
   - use future subagents on surfaces not yet stressed by the structural
     fuzzer, especially copy/ld.red interactions and descriptor-view chains
     through additional generic passes.
+- Round 7 Lane C found no new copy/readback failure to add to the repro queue.
+  Future copy generator work should promote a stable repo-local runnable case
+  adapter before replacing the current runtime-matrix-backed launcher.

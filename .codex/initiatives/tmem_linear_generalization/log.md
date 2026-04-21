@@ -26642,3 +26642,23 @@ Open after this slice:
   - exact layout-conversion/non-TMEM confirmation reproduced the FZ-0002-style
     runtime mismatch;
   - checked-in `ldst-view-identity-32x32b` control passed.
+
+## 2026-04-21 09:13 UTC: Round 7 Lane C copy/readback fuzzing
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote `/tmp/tmem_copy_readback_round7_probe.py` and
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_readback_round7.md`.
+- Scope covered no-scales `warpx2` descriptor-view copy/readback positives,
+  no-scales `warpx2::02_13` clean unsupported diagnostics, packed/subword
+  clean diagnostics, descriptor-chain `ld.red` readback, scales `warpx4`, and
+  the two-CTA-layout/four-CTA-context clean error.
+- Classification: no stable new backend/compiler failure was found, and no
+  new `FZ-*` id was assigned. Early synthetic combined-kernel attempts failed
+  at harness construction and were not cataloged as backend findings.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_copy_readback_round7_probe.py` py-compiled;
+  - `/tmp` launcher passed six deterministic launch cases;
+  - four-GPU selector sweep passed `28 passed, 1587 deselected` on each
+    group.

@@ -73,6 +73,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 09:13 UTC: completed Round 7 Lane C copy/readback discovery.
+  Wrote `/tmp/tmem_copy_readback_round7_probe.py` and
+  `agents/fuzz_copy_readback_round7.md`. The lane covered no-scales
+  `warpx2` descriptor-view copy/readback positives, `warpx2::02_13` clean
+  unsupported diagnostics, packed/subword clean diagnostics, descriptor-chain
+  `ld.red` readback, scales `warpx4`, and the two-CTA-layout/four-CTA-context
+  clean error. No stable new backend/compiler failure was found and no
+  `FZ-*` id was assigned. Validation: required `make -j8` no-op, probe
+  py-compile, `/tmp` launcher six cases passed, and four-GPU selector sweep
+  passed `28` selected tests per group.
+
 - 2026-04-21 09:12 UTC: completed Round 7 Lane B generator-backed `ld/st` and
   `ld.red` discovery. Used the Round 6 `/tmp` descriptor generator as the
   deterministic selector for eight compact runtime probes. Cataloged new

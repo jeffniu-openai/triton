@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 09:13 UTC completed Round 7 Lane C copy/readback
+  discovery. Wrote `/tmp/tmem_copy_readback_round7_probe.py` and
+  `agents/fuzz_copy_readback_round7.md`. The lane covered no-scales
+  `warpx2` descriptor-view copy/readback positives, `warpx2::02_13` clean
+  unsupported diagnostics, packed/subword clean diagnostics, descriptor-chain
+  `ld.red` readback, scales `warpx4`, and the two-CTA-layout/four-CTA-context
+  clean error. No stable new backend/compiler failure was found; no `FZ-*` id
+  was assigned. Validation: required `make -j8` no-op; probe py-compile;
+  `/tmp` launcher passed six launch cases; four-GPU selector sweep passed as
+  `28 passed, 1587 deselected` on each group.
+
 - Latest: 2026-04-21 09:12 UTC completed Round 7 Lane B generator-backed
   `ld/st` and `ld.red` discovery. The lane used the Round 6 `/tmp`
   descriptor generator as a deterministic selector and ran eight compact
