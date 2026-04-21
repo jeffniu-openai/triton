@@ -523,6 +523,16 @@ The project is complete when:
   wrong-result candidate with matching PTX/LLIR scaled-MMA opcodes and
   retained descriptor-view chains. Report:
   `agents/fuzz_scaled_descriptor_round14.md`.
+  2026-04-21 10:53 UTC local Round 14 generic-pass structural selector
+  stayed stable after required `make -j8` no-op. Collect-only selected
+  `11/33` rows from
+  `python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`.
+  Split-4 execution across GPUs 0-3 with stable caches reported aggregate
+  `11 xfailed`. Runtime dynamic `ttg.memdesc_index` illegal lowering remains
+  `FZ-20260421-0001`; chain0/control-flow/layout-pressure runtime
+  mismatches remain `FZ-20260421-0002`. No new bucket and no backend repair.
+  Lane AC remains active on broader generic runtime-index fuzzing and should
+  write `agents/fuzz_generic_runtime_index_round14.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

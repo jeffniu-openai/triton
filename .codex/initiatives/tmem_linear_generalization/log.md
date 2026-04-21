@@ -27900,3 +27900,25 @@ Open after this slice:
   - group 3/GPU 2: `27 passed, 1588 deselected in 6.81s`;
   - group 4/GPU 3: `25 passed, 1590 deselected in 5.66s`.
 - Aggregate: `106 passed`. No new bucket was found.
+
+## 2026-04-21 10:53 UTC: Round 14 local generic-pass selector
+
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`
+  selected `11/33` checked-in structural-fuzzer rows.
+- Split-4 runtime execution with stable per-GPU caches:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r14_generic_pass_durations.json python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`.
+- Result:
+  - group 1/GPU 0: `3 xfailed, 30 deselected`;
+  - group 2/GPU 1: `3 xfailed, 30 deselected`;
+  - group 3/GPU 2: `3 xfailed, 30 deselected`;
+  - group 4/GPU 3: `2 xfailed, 31 deselected`.
+- Aggregate: `11 xfailed`. The failures stayed in existing buckets:
+  `FZ-20260421-0001` for runtime `ttg.memdesc_index` illegal lowering and
+  `FZ-20260421-0002` for chain0/control-flow/layout-pressure generic
+  descriptor-view wrong results.
+- Lane AC remains active on broader generic runtime-index, loop/if/mixed
+  capture, helper-return, and consumer-interaction fuzzing.

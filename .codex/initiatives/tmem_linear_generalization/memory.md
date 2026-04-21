@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 10:53 UTC local Round 14 generic-pass structural
+  selector reran after required `make -j8` no-op. Collect-only selected
+  `11/33` rows from
+  `python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`.
+  Four-GPU split execution with stable caches produced aggregate
+  `11 xfailed`. The observed failures stayed within existing owners:
+  dynamic runtime `memdesc_index` lowering remains `FZ-20260421-0001`, while
+  chain0/control-flow/layout-pressure generic descriptor-view runtime
+  mismatches remain `FZ-20260421-0002`. No new bucket and no backend repair.
+  Active Lane AC is still fuzzing runtime index, dynamic if/loop-carried
+  memdesc views, tuple/mixed captures, helper-returned descriptor chains, and
+  ld/st/copy/MMA consumers.
+
 - Latest: 2026-04-21 local high-CGA MMA contrast controls stayed green after
   required `make -j8` no-op:
   `python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]`

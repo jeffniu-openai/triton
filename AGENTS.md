@@ -33,6 +33,11 @@
   crashes or verifier false negatives. Any discovered failure must be recorded
   with seed/case id, exact command, failure mode, likely owner surface, and
   whether it is a crash, too-strict unsupported diagnostic, or miscompile.
+- Keep the systematic structural fuzzer growing during this campaign: prefer
+  checked-in Python runtime rows for stable crash/unsupported/miscompile
+  sentinels, keep temporary `/tmp` fuzz probes only for broad exploration, and
+  promote minimized non-overlapping findings into the project documentation
+  with an `FZ-YYYYMMDD-NNNN` owner before starting any repair work.
 - Before resuming the TMEM linear-layout generalization initiative, start with `.codex/initiatives/tmem_linear_generalization/README.md`, then re-read `.codex/initiatives/tmem_linear_generalization/memory.md` as the initiative's durable memory/source of truth, and then read the latest tail of `.codex/initiatives/tmem_linear_generalization/handoff_2026-04-09.md`. Do not optimize only for the current red tests; keep the work aligned with the full mission:
   - support arbitrary linear TMEM layouts and descriptor-view chains whenever the ISA can realize them correctly;
   - keep clean negatives only for true ISA-impossible cases;

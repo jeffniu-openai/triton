@@ -2041,6 +2041,31 @@ remain family-specific and consume a bounded subset of the inventory.
   `FZ-0007`, not high-CGA `FZ-0010`, and not FPSAN runtime descriptor
   selection `FZ-0011`.
 
+### Round 14 local generic-pass structural selector
+
+- Time: 2026-04-21 10:53 UTC
+- Required build: `make -j8` no-op.
+- Scope: checked-in generic-pass structural fuzzer rows while Lane AC broadened
+  the same family independently.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`
+  selected `11/33` rows.
+- Runtime pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r14_generic_pass_durations.json python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`
+- Result:
+  - group 1/GPU 0: `3 xfailed, 30 deselected`;
+  - group 2/GPU 1: `3 xfailed, 30 deselected`;
+  - group 3/GPU 2: `3 xfailed, 30 deselected`;
+  - group 4/GPU 3: `2 xfailed, 31 deselected`.
+- Aggregate: `11 xfailed`. No new independent `FZ-*` bucket.
+- Classification: runtime dynamic `ttg.memdesc_index` illegal lowering remains
+  `FZ-20260421-0001`; chain0/control-flow/layout-pressure generic
+  descriptor-view wrong results remain `FZ-20260421-0002`. Backend repair
+  remains deferred until discovery stops finding new bugs or the user pivots.
+- Active subagent lane: Lane AC is still fuzzing generic/control-flow/runtime
+  index TMEM descriptor use beyond the checked-in selector and is expected to
+  write `agents/fuzz_generic_runtime_index_round14.md`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
