@@ -26939,3 +26939,13 @@ Open after this slice:
     `warpx2` (`28`), LD.RED descriptor (`30`), and clean diagnostics (`96`);
   - avoid casual broad sweeps over full runtime matrix, `twocta`, broad
     `mma_scaled`, broad `ldst and descriptor`, and broad `ld_red or ldred`.
+
+## 2026-04-21: LD.RED descriptor slice calibration
+
+- Ran the Lane H recommended LD.RED descriptor slice locally with stored
+  durations.
+- Command:
+  `make -j8 && CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-local-r10-ldreddesc PYTHONPATH=.:./python pytest -s --tb=short --durations=10 --store-durations --durations-path /tmp/tmem_local_r10_ldred_descriptor_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_descriptor_chain and not non_f32'`
+- Result: `30 passed, 1585 deselected in 37.83s`.
+- Slowest rows were `n256` and row/col-rotated descriptor-chain cases at
+  roughly `1.5-1.7s`.
