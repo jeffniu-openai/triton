@@ -32547,3 +32547,55 @@ Open after this slice:
   `FZ-20260421-0001`; checked-in adjacent controls passed as `47 passed`.
 - Classification:
   no new independent `FZ-*`; no backend repairs attempted.
+
+## 2026-04-21: Round 55 local clean-boundary runtime lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round55_local_clean_boundary_lane.md`.
+- Required `make -j8` was a no-op.
+- Selector over block descriptors/layouts, x1 unsupported variants, no-scale
+  copy clean boundaries, warpx2/4x256b diagnostics, row/column copy
+  unsupported cases, and scaled LHS clean unsupported rows:
+  `96/1615` collected.
+- Split-4 runtime result:
+  `96 passed`.
+- Classification: no compiler crash, verifier drift, diagnostic regression,
+  false unsupported diagnostic, runtime miscompile, hang, or independent
+  `FZ-*`.
+
+## 2026-04-21: Round 55 local copy/MMA positive runtime lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round55_local_copy_mma_positive_lane.md`.
+- Selector over positive no-scale copy, scaled-copy, plain MMAv5, and
+  scaled-MMAv5 root rows:
+  `88/1615` collected.
+- Split-4 runtime result:
+  `88 passed`.
+- Coverage included `warpx2` positives, dense-shared rematerialization,
+  two-CTA copy codegen, tile-permuted copy atoms, scales `warpx4`, plain
+  MMAv5 root kinds, and scaled-MMAv5 root formats.
+- Classification: no compiler crash, verifier drift, false unsupported
+  diagnostic, opcode absence, runtime miscompile, hang, or independent
+  `FZ-*`.
+
+## 2026-04-21: Round 55 lit negative-boundary lane C
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round55_lit_negative_boundary_lane.md`.
+- Required `make -j8` and `ninja triton-opt` were no-ops.
+- Checked-in TMEM/proxy/mbarrier/relayout/allocation/conversion lit sweep:
+  `15 passed, 1 failed`; the failure is existing `FZ-20260421-0016`.
+- Extra proxy/mbarrier/TMA/invalid lit sweep:
+  `7 passed`, plus one no-tests path warning.
+- Direct Blackwell conversion probe:
+  exit `0`.
+- Round 38 compiler-boundary corpus replay:
+  `18 pass`, `24` clean diagnostics, `5` existing late illegal-op rows, and
+  `9` existing abort/crash rows.
+- Round 24 parse-only `FZ-0016` corpus replay:
+  `15` existing abort/crash rows and `40` clean diagnostics.
+- Minimized repros revalidated existing `FZ-20260421-0016` and
+  `FZ-20260421-0017`; f64 hits the same bitwidth surface and f32 stays on the
+  clean indexed-view-chain boundary.
+- Classification: no new independent `FZ-*`.

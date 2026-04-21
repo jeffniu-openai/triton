@@ -3758,3 +3758,34 @@ discovery.
   narrow accumulator rows. No compiler crash, verifier drift, false
   unsupported diagnostic, clean-boundary drift, runtime miscompile, hang, or
   new independent `FZ-*`.
+
+- 2026-04-21: Round 55 local clean-boundary runtime lane completed. Report:
+  `agents/fuzz_round55_local_clean_boundary_lane.md`. Required `make -j8` was
+  a no-op. Selector over block descriptors/layouts, x1 unsupported variants,
+  no-scale copy clean boundaries, warpx2/4x256b diagnostics, row/column copy
+  unsupported cases, and scaled LHS clean unsupported rows collected
+  `96/1615` and passed split-4 as `96 passed`. No compiler crash, verifier
+  drift, diagnostic regression, false unsupported diagnostic, runtime
+  miscompile, hang, or new independent `FZ-*`.
+
+- 2026-04-21: Round 55 local copy/MMA positive runtime lane completed. Report:
+  `agents/fuzz_round55_local_copy_mma_positive_lane.md`. Selector over
+  positive no-scale copy, scaled-copy, plain MMAv5, and scaled-MMAv5 root rows
+  collected `88/1615` and passed split-4 as `88 passed`. Coverage included
+  `warpx2` positives, dense-shared rematerialization, two-CTA copy codegen,
+  tile-permuted copy atoms, scales `warpx4`, plain MMAv5 root kinds, and
+  scaled-MMAv5 root formats. No compiler crash, verifier drift, opcode
+  absence, runtime miscompile, hang, or new independent `FZ-*`.
+
+- 2026-04-21: Round 55 lit negative-boundary lane C completed. Report:
+  `agents/fuzz_round55_lit_negative_boundary_lane.md`. Required `make -j8`
+  and `ninja triton-opt` were no-ops. Checked-in TMEM/proxy/mbarrier/relayout/
+  allocation/conversion lit sweep completed as `15 passed, 1 failed`, with the
+  failure classified as existing `FZ-20260421-0016`; extra proxy/mbarrier/TMA/
+  invalid lit sweep passed `7` tests plus one no-tests path warning. Direct
+  Blackwell conversion exited `0`. Round 38 compiler-boundary corpus replay
+  stayed at `18 pass`, `24` clean diagnostics, `5` existing late illegal-op
+  rows, and `9` existing abort/crash rows. Round 24 parse-only `FZ-0016`
+  corpus replay stayed at `15` existing abort/crash rows and `40` clean
+  diagnostics. Minimized repros revalidated existing `FZ-20260421-0016` and
+  `FZ-20260421-0017`. No new independent `FZ-*`.
