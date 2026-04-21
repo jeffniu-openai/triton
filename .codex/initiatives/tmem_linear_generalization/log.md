@@ -31831,3 +31831,55 @@ Open after this slice:
 - Result: `142 passed, 1473 deselected`.
 - Classification: no compiler crash, false unsupported diagnostic, runtime
   miscompile, opcode drift, or new independent `FZ-*`.
+
+## 2026-04-21: Round 48 allocator/lifetime/rematerialization pressure
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_allocator_lifetime_pressure_round48.md`.
+- Required `make -j8` was a no-op.
+- Runtime-matrix allocator/rematerialization pressure:
+  `363/1615` collected and `363 passed`.
+- Runtime-matrix diagnostic/resource boundaries:
+  `184/1615` collected and `184 passed`.
+- Focused `test_core.py` lifetime/multi-allocation controls:
+  `66/18114` collected and `61 passed, 5 skipped`.
+- Structural allocator-crash sentinels:
+  `2 xfailed`.
+- Classification: existing `FZ-20260421-0005`,
+  `FZ-20260421-0009`, and `FZ-20260421-0018` stayed stable; no new
+  allocation/lifetime/resource bucket.
+
+## 2026-04-21: Round 48 high-rank and half-view TMEM fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_rank_half_views_round48.md`.
+- Required `make -j8` was a no-op.
+- High-rank/half-view `ld/st` selector:
+  `112/1615` collected and `92 passed, 20 skipped`.
+- Adjacent `ld.red` descriptor/M64/row-permutation selector:
+  `88/1615` collected and `82 passed, 6 failed`; all six failures are
+  existing `FZ-20260421-0012`.
+- Structural `ld/st`/`ld.red` subset:
+  `15/33` collected and `7 passed, 8 xfailed`.
+- Disposable probes reproduced existing `FZ-20260421-0021` for unit-rank
+  half-column `ld/st` and existing `FZ-20260421-0004` for rank-5 half-row
+  `ld.red` opcode loss. No new independent `FZ-*`.
+
+## 2026-04-21 14:45 UTC: Round 48 cache/process-order stability
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_cache_process_order_round48.md`.
+- Required `make -j8` was a no-op.
+- Same-process mixed positives plus expected failure:
+  `4 passed, 1 xfailed`.
+- Dynamic copy ordering kept branch-selected linear failures in existing
+  `FZ-20260421-0001`; warpx2 positives passed before, between, and after
+  failures.
+- Warm-cache runtime positives repeated as `3 passed` and `3 passed`.
+- M64 `ld.red` ordering kept row-basis failure in existing
+  `FZ-20260421-0012`; adjacent positives passed before/after and in the same
+  process.
+- Structural warm-cache repeats stayed `2 passed, 2 xfailed` twice and
+  `2 passed, 1 xfailed` twice.
+- Classification: no missing cache-key input, process/device contamination,
+  async compile/global-state drift, XPASS drift, or new independent `FZ-*`.

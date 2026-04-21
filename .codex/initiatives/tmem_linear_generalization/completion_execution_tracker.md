@@ -3357,3 +3357,36 @@ discovery.
   produced `142 passed, 1473 deselected`. No compiler crash, false
   unsupported diagnostic, runtime miscompile, opcode drift, or new independent
   `FZ-*`.
+
+- 2026-04-21: Round 48 allocator/lifetime/rematerialization pressure
+  completed. Report: `agents/fuzz_allocator_lifetime_pressure_round48.md`.
+  Required `make -j8` was a no-op. Runtime-matrix allocator/rematerialization
+  pressure selector collected `363/1615` and passed as `363 passed`;
+  diagnostic/resource boundary selector collected `184/1615` and passed as
+  `184 passed`; focused `test_core.py` lifetime/multi-allocation controls
+  collected `66/18114` and completed as `61 passed, 5 skipped`; structural
+  allocator-crash sentinels remained `2 xfailed`. Existing `FZ-20260421-0005`,
+  `FZ-20260421-0009`, and `FZ-20260421-0018` stayed stable. No new
+  independent `FZ-*`.
+
+- 2026-04-21: Round 48 high-rank and half-view TMEM fuzzing completed. Report:
+  `agents/fuzz_high_rank_half_views_round48.md`. Required `make -j8` was a
+  no-op. High-rank/half-view `ld/st` selector collected `112/1615` and
+  completed as `92 passed, 20 skipped`; adjacent `ld.red`
+  descriptor/M64/row-permutation selector collected `88/1615` and completed as
+  `82 passed, 6 failed`, with all six failures matching existing
+  `FZ-20260421-0012`; structural `ld/st`/`ld.red` subset collected `15/33`
+  and ran as `7 passed, 8 xfailed`. Disposable probes reproduced existing
+  `FZ-20260421-0021` and `FZ-20260421-0004`. No new independent `FZ-*`.
+
+- 2026-04-21 14:45 UTC: Round 48 cache/process-order stability completed.
+  Report: `agents/fuzz_cache_process_order_round48.md`. Required `make -j8`
+  was a no-op. Mixed same-process positives plus xfail completed as
+  `4 passed, 1 xfailed`; dynamic copy ordering kept linear failures as
+  existing `FZ-20260421-0001` while warpx2 positives passed before, between,
+  and after failures; warm-cache runtime positives repeated as `3 passed` then
+  `3 passed`; M64 failure ordering kept row-basis failure as existing
+  `FZ-20260421-0012` while adjacent positives passed; structural warm-cache
+  repeats stayed `2 passed, 2 xfailed` twice and `2 passed, 1 xfailed` twice.
+  No cache-key, process-contamination, global-state, XPASS, or new `FZ-*`
+  issue was found.
