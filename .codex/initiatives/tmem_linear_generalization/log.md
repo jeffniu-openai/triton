@@ -1,3 +1,16 @@
+## 2026-04-21 14:13 UTC: Round 41 ld/st descriptor positive guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_descriptor_positive_round41.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Collection selector:
+  `(ldst_descriptor_roundtrip or ldst_descriptor_compositions or ldst_twocta_descriptor_compositions or ldst_descriptor_multidim_slice_positive or ldst_descriptor_rank5_roundtrip or ldst_twocta_descriptor_rank5_roundtrip) and not reports and not resource and not x1 and not subword and not scales`.
+- Collection/result: `28/1615` rows, split-4 as `6 passed, 22 skipped`
+  (`5 passed/2 skipped`, `1 passed/6 skipped`, `7 skipped`, `7 skipped`).
+- Classification: no compiler crash, false unsupported diagnostic,
+  clean-boundary drift, unexpected pass/fail transition, runtime miscompile, or
+  new independent `FZ-*`.
+
 ## 2026-04-21 14:12 UTC: Round 41 full structural fuzzer guardrail
 
 - Wrote

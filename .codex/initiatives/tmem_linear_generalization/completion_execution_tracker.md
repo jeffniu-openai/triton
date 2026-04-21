@@ -60,6 +60,17 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:13 UTC Round 41 `ld/st` descriptor positive guardrail
+  completed. Artifact: `agents/fuzz_ldst_descriptor_positive_round41.md`.
+  Selector
+  `(ldst_descriptor_roundtrip or ldst_descriptor_compositions or
+  ldst_twocta_descriptor_compositions or ldst_descriptor_multidim_slice_positive
+  or ldst_descriptor_rank5_roundtrip or ldst_twocta_descriptor_rank5_roundtrip)
+  and not reports and not resource and not x1 and not subword and not scales`
+  collected `28/1615` rows and passed/stably skipped split-4 as
+  `6 passed, 22 skipped`. No compiler crash, false unsupported diagnostic,
+  clean-boundary drift, unexpected pass/fail transition, runtime miscompile, or
+  new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 14:12 UTC Round 41 full structural fuzzer guardrail completed.
   Artifact: `agents/fuzz_structural_full_guardrail_round41.md`. Required
   `make -j8` reported `no work to do`. Full
