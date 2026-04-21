@@ -84,6 +84,13 @@ Newest local red selector: `agents/fuzz_local_ldred_round19.md`. Selector
 M64 row/col-permuted split-N `ld.red` destination-layout lowering rejects
 effective non-identity row bases with `unsupported dst layout`.
 
+Newest `FZ-0015` discriminator: `agents/fuzz_fz0015_side_channel_round19.md`.
+The exact Round 15/16 selected distinct B-scale shape still miscompiles when a
+selected-scale `tmem_load` side channel is forced live, while the side-channel
+load reports `0/512` byte mismatches. Moving only accumulator allocation before
+the scale allocations makes the branch/helper/loop selected B-scale rows pass,
+so the strongest current discriminator is TMEM allocation order.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and

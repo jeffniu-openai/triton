@@ -28729,6 +28729,40 @@ Open after this slice:
   `unsupported dst layout` diagnostics. These are checked-in runtime tests red
   on current HEAD and should remain in the repair backlog after the
   discovery-only fuzzing phase.
+- Focused follow-up reran exact nodeids:
+  - `row_reverse_n32-min` default M64 row/col-permuted layout failed with the
+    same `unsupported dst layout` diagnostic;
+  - `col_reverse_n32-min` default M64 row/col-permuted layout passed;
+  - explicit `col_reverse_n32` split-N layout passed.
+  This supports the `FZ-0012` diagnosis as an effective row-base/permuted-row
+  handling gap rather than a general M64 split-N or col-permuted failure.
+
+## 2026-04-21 12:23 UTC: Round 19 Lane AW FZ-0015 side channel
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_side_channel_round19.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe `/tmp/tmem_fz0015_side_channel_round19_probe.py` collected
+  `9` rows and passed split-4 as `9 passed`, with expected wrong-result rows
+  classified as existing `FZ-20260421-0015`.
+- The exact Round 15/16 shape still reproduces `FZ-0015` for runtime distinct
+  branch, helper-returned distinct, and loop-carried distinct B-scale
+  descriptor selection. Mismatch counts ranged from `16378/16384` through
+  `16384/16384`, with NaNs/Infs in several rows.
+- Every selected-scale side-channel load reported `0/512` byte mismatches.
+- Same-global-source rerun still miscompiled, so the AV green contrast is not
+  explained by using one global scale source pointer versus cloned CUDA scale
+  tensors.
+- Accumulator-first scratch variant moved only accumulator allocation and zero
+  initialization ahead of the scale allocations; all six selected B-scale
+  branch/helper/loop rows then passed with `0/16384` mismatches.
+- Classification: no new independent `FZ-*`. This strengthens
+  `FZ-20260421-0015` and makes allocation order the strongest current
+  discriminator: scale descriptors allocated before the accumulator reproduce,
+  while accumulator allocated before scale descriptors passes for the same
+  selected B-scale SSA forms.
 
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 

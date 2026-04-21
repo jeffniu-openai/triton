@@ -2586,7 +2586,24 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: existing `FZ-20260421-0012`; no new independent `FZ-*`.
   The red rows are checked-in M64 row/col-permuted split-N `ld.red` runtime
   tests that reject effective non-identity row bases with `unsupported dst
-  layout`.
+  layout`. Focused contrast: `row_reverse_n32-min` fails, while
+  `col_reverse_n32-min` and explicit `col_reverse_n32` split-N controls pass.
+
+### Round 19 Lane AW FZ-0015 side channel
+
+- Time: 2026-04-21 12:23 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_side_channel_round19.md`
+- Temporary probe:
+  `/tmp/tmem_fz0015_side_channel_round19_probe.py`.
+- Result: `9 passed`, with six expected wrong-result rows classified as
+  existing `FZ-20260421-0015`.
+- Classification: no new independent `FZ-*`. The exact selected distinct
+  B-scale shape still miscompiles while the selected-scale side-channel load is
+  correct (`0/512` byte mismatches). Same-global-source controls still fail.
+  Moving accumulator allocation before scale allocations makes all selected
+  B-scale branch/helper/loop rows pass, making allocation order the strongest
+  current discriminator.
 
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index

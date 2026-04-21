@@ -19,7 +19,21 @@
   as `237 passed, 6 failed`. The six failures are checked-in M64 row/col
   permuted split-N `ld.red` rows rejecting destination layouts with
   `unsupported dst layout`; no new bucket, but these are live red runtime tests
-  in the post-fuzz repair backlog.
+  in the post-fuzz repair backlog. Focused contrast: `row_reverse_n32-min`
+  failed, while `col_reverse_n32-min` and explicit `col_reverse_n32` split-N
+  controls passed, narrowing the issue to effective row-base/permuted-row
+  handling rather than all M64 split-N layouts.
+
+- Latest: 2026-04-21 12:23 UTC Lane AW sharpened `FZ-20260421-0015`. Report:
+  `agents/fuzz_fz0015_side_channel_round19.md`. Exact Round 15/16 selected
+  distinct B-scale branch/helper/loop rows still wrong-result with a
+  selected-scale `tmem_load` side channel, but the side-channel load has
+  `0/512` byte mismatches for every row. Same-global-source controls still
+  miscompile, so distinct source tensors are not the discriminator. Moving only
+  accumulator allocation before scale allocations makes all six selected
+  B-scale rows pass. Current hypothesis: allocation-order-sensitive B-scale
+  address/SFB operand encoding or descriptor-base rematerialization when scale
+  descriptors occupy earlier TMEM allocation slots than the accumulator.
 
 - Latest: 2026-04-21 12:09 UTC Round 19 dynamic subslice/mixed-consumer and
   structural xfail sentinel evidence landed. Reports:

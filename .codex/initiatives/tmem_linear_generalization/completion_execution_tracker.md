@@ -2038,4 +2038,15 @@ signal handling:
   `ld_red and not reports and not resource` collected `243/1615`; split-4
   runtime completed as `237 passed, 6 failed`. Failures reproduce existing
   `FZ-20260421-0012` M64 row/col-permuted split-N destination-layout coverage
-  gap; no new bucket.
+  gap; no new bucket. Focused exact reruns show `row_reverse_n32-min` fails
+  while `col_reverse_n32-min` and explicit `col_reverse_n32` split-N controls
+  pass.
+
+- 2026-04-21 12:23 UTC: integrated Lane AW `FZ-0015` side-channel report:
+  `agents/fuzz_fz0015_side_channel_round19.md`. No new bucket. Exact selected
+  distinct B-scale branch/helper/loop rows still miscompile with selected-scale
+  load side channel, but every side-channel load has `0/512` byte mismatches.
+  Same-global-source rows still fail; accumulator-first allocation-order
+  variant passes all six selected B-scale rows. Current strongest hypothesis is
+  allocation-order-sensitive B-scale address/SFB operand encoding or descriptor
+  base rematerialization.

@@ -104,3 +104,35 @@ independent bucket is needed.
 - Unexpected status: yes, these checked-in runtime rows are red on current
   branch and should remain in the repair backlog once the fuzzing campaign
   exits discovery-only mode.
+
+## Focused Follow-Up
+
+Exact reruns after the split completed:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 \
+  PYTHONPATH=.:./python pytest -q -s --tb=short \
+  'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_default_layout[row_reverse_n32-min]'
+```
+
+Result: `1 failed` with the same `unsupported dst layout` diagnostic.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 \
+  PYTHONPATH=.:./python pytest -q -s --tb=short \
+  'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_default_layout[col_reverse_n32-min]'
+```
+
+Result: `1 passed`.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 \
+  PYTHONPATH=.:./python pytest -q -s --tb=short \
+  'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn[col_reverse_n32]'
+```
+
+Result: `1 passed`.
+
+The focused contrast supports the `FZ-0012` diagnosis: the red surface is tied
+to effective row-base/permuted-row handling in M64 split-N `ld.red`, not to all
+M64 split-N or all col-permuted layouts.
