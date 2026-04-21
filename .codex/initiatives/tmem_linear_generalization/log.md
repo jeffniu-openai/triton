@@ -30535,3 +30535,37 @@ Open after this slice:
   row that crashes later in LLVM type conversion, and revalidates
   `FZ-20260421-0017` for descriptor-chain `i64` load, descriptor-chain `f64`
   store, and initialized `i64` alloc.
+
+## 2026-04-21 13:13 UTC: Round 33 FZ-0018 PTX artifact capture
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_fz0018_ptx_round33.md`.
+- `TRITON_REPRODUCER_PATH=/tmp/tmem_fz0018_reproducer.mlir` produced no MLIR
+  reproducer for the failing `direct M128xN512,w4` row, confirming the
+  failure is after MLIR pass execution at ptxas/cubin time.
+- `TRITON_KERNEL_DUMP=1 TRITON_DUMP_DIR=/tmp/tmem_fz0018_dump` preserved
+  `direct_kernel.ttgir` (`65` lines), `direct_kernel.llir` (`6963` lines), and
+  `direct_kernel.ptx` (`5544` lines).
+- Standalone replay command:
+  `/root/code/triton/python/triton/backends/nvidia/bin/ptxas-blackwell -lineinfo -v --regAllocOptLevel=2 --gpu-name=sm_103a /tmp/tmem_fz0018_dump/USMVLYV4TKIBORO3LKD4YLECH3BNDLCWPOXSGX4OK5FB3F4TA42Q/direct_kernel.ptx -o /tmp/tmem_fz0018_dump/direct_kernel.ptx.o`.
+- Replay result: exit `255`, FZ-0018 register-allocation failure.
+- Passing dumped controls with `TRITON_ALWAYS_COMPILE=1`: `M128xN512`
+  column-reversed hardware `.ld.red` assembled with `96` registers and eight
+  `.ld.red` PTX occurrences; `M64xN512` assembled with `255` registers and
+  four `.ld.red` PTX occurrences.
+- Classification: FZ-0018 now has a standalone PTX artifact. The M64 control
+  shows the finding should not be reduced to "all 255-register kernels fail";
+  it remains a large 4-warp hardware-`ld.red` resource-planning/ptxas boundary.
+
+## 2026-04-21: Round 34 local no-scale copy tile/subword/2CTA guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_tile_subword_round34.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(cp_no_scales and not reports and not resource and (tile_permuted or subword or twocta_codegen or twocta_128x128b or dense_shared))`.
+- Collection: `68/1615`.
+- Split-4 result: `68 passed` (`17/17/17/17` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, or new independent
+  `FZ-*` bucket.

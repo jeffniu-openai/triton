@@ -133,6 +133,17 @@ The project is complete when:
   `FZ-0001` dynamic descriptor-index lowering, `FZ-0016` unencoded tensor
   handling, and `FZ-0017` encoded 64-bit TMEM load/store/alloc boundaries were
   revalidated or sharpened; backend repair remains deferred.
+  2026-04-21 13:13 UTC Round 33 FZ-0018 PTX artifact capture completed.
+  Artifact: `agents/fuzz_ldred_fz0018_ptx_round33.md`.
+  `TRITON_REPRODUCER_PATH` produced no MLIR reproducer because the failure is
+  at ptxas/cubin time. `TRITON_KERNEL_DUMP=1` preserved failing
+  `direct_kernel.{ttgir,llir,ptx}` under `/tmp/tmem_fz0018_dump/...`, and
+  standalone `ptxas-blackwell` replay on the dumped PTX reproduces exit `255`.
+  Passing dumped controls: `M128xN512` column-reversed hardware `.ld.red`
+  assembles with `96` registers/eight `.ld.red` PTX occurrences, and
+  `M64xN512` assembles with `255` registers/four `.ld.red` PTX occurrences.
+  The bucket remains a large 4-warp hardware-`ld.red`
+  resource-planning/ptxas boundary, not a Python harness-only failure.
   2026-04-21 13:11 UTC Round 33 dynamic descriptor SSA/control-flow runtime
   lane completed. Artifact:
   `agents/fuzz_dynamic_descriptor_round33.md`. Required `make -j8` was a
@@ -144,6 +155,13 @@ The project is complete when:
   accumulator controls passed as `2 passed`; scaled-MMAv5 low-subslice dynamic
   accumulator sentinel stayed `1 xfailed` under existing `FZ-0007`. No new
   independent `FZ-*`; backend repair remains deferred.
+  2026-04-21 Round 34 local no-scale copy tile/subword/2CTA guardrail
+  completed. Artifact: `agents/fuzz_local_copy_tile_subword_round34.md`.
+  Selector
+  `(cp_no_scales and not reports and not resource and (tile_permuted or subword or twocta_codegen or twocta_128x128b or dense_shared))`
+  collected `68/1615` and passed split-4 as `68 passed`; no compiler crash,
+  false unsupported diagnostic, opcode mismatch, runtime miscompile,
+  clean-boundary drift, or new independent `FZ-*`.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline

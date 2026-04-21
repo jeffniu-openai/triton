@@ -7,7 +7,16 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 33 dynamic descriptor SSA/control-
+Latest fuzzing checkpoint: 2026-04-21 Round 34 no-scale copy
+tile/subword/2CTA guardrail completed. Report:
+`agents/fuzz_local_copy_tile_subword_round34.md`. Selector
+`(cp_no_scales and not reports and not resource and (tile_permuted or subword or twocta_codegen or twocta_128x128b or dense_shared))`
+collected `68/1615` checked-in runtime rows and passed split-4 as `68 passed`
+(`17/17/17/17`). No compiler crash, false unsupported diagnostic, opcode
+mismatch, runtime miscompile, clean-boundary drift, or new independent `FZ-*`
+bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 33 dynamic descriptor SSA/control-
 flow lane completed. Report:
 `agents/fuzz_dynamic_descriptor_round33.md`. A temporary Python/Gluon runtime
 probe collected `100` rows across runtime `parent.index(load(selector))`,
@@ -21,7 +30,7 @@ diagnostics. Practical MMAv5 controls added `2 passed` plain indexed
 accumulator rows and `1 xfailed` scaled-MMAv5 `FZ-20260421-0007` sentinel. No
 new independent `FZ-*` bucket was found.
 
-Previous fuzzing checkpoint: 2026-04-21 Round 31-33 scaled-MMAv5 operand lane,
+Earlier fuzzing checkpoint: 2026-04-21 Round 31-33 scaled-MMAv5 operand lane,
 local guardrails, compiler-boundary fuzzing, and subword/narrow-shape runtime
 fuzzing. Reports:
 `agents/fuzz_scaled_operand_round31.md`,

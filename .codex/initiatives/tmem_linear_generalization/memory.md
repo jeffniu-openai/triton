@@ -1,5 +1,27 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 34 local no-scale copy tile/subword/2CTA guardrail
+  completed. Report: `agents/fuzz_local_copy_tile_subword_round34.md`.
+  Required `make -j8` was a no-op. Selector
+  `(cp_no_scales and not reports and not resource and (tile_permuted or subword or twocta_codegen or twocta_128x128b or dense_shared))`
+  collected `68/1615` rows and passed split-4 as `68 passed`
+  (`17/17/17/17`). No compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, or new independent
+  `FZ-*` bucket.
+
+- Latest: 2026-04-21 13:13 UTC Round 33 FZ-0018 PTX artifact capture
+  completed. Report: `agents/fuzz_ldred_fz0018_ptx_round33.md`.
+  `TRITON_REPRODUCER_PATH` did not produce an MLIR reproducer because the
+  failure is at ptxas/cubin time. `TRITON_KERNEL_DUMP=1` preserved failing
+  `direct_kernel.{ttgir,llir,ptx}` under `/tmp/tmem_fz0018_dump/...`; replaying
+  `/root/code/triton/python/triton/backends/nvidia/bin/ptxas-blackwell -lineinfo -v --regAllocOptLevel=2 --gpu-name=sm_103a`
+  on the dumped PTX reproduces exit `255` with the FZ-0018 register-allocation
+  failure. Passing dumped controls: `M128xN512` column-reversed hardware
+  `.ld.red` assembles with `96` registers and eight `.ld.red` PTX occurrences;
+  `M64xN512` assembles with `255` registers and four `.ld.red` PTX
+  occurrences. This proves the failure is standalone PTX/ptxas-replayable and
+  is not merely "any 255-register kernel fails."
+
 - Latest: 2026-04-21 13:18 UTC Round 33 compiler-boundary fuzz lane
   completed. Report: `agents/fuzz_compiler_boundaries_round33.md`. Required
   `make -j8` was a no-op. Generated `16` MLIR probes under
