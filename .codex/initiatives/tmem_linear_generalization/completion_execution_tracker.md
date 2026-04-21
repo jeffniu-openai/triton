@@ -3263,3 +3263,43 @@ discovery.
   match existing `FZ-20260421-0012` M64 f32 `tcgen05.ld.red`
   destination-layout planner gaps; adjacent high-CGA/two-CTA positives stayed
   green. No new independent `FZ-*`.
+
+- 2026-04-21 14:38 UTC: Round 46 subword/`.x1` runtime guardrail completed.
+  Report: `agents/fuzz_subword_x1_round46.md`. Required `make -j8` was a
+  no-op. Selector
+  `(x1 or subword or i64 or f64 or non_f32 or descriptor_chain_roundtrip) and not reports and not resource and not clean`
+  produced `301 passed, 70 skipped, 1244 deselected`. No compiler crash,
+  false unsupported diagnostic, runtime miscompile, unexpected skip/pass
+  drift, or new independent `FZ-*`.
+
+- 2026-04-21: Round 45 descriptor-chain shape adversary completed. Report:
+  `agents/fuzz_descriptor_chain_shape_adversary_round45.md`. Required
+  `make -j8` was a no-op. Broad descriptor-chain runtime sweep collected
+  `123/1615` and completed split-4 as `62 passed, 61 skipped`; M64 reduction
+  and split-N shape sweep produced `35 passed, 6 failed` with all six failures
+  matching existing `FZ-20260421-0012`; structural descriptor subset stayed
+  `7 passed, 11 xfailed`; unit/high-rank parent-style chains passed as
+  `26 passed`; descriptor-composition perturbations passed as `36 passed`.
+  No new independent `FZ-*`.
+
+- 2026-04-21 14:38 UTC: Round 46 multi-CTA/CGA boundary fuzzing completed.
+  Report: `agents/fuzz_multicta_cga_boundaries_round46.md`. Required
+  `make -j8` was a no-op. Runtime-matrix multi-CTA/two-CTA breadth selector
+  collected `350/1615` and completed split-4 as `313 passed, 37 skipped`;
+  high-CGA/clean-boundary selector collected `56/1615` and passed as
+  `56 passed`; focused `test_core.py` TMA/multicast/MMAv5 controls collected
+  `16/18114` and passed as `16 passed`, including
+  `test_tma_multicast_copy[ctas_per_cga2]` with `[4, 4]`/16 CTAs per CGA.
+  No compiler crash, false unsupported case, runtime miscompile, or new
+  independent `FZ-*`.
+
+- 2026-04-21: Round 46 scaled-MMAv5 descriptor/scale-operand composition
+  completed. Report:
+  `agents/fuzz_scaled_mmav5_descriptor_composition_round46.md`. Required
+  `make -j8` was a no-op. Checked-in scaled-MMAv5 composition positives
+  collected `210/1615` and passed as `210 passed`; checked-in clean-boundary
+  rows collected `27/1615` and passed as `27 passed`; structural dynamic
+  accumulator sentinel remained `1 xfailed`, and adjacent structural rows
+  completed as `2 passed, 3 xfailed`. Temporary probes reproduced only
+  existing `FZ-20260421-0007`, `FZ-20260421-0013`, and
+  `FZ-20260421-0015`. No new independent `FZ-*`.

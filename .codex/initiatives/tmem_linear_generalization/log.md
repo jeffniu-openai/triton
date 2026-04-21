@@ -31676,3 +31676,68 @@ Open after this slice:
   even-odd layouts in default and explicit split-N paths.
 - Adjacent M64 MMA, two-CTA TMA descriptor, high-CGA clean-boundary, and scale
   descriptor-view CGA rows stayed green. No new independent `FZ-*`.
+
+## 2026-04-21 14:38 UTC: Round 46 subword and .x1 runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_subword_x1_round46.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(x1 or subword or i64 or f64 or non_f32 or descriptor_chain_roundtrip) and not reports and not resource and not clean`.
+- Result: `301 passed, 70 skipped, 1244 deselected`.
+- Classification: no compiler crash, false unsupported diagnostic, runtime
+  miscompile, unexpected skip/pass drift, or new independent `FZ-*`.
+
+## 2026-04-21: Round 45 descriptor-chain shape adversary
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_descriptor_chain_shape_adversary_round45.md`.
+- Required `make -j8` was a no-op.
+- Broad descriptor-chain runtime selector collected `123/1615` and completed
+  split-4 as `62 passed, 61 skipped`.
+- M64 reduction/split-N selector produced `35 passed, 6 failed`; all six
+  failures are existing `FZ-20260421-0012` M64 f32 `tcgen05.ld.red`
+  destination-layout planner gaps.
+- Structural descriptor subset stayed stable as `7 passed, 11 xfailed`.
+- Unit/high-rank parent-style descriptor chains passed as `26 passed`;
+  descriptor-composition perturbations passed as `36 passed`.
+- Classification: no new compiler crash, false unsupported diagnostic,
+  runtime miscompile, structural xfail drift, or independent `FZ-*`.
+
+## 2026-04-21 14:38 UTC: Round 46 multi-CTA/CGA boundary fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_multicta_cga_boundaries_round46.md`.
+- Required `make -j8` was a no-op.
+- Runtime-matrix multi-CTA/two-CTA breadth selector:
+  `350/1615` collected, split-4 result `313 passed, 37 skipped`.
+- High-CGA and clean-boundary selector:
+  `56/1615` collected, split-4 result `56 passed`.
+- Focused `test_core.py` TMA/multicast/MMAv5 controls:
+  `16/18114` collected, split-4 result `16 passed`.
+- The focused core lane included maximum represented TMA multicast coverage:
+  `test_tma_multicast_copy[ctas_per_cga2]` uses `[4, 4]`, or 16 CTAs per CGA.
+- Classification: no new `FZ-20260421-0010` evidence, no `FZ-20260421-0014`
+  proxy/mbarrier issue, no compiler crash, false unsupported diagnostic,
+  runtime miscompile, or independent `FZ-*`.
+
+## 2026-04-21: Round 46 scaled-MMAv5 descriptor composition fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_mmav5_descriptor_composition_round46.md`.
+- Required `make -j8` was a no-op.
+- Checked-in scaled-MMAv5 descriptor/scale composition positives:
+  `210/1615` collected and `210 passed`.
+- Checked-in scaled-MMAv5 clean-boundary selector:
+  `27/1615` collected and `27 passed`.
+- Temporary scale descriptor-view probes reproduced existing
+  `FZ-20260421-0013`: side-channel scale loads were correct and scaled-MMAv5
+  opcodes were present, but scaled-MMAv5 outputs were wrong.
+- Temporary selected direct B-scale probes reproduced existing
+  `FZ-20260421-0015`: runtime-selected distinct direct B-scale descriptors
+  miscompiled while static/same-object/direct controls passed.
+- Structural dynamic accumulator sentinel remained expected
+  `FZ-20260421-0007`; dynamic accumulator-parent runtime rows with direct
+  scale descriptors passed and did not broaden that bucket.
+- No `FZ-20260421-0016` or `FZ-20260421-0017` evidence appeared, and no new
+  independent `FZ-*` was needed.
