@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:12 UTC Round 37 `ld.red` positive guardrail
+  completed. Report: `agents/fuzz_ldred_positive_guardrail_round37.md`.
+  Selector
+  `ld_red and not reports and not resource and not m64 and not non_f32`
+  collected `160/1615` and passed split-4 as `160 passed` (`40/40/40/40`).
+  No compiler crash, false unsupported diagnostic, opcode absence, runtime
+  miscompile, clean-boundary drift, unexpected xfail/pass transition, or new
+  independent `FZ-*`.
+
 - Latest: 2026-04-21 14:08 UTC Round 37 high-CGA ownership subagent lane
   integrated. Report: `agents/fuzz_high_cga_ownership_round37.md`. Required
   `make -j8` was a no-op. Checked-in high-CGA/multicast selector collected

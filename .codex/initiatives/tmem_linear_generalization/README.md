@@ -7,7 +7,13 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 37 high-CGA ownership subagent
+Latest fuzzing checkpoint: 2026-04-21 Round 37 `ld.red` positive guardrail
+completed. Report: `agents/fuzz_ldred_positive_guardrail_round37.md`.
+Selector `ld_red and not reports and not resource and not m64 and not non_f32`
+collected `160/1615` and passed split-4 as `160 passed`. No new independent
+`FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 37 high-CGA ownership subagent
 lane integrated. Report: `agents/fuzz_high_cga_ownership_round37.md`.
 Checked-in high-CGA/multicast selector collected `28` rows and passed split-4
 as `28 passed`; build-tree lit `TritonNvidiaGPU/membar-cluster.mlir` passed;
