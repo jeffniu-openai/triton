@@ -2271,6 +2271,26 @@ remain family-specific and consume a bounded subset of the inventory.
   stayed green next to existing report-only `FZ-20260421-0010` and
   `FZ-20260421-0014`.
 
+### Round 15 FZ-0015 scaled B-scale dynamic-selection minimization
+
+- Time: 2026-04-21 11:31 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_fz0015_min_round15.md`
+- Temporary probe:
+  `/tmp/tmem_fz0015_min_round15_probe.py`.
+- Result: `10` collected; split-4 ran as `5 passed, 5 failed`.
+- Pass boundaries:
+  direct B-scale control, constexpr distinct B-scale selection, same-object
+  dynamic B-scale branch, and A-scale dynamic selection.
+- Failing rows:
+  distinct B-scale descriptors selected by runtime branch or loop before
+  scaled-MMAv5, with `16381-16383/16384` mismatches; extra selected-scale user
+  still fails.
+- Classification: `FZ-20260421-0015` remains distinct. Current smallest
+  trigger is two distinct direct B-scale `TensorMemoryScalesLayout`
+  descriptors with identical payloads selected by runtime control flow before
+  `tcgen05_mma_scaled`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

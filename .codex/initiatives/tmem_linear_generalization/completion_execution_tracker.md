@@ -1894,3 +1894,14 @@ signal handling:
   constant-folding, and single-use versus multi-use scale descriptors. Do not
   start backend repair until this candidate is minimized and the active fuzzing
   lanes stop finding new bugs or the user pivots.
+
+- 2026-04-21 11:31 UTC: completed first `FZ-20260421-0015` minimization slice
+  in discovery-only mode. Report:
+  `agents/fuzz_scaled_fz0015_min_round15.md`. Temporary probe collected `10`
+  rows and ran split-4 as `5 passed, 5 failed`. Green controls: direct
+  B-scale, constexpr distinct B-scale selection, same-object dynamic B-scale
+  selection, and A-scale dynamic selection. Failing rows require distinct
+  B-scale descriptors selected by runtime control flow before scaled-MMAv5;
+  branch and loop forms fail, and an extra selected-scale user does not avoid
+  the issue. Next minimization: parent-index versus independent allocations,
+  `N/K/format` sweep, and TTGIR selected-scale SSA inspection.

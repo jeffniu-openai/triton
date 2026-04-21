@@ -15283,6 +15283,31 @@ rejection, not rescue
   selector constant-folding, and single-use versus multi-use scale descriptors
   before any backend repair work.
 
+## Current: 2026-04-21 11:31 UTC FZ-0015 minimization slice
+
+- New report: `agents/fuzz_scaled_fz0015_min_round15.md`.
+- Required build had already been run for the Round 15 fuzzing slice and was a
+  no-op.
+- Temporary probe `/tmp/tmem_fz0015_min_round15_probe.py` collected `10`
+  tests and ran split-4 as `5 passed, 5 failed`.
+- `FZ-20260421-0015` remains distinct and is now narrowed:
+  - direct B-scale control passed;
+  - constexpr selection between distinct B-scale descriptors passed;
+  - runtime same-object B-scale branch passed;
+  - runtime A-scale branch selection passed for both selectors;
+  - distinct-object B-scale runtime branch selection failed for selectors 0/1
+    with `16381/16384` mismatches;
+  - distinct-object B-scale loop-carried selection failed for selectors 0/1
+    with `16383/16384` and `16381/16384` mismatches; and
+  - extra selected-scale user still failed with `16382/16384` mismatches.
+- Smallest current trigger: two distinct direct B-scale
+  `TensorMemoryScalesLayout` descriptors with identical payloads, selected by
+  runtime control flow, then used as the B-scale operand of
+  `tcgen05_mma_scaled`.
+- Next action remains discovery/minimization: parent-index versus independent
+  B-scale allocations, `N/K/format` sweep, and TTGIR inspection of selected
+  B-scale SSA lowering before backend repair.
+
 ## Current: 2026-04-21 08:50 UTC structural fuzzing Round 4 promoted sentinels
 
 - Active campaign mode remains discovery-only; do not start backend repairs

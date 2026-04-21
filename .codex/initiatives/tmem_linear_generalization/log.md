@@ -28294,6 +28294,32 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, false unsupported
   diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 11:31 UTC: Round 15 FZ-0015 minimization slice
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_fz0015_min_round15.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Temporary probe `/tmp/tmem_fz0015_min_round15_probe.py` collected `10`
+  tests and ran split-4 as `5 passed, 5 failed`.
+- Green boundaries:
+  - direct B-scale descriptor control;
+  - constexpr selection between distinct B-scale descriptors;
+  - runtime branch where both branches use the same B-scale descriptor object;
+  - runtime branch selection between distinct A-scale descriptors for both
+    selectors.
+- Failing `FZ-20260421-0015` rows:
+  - distinct B-scale runtime branch selector `0`: `16381/16384` mismatches;
+  - distinct B-scale runtime branch selector `1`: `16381/16384` mismatches;
+  - distinct B-scale loop-carried selector `0`: `16383/16384` mismatches;
+  - distinct B-scale loop-carried selector `1`: `16381/16384` mismatches;
+  - distinct B-scale runtime branch with extra selected-scale user:
+    `16382/16384` mismatches.
+- Classification: `FZ-0015` remains a distinct report-only candidate. Current
+  smallest trigger is runtime control-flow selection between two distinct
+  direct B-scale `TensorMemoryScalesLayout` descriptors with identical
+  payloads before `tcgen05_mma_scaled`.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

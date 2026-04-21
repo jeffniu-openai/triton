@@ -114,6 +114,19 @@ CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 \
 
 Result: `2 passed`.
 
+Shape-broadening command:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 \
+  PYTHONPATH=.:./python:./python/test/gluon:/tmp \
+  python - <<'PY' 2>&1 | tee /tmp/tmem_scaled_multi_mma_round15_fz0015_shape_matrix.log
+...
+PY
+```
+
+Result: all tested dynamic distinct B-scale selector rows were wrong-result
+rows.
+
 ## Green rows
 
 The following rows passed runtime torch/reference comparison and PTX/LLIR
@@ -223,6 +236,31 @@ Additional discriminator after the initial report body:
   control flow around scaled MMA is not sufficient. The failing rows require a
   merged runtime B-scale descriptor value feeding one scaled MMA op.
 
+Shape broadening for the failing merged B-scale descriptor trigger:
+
+| N | K | Selector 0 | Selector 1 |
+| ---: | ---: | --- | --- |
+| 32 | 128 | `4096/4096` mismatches, `0` NaNs, 4 ops | `4096/4096` mismatches, `0` NaNs, 4 ops |
+| 32 | 256 | `4096/4096` mismatches, `0` NaNs, 8 ops | `4096/4096` mismatches, `32` NaNs, 8 ops |
+| 64 | 128 | `8191/8192` mismatches, `32` NaNs, 4 ops | `8192/8192` mismatches, `32` NaNs, 4 ops |
+| 64 | 256 | `8192/8192` mismatches, `64` NaNs, 8 ops | `8192/8192` mismatches, `320` NaNs, 8 ops |
+| 128 | 128 | `16383/16384` mismatches, `32` NaNs, 4 ops | `16383/16384` mismatches, `96` NaNs, 4 ops |
+| 128 | 256 | `16384/16384` mismatches, `4256` NaNs, 8 ops | `16384/16384` mismatches, `736` NaNs, 8 ops |
+| 256 | 128 | `32766/32768` mismatches, `96` NaNs, 4 ops | `32764/32768` mismatches, `32` NaNs, 4 ops |
+| 256 | 256 | `32768/32768` mismatches, `3168` NaNs, 8 ops | `32768/32768` mismatches, `2624` NaNs, 8 ops |
+
+This keeps `FZ-0015` broad across N/K while retaining the same trigger:
+distinct B-scale TMEM descriptor values merged through runtime control flow.
+
+Format sweep note:
+
+- `/tmp/tmem_scaled_multi_mma_round15_fz0015_format_matrix.log` reran the
+  dynamic distinct B-scale selector for `mxfp8`; both selectors reproduced
+  wrong results (`16384/16384` and `16381/16384` mismatches).
+- The attempted `mxfp4` and `nvfp4` rows in that quick sweep are discarded as
+  probe-invalid because the temporary dynamic B-scale kernel was hardcoded for
+  f8 shared-memory operands. They are not used for bucket decisions.
+
 ## Logs
 
 Relevant temporary logs:
@@ -245,3 +283,5 @@ Relevant temporary logs:
 - `/tmp/tmem_scaled_multi_mma_round15_dynamic_ascale.log`
 - `/tmp/tmem_scaled_multi_mma_round15_dynamic_bscale_same_object.log`
 - `/tmp/tmem_scaled_multi_mma_round15_branch_contained_bscale_mma.log`
+- `/tmp/tmem_scaled_multi_mma_round15_fz0015_shape_matrix.log`
+- `/tmp/tmem_scaled_multi_mma_round15_fz0015_format_matrix.log`
