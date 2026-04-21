@@ -497,6 +497,9 @@ The project is complete when:
   2026-04-21 local ld.red non-f32 descriptor sanity selected `20/1615` and
   passed split-4 as `20 passed`; durations stored at
   `/tmp/tmem_local_r14_ldred_nonf32_descriptor_durations.json`.
+  2026-04-21 local high-CGA/scales sanity selected `17/1615` and passed
+  split-4 as `17 passed`; durations stored at
+  `/tmp/tmem_local_r14_high_cga_scales_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

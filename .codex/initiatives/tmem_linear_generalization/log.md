@@ -27793,6 +27793,22 @@ Open after this slice:
   - group 4/GPU 3: `5 passed, 1610 deselected in 4.39s`.
 - Aggregate: `20 passed`. No new bucket was found.
 
+## 2026-04-21: Round 14 local high-CGA scales sanity
+
+- Ran a compact checked-in high-CGA/scales sanity selector while Lane AA
+  minimized `FZ-20260421-0012`. No backend or compiler repairs were attempted.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k '4cta_context or cga or high_cga'`
+  selected `17/1615` rows.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r14_high_cga_scales_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k '4cta_context or cga or high_cga'`
+- Result after required `make -j8` per shard:
+  - group 1/GPU 0: `5 passed, 1610 deselected in 4.65s`;
+  - group 2/GPU 1: `5 passed, 1610 deselected in 8.27s`;
+  - group 3/GPU 2: `5 passed, 1610 deselected in 14.12s`;
+  - group 4/GPU 3: `2 passed, 1613 deselected in 4.10s`.
+- Aggregate: `17 passed`. No new bucket was found.
+
 ## 2026-04-21: local copy/subword runtime slice
 
 - Ran checked-in runtime-matrix copy/subword coverage while the custom

@@ -15033,6 +15033,8 @@ rejection, not rescue
   indexed narrow control did not reproduce `FZ-20260421-0011`.
 - Local ld.red non-f32 descriptor sanity selected `20/1615` and passed
   split-4 as `20 passed`.
+- Local high-CGA/scales sanity selected `17/1615` and passed split-4 as
+  `17 passed`, including scales CGA rows and the clean 4CTA copy diagnostic.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 

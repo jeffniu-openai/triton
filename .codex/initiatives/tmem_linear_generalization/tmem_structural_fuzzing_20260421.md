@@ -1950,6 +1950,16 @@ remain family-specific and consume a bounded subset of the inventory.
 - Result: selector `ld_red and non_f32 and descriptor` collected `20/1615`
   and split-4 passed as `20 passed`; no new `FZ-*` bucket.
 
+### Round 14 local high-CGA scales sanity
+
+- Time: 2026-04-21
+- Required build: `make -j8` no-op.
+- Scope: checked-in high-CGA/scales rows selected by
+  `4cta_context or cga or high_cga`, including scales direct roundtrips,
+  scales descriptor-view CGA roundtrips, and the clean 4CTA copy diagnostic.
+- Result: `17/1615` collected and split-4 passed as `17 passed`; no new
+  `FZ-*` bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
