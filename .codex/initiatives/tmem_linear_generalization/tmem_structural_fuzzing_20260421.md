@@ -2500,6 +2500,20 @@ remain family-specific and consume a bounded subset of the inventory.
   with no TMEM operations reproduce the same proxy-fence insertion failure,
   while initializing both mbarriers before either arrive/wait use passes.
 
+### Round 19 local multicast sanity selectors
+
+- Time: 2026-04-21 12:05 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_multicast_round19.md`
+- Runtime-matrix selector:
+  `(layout_in_4cta_context or cta8 or cta16 or high_cga or multicast or twocta_tma) and not reports_clean`
+  collected `10/1615` and passed as `10 passed`.
+- `test_core.py` selector:
+  `multicast and (tcgen05 or tma_mma or mma_scaled)` collected `9/18114` and
+  passed as `9 passed`; one split shard was empty.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

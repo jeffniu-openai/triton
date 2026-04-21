@@ -2001,3 +2001,9 @@ signal handling:
   TMEM-copy-specific. Two sequential plain init/arrive/wait mbarrier intervals
   with no TMEM operations reproduce; initializing both mbarriers before either
   arrive/wait use passes.
+
+- 2026-04-21 12:05 UTC: local Round 19 sanity selectors passed. Report:
+  `agents/fuzz_local_multicast_round19.md`. Runtime-matrix 2CTA TMA descriptor
+  selector collected `10/1615` and passed as `10 passed`; `test_core.py`
+  multicast selector collected `9/18114` and passed as `9 passed` with one
+  empty split shard. No new bucket.

@@ -28608,6 +28608,24 @@ Open after this slice:
   sufficient to reproduce, while initializing both plain mbarriers before
   either arrive/wait use passes.
 
+## 2026-04-21 12:05 UTC: Round 19 local multicast sanity selectors
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_multicast_round19.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Runtime-matrix selector
+  `(layout_in_4cta_context or cta8 or cta16 or high_cga or multicast or twocta_tma) and not reports_clean`
+  collected `10/1615` rows and passed split-4 as `10 passed`.
+- `test_core.py` selector
+  `multicast and (tcgen05 or tma_mma or mma_scaled)` collected `9/18114` rows.
+  Groups 1-3 passed as `3 passed` each; group 4 was an empty shard and exited
+  with pytest code 5 after deselecting all tests. Aggregate selected rows that
+  ran: `9 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

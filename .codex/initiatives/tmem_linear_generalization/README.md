@@ -51,6 +51,12 @@ strengthened existing `FZ-20260421-0001`, `FZ-20260421-0002`,
 `FZ-20260421-0010`, and `FZ-20260421-0015`; its checked-in
 dynamic/clean-boundary sweep passed as `159 passed, 11 xfailed`.
 
+Newest local sanity validation: 2026-04-21 12:05 UTC Round 19 2CTA TMA
+descriptor and multicast selectors. Report:
+`agents/fuzz_local_multicast_round19.md`. Runtime-matrix selector passed
+`10/10`; `test_core.py` multicast selector passed `9/9` with one empty split
+shard. No new bucket.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 12:05 UTC local Round 19 2CTA TMA descriptor and
+  multicast sanity selectors passed. Report:
+  `agents/fuzz_local_multicast_round19.md`. Runtime-matrix selector collected
+  `10/1615` and passed as `10 passed`; `test_core.py` multicast selector
+  collected `9/18114` and passed as `9 passed` with one empty split shard. No
+  runtime miscompile, compiler crash, unexpected unsupported diagnostic, or new
+  `FZ-*` bucket was observed.
+
 - Latest: 2026-04-21 11:56 UTC Round 18 subagent reports landed. Reports:
   `agents/fuzz_proxy_fence_intervals_round18.md` and
   `agents/fuzz_dynamic_clean_boundaries_round18.md`, plus
