@@ -1,5 +1,8 @@
 import math
+import os
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
 
 import pytest
@@ -106,6 +109,9 @@ class LdRedCase:
     n: int
     two_ctas: bool
     chain_id: int
+    row_kind: str = "identity"
+    col_kind: str = "identity"
+    op: str = "min"
 
 
 @dataclass(frozen=True)
@@ -138,10 +144,53 @@ LDST_CASES = [
     LdStCase("ldst-view-col-rotate-16x128b", 0x104, 128, 128, "identity", "rotate1", "16x128b", 1),
 ]
 
+LDST_DESCRIPTOR_VIEW_XFAIL_CASES = [
+    pytest.param(
+        LdStCase(
+            "ldst-fz20260421-0003-chain1-64x32-32x32b",
+            0xA003,
+            64,
+            32,
+            "identity",
+            "identity",
+            "32x32b",
+            1,
+        ),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0003: ld/st descriptor-view chain1 miscompiles",
+        ),
+    ),
+]
+
 LDRED_CASES = [
     LdRedCase("ldred-direct-128x64", 0x201, 128, 64, False, 0),
     LdRedCase("ldred-view-128x64", 0x202, 128, 64, False, 1),
     LdRedCase("ldred-twocta-lifted-256x64", 0x203, 256, 64, True, 0),
+    pytest.param(
+        LdRedCase("ldred-fz20260421-0004-chain1-64x32-min", 0xA004, 64, 32, False, 2),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0004: ld.red descriptor-view chain emits plain ld plus software reduce",
+        ),
+    ),
+    pytest.param(
+        LdRedCase(
+            "ldred-fz20260421-0006-rotate1-transpose-slice-max",
+            0xA006,
+            64,
+            128,
+            False,
+            3,
+            "rotate1",
+            "identity",
+            "max",
+        ),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0006: ld.red transpose/slice descriptor view is a false-unsupported candidate",
+        ),
+    ),
 ]
 
 COPY_CASES = [
@@ -336,14 +385,47 @@ def _fuzz_ldst_view_kernel(
     elif chain_id == 1:
         view = view.reshape((M // 2, 2, N // 2, 2))
         view = view.permute([1, 0, 3, 2]).permute([1, 0, 3, 2]).reshape((M, N))
-    else:
+    elif chain_id == 2:
         view = view.permute([1, 0]).permute([1, 0]).slice(0, M, dim=0).slice(0, N, dim=1)
+    else:
+        view = base
 
     view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
     out = view.load(view_layout)
     view.store(out)
     result = base.load(base_layout)
     ttgl.store(out_ptr + offs, ttgl.convert_layout(result, base_layout))
+
+
+@gluon.jit
+def _fuzz_ldst_descriptor_view_read_kernel(
+    in_ptr,
+    out_ptr,
+    parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    instr_variant: ttgl.constexpr,
+    chain_id: ttgl.constexpr,
+):
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    view = tmem.index(1)
+    reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    value = ttgl.load(in_ptr + offs)
+    view.store(ttgl.convert_layout(value, reg_layout))
+
+    if chain_id == 1:
+        reread = view.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    elif chain_id == 2:
+        reread = view.reshape((M, N // 2, 2)).permute([0, 2, 1]).permute([0, 2, 1]).reshape((M, N))
+    elif chain_id == 3:
+        reread = view.permute([1, 0]).slice(0, N, dim=0).permute([1, 0]).slice(0, M, dim=0)
+    else:
+        reread = view
+
+    out_layout: ttgl.constexpr = reread.get_reg_layout(instr_variant=instr_variant)
+    out = reread.load(out_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, out_layout))
 
 
 @gluon.jit
@@ -357,6 +439,7 @@ def _fuzz_ldred_kernel(
     M: ttgl.constexpr,
     N: ttgl.constexpr,
     chain_id: ttgl.constexpr,
+    use_max: ttgl.constexpr,
 ):
     if chain_id == 0:
         tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
@@ -364,6 +447,10 @@ def _fuzz_ldred_kernel(
     else:
         parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
         view = parent.index(1)
+        if chain_id == 2:
+            view = view.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+        elif chain_id == 3:
+            view = view.permute([1, 0]).permute([1, 0]).slice(0, M, dim=0).slice(0, N, dim=1)
 
     reg_layout: ttgl.constexpr = view.get_reg_layout()
     offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))[:, None]
@@ -372,7 +459,10 @@ def _fuzz_ldred_kernel(
     value = ttgl.load(in_ptr + offs)
     view.store(ttgl.convert_layout(value, reg_layout))
 
-    out, reduced = view.load_min()
+    if use_max:
+        out, reduced = view.load_max()
+    else:
+        out, reduced = view.load_min()
     ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
     red_m = ttgl.arange(0, M, red_layout)
     ttgl.store(red_ptr + red_m, ttgl.convert_layout(reduced, red_layout))
@@ -443,9 +533,7 @@ def _fuzz_copy_scales_kernel(in_ptr, out_ptr, TWO_CTAS: ttgl.constexpr):
     ttgl.store(out_ptr + out_offs, output)
 
 
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("case", LDST_CASES, ids=lambda case: case.case_id)
-def test_tmem_structural_fuzzer_ldst_view_roundtrip(case):
+def _run_ldst_case(case):
     torch.manual_seed(case.seed)
     layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
     parent_layout = _lift_layout(layout, [2])
@@ -460,6 +548,72 @@ def test_tmem_structural_fuzzer_ldst_view_roundtrip(case):
     assert ptx_ops == llir_ops
     assert any(".ld." in op for op in ptx_ops)
     assert any(".st." in op for op in ptx_ops)
+    return compiled
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", LDST_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_ldst_view_roundtrip(case):
+    _run_ldst_case(case)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", LDST_DESCRIPTOR_VIEW_XFAIL_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_ldst_descriptor_view_read(case):
+    torch.manual_seed(case.seed)
+    layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
+    parent_layout = _lift_layout(layout, [2])
+    inp = torch.randn((case.m, case.n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    compiled = _fuzz_ldst_descriptor_view_read_kernel[(1, )](
+        inp, out, parent_layout, case.m, case.n, case.instr_variant, case.chain_id, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
+    assert ptx_ops == llir_ops
+    assert any(".ld." in op for op in ptx_ops)
+    assert any(".st." in op for op in ptx_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.xfail(
+    strict=True,
+    reason="FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation instead of reporting cleanly",
+)
+def test_tmem_structural_fuzzer_ldst_256row_lifted_parent_allocator_crash():
+    code = """
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location(
+    "tmem_structural_fuzzer",
+    "python/test/gluon/test_tmem_structural_fuzzer.py",
+)
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+case = mod.LdStCase(
+    "ldst-fz20260421-0005-256row-lifted-parent",
+    0xA005,
+    256,
+    32,
+    "identity",
+    "identity",
+    "32x32b",
+    3,
+)
+mod._run_ldst_case(case)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=os.getcwd(),
+        env=os.environ.copy(),
+        text=True,
+        capture_output=True,
+        timeout=180,
+    )
+    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -477,17 +631,31 @@ def test_tmem_structural_fuzzer_ldred(case):
         torch.testing.assert_close(out, inp, atol=0, rtol=0)
         torch.testing.assert_close(red, torch.min(inp, dim=2).values, atol=0, rtol=0)
     else:
-        layout = _make_linear_layout(case.m, case.n, "identity", "identity")
+        layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
         parent_layout = _lift_layout(layout, [2])
         red_layout = ttgl.BlockedLayout([1], [32], [4], [0])
         inp = torch.randn((case.m, case.n), dtype=torch.float32, device="cuda")
         out = torch.empty_like(inp)
         red = torch.empty((case.m, ), dtype=torch.float32, device="cuda")
         compiled = _fuzz_ldred_kernel[(1, )](
-            inp, out, red, layout, parent_layout, red_layout, case.m, case.n, case.chain_id, num_warps=4
+            inp,
+            out,
+            red,
+            layout,
+            parent_layout,
+            red_layout,
+            case.m,
+            case.n,
+            case.chain_id,
+            case.op == "max",
+            num_warps=4,
         )
         torch.testing.assert_close(out, inp, atol=0, rtol=0)
-        torch.testing.assert_close(red, torch.min(inp, dim=1).values, atol=0, rtol=0)
+        if case.op == "max":
+            expected_red = torch.max(inp, dim=1).values
+        else:
+            expected_red = torch.min(inp, dim=1).values
+        torch.testing.assert_close(red, expected_red, atol=0, rtol=0)
     ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
     llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
     assert ptx_ops == llir_ops
