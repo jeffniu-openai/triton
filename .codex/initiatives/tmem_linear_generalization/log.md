@@ -29048,6 +29048,91 @@ Open after this slice:
   `ttng.tmem_alloc`, `ttng.tmem_load`, and `ttng.tmem_store` verifier crashes
   for unencoded register tensors.
 
+## 2026-04-21 14:25 UTC: Round 25 local FZ-0016 relayout baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_fz0016_relayout_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Reran the original `test/Conversion/relayout_tritongpu.mlir` pipeline.
+- Result: exit `134`, `dyn_cast on a non-existent value`, with stack through
+  `TMEMAllocOp::verify` -> `verifyTMEMOperand` ->
+  `computeTMemLdStEncodingInfo` -> `toLinearEncoding`.
+- Classification: existing `FZ-20260421-0016`; no new independent bucket.
+
+## 2026-04-21 14:24 UTC: Round 25 local descriptor ld/st non-roundtrip baseline
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_descriptor_nonroundtrip_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Executing selector `ldst_descriptor and not reports and not roundtrip`
+  collected `53/1615` rows and passed split-4 as `53 passed`
+  (`14/14/14/11`).
+- First attempted `ldst_descriptor_roundtrip and not reports` selector
+  collected `51/1615` rows, but those rows pre-skip because lifted descriptor
+  roundtrip matrices exceed the current Blackwell TMEM allocation limit; they
+  are not counted as runtime evidence.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*`.
+
+## 2026-04-21 14:28 UTC: Round 25 Lane BJ dynamic structural generator
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_generator_dynamic_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Temporary prototype:
+  `/tmp/tmem_structural_generator_dynamic_round25.py`.
+- Rerun executed `22` generated dynamic descriptor SSA seeds crossing dynamic
+  index, branch/helper/loop-carried descriptors, mixed captures, layout
+  pressure, chain IDs, and ld/st/copy/ld.red consumers.
+- Post-classification:
+  - `FZ-20260421-0001`: `8` compiler-failure seeds with illegal dynamic
+    `ttg.memdesc_index`, now covering load-only, copy, and helper-selected
+    `ld.red` consumers;
+  - `FZ-20260421-0002`: `5` direct ld/st wrong-result rows plus `2` likely
+    `ld.red` reduction-consumer rows where full-output readback is already
+    wrong;
+  - clean copy unsupported boundary: `3` rows;
+  - green contrasts: `4` rows.
+- Classification: no new independent `FZ-*`; the lane produced
+  promotion-ready dynamic generator seeds and sharpened `FZ-0001`/`FZ-0002`.
+
+## 2026-04-21 14:28 UTC: Round 25 Lane BJ dynamic descriptor generator
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_generator_dynamic_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Temporary prototype:
+  `/tmp/tmem_structural_generator_dynamic_round25.py`.
+- Rerun executed `22` generated seeds over dynamic `memdesc_index`,
+  branch-selected descriptors, helper-returned descriptors, mixed captures,
+  layout-pressure helpers, and loop-carried descriptors, crossed with ld/st,
+  copy/readback, and f32 `ld.red` consumers.
+- Classification: no new independent `FZ-*`. The seeds sharpen
+  `FZ-20260421-0001` for dynamic descriptors feeding ld/st, load-only, copy,
+  and helper-selected `ld.red`, and sharpen `FZ-20260421-0002` for dynamic
+  descriptor-view chain0 wrong results. Direct-slice loop-carried copy and
+  branch/loop-carried direct-slice `ld.red` stayed green.
+
+## 2026-04-21 14:30 UTC: Round 25 local descriptor load/store baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_descriptor_nonroundtrip_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Selector `ldst_descriptor and not reports and not roundtrip` collected
+  `53/1615`.
+- Split-4 result with stable per-GPU caches:
+  `53 passed` (`14/14/14/11`).
+- Skipped contrast: `ldst_descriptor_roundtrip and not reports` collected
+  `51/1615` but all rows pre-skipped due the current Blackwell TMEM allocation
+  limit, so that attempt is not counted as runtime evidence.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 ## 2026-04-21 13:55 UTC: Round 24 Lane BH mixed scaled-MMAv5 operands
 
 - Wrote

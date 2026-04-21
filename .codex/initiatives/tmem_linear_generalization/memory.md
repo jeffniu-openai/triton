@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:30 UTC local Round 25 descriptor load/store
+  non-roundtrip baseline completed. Report:
+  `agents/fuzz_local_ldst_descriptor_nonroundtrip_round25.md`. Selector
+  `ldst_descriptor and not reports and not roundtrip` collected `53/1615` and
+  passed split-4 as `53 passed` (`14/14/14/11`). The attempted
+  `ldst_descriptor_roundtrip and not reports` selector collected `51/1615`
+  but all rows pre-skipped due the current Blackwell TMEM allocation limit, so
+  it is not counted as runtime evidence.
+
+- Latest: 2026-04-21 14:28 UTC Lane BJ dynamic descriptor structural
+  generator prototype completed. Report:
+  `agents/fuzz_structural_generator_dynamic_round25.md`. No new independent
+  `FZ-*`; the 22 generated seeds sharpen `FZ-0001` for dynamic descriptors
+  feeding ld/st, copy, load-only, and helper-selected `ld.red`, and sharpen
+  `FZ-0002` for dynamic descriptor-view chain0 wrong results including
+  branch/inline/mixed-capture/layout-pressure/loop-carried forms. Green
+  contrasts include loop-carried direct-slice copy and direct-slice branch/
+  loop-carried `ld.red`.
+
 - Latest: 2026-04-21 12:47 UTC local Round 21 higher-rank/multidim descriptor
   selector completed. Report: `agents/fuzz_local_higher_rank_round21.md`.
   Selector collected `102/1615` and completed as `82 passed, 20 skipped`; no
@@ -15840,6 +15859,29 @@ rejection, not rescue
   encoded controls parse cleanly with module attrs or produce clean context
   diagnostics. `ttng.tmem_copy` is not affected by this exact unencoded
   register-tensor path because it verifies memdesc operands.
+
+- Local Round 25 `relayout_tritongpu.mlir` baseline wrote
+  `agents/fuzz_local_fz0016_relayout_round25.md`. The original relayout
+  pipeline still exits `134` with `dyn_cast on a non-existent value` through
+  `TMEMAllocOp::verify`/`verifyTMEMOperand`/`toLinearEncoding`. Classification:
+  existing `FZ-20260421-0016`, no new bucket.
+
+- Local Round 25 descriptor ld/st non-roundtrip baseline integrated
+  `agents/fuzz_local_ldst_descriptor_nonroundtrip_round25.md`. Executing
+  selector `ldst_descriptor and not reports and not roundtrip` collected
+  `53/1615` rows and passed split-4 as `53 passed` (`14/14/14/11`). The
+  attempted roundtrip selector collected `51` rows but all pre-skipped due to
+  Blackwell TMEM allocation limits, so it is not runtime evidence. No new
+  bucket.
+
+- Round 25 Lane BJ wrote
+  `agents/fuzz_structural_generator_dynamic_round25.md`. No new independent
+  `FZ-*`; it produced promotion-ready dynamic descriptor generator seeds.
+  Post-classification: `8` `FZ-20260421-0001` illegal dynamic
+  `ttg.memdesc_index` seeds covering load-only, copy, and helper-selected
+  `ld.red`; `5` direct ld/st `FZ-20260421-0002` wrong-result rows plus `2`
+  likely `ld.red` consumer extensions where full-output readback is already
+  wrong; `3` clean copy unsupported boundaries; `4` green contrasts.
 
 - Round 22 Lane BA wrote
   `agents/fuzz_scaled_dynamic_scales_round22.md`. No new independent `FZ-*`.

@@ -7,6 +7,20 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
+Latest Round 25 fuzzing checkpoint: 2026-04-21 14:30 UTC. Reports:
+`agents/fuzz_fz0016_code_audit_round25.md`,
+`agents/fuzz_local_fz0016_relayout_round25.md`,
+`agents/fuzz_structural_generator_dynamic_round25.md`, and
+`agents/fuzz_local_ldst_descriptor_nonroundtrip_round25.md`. `FZ-0016` is now
+broadened to a shared alloc/load/store verifier crash for unencoded register
+tensors; `ttng.tmem_copy` does not use that exact unencoded-register path.
+Lane BJ's 22 dynamic descriptor generator seeds found no new bucket but
+sharpened `FZ-0001` and `FZ-0002` across ld/st, copy, load-only, and `ld.red`
+consumers. The local descriptor load/store non-roundtrip selector passed as
+`53 passed`; the descriptor roundtrip selector collected `51/1615` but all
+rows pre-skipped at the current Blackwell TMEM allocation limit, so it is not
+runtime evidence.
+
 Latest fuzzing checkpoint: 2026-04-21 11:41 UTC Round 17 copy/ldst and
 clean-boundary checkpoint. Reports:
 `agents/fuzz_copy_ldst_mixed_round17.md` and

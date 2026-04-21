@@ -2742,6 +2742,70 @@ remain family-specific and consume a bounded subset of the inventory.
   `ttng.tmem_copy` does not use this exact unencoded-register path.
 - Classification: no new independent `FZ-*`.
 
+### Round 25 local FZ-0016 relayout baseline
+
+- Time: 2026-04-21 14:25 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_fz0016_relayout_round25.md`
+- Result:
+  original `test/Conversion/relayout_tritongpu.mlir` pipeline exits `134`
+  with the known `toLinearEncoding` verifier abort.
+- Classification: existing `FZ-20260421-0016`; no new independent `FZ-*`.
+
+### Round 25 local descriptor ld/st non-roundtrip baseline
+
+- Time: 2026-04-21 14:24 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_descriptor_nonroundtrip_round25.md`
+- Selector:
+  `ldst_descriptor and not reports and not roundtrip` collected `53/1615`.
+- Result:
+  `53 passed` (`14/14/14/11`).
+- Classification: no new independent `FZ-*`.
+
+### Round 25 Lane BJ dynamic structural generator
+
+- Time: 2026-04-21 14:28 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_generator_dynamic_round25.md`
+- Prototype:
+  `/tmp/tmem_structural_generator_dynamic_round25.py`.
+- Result:
+  `22` generated seeds. Post-classification: `8` existing `FZ-0001`, `5`
+  direct ld/st `FZ-0002` plus `2` likely ld.red consumer extensions, `3`
+  clean copy unsupported, `4` green.
+- Classification: no new independent `FZ-*`; promotion-ready dynamic
+  descriptor generator seed table produced.
+
+### Round 25 Lane BJ dynamic descriptor structural generator
+
+- Time: 2026-04-21 14:28 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_generator_dynamic_round25.md`
+- Temporary prototype:
+  `/tmp/tmem_structural_generator_dynamic_round25.py`
+- Result:
+  rerun executed `22` generated dynamic descriptor SSA seeds across ld/st,
+  copy/readback, and f32 `ld.red` consumers.
+- Classification: no new independent `FZ-*`. Seeds sharpen existing
+  `FZ-20260421-0001` and `FZ-20260421-0002`; direct-slice loop-carried copy
+  and branch/loop-carried direct-slice `ld.red` are green contrasts.
+
+### Round 25 local descriptor load/store non-roundtrip baseline
+
+- Time: 2026-04-21 14:30 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_descriptor_nonroundtrip_round25.md`
+- Selector:
+  `ldst_descriptor and not reports and not roundtrip` collected `53/1615`.
+- Split-4 result:
+  `53 passed` (`14/14/14/11`).
+- Skipped contrast:
+  `ldst_descriptor_roundtrip and not reports` collected `51/1615`, but all
+  rows pre-skipped at the current Blackwell TMEM allocation limit.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*`.
+
 ### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
 
 - Time: 2026-04-21 12:58 UTC
