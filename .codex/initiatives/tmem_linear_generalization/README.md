@@ -7,14 +7,23 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 34 two-CTA MMAv5/TMA guardrail
+Latest fuzzing checkpoint: 2026-04-21 Round 34 broad scaled-MMAv5 runtime
+guardrail completed. Report:
+`agents/fuzz_local_mma_scaled_broad_round34.md`. Selector
+`mma_scaled and not reports and not resource and not clean` collected
+`243/1615` checked-in runtime rows and passed split-4 as `243 passed`
+(`61/61/61/60`). No compiler crash, false unsupported diagnostic, opcode
+mismatch, runtime miscompile, clean-boundary drift, or new independent `FZ-*`
+bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 34 two-CTA MMAv5/TMA guardrail
 completed. Report: `agents/fuzz_local_mma_twocta_tma_round34.md`. Selector
 `(mma_twocta and not reports and not resource and (tma or transposed or plain_kind or indexed_acc))`
 collected `103/1615` rows and passed split-4 as `103 passed`. No compiler
 crash, false unsupported diagnostic, opcode mismatch, runtime miscompile,
 clean-boundary drift, or new independent `FZ-*` bucket was found.
 
-Previous fuzzing checkpoint: 2026-04-21 Round 34 mbarrier/proxy-fence
+Earlier fuzzing checkpoint: 2026-04-21 Round 34 mbarrier/proxy-fence
 composition lane completed. Report:
 `agents/fuzz_mbarrier_composition_round34.md`. Temporary Python/Gluon probe
 `/tmp/tmem_mbarrier_composition_round34_probe.py` collected `4` rows mixing
