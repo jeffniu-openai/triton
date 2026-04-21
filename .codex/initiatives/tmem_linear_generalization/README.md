@@ -23,7 +23,8 @@ fuzzing. Reports:
 `agents/fuzz_subword_narrow_round32.md`,
 `agents/fuzz_local_ldst_narrow_round32.md`, and
 `agents/fuzz_local_mma_accumulator_round32.md`, and
-`agents/fuzz_ldred_extremes_round31.md`. The scaled operand lane found no
+`agents/fuzz_ldred_extremes_round31.md`, plus
+`agents/fuzz_structural_rerun_round32.md`. The scaled operand lane found no
 new bucket and revalidated existing `FZ-0013`, `FZ-0015`, and `FZ-0010`
 boundaries; the 2CTA scaled-MMAv5 guardrail passed as `28 passed`;
 descriptor-heavy `ld.red` plus scaled-MMAv5 rows passed as `54 passed`;
@@ -44,7 +45,9 @@ accumulator/subslice guardrails added `185 passed`. Round 32 lit guardrail
 `invalid.mlir` green and reconfirmed existing `FZ-0016` in
 `relayout_tritongpu.mlir`. Round 32 clean-boundary guardrail
 `agents/fuzz_local_clean_boundary_round32.md` passed `184` clean diagnostic
-rows. The `ld.red` extremes lane ran `23`
+rows. The checked-in structural fuzzer was rerun again after those guardrails
+and stayed stable as `9 passed, 24 xfailed`. The `ld.red` extremes lane ran
+`23`
 f32 runtime rows with torch reference and opcode checks; `15` passed,
 `3` reproduced existing `FZ-0012`, `1` reproduced existing `FZ-0010`, `2` were
 clean resource boundaries, and `2` established new candidate

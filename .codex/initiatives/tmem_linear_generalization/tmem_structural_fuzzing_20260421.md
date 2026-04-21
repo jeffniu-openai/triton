@@ -3868,3 +3868,17 @@ remain family-specific and consume a bounded subset of the inventory.
   in-bounds offsets also assert. Out-of-bounds 2CTA rows reject cleanly, and
   remaining 2CTA 32-bit diagnostics are the existing global-store frontend or
   harness limitation.
+
+### Round 32 structural fuzzer rerun
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_rerun_round32.md`
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+- Result:
+  `9 passed, 24 xfailed in 9.42s`
+- Classification:
+  no XPASS, unexpected failure, compiler crash, false unsupported diagnostic,
+  opcode mismatch, runtime miscompile, or new independent `FZ-*`; the
+  checked-in structural sentinel catalog remains stable before the next
+  discovery lane.

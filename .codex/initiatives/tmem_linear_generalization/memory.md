@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 32 checked-in structural fuzzer rerun completed.
+  Report: `agents/fuzz_structural_rerun_round32.md`. Required `make -j8` was
+  a no-op. Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
+  Result: `9 passed, 24 xfailed in 9.42s`. No XPASS, unexpected failure,
+  compiler crash, false unsupported diagnostic, opcode mismatch, runtime
+  miscompile, or new independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 Round 32 local clean-boundary runtime guardrail
   completed. Report: `agents/fuzz_local_clean_boundary_round32.md`. Required
   `make -j8` was a no-op. Selector
