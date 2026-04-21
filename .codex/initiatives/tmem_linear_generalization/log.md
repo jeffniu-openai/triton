@@ -32059,3 +32059,15 @@ Open after this slice:
   generic memdesc SSA itself is not the problem; the gap is unresolved
   parent-index/view-chain lowering when consumers require a concrete TMEM
   address/layout.
+
+## 2026-04-21 14:56 UTC: Round 51 local lit smoke
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_lit_smoke_round51.md`.
+- Required `make -j8` was a no-op; `ninja triton-opt` was a no-op.
+- Lit smoke:
+  `tmem_layouts.mlir`, `memdesc-subview-split.mlir`, and
+  `proxy_fence_insertion.mlir`.
+- Result: `3 passed`.
+- Classification: no FileCheck drift, verifier drift, proxy-fence lit drift,
+  or new independent `FZ-*`.

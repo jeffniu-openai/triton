@@ -3493,3 +3493,10 @@ discovery.
   controls passed `4 passed`; structural dynamic rows stayed `3 xfailed`;
   MMAv5 controls passed `2 passed, 1 xfailed` with the xfail existing
   `FZ-20260421-0007`. No new independent `FZ-*`.
+
+- 2026-04-21 14:56 UTC: Round 51 local lit smoke completed. Report:
+  `agents/fuzz_lit_smoke_round51.md`. Required `make -j8` and
+  `ninja triton-opt` were no-ops. Lit smoke over `tmem_layouts.mlir`,
+  `memdesc-subview-split.mlir`, and `proxy_fence_insertion.mlir` passed
+  `3/3`. No FileCheck drift, verifier drift, proxy-fence lit drift, or new
+  independent `FZ-*`.
