@@ -500,6 +500,33 @@ remain family-specific and consume a bounded subset of the inventory.
   - the new exact sentinel reported `1 xfailed`;
   - full structural fuzzer reported `9 passed, 21 xfailed`.
 
+### Lane B Round 6, MMAv5 / Scaled-MMAv5 Control-Flow Descriptor Views
+
+- Time: 2026-04-21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_scaled_controlflow_round6.md`
+- Scope: MMAv5 and scaled-MMAv5 TMEM descriptor views under control flow,
+  including indexed/subslice accumulator views, `use_acc`, two-CTA and
+  larger-CGA contexts, helper-returned descriptors, loop/if-carried
+  accumulator descriptors, narrow `N`, and scale layouts.
+- Result: found one stable scaled-MMAv5 runtime miscompile, cataloged as
+  `FZ-20260421-0007`. No backend/compiler repair attempted.
+- Key finding:
+  - scaled-MMAv5 `use_acc` over a low-column accumulator subslice selected by
+    dynamic `if` miscompiles for `M=128,N=64,K=128` and `mxfp8 x mxfp8`;
+  - the same temporary harness passed indexed accumulator `if` and loop rows,
+    high-subslice `if`, high-subslice direct, and high-subslice loop rows;
+  - existing direct matrix controls for scaled-MMAv5 accumulator subslice
+    `use_acc` remained green, so the current evidence points at the dynamic
+    `if` descriptor selection plus low-subslice origin interaction.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - scaled-MMAv5 focused matrix sweep passed as `64/64/64/62`;
+  - plain MMAv5 focused matrix sweep passed as `44/44/44/43`;
+  - larger-CGA / two-CTA-layout diagnostic selector passed `2`;
+  - temporary control-flow harness reproduced the exact new failure in a fresh
+    process and passed the adjacent controls.
+
 ### Lane D Round 6, Deterministic Structural Generator Prototype
 
 - Time: 2026-04-21 UTC
@@ -537,6 +564,40 @@ remain family-specific and consume a bounded subset of the inventory.
     MMA/scaled-MMA descriptor-view control-flow contracts as first-class
     inventory gaps, even when their runnable coverage remains in
     `test_tmem_runtime_matrix.py` for now.
+
+### Lane C Round 6, ld.red Optimizer Crash Isolation
+
+- Time: 2026-04-21 09:03 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_crash_round6.md`
+- Scope: isolate the report-only R5-A row/col chain1 two-CTA indexed
+  `ld.red` optimizer crash family from the already checked-in plain `ld`
+  opcode fallback rows and from clean unsupported descriptor-view boundaries.
+- Result: confirmed a stable subprocess-isolated optimizer crash and extracted
+  an MLIR `triton-opt --run-reproducer` candidate. No backend/compiler repair
+  attempted.
+- Key findings:
+  - `256x2`, chain1, row `even_odd`, col `identity` crashes in
+    `TritonNvidiaGPUOptimizeTMemLayoutsPass` for `min`, `max`, `min(abs=True)`,
+    and NaN-propagating `min`;
+  - `256x64`, chain1, row `identity`, col `reverse` still crashes in the same
+    optimizer pass;
+  - `256x32`, chain1, row `identity`, col `identity` remains a runtime-correct
+    plain `tcgen05.ld...` fallback and belongs to `FZ-20260421-0004`, not this
+    crash bucket;
+  - `256x2` chain2/chain3 `even_odd` controls also lower as plain `ld`, so
+    the optimizer crash is chain1-specific in this probe;
+  - `128x32`, chain1, row `even_odd` remains a clean unsupported descriptor
+    view boundary.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - temporary probe collected `9` nodeids;
+  - parent pytest passed as `9 passed` because each candidate ran in a child
+    Python process;
+  - direct minimized child command exited `1` with the row/col vs
+    row/col/block dimension mismatch;
+  - extracted MLIR replay with `triton-opt --run-reproducer` aborted with exit
+    `134` in the same optimizer pass.
 
 ## Failure Catalog
 
@@ -663,6 +724,74 @@ remain family-specific and consume a bounded subset of the inventory.
     indexed views pass;
   - added checked-in strict xfail:
     `test_tmem_structural_fuzzer_ldst_descriptor_view_read[ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b]`.
+
+### FZ-20260421-0007: scaled-MMAv5 `use_acc` subslice accumulator miscompiles through dynamic `if`
+
+- Source: Lane B Round 6.
+- Failure class: `miscompile`.
+- Family: `mma_scaled`.
+- Shape: `M=128`, `N=64`, `K=128`.
+- Formats: `mxfp8 x mxfp8`.
+- Accumulator layout: `TensorMemoryLinearLayout` parent `[128,128]`.
+- View chain: low-column accumulator subslice
+  `acc_parent.slice(0, 64, dim=1)` selected against high-column sibling
+  `acc_parent.slice(64, 64, dim=1)`.
+- Control flow: dynamic `if ttgl.load(selector_ptr) != 0`, with selector `0`.
+- `use_acc`: true, with preloaded accumulator values.
+- Observed: successful compile and launch, but runtime output mismatches
+  `a_ref @ b_ref.T + 3.0`; fresh exact repro reported
+  `3693 / 8192` mismatched elements and NaN greatest-difference samples.
+- Controls:
+  - indexed accumulator `if` and loop rows passed;
+  - high-subslice `if`, direct, and loop rows passed;
+  - existing direct scaled-MMAv5 accumulator-subslice `use_acc` matrix rows
+    remained green.
+- Exact repro:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short '/tmp/tmem_mma_scaled_controlflow_round6_probe.py::test_round6_scaled_mma_acc_controlflow[r6-scaled-subslice-if-n64-subslice-if-64-0-2]'`.
+- Promotion status: report-only for Round 6. Recommended next promotion is a
+  self-contained strict xfail in
+  `python/test/gluon/test_tmem_structural_fuzzer.py` without importing helpers
+  from other test files.
+
+### FZ-20260421-0008: two-CTA indexed ld.red chain1 row/col optimizer crash
+
+- Source: Lane C Round 6, extending the R4-D/R5-A report-only optimizer-crash
+  family.
+- Failure class: `compiler_crash`.
+- Family: `ldred`.
+- Likely owner surface:
+  `TritonNvidiaGPUOptimizeTMemLayoutsPass`.
+- Minimal stable shape on current `HEAD`: parent `[2,256,2]`, indexed view
+  `[256,2]`.
+- Layout: two-CTA `TensorMemoryLinearLayout`, row `even_odd`, col
+  `identity`, lifted through prefix `[2]`.
+- View chain:
+  `parent.index(1).reshape((128,2,2)).permute([1,0,2]).reshape((256,2))`.
+- Operation: store full tile, then `view.load_min()`.
+- Observed: compiler reaches `TritonNvidiaGPUOptimizeTMemLayoutsPass` and
+  fails before runtime/opcode inspection with
+  `Dimensions must match, ignoring order, but they don't.  Got dims:
+  ["row", "col"] and ["row", "col", "block"]`.
+- Exact subprocess repro:
+  `/tmp/tmem_ldred_crash_round6_child.py` with
+  `CASE_M=256 CASE_N=2 CASE_CHAIN=1 CASE_ROW=even_odd CASE_COL=identity CASE_OP=min`.
+- MLIR candidate:
+  `/tmp/tmem_ldred_crash_round6_min_256x2_evenodd.mlir` reproduces with
+  `triton-opt --run-reproducer` and aborts with exit `134`.
+- Round 6 expansion:
+  - `max`, `min(abs=True)`, and NaN-propagating `min` on the same shape all
+    fail in the same optimizer pass;
+  - `256x64`, chain1, row `identity`, col `reverse` reproduces the same
+    optimizer crash;
+  - `256x32`, chain1, row `identity`, col `identity` is a plain `ld` fallback
+    and remains part of `FZ-20260421-0004`;
+  - `256x2` chain2/chain3 `even_odd` controls are plain `ld` fallback rows,
+    not optimizer crashes;
+  - `128x32` chain1 `even_odd` remains a clean unsupported boundary.
+- Promotion status: report-only for Round 6. A checked-in strict xfail is
+  safe only as a subprocess-isolated test, not as an in-process kernel xfail.
+  If promoted, use exactly one sentinel for the `256x2` chain1 `even_odd`
+  `min` row and keep it separate from `FZ-20260421-0004`.
 
 ### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
 

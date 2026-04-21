@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 Round 6 Lane D
+Last updated: 2026-04-21 Round 6 Lane B
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -88,6 +88,12 @@ The project is complete when:
   plus `legacy_case_id` bridge before promoting runnable family adapters.
   Validation: required `make -j8` no-op, collect-only `30` nodeids, and small
   runtime sample `3 passed, 1 xfailed`.
+  2026-04-21 Round 6 Lane B found `FZ-20260421-0007`, a report-only
+  scaled-MMAv5 `use_acc` miscompile for a low-column accumulator subslice
+  selected through dynamic `if`. Focused existing scaled-MMAv5 and plain-MMAv5
+  matrix selectors remained green, so the next promotion slice should add a
+  self-contained strict xfail to `test_tmem_structural_fuzzer.py` for the
+  dynamic-if low-subslice boundary before repair work begins.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -26513,3 +26513,22 @@ Open after this slice:
     loop-carried rows reported `3 passed, 1 xfailed`.
 - Report:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generator_round6.md`.
+
+## 2026-04-21 Round 6 Lane B: MMAv5 / scaled-MMAv5 control-flow fuzzing
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Focused existing runtime-matrix selectors remained green:
+  - scaled-MMAv5 descriptor/narrow/use-acc selector:
+    `64/64/64/62 passed`;
+  - plain MMAv5 indexed/subslice/two-CTA/tile/lhs selector:
+    `44/44/44/43 passed`;
+  - larger-CGA / two-CTA-layout diagnostic selector: `2 passed`.
+- Temporary harness
+  `/tmp/tmem_mma_scaled_controlflow_round6_probe.py` found
+  `FZ-20260421-0007`, a stable scaled-MMAv5 `use_acc` runtime miscompile when
+  a low-column accumulator subslice is selected through dynamic `if`.
+  Adjacent indexed `if`/loop and high-subslice `if`/direct/loop controls
+  passed.
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_scaled_controlflow_round6.md`.

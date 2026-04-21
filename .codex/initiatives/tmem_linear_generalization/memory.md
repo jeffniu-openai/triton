@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 6 Lane B completed discovery-only MMAv5 /
+  scaled-MMAv5 control-flow descriptor-view fuzzing. Existing focused
+  scaled-MMAv5 and plain-MMAv5 runtime-matrix selectors stayed green, but a
+  temporary control-flow harness found `FZ-20260421-0007`: scaled-MMAv5
+  `use_acc` over a low-column accumulator subslice selected through dynamic
+  `if` miscompiles for `M=128,N=64,K=128` (`mxfp8 x mxfp8`) after successful
+  compile and launch. Adjacent indexed `if`/loop and high-subslice
+  `if`/direct/loop controls passed. Report:
+  `agents/fuzz_mma_scaled_controlflow_round6.md`. Central campaign catalog
+  updated; backend repair remains deferred during discovery mode.
+
 - Latest: 2026-04-21 Round 6 Lane D prototyped a deterministic structural
   TMEM case descriptor generator in `/tmp` without promoting it to the repo.
   The prototype enumerates normalized descriptors across `ldst`, `ldred`,
