@@ -15031,6 +15031,8 @@ rejection, not rescue
   accumulator views, lifted `linear_unit_parent` parents, `use_acc`
   true/false rows, TMA transposed-B descriptor rows, and one scaled-MMAv5
   indexed narrow control did not reproduce `FZ-20260421-0011`.
+- Local ld.red non-f32 descriptor sanity selected `20/1615` and passed
+  split-4 as `20 passed`.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 

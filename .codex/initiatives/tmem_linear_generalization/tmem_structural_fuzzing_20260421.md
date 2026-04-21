@@ -1941,6 +1941,15 @@ remain family-specific and consume a bounded subset of the inventory.
   `FZ-20260421-0011` is FPSAN-specific runtime outer descriptor selection
   feeding plain MMAv5 rather than a general MMAv5 descriptor/view issue.
 
+### Round 14 local ld.red non-f32 descriptor sanity
+
+- Time: 2026-04-21
+- Required build: `make -j8` no-op.
+- Scope: checked-in non-f32 `ld.red` descriptor-chain software-reduction rows
+  over i32, bf16, f16, i16, and i8 min/max variants.
+- Result: selector `ld_red and non_f32 and descriptor` collected `20/1615`
+  and split-4 passed as `20 passed`; no new `FZ-*` bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

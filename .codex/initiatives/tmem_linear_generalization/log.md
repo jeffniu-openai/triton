@@ -27776,6 +27776,23 @@ Open after this slice:
   transposed-B descriptor rows, and one scaled-MMAv5 indexed narrow control did
   not reproduce `FZ-20260421-0011`.
 
+## 2026-04-21: Round 14 local ld.red non-f32 descriptor sanity
+
+- Ran a small checked-in ld.red software-reduction descriptor sanity slice
+  while Lane AA minimized `FZ-20260421-0012`. No backend or compiler repairs
+  were attempted.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and non_f32 and descriptor'`
+  selected `20/1615` rows.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r14_ldred_nonf32_descriptor_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and non_f32 and descriptor'`
+- Result after required `make -j8` per shard:
+  - group 1/GPU 0: `5 passed, 1610 deselected in 4.43s`;
+  - group 2/GPU 1: `5 passed, 1610 deselected in 4.29s`;
+  - group 3/GPU 2: `5 passed, 1610 deselected in 4.37s`;
+  - group 4/GPU 3: `5 passed, 1610 deselected in 4.39s`.
+- Aggregate: `20 passed`. No new bucket was found.
+
 ## 2026-04-21: local copy/subword runtime slice
 
 - Ran checked-in runtime-matrix copy/subword coverage while the custom
