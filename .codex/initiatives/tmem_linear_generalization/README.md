@@ -6469,7 +6469,32 @@ When resuming the initiative:
   rows `123 passed, 74 skipped`, and the checked-in structural fuzzer stayed
   stable as `9 passed, 24 xfailed`.
 
-## Latest: 2026-04-21 Round 60 frontend, examples, and random runtime fuzzing
+## Latest: 2026-04-21 Round 61 adversarial fuzzing
+
+- Frontend/structural lane wrote
+  `agents/fuzz_round61_frontend_structural_lane.md`. Frontend selector
+  `tensor_memory or tmem_` collected `29/225` and ran as
+  `28 passed, 1 failed`, reproducing existing `FZ-20260421-0023`. The full
+  structural fuzzer ran split-4 as `9 passed, 24 xfailed`; no XPASS,
+  unexpected failure, or new `FZ-*`.
+- Lit/codegen lane wrote `agents/fuzz_round61_lit_codegen_lane.md`.
+  Non-Round-60 compiler-only breadth ran `19` lit files as `19 passed` and
+  `4/4` direct `triton-opt` replays exited `0`, covering TMEM hoist,
+  conversion, NVWS, partitioning, mbarrier/cluster, and more-than-2CTA
+  ownership surfaces.
+- Local examples edge lane wrote
+  `agents/fuzz_round61_local_examples_edge_lane.md`. Six example files
+  collected `979` tests; a focused edge selector collected `16` and ran
+  split-4 as `15 passed, 1 skipped`. The skip is the existing
+  `03-matmul-multicta.py` `Out of resources` example guard.
+- Runtime-matrix adversarial lane wrote
+  `agents/fuzz_round61_runtime_adversarial_lane.md`. Selector A collected
+  `108/1615` descriptor-chain `ld.red`, two-CTA accumulator/indexed, scaled,
+  scale descriptor, narrow-view, and clean diagnostic rows and passed as
+  `108 passed`; selector B collected `33/1615` two-CTA copy/view rows and
+  passed as `33 passed`. Aggregate: `141 passed, 0 failed, 0 skipped`.
+
+## Previous: 2026-04-21 Round 60 frontend, examples, and random runtime fuzzing
 
 - Local frontend tensor-memory lane wrote
   `agents/fuzz_round60_local_frontend_tmem_lane.md`. Focused selector

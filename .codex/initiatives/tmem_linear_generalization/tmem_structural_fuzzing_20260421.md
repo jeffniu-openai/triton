@@ -4397,3 +4397,76 @@ remain family-specific and consume a bounded subset of the inventory.
   guards; no compiler crash, verifier drift, false unsupported diagnostic,
   runtime miscompile, hang, unexpected skip/fail transition, or new
   independent `FZ-*`.
+
+### Round 61 local examples edge-parameter lane
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round61_local_examples_edge_lane.md`
+- Scope:
+  attention long-sequence rows, multicta resource/layout edges, 2CTA
+  block-scale dtype/shape edges, MoE fused gather token-count extremes, LoRA
+  padded-baseline comparisons, and layout-as-epilogue edge rows.
+- Result:
+  broad collection over six example files found `979` tests; focused exact
+  selector collected `16` and ran split-4 as `15 passed, 1 skipped`.
+- Classification:
+  skip is the existing `03-matmul-multicta.py` `Out of resources` example
+  guard; no compiler crash, verifier drift, false unsupported diagnostic,
+  runtime miscompile, hang, example-level correctness regression, or new
+  independent `FZ-*`.
+
+### Round 61 frontend plus structural adversarial lane B
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round61_frontend_structural_lane.md`
+- Scope:
+  frontend tensor-memory, descriptor, and layout diagnostics plus the
+  checked-in structural TMEM fuzzer.
+- Result:
+  frontend selector `tensor_memory or tmem_` collected `29/225` and ran as
+  `28 passed, 1 failed`, reproducing existing `FZ-20260421-0023`; structural
+  fuzzer collected `33` and ran split-4 as `9 passed, 24 xfailed`.
+- Classification:
+  no new independent `FZ-*`; no XPASS, unexpected structural failure,
+  verifier assertion outside expected xfails, compiler crash outside expected
+  xfails, runtime miscompile, hang, or clean-diagnostic drift.
+
+### Round 61 lit/codegen compiler breadth lane C
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round61_lit_codegen_lane.md`
+- Scope:
+  TMEM hoist/promotion, tensor-memory LLVM lowering, Blackwell conversion,
+  NVWS, partitioning, mbarrier/cluster, interleave, ownership, and direct
+  `triton-opt` replay surfaces.
+- Result:
+  lit breadth ran `19` files as `19 passed`; direct `triton-opt` replays ran
+  `4/4` with exit code `0`.
+- Classification:
+  no new independent `FZ-*`; no reproduced existing bucket, compiler crash,
+  verifier/diagnostic drift, PassManager failure, conversion failure, NVWS
+  lowering failure, warp-specialization/partition failure, or
+  2CTA/more-than-2CTA ownership failure.
+
+### Round 61 runtime-matrix adversarial lane A
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round61_runtime_adversarial_lane.md`
+- Scope:
+  descriptor-chain `ld.red`, two-CTA accumulator/indexed and subslice views,
+  scaled two-CTA accumulator subslices, scale descriptor-view auto-copy,
+  narrow indexed accumulator views, clean scaled N16 diagnostics, and
+  two-CTA no-scale copy indexed/subslice plus `warpx2` positive and clean
+  unsupported rows.
+- Result:
+  selector A collected `108/1615` and passed as `108 passed`; selector B
+  collected `33/1615` and passed as `33 passed`. Aggregate:
+  `141 passed, 0 failed, 0 skipped`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  clean-boundary drift, opcode assertion failure, runtime miscompile, hang,
+  process/device contamination, or new independent `FZ-*`.

@@ -33002,3 +33002,80 @@ Open after this slice:
   no compiler crash, verifier drift, false unsupported diagnostic, runtime
   miscompile, hang, unexpected skip/fail transition, or new independent
   `FZ-*`.
+
+## 2026-04-21: Round 61 local examples edge-parameter lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round61_local_examples_edge_lane.md`.
+- Required `make -j8` was a no-op.
+- Broad collection over attention, matmul-multicta, 2CTA block-scale matmul,
+  MoE fused gather, LoRA fusion, and layout-as-epilogue discovered `979`
+  tests.
+- Focused exact selector collected `16` tests.
+- Split-4 runtime result:
+  `15 passed, 1 skipped`.
+- Skip reason:
+  existing `03-matmul-multicta.py` `Out of resources` example guard.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, example-level correctness regression, or new independent
+  `FZ-*`.
+
+## 2026-04-21: Round 61 frontend plus structural adversarial lane B
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round61_frontend_structural_lane.md`.
+- Required `make -j8` was a no-op.
+- Frontend selector `tensor_memory or tmem_` collected `29/225` and ran as
+  `28 passed, 1 failed`.
+- Exact frontend rerun reproduced existing `FZ-20260421-0023`:
+  `test_tmem_subslice_reg_layout_constexpr` inline expecttest drift for TMEM
+  subslice register-layout text.
+- Structural fuzzer collection found `33` tests; adversarial selector collected
+  `32/33`.
+- Full structural split-4 result:
+  `9 passed, 24 xfailed`.
+- Classification:
+  no new independent `FZ-*`; no XPASS, unexpected structural failure, verifier
+  assertion outside expected xfails, compiler crash outside expected xfails,
+  runtime miscompile, hang, or clean-diagnostic drift.
+
+## 2026-04-21: Round 61 lit/codegen compiler breadth lane C
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round61_lit_codegen_lane.md`.
+- Required `make -j8` and build-tree `ninja triton-opt` were no-ops.
+- Lit sweep 1 covered TMEM hoist/promotion, partitioning, tensor-memory LLVM
+  lowering, and Blackwell conversion: `6 passed`.
+- Lit sweep 2 covered NVWS aref, invalid diagnostics, stage/phase assignment,
+  warp-group lowering, and TMEM insertion: `7 passed`.
+- Lit sweep 3 covered NvidiaGPU TMEM layouts, interleave, mbarrier/cluster,
+  shared-memory allocation, and MMAv3 PTX conversion controls: `6 passed`.
+- Direct `triton-opt` replays over hoist, mbarrier-cluster, NVWS invalid, and
+  Blackwell conversion all exited `0`.
+- Aggregate:
+  `19` lit files passed; `4/4` direct `triton-opt` replays passed.
+- Classification:
+  no new independent `FZ-*`; no reproduced existing bucket, compiler crash,
+  verifier/diagnostic drift, PassManager failure, conversion failure, NVWS
+  lowering failure, warp-specialization/partition failure, or
+  2CTA/more-than-2CTA ownership failure.
+
+## 2026-04-21: Round 61 runtime-matrix adversarial lane A
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round61_runtime_adversarial_lane.md`.
+- Required `make -j8` was a no-op.
+- Selector A over descriptor-chain `ld.red`, two-CTA accumulator/indexed
+  views, scaled two-CTA accumulator subslices, scale descriptor-view auto-copy,
+  narrow indexed accumulator views, and clean scaled N16 diagnostics collected
+  `108/1615` and ran split-4 as `108 passed`.
+- Selector B over two-CTA no-scale copy indexed/subslice views and `warpx2`
+  positive/clean-unsupported rows collected `33/1615` and ran split-4 as
+  `33 passed`.
+- Aggregate:
+  `141 passed, 0 failed, 0 skipped`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  clean-boundary drift, opcode assertion failure, runtime miscompile, hang,
+  process/device contamination, or new independent `FZ-*`.

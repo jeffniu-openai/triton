@@ -17230,3 +17230,38 @@ rejection, not rescue
   MMAv5. Split-4 runtime ran as `56 passed, 8 skipped`; skips are the known
   lifted descriptor roundtrip Blackwell TMEM allocation-limit guard. No new
   independent `FZ-*`; backend repair remains deferred.
+
+- Round 61 local examples edge-parameter lane wrote
+  `agents/fuzz_round61_local_examples_edge_lane.md`. Required `make -j8` was
+  a no-op. Broad collection over six example files found `979` tests; focused
+  exact selector collected `16` and ran split-4 as `15 passed, 1 skipped`.
+  The skip is the existing `03-matmul-multicta.py` `Out of resources`
+  example guard. No compiler crash, verifier drift, false unsupported
+  diagnostic, runtime miscompile, hang, example-level correctness regression,
+  or new independent `FZ-*`; backend repair remains deferred.
+
+- Round 61 frontend plus structural adversarial lane B wrote
+  `agents/fuzz_round61_frontend_structural_lane.md`. Required `make -j8` was
+  a no-op. Frontend selector `tensor_memory or tmem_` collected `29/225` and
+  ran as `28 passed, 1 failed`, reproducing existing `FZ-20260421-0023`.
+  Full structural fuzzer collected `33` and ran split-4 as
+  `9 passed, 24 xfailed`; no XPASS, unexpected failure, or new independent
+  `FZ-*`; backend repair remains deferred.
+
+- Round 61 lit/codegen compiler breadth lane C wrote
+  `agents/fuzz_round61_lit_codegen_lane.md`. Required `make -j8` and
+  `ninja triton-opt` were no-ops. Three lit sweeps covering TMEM
+  hoist/promotion, tensor-memory lowering, Blackwell conversion, NVWS,
+  partitioning, mbarrier/cluster, and ownership surfaces ran `19 passed`;
+  direct `triton-opt` replays ran `4/4` with exit code `0`. No new
+  independent `FZ-*`; backend repair remains deferred.
+
+- Round 61 runtime-matrix adversarial lane A wrote
+  `agents/fuzz_round61_runtime_adversarial_lane.md`. Required `make -j8` was
+  a no-op. Selector A collected `108/1615` descriptor-chain `ld.red`,
+  two-CTA accumulator/indexed, scaled accumulator, scale descriptor, narrow
+  view, and clean diagnostic rows and passed as `108 passed`. Selector B
+  collected `33/1615` two-CTA no-scale copy indexed/subslice and `warpx2`
+  positive/clean-unsupported rows and passed as `33 passed`. Aggregate:
+  `141 passed, 0 failed, 0 skipped`; no new independent `FZ-*`; backend
+  repair remains deferred.

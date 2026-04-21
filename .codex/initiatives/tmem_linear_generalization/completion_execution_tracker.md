@@ -4017,3 +4017,31 @@ discovery.
   MMAv5. Split-4 runtime result: `56 passed, 8 skipped`; skips are known
   lifted descriptor roundtrip Blackwell allocation-limit guards. No new
   independent `FZ-*`.
+
+- 2026-04-21: Round 61 local examples edge-parameter lane completed. Report:
+  `agents/fuzz_round61_local_examples_edge_lane.md`. Required `make -j8` was
+  a no-op. Six example files collected `979` tests; focused exact selector
+  collected `16` and ran split-4 as `15 passed, 1 skipped`. The skip is the
+  existing `03-matmul-multicta.py` `Out of resources` example guard. No new
+  independent `FZ-*`.
+
+- 2026-04-21: Round 61 frontend plus structural adversarial lane B completed.
+  Report: `agents/fuzz_round61_frontend_structural_lane.md`. Required
+  `make -j8` was a no-op. Frontend selector `tensor_memory or tmem_`
+  collected `29/225` and ran as `28 passed, 1 failed`, reproducing existing
+  `FZ-20260421-0023`. Full structural fuzzer collected `33` and ran split-4
+  as `9 passed, 24 xfailed`. No new independent `FZ-*`.
+
+- 2026-04-21: Round 61 lit/codegen compiler breadth lane C completed. Report:
+  `agents/fuzz_round61_lit_codegen_lane.md`. Required `make -j8` and
+  `ninja triton-opt` were no-ops. Lit breadth ran `19 passed`; direct
+  `triton-opt` replays ran `4/4` with exit code `0`. No compiler crash,
+  diagnostic drift, conversion failure, NVWS failure, partition failure,
+  ownership failure, or new independent `FZ-*`.
+
+- 2026-04-21: Round 61 runtime-matrix adversarial lane A completed. Report:
+  `agents/fuzz_round61_runtime_adversarial_lane.md`. Required `make -j8` was
+  a no-op. Selector A collected `108/1615` and passed split-4 as
+  `108 passed`; selector B collected `33/1615` and passed split-4 as
+  `33 passed`. Aggregate: `141 passed, 0 failed, 0 skipped`. No new
+  independent `FZ-*`.
