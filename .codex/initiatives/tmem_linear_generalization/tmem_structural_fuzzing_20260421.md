@@ -2705,3 +2705,16 @@ remain family-specific and consume a bounded subset of the inventory.
   permutations pass and emit hardware reductions. Explicit `auto`, `32x32b`,
   `16x32bx2`, and `32x32b_splitn` requests do not rescue row-permuted M64
   rows.
+
+### Round 21 local scaled-MMAv5 layout baseline
+
+- Time: 2026-04-21 12:03 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_layouts_round21.md`
+- Selector:
+  `mma_scaled and (lhs_subslice or lhs_tile_permuted or acc_tile_permuted_64 or acc_tile_permuted_32 or acc_identity_narrow) and not reports and not fz0015`
+  collected `91/1615`.
+- Split-4 result:
+  `91 passed` (`23/23/23/22`).
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.

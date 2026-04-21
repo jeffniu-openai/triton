@@ -2089,3 +2089,7 @@ signal handling:
   `FZ-20260421-0012`: M64 f32 row-permuted `ld.red` fails in destination
   layout planning, column-only permutations pass, and explicit load variants
   do not rescue row-permuted rows.
+
+- 2026-04-21 12:03 UTC: local scaled-MMAv5 static-layout baseline completed.
+  Report: `agents/fuzz_local_scaled_layouts_round21.md`. Selector collected
+  `91/1615` and passed split-4 as `91 passed`; no new bucket.

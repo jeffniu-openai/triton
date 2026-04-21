@@ -15637,3 +15637,12 @@ rejection, not rescue
   `32x32b_splitn` requests all fail for row-permuted M64 rows, so the gap is
   row-basis recognition/canonicalization rather than a user-requested variant
   choice.
+
+- Local Round 21 scaled-MMAv5 static-layout baseline wrote
+  `agents/fuzz_local_scaled_layouts_round21.md`. Required `make -j8` was a
+  no-op. Selector
+  `mma_scaled and (lhs_subslice or lhs_tile_permuted or acc_tile_permuted_64 or acc_tile_permuted_32 or acc_identity_narrow) and not reports and not fz0015`
+  collected `91/1615` rows and passed split-4 as `91 passed`
+  (`23/23/23/22`). No new bucket; this is a green contrast showing the current
+  scaled-MMAv5 failures are not explained by these static layout families
+  alone when known selected-B-scale rows are excluded.

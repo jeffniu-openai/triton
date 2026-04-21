@@ -28944,3 +28944,22 @@ Open after this slice:
 - Classification: no new independent `FZ-*`; this sharpens
   `FZ-20260421-0012` as an M64 f32 hardware-reduction destination-layout
   planner gap for non-identity effective row bases.
+
+## 2026-04-21 12:03 UTC: Round 21 local scaled-MMAv5 layout baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_layouts_round21.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector
+  `mma_scaled and (lhs_subslice or lhs_tile_permuted or acc_tile_permuted_64 or acc_tile_permuted_32 or acc_identity_narrow) and not reports and not fz0015`
+  collected `91/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `91 passed`:
+  - GPU 0 / group 1: `23 passed`;
+  - GPU 1 / group 2: `23 passed`;
+  - GPU 2 / group 3: `23 passed`;
+  - GPU 3 / group 4: `22 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
