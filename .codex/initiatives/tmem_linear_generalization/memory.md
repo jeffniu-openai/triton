@@ -15035,6 +15035,8 @@ rejection, not rescue
   split-4 as `20 passed`.
 - Local high-CGA/scales sanity selected `17/1615` and passed split-4 as
   `17 passed`, including scales CGA rows and the clean 4CTA copy diagnostic.
+- Local scaled descriptor sanity selected `32/1615` and passed split-4 as
+  `32 passed`.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 

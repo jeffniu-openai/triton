@@ -1960,6 +1960,17 @@ remain family-specific and consume a bounded subset of the inventory.
 - Result: `17/1615` collected and split-4 passed as `17 passed`; no new
   `FZ-*` bucket.
 
+### Round 14 local scaled descriptor sanity
+
+- Time: 2026-04-21
+- Required build: `make -j8` no-op.
+- Scope: checked-in scaled-MMAv5 indexed accumulator views, shared scale
+  descriptor-view auto-copy rows, B-scale descriptor views, and narrow
+  indexed accumulator controls selected by
+  `mma_scaled and (descriptor or scale_descriptor or indexed_acc)`.
+- Result: `32/1615` collected and split-4 passed as `32 passed`; no new
+  `FZ-*` bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

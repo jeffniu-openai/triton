@@ -27809,6 +27809,23 @@ Open after this slice:
   - group 4/GPU 3: `2 passed, 1613 deselected in 4.10s`.
 - Aggregate: `17 passed`. No new bucket was found.
 
+## 2026-04-21: Round 14 local scaled descriptor sanity
+
+- Ran a checked-in scaled-MMAv5 descriptor/view sanity selector while Lane AB
+  fuzzed the same family adversarially. No backend or compiler repairs were
+  attempted.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and (descriptor or scale_descriptor or indexed_acc)'`
+  selected `32/1615` rows.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r14_scaled_descriptor_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and (descriptor or scale_descriptor or indexed_acc)'`
+- Result after required `make -j8` per shard:
+  - group 1/GPU 0: `8 passed, 1607 deselected in 4.77s`;
+  - group 2/GPU 1: `8 passed, 1607 deselected in 4.77s`;
+  - group 3/GPU 2: `8 passed, 1607 deselected in 12.81s`;
+  - group 4/GPU 3: `8 passed, 1607 deselected in 5.10s`.
+- Aggregate: `32 passed`. No new bucket was found.
+
 ## 2026-04-21: local copy/subword runtime slice
 
 - Ran checked-in runtime-matrix copy/subword coverage while the custom
