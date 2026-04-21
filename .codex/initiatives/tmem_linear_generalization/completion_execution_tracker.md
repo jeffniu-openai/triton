@@ -2697,3 +2697,16 @@ discovery.
   passed split-4 as `55 passed`. No new independent `FZ-*`; no
   `FZ-20260421-0010` ownership diagnostic in the legal `num_ctas=2` temporary
   rows.
+
+- 2026-04-21 13:20 UTC: Round 34 high-rank descriptor-view runtime lane
+  completed. Artifact: `agents/fuzz_high_rank_views_round34.md`. Required
+  `make -j8` was a no-op. Checked-in high-rank descriptor selector
+  `(higher_rank or multidim_slice or half_rows or rank5) and not reports`
+  collected `102/1615` and stayed stable as `82 passed, 20 skipped`; focused
+  rank-5 small/unit-parent controls passed as `23 passed`. Temporary probe
+  `/tmp/tmem_high_rank_views_round34_probe.py` classified `9` rows as `2`
+  pass, `1` clean TMEM OOR, `1` existing `FZ-20260421-0002`/
+  `FZ-20260421-0003` descriptor-view wrong result, `1` clean unsupported
+  row-half `.ld.red` descriptor view, and `4` new candidate
+  `FZ-20260421-0019` rank-5 `ld/st` unit-dimension `get_reg_layout` aborts.
+  Repair remains deferred under the discovery-only campaign contract.
