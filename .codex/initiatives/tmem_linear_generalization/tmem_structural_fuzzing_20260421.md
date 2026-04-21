@@ -2109,6 +2109,21 @@ remain family-specific and consume a bounded subset of the inventory.
   `FZ-20260421-0012` M64 destination-layout lowering failures for effective
   non-identity row bases.
 
+### Round 14 local clean-boundary selector
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundaries_round14.md`
+- Required build: `make -j8` no-op.
+- Selector:
+  `reports_clean_unsupported or reports_clean_error or reports_tmem_oor`
+  collected `157/1615` rows.
+- Split-4 result:
+  `157 passed` (`40`, `40`, `40`, `37` by shard).
+- Classification: no new bucket. The clean unsupported/error/OOR surface
+  remained stable and did not drift into unexpected compiler crashes or runtime
+  execution paths.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local Round 14 clean-boundary selector stayed stable.
+  Report: `agents/fuzz_local_clean_boundaries_round14.md`. Required
+  `make -j8` was a no-op. The selector
+  `reports_clean_unsupported or reports_clean_error or reports_tmem_oor`
+  collected `157/1615` rows and passed split-4 as `157 passed`, covering
+  clean unsupported/error/OOR diagnostics across ld/st, copy, MMAv5,
+  scaled-MMAv5, high-CGA context, row/column-permuted, and subword/exotic
+  layout boundaries. No new bucket.
+
 - Latest: 2026-04-21 11:03 UTC Round 14 Lane AE completed direct `ld/st`
   descriptor-algebra fuzzing. Report:
   `agents/fuzz_ldst_descriptor_algebra_round14.md`. Required `make -j8` was a

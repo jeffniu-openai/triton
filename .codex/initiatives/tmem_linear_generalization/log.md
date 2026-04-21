@@ -28015,3 +28015,19 @@ Open after this slice:
 - No new independent `FZ-*` bucket was assigned. Rank-6 single-CTA
   diagnostics map to the already-recorded direct `ld/st` row-anchor clean
   boundary; the two-CTA rank-6 row executed and matched expected values.
+
+## 2026-04-21: Round 14 local clean-boundary selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundaries_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'reports_clean_unsupported or reports_clean_error or reports_tmem_oor'`
+  selected `157/1615`.
+- Split-4 runtime execution with stable per-GPU caches reported aggregate
+  `157 passed` (`40`, `40`, `40`, `37` by shard).
+- Classification: no new bucket. Existing clean unsupported, clean error, and
+  TMEM OOR rows stayed clean across ld/st, copy, MMAv5, scaled-MMAv5,
+  high-CGA context, row/column-permuted, and subword/exotic layout boundaries.

@@ -548,6 +548,11 @@ The project is complete when:
   The `ld_red and (m64 or descriptor or rowcol_permuted) and not reports`
   selector collected `100/1615` and ran as `94 passed, 6 failed`; the six
   failures remain known `FZ-20260421-0012`.
+  2026-04-21 local clean-boundary selector wrote
+  `agents/fuzz_local_clean_boundaries_round14.md`. The
+  `reports_clean_unsupported or reports_clean_error or reports_tmem_oor`
+  selector collected `157/1615` and passed split-4 as `157 passed`; no clean
+  diagnostic row drifted into an unexpected crash or runtime path.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive
