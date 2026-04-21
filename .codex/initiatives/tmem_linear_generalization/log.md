@@ -26888,3 +26888,18 @@ Open after this slice:
   - four split groups classified `280` rows each;
   - exact `nvfp4` contrasts and 4CTA/16CTA scaled-MMA copy sanity controls
     passed as classified tests.
+
+## 2026-04-21: focused structural-sentinel sanity check
+
+- After integrating Round 9 reports and the Round 8 scaled-MMAv5 expansion,
+  reran the checked-in structural-fuzzer sentinels most directly touched by
+  today's classifications.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - collect-only selected `3 / 33` nodeids for
+    `ldred_1cta_direct_index_allocator_crash`,
+    `scaled_mma_acc_subslice_control_flow`, and
+    `ldred_twocta_rowcol_optimizer_crash`;
+  - exact selector run on `CUDA_VISIBLE_DEVICES=2`,
+    `TRITON_CACHE_DIR=/tmp/triton-cache-local-r9-sentinels` reported
+    `3 xfailed`.
