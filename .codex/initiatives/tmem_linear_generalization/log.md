@@ -28590,6 +28590,24 @@ Open after this slice:
   copy-tracked mbarrier plus one independent plain mbarrier interval is enough
   to reproduce, and both copy-then-plain and plain-then-copy orderings fail.
 
+## 2026-04-21 11:58 UTC: Round 18 proxy-fence plain-only follow-up
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_fence_plain_only_round18.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Follow-up added two plain-only mbarrier rows to
+  `/tmp/tmem_proxy_fence_intervals_round18_probe.py`; collection selected
+  `2/17` rows and runtime passed as `2 passed`, with the sequential row
+  catching and classifying the known proxy-fence insertion diagnostic as
+  existing `FZ-20260421-0014`.
+- Classification: no new independent `FZ-*`. This materially revises the
+  diagnosis: `FZ-0014` is not TMEM-copy-specific. Two sequential plain
+  init/arrive/wait mbarrier intervals with no TMEM allocation or copy are
+  sufficient to reproduce, while initializing both plain mbarriers before
+  either arrive/wait use passes.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

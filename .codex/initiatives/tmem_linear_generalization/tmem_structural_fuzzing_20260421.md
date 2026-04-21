@@ -2486,6 +2486,20 @@ remain family-specific and consume a bounded subset of the inventory.
   to reproduce proxy-fence insertion failure in either order, so the bug does
   not require two copy-tracked regions.
 
+### Round 18 proxy-fence plain-only follow-up
+
+- Time: 2026-04-21 11:58 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_fence_plain_only_round18.md`
+- Temporary probe:
+  `/tmp/tmem_proxy_fence_intervals_round18_probe.py`.
+- Result: follow-up selected `2/17` rows and passed as `2 passed`, with the
+  sequential row classified as existing `FZ-20260421-0014`.
+- Classification: no new independent `FZ-*`. `FZ-0014` is not
+  TMEM-copy-specific: two sequential plain init/arrive/wait mbarrier intervals
+  with no TMEM operations reproduce the same proxy-fence insertion failure,
+  while initializing both mbarriers before either arrive/wait use passes.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

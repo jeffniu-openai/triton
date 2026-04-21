@@ -3,13 +3,15 @@
 - Latest: 2026-04-21 11:56 UTC Round 18 subagent reports landed. Reports:
   `agents/fuzz_proxy_fence_intervals_round18.md` and
   `agents/fuzz_dynamic_clean_boundaries_round18.md`, plus
-  `agents/fuzz_proxy_fence_plain_mbarrier_round18.md`. Lane AR found no new
-  bucket and narrowed `FZ-20260421-0014`: sequential wait-before-next-init
-  2CTA copy regions reproduce proxy-fence insertion failure without readback,
-  while init-all-before-copy/wait shapes pass even with three regions. The
-  plain-mbarrier follow-up shows two copy-tracked regions are not required:
-  one 2CTA copy mbarrier plus one independent plain mbarrier interval
-  reproduces in either order. Lane AS found no new bucket; dynamic-index
+  `agents/fuzz_proxy_fence_plain_mbarrier_round18.md` and
+  `agents/fuzz_proxy_fence_plain_only_round18.md`. Lane AR found no new bucket
+  and narrowed `FZ-20260421-0014`: sequential wait-before-next-init 2CTA copy
+  regions reproduce proxy-fence insertion failure without readback, while
+  init-all-before-copy/wait shapes pass even with three regions. The
+  plain-mbarrier follow-ups show the core bug is not TMEM-copy-specific: one
+  2CTA copy mbarrier plus one independent plain mbarrier interval reproduces in
+  either order, and even two sequential plain-only mbarrier intervals with no
+  TMEM operations reproduce. Lane AS found no new bucket; dynamic-index
   load-only strengthens `FZ-0001`, tuple-like dynamic descriptor capture
   strengthens `FZ-0002`, high-CGA clean diagnostics stay under `FZ-0010`, and
   runtime-selected direct B-scale scaled-MMAv5 still reproduces `FZ-0015`. AS

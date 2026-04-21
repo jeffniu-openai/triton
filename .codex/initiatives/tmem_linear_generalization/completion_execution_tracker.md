@@ -1994,3 +1994,10 @@ signal handling:
   sharpens `FZ-0014`: one legal 2CTA no-scales copy-tracked mbarrier plus one
   independent plain mbarrier interval reproduces in both copy-then-plain and
   plain-then-copy orderings, so two copy-tracked regions are not required.
+
+- 2026-04-21 11:58 UTC: integrated Round 18 proxy-fence plain-only follow-up
+  report: `agents/fuzz_proxy_fence_plain_only_round18.md`. No new bucket. This
+  materially revises `FZ-0014`: the proxy-fence insertion failure is not
+  TMEM-copy-specific. Two sequential plain init/arrive/wait mbarrier intervals
+  with no TMEM operations reproduce; initializing both mbarriers before either
+  arrive/wait use passes.
