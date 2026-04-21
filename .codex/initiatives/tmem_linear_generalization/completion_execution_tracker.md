@@ -2,7 +2,21 @@
 
 Last updated: 2026-04-21
 
-Latest fuzzing checkpoint: 2026-04-21 Round 55 FZ-0003 boundary lane B
+Latest fuzzing checkpoint: 2026-04-21 15:34 UTC Round 55 lit negative-boundary
+lane C completed. Report:
+`agents/fuzz_round55_lit_negative_boundary_lane.md`. Required `make -j8` was a
+no-op. Checked-in lit over TMEM/proxy/mbarrier/relayout/allocation/conversion
+surfaces discovered `16` tests and ran as `15 passed, 1 failed`; the failure
+is existing `FZ-20260421-0016`. Extra proxy/mbarrier/TMA/invalid lit
+diagnostics discovered `7` tests and passed. Direct Blackwell conversion
+exited `0`; Round 38 compiler-boundary corpus replay stayed at `18 pass`,
+`24` clean diagnostics, `5` existing late illegal-op rows, and `9` existing
+abort/crash rows; Round 24 parse-only `FZ-0016` corpus replay stayed at `15`
+existing abort/crash rows and `40` clean diagnostics. Minimized repros
+revalidated existing `FZ-20260421-0016` and `FZ-20260421-0017`. No new
+independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 55 FZ-0003 boundary lane B
 completed. Report: `agents/fuzz_round55_fz0003_boundary_lane.md`. Required
 `make -j8` was a no-op. A temporary static descriptor-view probe completed as
 `23 passed, 1 failed`; the failure was a clean unsupported minimal 2CTA

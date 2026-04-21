@@ -70,6 +70,26 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ## Round Log
 
+### Round 55 Lane C, lit negative-boundary drift
+
+- Time: 2026-04-21 15:34 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round55_lit_negative_boundary_lane.md`
+- Scope: compiler-only/lit negative-boundary drift for TMEM verifier
+  diagnostics, clean unsupported cases, unencoded/non-distributed operands,
+  64-bit bitwidth, proxy/mbarrier, relayout, allocation, and tensor-memory
+  conversion.
+- Result: no backend or test source edits. Required `make -j8` was a no-op.
+  Checked-in lit over TMEM/proxy/mbarrier/relayout/allocation/conversion
+  surfaces ran `16` tests as `15 passed, 1 failed`; the failure is existing
+  `FZ-20260421-0016`. Extra proxy/mbarrier/TMA/invalid lit diagnostics passed
+  `7/7`. Direct Blackwell conversion exited `0`. Round 38 compiler-boundary
+  corpus replay remained `18 pass`, `24` clean diagnostics, `5` existing late
+  illegal-op rows, and `9` existing abort/crash rows. Round 24 parse-only
+  `FZ-0016` corpus replay remained `15` existing abort/crash rows and `40`
+  clean diagnostics. Minimized repros revalidated existing
+  `FZ-20260421-0016` and `FZ-20260421-0017`. No new independent `FZ-*`.
+
 ### Round 54 Lane B, resource and shape extremes
 
 - Time: 2026-04-21 15:24 UTC

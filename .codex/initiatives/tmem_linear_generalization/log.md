@@ -1,3 +1,28 @@
+## 2026-04-21 15:34 UTC: Round 55 lit negative-boundary lane C
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round55_lit_negative_boundary_lane.md`.
+- Scope: compiler-only/lit negative-boundary drift for TMEM verifier
+  diagnostics, clean unsupported cases, unencoded/non-distributed operands,
+  bitwidth, proxy/mbarrier, relayout, allocation, and tensor-memory
+  conversion. Backend repairs were intentionally not attempted.
+- Required `make -j8` was a no-op.
+- Checked-in TMEM/proxy/mbarrier/relayout/allocation/conversion lit sweep:
+  `16` discovered, `15 passed, 1 failed`; the failure is existing
+  `FZ-20260421-0016` in `Conversion/relayout_tritongpu.mlir`.
+- Extra proxy/mbarrier/TMA/invalid diagnostic lit sweep: `7 passed` plus one
+  no-tests warning for `test/Conversion/tensor_memory_to_llvm.mlir`.
+- Direct Blackwell conversion probe: exit `0`.
+- Round 38 compiler-boundary corpus replay: `18 pass`, `24` clean
+  diagnostics, `5` existing late illegal-op rows, and `9` existing abort/crash
+  rows.
+- Round 24 parse-only `FZ-0016` corpus replay: `15` existing abort/crash rows
+  and `40` clean diagnostics.
+- Minimized repros revalidated existing `FZ-20260421-0016` and
+  `FZ-20260421-0017`; f64 broadens the same bitwidth surface while f32 stays
+  on the clean indexed-view-chain boundary.
+- Classification: no new independent `FZ-*`.
+
 ## 2026-04-21: Round 55 FZ-0003 boundary lane B
 
 - New report:

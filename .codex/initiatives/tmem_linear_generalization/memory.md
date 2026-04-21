@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 15:34 UTC Round 55 lit negative-boundary lane C
+  completed. Report:
+  `agents/fuzz_round55_lit_negative_boundary_lane.md`. Required `make -j8`
+  was a no-op. Checked-in TMEM/proxy/mbarrier/relayout/allocation/conversion
+  lit sweep discovered `16` tests and ran as `15 passed, 1 failed`; the sole
+  failure is existing `FZ-20260421-0016` in
+  `Conversion/relayout_tritongpu.mlir`. Extra proxy/mbarrier/TMA/invalid lit
+  diagnostics discovered `7` tests and passed, with a no-tests warning for
+  `test/Conversion/tensor_memory_to_llvm.mlir`. Direct Blackwell conversion
+  exited `0`. Round 38 compiler-boundary corpus replay remained `18 pass`,
+  `24` clean diagnostics, `5` existing late illegal-op rows, and `9` existing
+  abort/crash rows. Round 24 parse-only `FZ-0016` corpus replay remained `15`
+  existing abort/crash rows and `40` clean diagnostics. Minimized repros
+  revalidated existing `FZ-20260421-0016` and `FZ-20260421-0017`; no backend
+  repair attempted and no new independent `FZ-*`.
+
 - Latest: 2026-04-21 Round 55 FZ-0003 boundary lane B completed. Report:
   `agents/fuzz_round55_fz0003_boundary_lane.md`. Required `make -j8` was a
   no-op. A temporary static descriptor-view probe ran as `23 passed, 1 failed`;
