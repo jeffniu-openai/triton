@@ -27121,3 +27121,13 @@ Open after this slice:
   - group 3/GPU 2: `9 passed, 1606 deselected in 4.62s`;
   - group 4/GPU 3: `7 passed, 1608 deselected in 4.66s`.
 - Aggregate: `34 passed`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 post-integration structural-fuzzer smoke gate
+
+- After integrating Lane I, Lane J, and Lane K report checkpoints, reran the
+  checked-in structural fuzzer.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+    reported `9 passed, 24 xfailed in 8.16s`.
+- The promoted sentinel state is unchanged. No backend repairs were attempted.

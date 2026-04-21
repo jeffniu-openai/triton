@@ -91,6 +91,11 @@
   `9`, `9`, `9`, and `7` tests; aggregate result `34 passed`. Durations were
   stored at `/tmp/tmem_local_r10_cp_scales_durations.json`.
 
+- Latest: 2026-04-21 local Round 10 post-integration structural-fuzzer smoke
+  gate remains green. Required `make -j8` reported no work to do. Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
+  Result: `9 passed, 24 xfailed in 8.16s`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

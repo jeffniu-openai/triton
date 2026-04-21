@@ -269,6 +269,10 @@ The project is complete when:
   collect-only selected `34/1615`, split-4 across GPUs 0-3 selected
   `9/9/9/7` tests, and all `34` passed. Durations were stored at
   `/tmp/tmem_local_r10_cp_scales_durations.json`.
+  2026-04-21 09:58 UTC post-integration structural-fuzzer smoke gate remains
+  green after Lane I/J/K integration: required `make -j8` no-op, and
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+  reported `9 passed, 24 xfailed in 8.16s`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

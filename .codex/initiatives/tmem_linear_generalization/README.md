@@ -152,6 +152,11 @@ When resuming the initiative:
   stable caches and durations at `/tmp/tmem_local_r10_cp_scales_durations.json`.
   Aggregate result: `34 passed`.
 
+- 2026-04-21: local Round 10 post-integration structural-fuzzer smoke gate
+  remains green after Lane I/J/K integrations. Required `make -j8` reported
+  no work to do; the checked-in structural fuzzer ran on GPU 0 with stable
+  cache `/tmp/triton-cache-gpu0` and reported `9 passed, 24 xfailed in 8.16s`.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as
