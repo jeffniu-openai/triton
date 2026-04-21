@@ -60,6 +60,23 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 13:50 UTC Round 36 indexed-accumulator and subslice guardrail
+  completed. Artifact: `agents/fuzz_indexed_subslice_guardrail_round36.md`.
+  Selector
+  `(indexed_acc or subslice_view or lhs_subslice) and not reports and not resource and not m64`
+  collected `269/1615` and passed split-4 as `269 passed`. No compiler crash,
+  false unsupported diagnostic, opcode absence, runtime miscompile,
+  clean-boundary drift, unexpected xfail/pass transition, or new independent
+  `FZ-*`.
+  2026-04-21 13:50 UTC Round 36 subagent dynamic/equivalence reports
+  integrated. Artifacts: `agents/fuzz_dynamic_proxy_views_round36.md` and
+  `agents/fuzz_descriptor_equivalence_round36.md`. Dynamic proxy/mbarrier
+  probe found no new proxy-specific bucket (`6` existing `FZ-20260421-0001`,
+  `2` clean copy descriptor-view boundaries). Descriptor equivalence oracle
+  ran `108` rows and sharpened existing `FZ-20260421-0002` /
+  `FZ-20260421-0003`, `FZ-20260421-0004`, `FZ-20260421-0020`, and
+  `FZ-20260421-0022`; copy guardrail passed `87` rows. No new independent
+  `FZ-*`; backend repair remains deferred.
   2026-04-21 13:45 UTC Round 36 tile-permuted and structural fuzzer guardrail
   completed. Artifact: `agents/fuzz_tile_structural_guardrail_round36.md`.
   Checked-in structural fuzzer stayed stable as `9 passed, 24 xfailed`.

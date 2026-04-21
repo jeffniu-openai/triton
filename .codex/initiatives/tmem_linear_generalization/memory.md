@@ -1,5 +1,26 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 13:50 UTC Round 36 indexed-accumulator and subslice
+  guardrail completed. Report:
+  `agents/fuzz_indexed_subslice_guardrail_round36.md`. Selector
+  `(indexed_acc or subslice_view or lhs_subslice) and not reports and not resource and not m64`
+  collected `269/1615` and passed split-4 as `269 passed` (`68/68/68/65`).
+  No compiler crash, false unsupported diagnostic, opcode absence, runtime
+  miscompile, clean-boundary drift, unexpected xfail/pass transition, or new
+  independent `FZ-*`.
+
+- Latest parallel Round 36 subagent reports completed and were integrated:
+  `agents/fuzz_dynamic_proxy_views_round36.md` and
+  `agents/fuzz_descriptor_equivalence_round36.md`. Dynamic proxy/mbarrier
+  descriptor views produced no new proxy-specific bucket: `6` rows classify as
+  existing `FZ-20260421-0001` and `2` as an existing clean copy
+  descriptor-view boundary. Descriptor equivalence oracle ran `108` rows and
+  sharpened existing buckets only: `84` pass, `12` existing
+  `FZ-20260421-0002`/`FZ-20260421-0003` wrong results, `4` existing
+  `FZ-20260421-0022`, `4` existing `FZ-20260421-0004` opcode-loss/software
+  reduction rows, `2` existing `FZ-20260421-0020`, and `2` clean scalar `.x1`
+  diagnostics; adjacent copy guardrail passed `87` rows.
+
 - Latest: 2026-04-21 13:45 UTC Round 36 tile-permuted and structural fuzzer
   guardrail completed. Report:
   `agents/fuzz_tile_structural_guardrail_round36.md`. Checked-in structural

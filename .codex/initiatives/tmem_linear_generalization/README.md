@@ -7,7 +7,26 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 36 tile-permuted and structural
+Latest fuzzing checkpoint: 2026-04-21 Round 36 indexed-accumulator and
+subslice guardrail completed. Report:
+`agents/fuzz_indexed_subslice_guardrail_round36.md`. Selector
+`(indexed_acc or subslice_view or lhs_subslice) and not reports and not resource and not m64`
+collected `269/1615` and passed split-4 as `269 passed`. No new independent
+`FZ-*`.
+
+Parallel Round 36 subagent lanes also completed. Reports:
+`agents/fuzz_dynamic_proxy_views_round36.md` and
+`agents/fuzz_descriptor_equivalence_round36.md`. Dynamic proxy/mbarrier views
+classified six dynamic-index rows as existing `FZ-20260421-0001` and two rows
+as an existing clean copy descriptor-view boundary; no proxy-specific new
+bucket. Descriptor equivalence oracle ran `108` subprocess-isolated rows:
+`84` pass, `12` existing descriptor-view wrong-result rows under
+`FZ-20260421-0002`/`FZ-20260421-0003`, `4` existing `FZ-20260421-0022`, `4`
+existing `FZ-20260421-0004` opcode-loss/software-reduction rows, `2` existing
+`FZ-20260421-0020`, and `2` clean scalar `.x1` diagnostics. Copy guardrail
+passed as `87 passed`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 36 tile-permuted and structural
 fuzzer guardrail completed. Report:
 `agents/fuzz_tile_structural_guardrail_round36.md`. Checked-in structural
 fuzzer stayed stable as `9 passed, 24 xfailed`. Selector

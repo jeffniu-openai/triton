@@ -30766,6 +30766,40 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 13:50 UTC: Round 36 indexed-accumulator and subslice guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_indexed_subslice_guardrail_round36.md`.
+- Selector:
+  `(indexed_acc or subslice_view or lhs_subslice) and not reports and not resource and not m64`.
+- Collection: `269/1615`.
+- Split-4 result: `269 passed` (`68/68/68/65` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`. Backend repair remains deferred.
+
+## 2026-04-21 13:50 UTC: Round 36 subagent dynamic/equivalence reports integrated
+
+- Integrated reports:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_proxy_views_round36.md`
+  and
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_descriptor_equivalence_round36.md`.
+- Dynamic proxy/mbarrier descriptor-view probe:
+  `8` cataloging rows, all pytest rows passed because outcomes were classified
+  into JSONL; manual classification `6` existing `FZ-20260421-0001` and `2`
+  existing clean copy descriptor-view boundaries. Adjacent controls:
+  static `warpx2` copy `2 passed`, structural direct ld/st plus direct
+  `ld.red` `2 passed`, dynamic-index sentinel `1 xfailed`.
+- Descriptor equivalence oracle:
+  `108` subprocess-isolated rows classified as `84 pass`, `12` existing
+  `FZ-20260421-0002`/`FZ-20260421-0003` descriptor-view wrong-result rows,
+  `4` existing `FZ-20260421-0022`, `4` existing `FZ-20260421-0004`
+  hardware-opcode-loss/software-reduction rows, `2` existing
+  `FZ-20260421-0020`, and `2` clean scalar `.x1` diagnostics.
+- Adjacent copy descriptor-view guardrail from the equivalence lane passed as
+  `87 passed`.
+- Classification: no new independent `FZ-*`; backend repair remains deferred.
+
 ## 2026-04-21 13:45 UTC: Round 36 tile-permuted and structural fuzzer guardrail
 
 - Wrote
