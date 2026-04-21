@@ -1,3 +1,15 @@
+## 2026-04-21 14:23 UTC: Round 43 clean diagnostic drift guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_diag_guardrail_round43.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Collection selector:
+  `(clean_error or clean_unsupported or reports_clean_error or reports_clean_unsupported or reports_backend_error) and not cp_no_scales and not cp_scales and not mma_i8 and not resource`.
+- Collection/result: `91/19729` rows, split-4 as `91 passed`
+  (`23/23/23/22`).
+- Classification: no compiler crash, diagnostic drift, unexpected pass/fail
+  transition, runtime miscompile, or new independent `FZ-*`.
+
 ## 2026-04-21 14:21 UTC: Round 43 allocation/rematerialization guardrail
 
 - Wrote

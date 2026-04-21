@@ -60,6 +60,15 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:23 UTC Round 43 clean diagnostic drift guardrail completed.
+  Artifact: `agents/fuzz_clean_diag_guardrail_round43.md`. Selector
+  `(clean_error or clean_unsupported or reports_clean_error or
+  reports_clean_unsupported or reports_backend_error) and not cp_no_scales and
+  not cp_scales and not mma_i8 and not resource` collected `91/19729` rows
+  across `test_core.py` and `test_tmem_runtime_matrix.py`, then passed split-4
+  as `91 passed` (`23/23/23/22`). No compiler crash, diagnostic drift,
+  unexpected pass/fail transition, runtime miscompile, or new independent
+  `FZ-*`; backend repair remains deferred.
   2026-04-21 14:21 UTC Round 43 allocation/rematerialization guardrail
   completed. Artifact: `agents/fuzz_alloc_remat_guardrail_round43.md`.
   Required `make -j8` reported `no work to do`. Selector
