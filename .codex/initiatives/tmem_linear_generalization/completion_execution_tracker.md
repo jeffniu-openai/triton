@@ -444,6 +444,12 @@ The project is complete when:
   2026-04-21 checked-in FPSAN MMAv5/scaled-MMAv5 controls collected `37/104`
   and passed split-4 as `32 passed, 5 skipped`; durations stored at
   `/tmp/tmem_local_r13_fpsan_controls_durations.json`.
+  2026-04-21 Round 13 Lane Y completed FPSAN MMAv5 runtime descriptor
+  selection fuzzing without backend repairs. No new independent `FZ-*`.
+  FPSAN runtime `parent.index(ttgl.load(selector_ptr))` feeding plain MMAv5
+  remains report-only `FZ-20260421-0011`; adjacent checked-in plain/scaled
+  FPSAN controls, constexpr parent-index, and dynamic-slice controls stayed
+  green. Report: `agents/fuzz_fpsan_mma_round13.md`.
   2026-04-21 local scaled-MMAv5 FP4/tile/narrow controls found no new
   `FZ-*`: selector
   `mma_scaled and (tile_permuted or narrow or e2m1 or fp4)` collected
@@ -453,6 +459,23 @@ The project is complete when:
   `FZ-*`: Python selector `warp_specialize and tmem` collected `2/18218` and
   passed `2/2`; lit partition/allocation/interleave/NVWS files passed `4/4`.
   Report: `agents/fuzz_warpspec_partition_round13.md`.
+  2026-04-21 local copy/subword selector collected `106/1615` and passed
+  split-4 across GPUs 0-3 with stable caches as `106 passed`; durations stored
+  at `/tmp/tmem_local_r13_copy_subword_durations.json`.
+  2026-04-21 Round 13 Lane Z completed non-overlapping copy/subword edge
+  fuzzing without backend repairs. No new independent `FZ-*`; checked-in copy
+  selector collected `69/1615` and passed split-4 as `69 passed`,
+  representative PTX/LLIR opcodes matched for `128x128b`, `4x256b`, and
+  exact-width subword copy, and 4/8/16 CTA high-CGA contrasts mapped to
+  existing `FZ-20260421-0010`. Report:
+  `agents/fuzz_copy_subword_round13.md`.
+  2026-04-21 local `ld.red` M64 row-permuted fuzzing found new candidate
+  `FZ-20260421-0012`: checked-in selector
+  `ld_red and (tile_permuted or permuted or descriptor_chain or n_sweep) and not reports`
+  collected `115/1615` and split-4 ran as `109 passed, 6 failed`. The six
+  failures reproduce as over-strict unsupported destination-layout lowering for
+  M64 row-permuted reductions while nearby column-permuted controls pass.
+  Report: `agents/fuzz_ldred_m64_permuted_round13.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

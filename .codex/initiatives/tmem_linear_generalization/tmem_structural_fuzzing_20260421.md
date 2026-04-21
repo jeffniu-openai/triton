@@ -1822,6 +1822,24 @@ remain family-specific and consume a bounded subset of the inventory.
   no new `FZ-*` bucket. This is independent green-control evidence around
   the still-active FPSAN runtime-index reducer lane.
 
+### Round 13 Lane Y, FPSAN MMAv5 Runtime Descriptor Selection
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fpsan_mma_round13.md`
+- Scope: FPSAN on/off contrasts for plain MMAv5 runtime accumulator
+  descriptor selection across lifted-linear, legacy, and direct-linear parent
+  layouts, selector values, `use_acc`, neighboring `N/K` variants,
+  constexpr-index controls, dynamic-slice controls, reshape/preinit
+  perturbations, imported-helper contrast, and checked-in plain/scaled FPSAN
+  controls.
+- Result: no new independent `FZ-*` bucket. Temporary contrast grid classified
+  as `8` `FZ-20260421-0011`, `6` pass, and `2` `FZ-20260421-0001`.
+- Finding: `FZ-20260421-0011` is isolated to FPSAN runtime outer descriptor
+  selection by `parent.index(ttgl.load(selector_ptr))` feeding plain MMAv5.
+  Checked-in plain/scaled FPSAN controls, constexpr parent-index controls, and
+  dynamic slice controls are green.
+
 ### Round 13 local scaled-MMAv5 FP4/tile/narrow controls
 
 - Time: 2026-04-21
@@ -1854,6 +1872,40 @@ remain family-specific and consume a bounded subset of the inventory.
     `test_tensor_memory_allocation.mlir`, `interleave_tmem.mlir`, and
     `aref-tmem-insertion.mlir` passed `4/4`.
 - No new `FZ-*` bucket.
+
+### Round 13 Lane Z, Copy/Subword Edge Fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_subword_round13.md`
+- Scope: copy-family clean-boundary and neighboring-positive coverage beyond
+  Lane V: tile-permuted and tile-selector-permuted no-scales destinations,
+  row/column-permuted clean diagnostics, mixed/exotic linear-layout clean
+  diagnostics, `4x256b` refresh-shaped destinations, exact-width subword
+  `128x128b` positives, legacy/unpacked subword diagnostics, and 4/8/16 CTA
+  high-CGA contrasts for local 2CTA copy.
+- Result: no new independent `FZ-*` bucket. The checked-in selector collected
+  `69/1615` and split-4 passed as `69 passed`; representative PTX/LLIR
+  opcodes matched for `tcgen05.cp.cta_group::1.128x128b`,
+  `tcgen05.cp.cta_group::1.4x256b`, and exact-width subword
+  `128x128b`. The high-CGA contrasts map to existing `FZ-20260421-0010`.
+
+### Round 13 Local, LD.RED M64 Row-Permuted Layouts
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_m64_permuted_round13.md`
+- Scope: checked-in `ld.red` runtime-matrix coverage for descriptor chains,
+  tile-permuted layouts, row/column permutations, N sweeps, and non-f32
+  software reductions, excluding `reports_*` clean-diagnostic rows.
+- Result: new candidate `FZ-20260421-0012`. The selector collected
+  `115/1615` and split-4 ran as `109 passed, 6 failed`; exact fresh reruns
+  reproduced the six M64 row-permuted failures. Representative diagnostic:
+  `ttng.tmem_load` could not compute TMEM encoding info for reduction because
+  destination-layout lowering reported unsupported dst layout. Nearby
+  `col_reverse_n32` controls passed, so this is currently classified as an
+  over-strict destination-layout lowering gap rather than cache noise or an
+  existing opcode/allocator/high-CGA bucket.
 
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index

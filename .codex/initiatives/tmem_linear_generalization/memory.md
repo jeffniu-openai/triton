@@ -15001,12 +15001,20 @@ rejection, not rescue
 - Checked-in FPSAN MMAv5/scaled-MMAv5 controls collected `37/104` and passed
   split-4 as `32 passed, 5 skipped`; this is green-control evidence while the
   FPSAN runtime-index reducer lane remains active.
+- Round 13 Lane Y `agents/fuzz_fpsan_mma_round13.md` finalized the FPSAN
+  runtime-index scope: no new independent `FZ-*`; runtime outer descriptor
+  selection by `parent.index(ttgl.load(selector_ptr))` under FPSAN remains
+  report-only `FZ-20260421-0011`, while checked-in plain/scaled FPSAN
+  controls, constexpr-index controls, and dynamic-slice controls stayed green.
 - Local scaled-MMAv5 FP4/tile/narrow control report
   `agents/fuzz_scaled_fp4_tile_narrow_round13.md` found no new `FZ-*`:
   `202/1615` selected rows passed `202/202`.
 - Local warp-specialized TMEM partitioning report
   `agents/fuzz_warpspec_partition_round13.md` found no new `FZ-*`: Python
   runtime rows passed `2/2` and lit files passed `4/4`.
+- Local copy/subword selector
+  `cp_no_scales and (subword or packed or warpx2 or rowcol_permuted or
+  dense_shared)` collected `106/1615` and passed split-4 as `106 passed`.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 
@@ -15083,3 +15091,35 @@ rejection, not rescue
   - the existing multi-fragment tile-permuted narrow scaled-MMAv5 selector
     still fails its 20 selected rows with the B-scale fragment diagnostic; this
     was intentionally not relaxed by the single-fragment example recovery.
+
+## Current: 2026-04-21 10:38 UTC Round 13 fuzzing checkpoint
+
+- Active campaign mode remains discovery-only. Do not start backend repairs
+  while structural fuzzing continues to find or sharpen failures unless the
+  user explicitly pivots.
+- Lane Y FPSAN MMAv5 runtime descriptor-selection fuzzing is recorded in
+  `agents/fuzz_fpsan_mma_round13.md`; no new independent `FZ-*`. The
+  preserving condition for report-only `FZ-20260421-0011` remains
+  FPSAN-enabled runtime outer descriptor selection by
+  `parent.index(ttgl.load(selector_ptr))` feeding plain MMAv5, while adjacent
+  checked-in plain/scaled FPSAN controls and constexpr/dynamic-slice controls
+  stayed green.
+- Lane Z copy/subword edge fuzzing is recorded in
+  `agents/fuzz_copy_subword_round13.md`; no new independent `FZ-*`. The
+  non-overlapping checked-in selector collected `69/1615` and passed split-4
+  as `69 passed`; representative PTX/LLIR opcodes matched for `128x128b`,
+  `4x256b`, and exact-width subword copy; high-CGA 4/8/16 CTA copy contrasts
+  mapped to existing `FZ-20260421-0010`.
+- Local `ld.red` M64 row-permuted fuzzing is recorded in
+  `agents/fuzz_ldred_m64_permuted_round13.md`; new candidate
+  `FZ-20260421-0012`. Checked-in selector
+  `ld_red and (tile_permuted or permuted or descriptor_chain or n_sweep) and not reports`
+  collected `115/1615` and split-4 ran as `109 passed, 6 failed`. The six
+  failures are M64 row-permuted reductions rejected as unsupported destination
+  layout, while nearby column-permuted controls pass.
+- Next concrete steps:
+  - commit/push this FPSAN/copy-subword/ld.red-M64 checkpoint;
+  - continue with another non-overlapping fuzz lane or focused local runtime
+    slice;
+  - keep backend repairs deferred until discovery stops finding new bugs or the
+    user pivots.

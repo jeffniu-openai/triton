@@ -27635,6 +27635,25 @@ Open after this slice:
   - group 4/GPU 3: `7 passed, 97 deselected in 4.04s`.
 - FPSAN aggregate: `32 passed, 5 skipped`. No new bucket was found.
 
+## 2026-04-21: Round 13 Lane Y FPSAN MMAv5 runtime-index fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fpsan_mma_round13.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Temporary reducer reused
+  `/tmp/tmem_plain_mma_runtime_index_round12_probe.py`; required `make -j8`
+  was a no-op and py-compile passed.
+- Temporary 16-row contrast grid classified as `8` `FZ-20260421-0011`
+  runtime miscompiles, `6` pass controls, and `2` manually classified
+  `FZ-20260421-0001` illegal-`ttg.memdesc_index` compiler failures.
+- Fresh repeat of the smallest FPSAN row reproduced `4081/4096` mismatches,
+  `16` NaNs, and finite max abs diff `3.3029999366871882e+38` in `3/3`
+  subprocesses.
+- Finding: `FZ-20260421-0011` is isolated to FPSAN runtime outer descriptor
+  selection feeding plain MMAv5. It is not a broad FPSAN/MMAv5 issue because
+  checked-in plain/scaled FPSAN controls, constexpr-index controls, and dynamic
+  slice controls stayed green.
+
 ## 2026-04-21: local scaled-MMAv5 FP4/tile/narrow controls
 
 - Recorded
@@ -27663,3 +27682,71 @@ Open after this slice:
 - Lit:
   `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonGPU/partition-scheduling.mlir test/TritonNvidiaGPU/test_tensor_memory_allocation.mlir test/TritonNvidiaGPU/interleave_tmem.mlir test/NVWS/aref-tmem-insertion.mlir`
   passed `4/4`.
+
+## 2026-04-21: Round 13 Lane Y FPSAN MMAv5 runtime-index fuzzing
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fpsan_mma_round13.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Required `make -j8` was a no-op.
+- Checked-in plain MMAv5 FPSAN selector collected `21/104` and split-4 passed
+  as `16 passed, 5 skipped`; checked-in scaled-MMAv5 FPSAN selector collected
+  `15/104` and split-4 passed as `15 passed`.
+- Temporary 16-row contrast grid classified as `8` report-only
+  `FZ-20260421-0011` runtime miscompiles, `6` pass, and `2`
+  `FZ-20260421-0001` compiler failures.
+- Finding: `FZ-20260421-0011` is FPSAN-specific runtime outer descriptor
+  selection by `parent.index(ttgl.load(selector_ptr))` feeding plain MMAv5;
+  constexpr-index and dynamic-slice controls stayed green.
+
+## 2026-04-21: Round 13 Lane Z copy/subword edge fuzzing
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_subword_round13.md`.
+- Classification: no new independent `FZ-*` bucket and no runtime
+  miscompile/opcode mismatch.
+- Required `make -j8` was a no-op.
+- Checked-in selector:
+  `cp_no_scales_linear_tile_permuted or cp_no_scales_linear_tile_selector_permuted or cp_no_scales_linear_rowcol_permuted or cp_no_scales_linear_exotic or cp_no_scales_4x256b or cp_128x128_subword_exact_width or cp_no_scales_legacy_subword or cp_no_scales_linear_32bit_dtypes`
+  collected `69/1615` and split-4 passed as `69 passed`.
+- Representative opcode probe confirmed matching PTX/LLIR for
+  `tcgen05.cp.cta_group::1.128x128b`, `.4x256b`, and exact-width subword
+  `.128x128b`.
+- High-CGA 2CTA copy contrasts at `num_ctas in {4,8,16}` reproduced existing
+  `FZ-20260421-0010` CTA-count-gate diagnostics.
+
+## 2026-04-21: Round 13 local ld.red M64 row-permuted fuzzing
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_m64_permuted_round13.md`.
+- Classification: new candidate `FZ-20260421-0012`.
+- Required `make -j8` was a no-op.
+- Checked-in selector:
+  `ld_red and (tile_permuted or permuted or descriptor_chain or n_sweep) and not reports`
+  collected `115/1615`; split-4 result was `109 passed, 6 failed`.
+- The six failures reproduced in fresh exact pytest processes:
+  `row_reverse_n32` default-layout min/max, `row_rotate_col_even_odd_n128`
+  default-layout min/max, and the matching explicit `32x32b` split-N rows.
+- Representative diagnostic:
+  `ttng.tmem_load` failed to compute TMEM encoding info for reduction with
+  `Failed to lower TMEM load/store: unsupported dst layout`.
+- Nearby `col_reverse_n32` default and explicit split-N controls passed, so the
+  candidate is currently classified as an M64 row-permuted `ld.red` false
+  unsupported / over-strict destination-layout lowering gap.
+
+## 2026-04-21: local copy/subword runtime slice
+
+- Ran checked-in runtime-matrix copy/subword coverage while the custom
+  copy/subword subagent lane was active. No backend or compiler repairs were
+  attempted.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and (subword or packed or warpx2 or rowcol_permuted or dense_shared)'`
+  selected `106/1615` rows.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r13_copy_subword_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and (subword or packed or warpx2 or rowcol_permuted or dense_shared)'`
+- Result after required `make -j8` per shard:
+  - group 1/GPU 0: `27 passed, 1588 deselected in 4.59s`;
+  - group 2/GPU 1: `27 passed, 1588 deselected in 8.72s`;
+  - group 3/GPU 2: `27 passed, 1588 deselected in 6.81s`;
+  - group 4/GPU 3: `25 passed, 1590 deselected in 5.66s`.
+- Aggregate: `106 passed`. No new bucket was found.

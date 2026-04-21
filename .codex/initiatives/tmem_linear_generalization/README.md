@@ -5434,6 +5434,26 @@ When resuming the initiative:
   `/tmp/tmem_local_r11_cp_no_scales_nonwarpx2_durations.json`.
 - No new bug bucket was found.
 
+## Latest: 2026-04-21 Round 13 FPSAN and copy/subword fuzzing
+
+- Lane Y completed FPSAN MMAv5 runtime descriptor-selection fuzzing:
+  `agents/fuzz_fpsan_mma_round13.md`.
+- No new independent `FZ-*`; report-only `FZ-20260421-0011` remains isolated
+  to FPSAN-enabled runtime outer descriptor selection feeding plain MMAv5,
+  while checked-in plain/scaled FPSAN controls, constexpr parent-index, and
+  dynamic-slice controls stayed green.
+- Lane Z completed non-overlapping copy/subword edge fuzzing:
+  `agents/fuzz_copy_subword_round13.md`.
+- No new independent `FZ-*`; a checked-in selector collected `69/1615` and
+  passed split-4 as `69 passed`. Representative PTX/LLIR opcodes matched for
+  `128x128b`, `4x256b`, and exact-width subword copy; high-CGA 4/8/16 CTA
+  copy contrasts mapped to existing `FZ-20260421-0010`.
+- Local `ld.red` M64 row-permuted fuzzing completed:
+  `agents/fuzz_ldred_m64_permuted_round13.md`.
+- New candidate `FZ-20260421-0012`: six checked-in non-report runtime rows
+  fail as unsupported destination-layout lowering for M64 row-permuted
+  reductions, while nearby column-permuted controls pass.
+
 ## Latest: 2026-04-21 Round 10/11 fuzz reports
 
 - Lane Q completed multi-CTA/CGA structural fuzzing:
