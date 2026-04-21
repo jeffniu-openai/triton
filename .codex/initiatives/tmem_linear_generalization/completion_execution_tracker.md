@@ -513,6 +513,16 @@ The project is complete when:
   non-identity M64 row bases across `N`, column permutations, modifiers,
   explicit variants, and descriptor-preserving chains. Report:
   `agents/fuzz_ldred_fz0012_round14.md`.
+  2026-04-21 Round 14 Lane AB found new candidate `FZ-20260421-0013`
+  without backend repairs. Checked-in scaled selector outside the prior
+  FP4/tile/narrow slice collected `69/1615` and passed `69/69`; temporary
+  shared-scale/copy probe classified `8` pass and `2` harness setup
+  limitations; temporary B-scale descriptor-view probe classified `1` pass,
+  `3` runtime miscompile candidates, and `3` clean diagnostic boundaries.
+  `FZ-0013` is a local 1CTA non-FPSAN scaled-MMAv5 B-scale descriptor-view
+  wrong-result candidate with matching PTX/LLIR scaled-MMA opcodes and
+  retained descriptor-view chains. Report:
+  `agents/fuzz_scaled_descriptor_round14.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

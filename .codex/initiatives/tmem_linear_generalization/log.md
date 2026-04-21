@@ -27858,6 +27858,32 @@ Open after this slice:
   explicit M64 row-identity column controls, and M128 direct row-permuted
   layouts. Attempted two-CTA M64-style rows mapped to existing `FZ-0010`.
 
+## 2026-04-21: Round 14 Lane AB scaled-MMAv5 descriptor fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_descriptor_round14.md`.
+- Classification: new candidate `FZ-20260421-0013`.
+- Required `make -j8` was a no-op.
+- Checked-in selector
+  `mma_scaled and not (tile_permuted or narrow or e2m1 or fp4)` collected
+  `69/1615` and split-4 passed as `69 passed`.
+- Temporary shared-scale/copy probe classified `8` pass and `2`
+  harness/setup limitations, with positive opcode evidence for 1CTA/2CTA
+  shared scale `tcgen05.cp` and scaled-MMA rows.
+- Temporary B-scale descriptor-view probe classified `1` pass, `3` runtime
+  miscompile candidates, and `3` clean unsupported / diagnostic-boundary rows.
+- New bucket candidate:
+  `FZ-20260421-0013: scaled-MMAv5 B-scale descriptor-view miscompile`.
+  The miscompile rows are local 1CTA, non-FPSAN wrong results with matching
+  PTX/LLIR scaled-MMA opcodes and retained TTGIR descriptor-view chains.
+- Current minimized forms include:
+  `N=128` linear accumulator layout with B-scale
+  `reshape -> trans -> reshape` descriptor view and either unpadded storage
+  with an extra B-scale user or padded storage without the extra user, plus an
+  `N=256` tile-N64 accumulator layout with unpadded B-scale storage.
+
 ## 2026-04-21: local copy/subword runtime slice
 
 - Ran checked-in runtime-matrix copy/subword coverage while the custom

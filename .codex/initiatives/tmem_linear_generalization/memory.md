@@ -15045,6 +15045,13 @@ rejection, not rescue
   `N in {32,64,128,256}`, column permutations, modifiers, explicit load
   variants, and descriptor-preserving chains. Grid classification: `38` pass,
   `86` `FZ-0012`, `5` `FZ-0010`, and `4` harness-limited rows.
+- Lane AB completed scaled-MMAv5 descriptor fuzzing. The report
+  `agents/fuzz_scaled_descriptor_round14.md` found new candidate
+  `FZ-20260421-0013`: local 1CTA non-FPSAN scaled-MMAv5 B-scale
+  descriptor-view wrong results with matching PTX/LLIR scaled-MMA opcodes and
+  retained descriptor-view chains. Checked-in scaled selector outside the
+  prior FP4/tile/narrow slice passed `69/69`; B-scale probe classified `1`
+  pass, `3` miscompile candidates, and `3` clean boundaries.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 

@@ -2009,6 +2009,38 @@ remain family-specific and consume a bounded subset of the inventory.
   row-identity column controls passed, and M128 direct row-permuted controls
   passed. Attempted two-CTA M64-style rows mapped to existing `FZ-0010`.
 
+### Round 14 Lane AB, scaled-MMAv5 descriptor fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_descriptor_round14.md`
+- Required build: `make -j8` no-op.
+- Scope: scaled-MMAv5 descriptor/view and scale-copy interactions outside the
+  prior FP4/tile/narrow green selector: shared scale descriptor views, auto
+  `tcgen05.cp` into TMEM scales, direct shared scales vs explicit TMEM scales,
+  indexed/subslice/narrow accumulator views, 1CTA/2CTA variants, `use_acc`,
+  and B-scale descriptor-view chains.
+- Result: new candidate `FZ-20260421-0013`.
+- Checked-in selector
+  `mma_scaled and not (tile_permuted or narrow or e2m1 or fp4)` collected
+  `69/1615` and split-4 passed as `69 passed`.
+- Temporary shared-scale/copy probe classified `8` pass and `2`
+  harness/setup limitations, with matching `tcgen05.cp` and scaled-MMA opcode
+  evidence for 1CTA/2CTA shared-scale rows.
+- Temporary corrected B-scale descriptor-view probe classified `1` pass,
+  `3` runtime miscompile candidates, and `3` clean unsupported / diagnostic
+  boundaries.
+- `FZ-20260421-0013`: scaled-MMAv5 B-scale descriptor-view miscompile.
+  Repro rows are local 1CTA, non-FPSAN wrong results with matching PTX/LLIR
+  `tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X`
+  opcodes and retained TTGIR descriptor-view chains. Current minimized forms
+  include `N=128` linear accumulator layouts with B-scale
+  `reshape -> trans -> reshape` descriptor views and `N=256` tile-N64
+  accumulator layout with unpadded B-scale storage.
+- Not mapped to existing buckets: it is not dynamic accumulator selection
+  `FZ-0007`, not high-CGA `FZ-0010`, and not FPSAN runtime descriptor
+  selection `FZ-0011`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
