@@ -1753,3 +1753,14 @@ signal handling:
   dynamic `memdesc_index` lit candidate policy, R4-D row/col chain1 optimizer
   crash with a crash-safe harness, and continued clean-negative vs opcode-loss
   separation.
+
+- 2026-04-21 11:03 UTC: completed Round 14 Lane AE `ld/st` descriptor-algebra
+  fuzzing in discovery-only mode. Report:
+  `agents/fuzz_ldst_descriptor_algebra_round14.md`. Required `make -j8` was a
+  no-op. Temporary rank-6/runtime-selector probe classified `12` rows as `1`
+  pass, `2` `FZ-20260421-0001`, `2` `FZ-20260421-0003`, `5` clean
+  direct-`ld/st` row-anchor diagnostics, and `2` clean rank-view diagnostics.
+  Checked-in `ld/st` descriptor/rank/subword selector passed split-4 as
+  `134 passed, 98 skipped`; adjacent copy/MMAv5 controls passed as
+  `243 passed`. No new independent bucket was assigned. Active phase remains
+  continuous discovery/cataloging with backend repairs deferred.

@@ -7,17 +7,15 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Lane AD high-CGA copy/scales ownership
-fuzzing completed in discovery-only mode. Required `make -j8` was a no-op.
-Checked-in copy/scales runtime selectors collected `95` rows and passed
-split-4 across GPUs 0-3 with stable caches; high-CGA MMA controls passed
-`2/2`. Temporary mixed-module probing classified three 4/8/16 CTA rows as
-existing `FZ-20260421-0010` and found new report-only candidate
-`FZ-20260421-0014`: a `num_ctas=2` mixed 2CTA no-scales descriptor-chain copy
-plus scales copy aborts in proxy-fence insertion with `could not find an
-insertion point between cross-CTA mbarrier.init ops and tracked mbarrier uses`.
-Reproducer saved at `/tmp/tmem_high_cga_copy_scales_round14_mixed_fail.mlir`.
-No backend repair was attempted.
+Latest fuzzing checkpoint: 2026-04-21 11:03 UTC Round 14 Lane AE completed
+direct `ld/st` descriptor-algebra fuzzing with no new independent `FZ-*`.
+Report: `agents/fuzz_ldst_descriptor_algebra_round14.md`. Custom rank-6 /
+runtime-selector probing classified `12` rows as `1` pass, `2`
+`FZ-20260421-0001`, `2` `FZ-20260421-0003`, `5` clean direct-`ld/st`
+row-anchor diagnostics, and `2` clean rank-view diagnostics. Checked-in
+`ld/st` descriptor/rank/subword selector collected `232/1615` and passed
+split-4 as `134 passed, 98 skipped`; adjacent copy/MMAv5 controls collected
+`243/1615` and passed split-4 as `243 passed`.
 
 ## How To Use This Folder
 

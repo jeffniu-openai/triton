@@ -27992,3 +27992,26 @@ Open after this slice:
   tracked mbarrier uses`. Reproducer saved at
   `/tmp/tmem_high_cga_copy_scales_round14_mixed_fail.mlir`; `triton-opt
   --run-reproducer` reproduces the same diagnostic.
+
+## 2026-04-21 11:03 UTC: Round 14 Lane AE ld/st descriptor algebra fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_descriptor_algebra_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe `/tmp/tmem_ldst_descriptor_algebra_round14_probe.py` ran
+  `12` subprocess-isolated rows across rank-6 parents, deeper
+  reshape/trans/slice/index chains, runtime descriptor selectors, row/column
+  permutations, M64 contrasts, and subword views.
+- Custom probe classification: `1` pass, `2` `FZ-20260421-0001`, `2`
+  `FZ-20260421-0003`, `5` clean direct-`ld/st` row-anchor diagnostics, and
+  `2` clean rank-view diagnostics. No `FZ-20260421-0005/0009` allocator
+  assertion and no `FZ-20260421-0012` direct-`ld/st` analogue was found.
+- Checked-in `ld/st` descriptor/rank/subword selector collected `232/1615`
+  and passed split-4 with stable per-GPU caches as `134 passed, 98 skipped`.
+- Adjacent copy/MMAv5 controls collected `243/1615` and passed split-4 as
+  `243 passed`.
+- No new independent `FZ-*` bucket was assigned. Rank-6 single-CTA
+  diagnostics map to the already-recorded direct `ld/st` row-anchor clean
+  boundary; the two-CTA rank-6 row executed and matched expected values.
