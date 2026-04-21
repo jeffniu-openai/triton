@@ -7,7 +7,32 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 58 local scales load/store and
+Latest fuzzing checkpoint: 2026-04-21 Round 59 TMA/TMEM proxy and mbarrier
+lane C completed. Report:
+`agents/fuzz_round59_tma_proxy_mbarrier_lane.md`. Required `make -j8` was a
+no-op. Focused `test_core.py` TMA/TMEM selector collected `231/18114` and ran
+split-4 as `183 passed, 48 skipped`; focused runtime-matrix selector over
+scaled-copy commit paths and two-CTA MMAv5/TMA descriptor accumulator paths
+collected `104/1615` and passed as `104 passed`; lit probes for
+mbarrier-cluster insertion, invalid TMA diagnostics, TMA gather/scatter LLVM
+lowering, pipelined proxy fences, and NVWS TMA/TMEM lowering passed `5/5`. No
+compiler crash, verifier drift, false unsupported diagnostic, proxy-fence
+insertion failure, opcode/commit mismatch, runtime miscompile, hang, or new
+independent `FZ-*`; existing `FZ-20260421-0014` / `FZ-0014` was not
+reproduced.
+
+Previous fuzzing checkpoint: 2026-04-21 16:09 UTC Round 59 higher-rank
+descriptor-chain lane A completed. Report:
+`agents/fuzz_round59_higher_rank_descriptor_lane.md`. Required `make -j8` was
+a no-op. Checked-in descriptor-chain and direct two-CTA higher-rank selector
+collected `39/1615` and passed split-4 as `39 passed`; frontend clean
+diagnostic controls collected `3/225` and passed. Disposable contrasts
+reproduced existing `FZ-20260421-0021` for unit-rank half-column descriptor
+views, while adjacent rank-5 unit-prefix full views passed and did not
+reproduce `FZ-20260421-0019`. No compiler crash, verifier drift, false
+unsupported diagnostic, runtime miscompile, hang, or new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 58 local scales load/store and
 copy lane completed. Report:
 `agents/fuzz_round58_local_scales_copy_lane.md`. Required `make -j8` was a
 no-op. Selector over scale `ld/st`, scale descriptor-view roundtrips,

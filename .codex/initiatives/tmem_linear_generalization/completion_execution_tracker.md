@@ -2,7 +2,18 @@
 
 Last updated: 2026-04-21
 
-Latest fuzzing checkpoint: 2026-04-21 Round 58 local scales load/store and
+Latest fuzzing checkpoint: 2026-04-21 16:09 UTC Round 59 higher-rank
+descriptor-chain lane A completed. Report:
+`agents/fuzz_round59_higher_rank_descriptor_lane.md`. Required `make -j8` was
+a no-op. Checked-in descriptor-chain and direct two-CTA higher-rank selector
+collected `39/1615` and passed split-4 as `39 passed`; frontend clean
+diagnostic controls collected `3/225` and passed. Disposable contrasts
+reproduced existing `FZ-20260421-0021` for unit-rank half-column descriptor
+views, while adjacent rank-5 unit-prefix full views passed and did not
+reproduce `FZ-20260421-0019`. No compiler crash, verifier drift, false
+unsupported diagnostic, runtime miscompile, hang, or new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 58 local scales load/store and
 copy lane completed. Report:
 `agents/fuzz_round58_local_scales_copy_lane.md`. Required `make -j8` was a
 no-op. Selector over scale `ld/st`, scale descriptor-view roundtrips,

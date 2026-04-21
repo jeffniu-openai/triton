@@ -32834,6 +32834,27 @@ Open after this slice:
   false unsupported diagnostic, runtime miscompile, opcode-count mismatch, or
   hang was observed.
 
+## 2026-04-21 16:09 UTC: Round 59 higher-rank descriptor-chain lane A
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round59_higher_rank_descriptor_lane.md`.
+- Required `make -j8` was a no-op.
+- Checked-in selector:
+  `(ldst_descriptor and (rank5_small or rank5_unit_parent or higher_rank_dim0_slice_positive or higher_rank_half_rows_positive or higher_rank_dim0_slice_reports_tmem_oor or higher_rank_half_rows_reports_tmem_oor or direct_half_rows_positive)) or ldst_twocta_direct_higher_rank_load_store_replay_positive`.
+- Collection/result:
+  `39/1615` collected; split-4 runtime `39 passed` (`10`, `10`, `10`, `9`).
+- Frontend diagnostic controls:
+  `descriptor_chain_reports_two_ctas_mismatch or mismatch_shape_and_layout_rank or higher_rank_descriptor_type_get_reg_layout`
+  collected `3/225` and passed as `3 passed`.
+- Disposable contrasts:
+  unit-rank half-column descriptor view reproduced existing
+  `FZ-20260421-0021`; rank-5 unit-prefix full-view `ld/st` passed and did not
+  reproduce `FZ-20260421-0019`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, or new independent `FZ-*`. Backend repair remains
+  deferred.
+
 ## 2026-04-21: Round 58 plain MMAv5 accumulator-view lane C
 
 - Integrated

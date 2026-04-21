@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 16:09 UTC Round 59 higher-rank descriptor-chain lane A
+  completed. Report:
+  `agents/fuzz_round59_higher_rank_descriptor_lane.md`. Required `make -j8`
+  was a no-op. Checked-in selector over rank-5 small/unit-parent
+  descriptor-chain roundtrips, higher-rank dim0/half-row positives and OOR
+  diagnostics, direct half-row positives, and direct two-CTA higher-rank
+  replay collected `39/1615` and passed split-4 as `39 passed` (`10`, `10`,
+  `10`, `9`). Frontend clean-diagnostic controls collected `3/225` and
+  passed. Disposable contrasts reproduced existing `FZ-20260421-0021`
+  half-column/unit-rank memdesc-shape abort and did not reproduce
+  `FZ-20260421-0019`; adjacent rank-5 unit-prefix full-view `ld/st` passed.
+  No new independent `FZ-*`; backend repair remains deferred.
+
 - Latest: 2026-04-21 16:01 UTC Round 58 plain MMAv5 accumulator-view lane C
   completed. Report:
   `agents/fuzz_round58_plain_mma_acc_views_lane.md`. Required `make -j8` was
