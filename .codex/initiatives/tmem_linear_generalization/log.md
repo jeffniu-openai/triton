@@ -30766,6 +30766,18 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 15:02 UTC: Round 39 TMA/multicast guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_tma_multicast_guardrail_round39.md`.
+- Selector:
+  `tma_multicast or multicast_commit` over `python/test/gluon/test_core.py`.
+- Collection: `11/18114`.
+- Result: `11 passed`.
+- Classification: no compiler crash, false unsupported diagnostic, runtime
+  miscompile, unexpected pass/fail transition, or new independent `FZ-*`.
+  Backend repair remains deferred.
+
 ## 2026-04-21 14:55 UTC: Round 39 allocation-lifetime guardrail
 
 - Wrote

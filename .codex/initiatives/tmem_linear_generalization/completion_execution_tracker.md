@@ -60,6 +60,12 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 15:02 UTC Round 39 TMA/multicast guardrail completed. Artifact:
+  `agents/fuzz_tma_multicast_guardrail_round39.md`. Selector
+  `tma_multicast or multicast_commit` over `python/test/gluon/test_core.py`
+  collected `11/18114` and passed as `11 passed`. No compiler crash, false
+  unsupported diagnostic, runtime miscompile, unexpected pass/fail transition,
+  or new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 14:55 UTC Round 39 allocation-lifetime guardrail completed.
   Artifact: `agents/fuzz_alloc_lifetime_guardrail_round39.md`. Selector
   `(alloc_lifetime or allocation or source_initialization) and not reports and not resource`
