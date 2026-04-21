@@ -533,6 +533,15 @@ The project is complete when:
   mismatches remain `FZ-20260421-0002`. No new bucket and no backend repair.
   Lane AC remains active on broader generic runtime-index fuzzing and should
   write `agents/fuzz_generic_runtime_index_round14.md`.
+  2026-04-21 11:02 UTC Round 14 Lane AC completed and wrote
+  `agents/fuzz_generic_runtime_index_round14.md`. No new independent `FZ-*`;
+  `FZ-20260421-0001` broadens to copy/MMAv5 consumers and dynamic
+  branch-selected memdesc SSA values, while `FZ-20260421-0002` remains the
+  chain0 generic wrong-result owner. Temporary probes classified `27`
+  generic rows (`10` pass, `6` `FZ-0001`, `11` `FZ-0002`) and `12` copy/MMA
+  rows (`2` pass, `8` `FZ-0001`, `2` clean diagnostics). Local adjacent
+  two-CTA copy/scales selector collected `53/1615` and passed split-4 as
+  `53 passed`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

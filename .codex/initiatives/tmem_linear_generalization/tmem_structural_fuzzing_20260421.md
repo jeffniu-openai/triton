@@ -2066,6 +2066,33 @@ remain family-specific and consume a bounded subset of the inventory.
   index TMEM descriptor use beyond the checked-in selector and is expected to
   write `agents/fuzz_generic_runtime_index_round14.md`.
 
+### Round 14 Lane AC, generic runtime-index/control-flow consumers
+
+- Time: 2026-04-21 11:02 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_runtime_index_round14.md`
+- Required build: `make -j8` no-op.
+- Scope: runtime `memdesc_index`, dynamic `if`, loop-carried values,
+  tuple/mixed captures, helper-returned descriptor chains, and copy/MMAv5
+  consumers beyond the checked-in `generic_pass` selector.
+- Result: no new independent `FZ-*` bucket.
+- Temporary generic probe classified `27` rows:
+  - `10` pass;
+  - `6` `FZ-20260421-0001`;
+  - `11` `FZ-20260421-0002`.
+- Temporary copy/MMA consumer probe classified `12` rows:
+  - `2` pass;
+  - `8` `FZ-20260421-0001`;
+  - `2` clean hardware/layout diagnostics.
+- Classification update: `FZ-20260421-0001` is a general memdesc SSA
+  control-flow/index lowering gap covering copy/MMAv5 consumers and
+  branch-selected static `memdesc_index` values, not only direct dynamic
+  integer indexing. `FZ-20260421-0002` remains the chain0 generic
+  control-flow/helper/mixed-capture/layout-pressure wrong-result family.
+- Local adjacent baseline:
+  `python/test/gluon/test_tmem_runtime_matrix.py -k '(cp_no_scales_twocta or cp_scales_warpx4_twocta or cga_roundtrip or layout_in_4cta_context) and not via_scaled_mma'`
+  collected `53/1615` rows and passed split-4 as `53 passed`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

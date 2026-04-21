@@ -7,15 +7,14 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 10:53 UTC local Round 14 generic-pass
-structural selector stayed stable in discovery-only mode. Required `make -j8`
-was a no-op; collect-only selected `11/33` checked-in
-`test_tmem_structural_fuzzer.py -k 'generic_pass'` rows; split-4 execution
-across GPUs 0-3 with stable caches reported aggregate `11 xfailed`. Runtime
-`ttg.memdesc_index` illegal-lowering rows remain `FZ-20260421-0001`; chain0,
-control-flow, and layout-pressure wrong-result rows remain
-`FZ-20260421-0002`. No backend repair was attempted. Lane AC remains active on
-broader generic runtime-index fuzzing.
+Latest fuzzing checkpoint: 2026-04-21 11:02 UTC Round 14 Lane AC completed
+generic runtime-index/control-flow descriptor fuzzing with no new independent
+`FZ-*`. `FZ-20260421-0001` now explicitly covers copy/MMAv5 consumers and
+dynamic branch-selected memdesc values, not only explicit runtime
+`parent.index(load(selector))`; `FZ-20260421-0002` remains the chain0 generic
+wrong-result owner with chain1/chain2 controls green. Local adjacent two-CTA
+copy/scales baseline selected `53/1615` runtime-matrix rows and passed split-4
+as `53 passed`.
 
 ## How To Use This Folder
 

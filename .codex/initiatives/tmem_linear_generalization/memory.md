@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:02 UTC Round 14 Lane AC completed generic
+  runtime-index/control-flow descriptor fuzzing. Report:
+  `agents/fuzz_generic_runtime_index_round14.md`. No new independent `FZ-*`
+  bucket. The lane broadens `FZ-20260421-0001` beyond explicit runtime
+  `parent.index(load(selector))`: copy and MMAv5 consumers, plus dynamic
+  branch-selected static `memdesc_index` values, can still leave
+  `ttg.memdesc_index` illegal at LLVM conversion. `FZ-20260421-0002` remains
+  the owner for chain0 generic control-flow/helper/mixed-capture/layout-
+  pressure runtime wrong results; chain1/chain2 analogues remain narrow green
+  controls. Temporary probes classified `27` generic rows as `10` pass,
+  `6` `FZ-0001`, and `11` `FZ-0002`; `12` copy/MMA consumer rows as `2` pass,
+  `8` `FZ-0001`, and `2` clean hardware/layout diagnostics. Local adjacent
+  two-CTA copy/scales baseline selected `53/1615` rows and passed split-4 as
+  `53 passed`.
+
 - Latest: 2026-04-21 10:53 UTC local Round 14 generic-pass structural
   selector reran after required `make -j8` no-op. Collect-only selected
   `11/33` rows from

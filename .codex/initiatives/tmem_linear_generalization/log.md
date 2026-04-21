@@ -27922,3 +27922,26 @@ Open after this slice:
   descriptor-view wrong results.
 - Lane AC remains active on broader generic runtime-index, loop/if/mixed
   capture, helper-return, and consumer-interaction fuzzing.
+
+## 2026-04-21 11:02 UTC: Round 14 Lane AC generic runtime-index fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_runtime_index_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary generic runtime-index/control-flow probe classified `27` rows as
+  `10` pass, `6` `FZ-20260421-0001`, and `11` `FZ-20260421-0002`.
+- Temporary copy/MMA consumer probe classified `12` rows as `2` pass,
+  `8` `FZ-20260421-0001`, and `2` clean hardware/layout diagnostics.
+- No new independent `FZ-*` bucket was assigned.
+- Classification update: `FZ-20260421-0001` covers generic memdesc SSA
+  control-flow/index lowering for copy and MMAv5 consumers, including dynamic
+  branch-selected static `memdesc_index` values that survive to LLVM
+  conversion. `FZ-20260421-0002` remains the chain0 generic
+  control-flow/helper/mixed-capture/layout-pressure runtime wrong-result
+  family, with chain1/chain2 analogues still green.
+- Local adjacent two-CTA copy/scales baseline collected `53/1615` rows with:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k '(cp_no_scales_twocta or cp_scales_warpx4_twocta or cga_roundtrip or layout_in_4cta_context) and not via_scaled_mma'`.
+- Split-4 runtime execution with stable per-GPU caches reported aggregate
+  `53 passed` (`14`, `14`, `14`, `11` by shard).
