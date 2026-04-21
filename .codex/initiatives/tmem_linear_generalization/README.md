@@ -42,7 +42,9 @@ half-row guardrails added `141 passed`; plain-MMAv5 M64/two-CTA/indexed
 accumulator/subslice guardrails added `185 passed`. Round 32 lit guardrail
 `agents/fuzz_local_lit_round32.md` kept `tmem_layouts.mlir` and
 `invalid.mlir` green and reconfirmed existing `FZ-0016` in
-`relayout_tritongpu.mlir`. The `ld.red` extremes lane ran `23`
+`relayout_tritongpu.mlir`. Round 32 clean-boundary guardrail
+`agents/fuzz_local_clean_boundary_round32.md` passed `184` clean diagnostic
+rows. The `ld.red` extremes lane ran `23`
 f32 runtime rows with torch reference and opcode checks; `15` passed,
 `3` reproduced existing `FZ-0012`, `1` reproduced existing `FZ-0010`, `2` were
 clean resource boundaries, and `2` established new candidate

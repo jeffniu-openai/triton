@@ -108,6 +108,16 @@ remain family-specific and consume a bounded subset of the inventory.
   `relayout_tritongpu.mlir` failed with existing `FZ-20260421-0016`.
 - Classification: no new independent `FZ-*` bucket.
 
+### Round 32 Local, Clean-Boundary Runtime Guardrail
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundary_round32.md`.
+- Scope: checked-in runtime rows selected by
+  `(reports_clean or clean_unsupported or clean_error or tmem_oor or clean_xfail) and not resource`.
+- Result: no new independent `FZ-*` bucket. Selector collected `184/1615`
+  rows and passed split-4 as `184 passed`.
+
 ### Round 31 Lane, ld.red descriptor/layout extremes
 
 - Time: 2026-04-21 12:54 UTC

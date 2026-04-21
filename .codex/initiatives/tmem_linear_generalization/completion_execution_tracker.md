@@ -2560,3 +2560,9 @@ signal handling:
   `agents/fuzz_local_lit_round32.md`. `tmem_layouts.mlir` and `invalid.mlir`
   passed; `relayout_tritongpu.mlir` failed with existing `FZ-20260421-0016`.
   No new independent `FZ-*` bucket.
+
+- 2026-04-21: Round 32 local clean-boundary runtime guardrail completed.
+  Report: `agents/fuzz_local_clean_boundary_round32.md`. Selector
+  `(reports_clean or clean_unsupported or clean_error or tmem_oor or clean_xfail) and not resource`
+  collected `184/1615` and passed split-4 as `184 passed`. No new independent
+  `FZ-*` bucket.

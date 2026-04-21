@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 32 local clean-boundary runtime guardrail
+  completed. Report: `agents/fuzz_local_clean_boundary_round32.md`. Required
+  `make -j8` was a no-op. Selector
+  `(reports_clean or clean_unsupported or clean_error or tmem_oor or clean_xfail) and not resource`
+  collected `184/1615` and passed split-4 as `184 passed`. No clean-diagnostic
+  drift, compiler crash, false unsupported diagnostic, unexpected xfail/pass
+  transition, opcode mismatch, runtime miscompile, or new independent `FZ-*`
+  bucket was found.
+
 - Latest: 2026-04-21 Round 32 local TMEM lit guardrail completed. Report:
   `agents/fuzz_local_lit_round32.md`. `ninja triton-opt` was a no-op.
   `TritonNvidiaGPU/tmem_layouts.mlir` and `TritonNvidiaGPU/invalid.mlir`

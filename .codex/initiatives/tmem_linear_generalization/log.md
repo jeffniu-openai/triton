@@ -30389,6 +30389,19 @@ Open after this slice:
   unencoded-tensor verifier crash through `verifyTMEMOperand` /
   `TMEMAllocOp::verify`.
 
+## 2026-04-21: Round 32 local clean-boundary runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundary_round32.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(reports_clean or clean_unsupported or clean_error or tmem_oor or clean_xfail) and not resource`.
+- Collection: `184/1615`.
+- Split-4 result: `184 passed` (`46/46/46/46` by group).
+- Classification: no clean-diagnostic drift, compiler crash, false unsupported
+  diagnostic, unexpected xfail/pass transition, opcode mismatch, runtime
+  miscompile, or new independent `FZ-*` bucket.
+
 ## 2026-04-21: Round 32 local ld/st narrow and half-row guardrail
 
 - Wrote
