@@ -159,3 +159,60 @@ Preexisting/staged item:
 - Continue packed/subword negative probing around boundary widths that expose
   exactly enough physical dword columns but insufficient packed-lane semantic
   information.
+
+## Continued Slice: Descriptor/View Follow-Ups
+
+Time: 2026-04-21 08:25 UTC.
+
+After the first report checkpoint, lane B continued with exact nodeid probes
+for the suggested next descriptor/view cases. No new failure was found.
+
+Scales shared subslices plus scales TMEM descriptor-view clean unsupported:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_rematerializes python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported
+```
+
+Result: `3 passed`.
+
+Single-CTA no-scale `warpx2` combined `slice(...).index(...)` descriptor
+views for both `01_23` and `02_13`:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_slice_index_view_positive
+```
+
+Result: `8 passed`.
+
+Two-CTA no-scale `warpx2::01_23` combined `slice(...).index(...)` descriptor
+views:
+
+```bash
+CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive
+```
+
+Result: `4 passed`.
+
+Two-CTA no-scale `warpx2::02_13` combined `slice(...).index(...)` clean
+unsupported plus no-scale shared-subslice clean error:
+
+```bash
+CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_slice_index_view_reports_clean_unsupported python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_shared_subslice_bad_offset_reports_clean_error
+```
+
+Result: `5 passed`.
+
+Additional classification from this slice:
+
+- scales shared subslice starts currently covered by runtime matrix (`0`, `64`)
+  remain positive through rematerialization and emit
+  `tcgen05.cp.cta_group::1.warpx4.32x128b`;
+- scales TMEM descriptor-view copy remains a clean unsupported diagnostic,
+  not a crash;
+- combined slice/index `warpx2::01_23` is positive for single-CTA and two-CTA
+  no-scale copies;
+- combined slice/index `warpx2::02_13` remains positive for single-CTA and
+  clean unsupported for two-CTA, matching the dense/indexed/subslice
+  classification from the broad sweep;
+- no packed/subword or shared-subslice diagnostic regressed during the exact
+  reruns.
