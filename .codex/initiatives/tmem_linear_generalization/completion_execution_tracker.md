@@ -2402,6 +2402,11 @@ signal handling:
   `ASSERT_BITWIDTH_32`, so both store and load sides need a clean 64-bit
   policy.
 
+- 2026-04-21: Round 30 local descriptor `ld/st` guardrail completed. Report:
+  `agents/fuzz_local_ldst_descriptor_round30.md`. Selector
+  `ldst_descriptor and not reports and not roundtrip` collected `53/1615` and
+  passed split-4 as `53 passed`. No new bucket was found.
+
 - 2026-04-21: Round 26 dynamic descriptor SSA lane completed. Report:
   `agents/fuzz_dynamic_ssa_round26.md`. No new bucket. Runtime-index `ld.red`
   and branch-yielded copy descriptors sharpen existing `FZ-20260421-0001`;

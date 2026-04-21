@@ -30052,3 +30052,16 @@ Open after this slice:
 - Classification: both store and load sides of `lowerTMemLdSt` need a clean
   64-bit policy; the crash is not limited to initialized allocation lowering
   or roundtrip composition.
+
+## 2026-04-21: Round 30 local descriptor ld/st guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_descriptor_round30.md`.
+- Selector:
+  `ldst_descriptor and not reports and not roundtrip`.
+- Collection:
+  `53/1615`.
+- Split-4 result:
+  `53 passed`.
+- Classification: no compiler crash, verifier failure, runtime miscompile,
+  opcode mismatch, or new independent `FZ-*` bucket.

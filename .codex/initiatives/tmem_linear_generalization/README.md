@@ -19,6 +19,8 @@ scaled-MMAv5 selector as `243 passed`; `agents/fuzz_local_copy_round29.md`
 passed the no-scale copy selector as `197 passed, 4 skipped`; and
 `agents/fuzz_local_structural_round29.md` kept the checked-in structural fuzzer
 stable as `9 passed, 24 xfailed`. No new independent `FZ-*` bucket was found.
+Latest local Round 30 guardrail `agents/fuzz_local_ldst_descriptor_round30.md`
+passed the descriptor `ld/st` non-roundtrip selector as `53 passed`.
 The repaired high-CGA scaled-MMAv5 mixed-ownership harness proved scaled-MMAv5
 controls pass for `num_ctas=4/8/16`, then local 1CTA/2CTA descriptor-view
 `st`, `ld`, `ld.red`, and `tcgen05.copy` rows all classify as existing

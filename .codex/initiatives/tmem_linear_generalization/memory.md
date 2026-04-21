@@ -16189,6 +16189,11 @@ rejection, not rescue
   store-only, and load-only TMEM access. This proves both store and load sides
   of `lowerTMemLdSt` need a clean 64-bit policy.
 
+- Round 30 local descriptor `ld/st` guardrail wrote
+  `agents/fuzz_local_ldst_descriptor_round30.md`. Selector
+  `ldst_descriptor and not reports and not roundtrip` collected `53/1615` and
+  completed split-4 as `53 passed`. No new bucket or changed failure mode.
+
 - Round 29 memdesc-index lane wrote
   `agents/fuzz_memdesc_index_round29.md`. No new bucket, but it broadens
   `FZ-20260421-0001`: runtime `parent.index(ttgl.load(selector))` leaves

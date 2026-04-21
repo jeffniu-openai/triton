@@ -3579,3 +3579,15 @@ remain family-specific and consume a bounded subset of the inventory.
   no new independent `FZ-*` beyond `FZ-0017`; subprocess-isolated Gluon
   `float64` and `int64` roundtrip, store-only, and load-only TMEM probes all
   abort with `ASSERT_BITWIDTH_32`.
+
+### Round 30 local descriptor ld/st guardrail
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_descriptor_round30.md`
+- Selector:
+  `ldst_descriptor and not reports and not roundtrip`
+- Split-4 result:
+  `53 passed`
+- Classification:
+  no new independent `FZ-*`; committed descriptor `ld/st` positive surface
+  remains green outside report-only and roundtrip resource-boundary rows.
