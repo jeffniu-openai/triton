@@ -7,7 +7,23 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 22:50 UTC repaired the live
+Latest validation checkpoint: 2026-04-21 23:04 UTC refreshed the broad
+positive MMAv5/frontier selector and cleaned up stale rank-5 descriptor-view
+TTGIR marker expectations. Selector
+`mma and not reports and not clean and not unsupported` collected `588/1623`
+runtime rows and initially failed only three two-CTA MMAv5 rank-5 `ld/st`
+rows whose runtime outputs and exact `tcgen05` opcode counts were already
+correct. Inspection showed the frontend now canonicalizes no-op
+reshape/transpose/full-slice chains in exact lifted two-CTA layouts into the
+same indexed or indexed+subslice `tensor_memory_linear` descriptor. The tests
+now keep the semantic checks and exact opcode checks, while requiring only the
+nontrivial descriptor-view ops that are still expected to survive. Focused
+validation: exact affected rank-5 rows `5 passed`, runtime-matrix
+`py_compile` passed, and the broad MMAv5 selector reran split-4 as
+`133 passed, 14 skipped`, `147 passed`, `147 passed`, and `147 passed`
+(`574 passed, 14 skipped`). Remaining checked-in structural xfails: none.
+
+Previous repair checkpoint: 2026-04-21 22:50 UTC repaired the live
 `FZ-20260421-0016` verifier abort and `FZ-20260421-0023` frontend expectation
 drift, and refreshed the copy `warpx2`/scales frontier on current head. The
 verifier crash in `Conversion/relayout_tritongpu.mlir` was caused by

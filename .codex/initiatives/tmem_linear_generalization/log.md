@@ -33593,6 +33593,34 @@ Open after this slice:
   heuristic cleanup, staged broad validation, and any still-live temporary
   probe buckets that reproduce on current head.
 
+## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
+
+- Branch/HEAD before this validation slice:
+  `151781665 Fix unencoded TMEM verifier checks`.
+- Initial broad selector:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-mmav5-broad-gpu<gpu> PYTHONPATH=.:./python TRITON_ALWAYS_COMPILE=1 pytest -q -s --tb=short --splits 4 --group <group> python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not reports and not clean and not unsupported'`
+  collected `588/1623` rows and ran as `571 passed, 14 skipped, 3 failed`.
+- Classification:
+  all three failures were stale TTGIR marker assertions in two-CTA MMAv5
+  rank-5 `ld/st` rows. Focused inspection showed runtime outputs and exact
+  `tcgen05` opcode counts were already correct. The frontend now canonicalizes
+  no-op reshape/transpose/full-slice descriptor chains in exact lifted two-CTA
+  layouts into indexed or indexed+subslice `tensor_memory_linear` descriptors.
+- Completed test cleanup:
+  the rank-5 tests still assert runtime correctness, exact opcode counts,
+  `tensor_memory_linear`, `ttg.memdesc_index`, `twoCTAs = true`, and
+  nontrivial subslices where they survive. They no longer require no-op shape
+  descriptor views to remain visible in TTGIR for exact lifted two-CTA layouts.
+- Validation evidence:
+  required `make -j8`; exact affected rank-5 rows `5 passed`; runtime-matrix
+  `py_compile` passed; broad MMAv5 split-4 rerun passed as group1
+  `133 passed, 14 skipped`, group2 `147 passed`, group3 `147 passed`, and
+  group4 `147 passed` (`574 passed, 14 skipped`).
+- Remaining repair-plan frontier:
+  no checked-in structural xfails remain. Continue staged broad validation and
+  exact current-head reruns of remaining temporary-probe buckets before moving
+  to heuristic cleanup.
+
 ## 2026-04-21 22:39 UTC: FZ-0015 selected B-scale loop liveness repair
 
 - Branch/HEAD before this repair slice:

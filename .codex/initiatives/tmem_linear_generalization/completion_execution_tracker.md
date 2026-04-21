@@ -1,8 +1,24 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 22:50 UTC
+Last updated: 2026-04-21 23:04 UTC
 
-Latest repair checkpoint: 2026-04-21 22:50 UTC `FZ-20260421-0016` and
+Latest validation checkpoint: 2026-04-21 23:04 UTC broad positive MMAv5
+frontier is green on current head after stale rank-5 descriptor-view marker
+cleanup. Selector `mma and not reports and not clean and not unsupported`
+collected `588/1623` rows. Initial split-4 run had `3` failures, all two-CTA
+MMAv5 rank-5 `ld/st` rows with correct runtime outputs and exact opcode
+counts but stale requirements that no-op reshape/transpose/full-slice
+descriptor ops survive in TTGIR. Tests now still assert `tensor_memory_linear`,
+descriptor indexing/subslice where nontrivial, `twoCTAs = true`, exact
+`tcgen05` opcode counts, and runtime correctness; they no longer require
+canonicalized no-op shape views to remain visible for exact lifted two-CTA
+layouts. Validation: required `make -j8`; exact affected rows `5 passed`;
+runtime-matrix `py_compile` passed; broad MMAv5 split-4 rerun passed as
+`133 passed, 14 skipped`, `147 passed`, `147 passed`, and `147 passed`
+(`574 passed, 14 skipped`). Next frontier: staged broad validation and
+current-head reruns of remaining temporary-probe buckets.
+
+Previous repair checkpoint: 2026-04-21 22:50 UTC `FZ-20260421-0016` and
 `FZ-20260421-0023` are repaired on current head. `FZ-0016` was a verifier abort
 in `Conversion/relayout_tritongpu.mlir`: pre-conversion unencoded tensors were
 accepted by TMEM verifier preconditions, but the verifier then called the

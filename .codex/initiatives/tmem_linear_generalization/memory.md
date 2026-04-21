@@ -1,6 +1,21 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 22:50 UTC repair slice 12 fixed the live
+- Latest: 2026-04-21 23:04 UTC validation slice refreshed the broad positive
+  MMAv5/frontier selector and fixed stale rank-5 descriptor-view TTGIR marker
+  expectations. The selector `mma and not reports and not clean and not
+  unsupported` collected `588/1623` rows. First run failed only three two-CTA
+  MMAv5 rank-5 `ld/st` rows where runtime correctness and exact `tcgen05`
+  opcode counts were already correct, but the test still required no-op
+  reshape/transpose/full-slice descriptor ops to survive in TTGIR. Inspection
+  showed exact lifted two-CTA layouts now canonicalize those no-op chains into
+  indexed or indexed+subslice `tensor_memory_linear` descriptors. The tests now
+  preserve semantic/output and opcode assertions while only requiring the
+  nontrivial descriptor-view ops that still survive. Validation: required
+  `make -j8`; exact affected rows `5 passed`; runtime-matrix `py_compile`
+  passed; broad MMAv5 split-4 rerun passed as `133 passed, 14 skipped`,
+  `147 passed`, `147 passed`, and `147 passed` (`574 passed, 14 skipped`).
+
+- Previous: 2026-04-21 22:50 UTC repair slice 12 fixed the live
   `FZ-20260421-0016` verifier abort and `FZ-20260421-0023` frontend expectation
   drift, after first refreshing the current copy `warpx2`/scales frontier.
   Root cause for `FZ-0016`: the TMEM verifier accepted pre-conversion
