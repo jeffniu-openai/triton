@@ -32176,3 +32176,17 @@ Open after this slice:
 - Note: an initial over-broad `-k` attempt selected adjacent non-TMEM
   `test_mma_shared_inputs[...]` wrong-result failures and was excluded from
   this TMEM-bearing classification.
+
+## 2026-04-21 15:03 UTC: Round 52 local known-red/green runtime mix
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_known_red_green_mix_round52.md`.
+- Required `make -j8` was a no-op.
+- Same-process exact runtime mix:
+  `1 failed, 2 passed`.
+- Failed row is existing `FZ-20260421-0012` M64 f32 `ld.red`
+  destination-layout planner gap.
+- Adjacent split-N M64 `ld.red` and `warpx2` copy positives passed after the
+  failure in the same pytest process.
+- Classification: no new independent `FZ-*` and no process-contamination
+  signal.

@@ -3560,3 +3560,10 @@ discovery.
   MMAv5, scaled MMAv5, scale copy, multicast/two-CTA controls, and clean-error
   diagnostics. No compiler crash, verifier drift, unsupported-case regression,
   clean-negative drift, runtime miscompile, or new independent `FZ-*`.
+
+- 2026-04-21 15:03 UTC: Round 52 local known-red/green runtime mix completed.
+  Report: `agents/fuzz_known_red_green_mix_round52.md`. Required `make -j8`
+  was a no-op. Same-process exact mix produced `1 failed, 2 passed`; the
+  failed row is existing `FZ-20260421-0012` M64 f32 `ld.red`
+  destination-layout planner gap, and adjacent split-N/warpx2 positives passed
+  afterward. No new independent `FZ-*` and no process-contamination signal.
