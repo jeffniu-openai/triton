@@ -223,6 +223,10 @@ The project is complete when:
   each shard selected `23` tests, and the aggregate result was `92 passed`.
   Durations were stored at
   `/tmp/tmem_local_r10_clean_diagnostics_durations.json`.
+  2026-04-21 local Round 10 copy `warpx2` runtime slice stayed green:
+  `cp_no_scales and warpx2` ran split-4 across GPUs 0-3 with stable caches,
+  selected `20/20/20/19` tests, and passed all `79`. Durations were stored at
+  `/tmp/tmem_local_r10_copy_warpx2_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

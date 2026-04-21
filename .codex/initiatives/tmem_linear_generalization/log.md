@@ -26975,3 +26975,16 @@ Open after this slice:
   - group 3/GPU 2: `23 passed, 1592 deselected in 5.95s`;
   - group 4/GPU 3: `23 passed, 1592 deselected in 9.85s`.
 - Aggregate: `92 passed`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 copy warpx2 runtime slice
+
+- Ran the Lane H recommended copy `warpx2` runtime selector across all four
+  GPUs with stable per-GPU caches.
+- Command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_copy_warpx2_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and warpx2'`
+- Result:
+  - group 1/GPU 0: `20 passed, 1595 deselected in 4.20s`;
+  - group 2/GPU 1: `20 passed, 1595 deselected in 4.32s`;
+  - group 3/GPU 2: `20 passed, 1595 deselected in 8.80s`;
+  - group 4/GPU 3: `19 passed, 1596 deselected in 8.31s`.
+- Aggregate: `79 passed`. No backend repairs were attempted.

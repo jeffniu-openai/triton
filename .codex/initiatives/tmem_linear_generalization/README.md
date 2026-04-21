@@ -87,6 +87,12 @@ When resuming the initiative:
   `23` tests, for `92 passed` total. This keeps the clean hardware/resource
   boundary surface checked while deeper fuzzing continues.
 
+- 2026-04-21: local Round 10 copy `warpx2` runtime slice remains green. The
+  `cp_no_scales and warpx2` selector ran as split-4 across GPUs 0-3 with
+  stable caches and stored durations at
+  `/tmp/tmem_local_r10_copy_warpx2_durations.json`; shards reported
+  `20`, `20`, `20`, and `19` passed tests, for `79 passed` total.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

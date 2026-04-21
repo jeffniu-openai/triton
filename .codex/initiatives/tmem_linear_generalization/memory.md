@@ -16,6 +16,14 @@
   `/tmp/tmem_local_r10_clean_diagnostics_durations.json`. Each group selected
   `23` tests; aggregate result `92 passed`.
 
+- Latest: 2026-04-21 local Round 10 copy `warpx2` runtime slice is green.
+  Commands used stable caches `/tmp/triton-cache-gpu{0,1,2,3}` and
+  `--splits 4 --group {1,2,3,4}` on
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and warpx2'`
+  with durations stored at `/tmp/tmem_local_r10_copy_warpx2_durations.json`.
+  Groups selected `20`, `20`, `20`, and `19` tests; aggregate result
+  `79 passed`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`
