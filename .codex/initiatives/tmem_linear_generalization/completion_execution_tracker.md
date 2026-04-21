@@ -2223,6 +2223,10 @@ signal handling:
   `agents/fuzz_local_structural_crash_round24.md`. Selector completed as
   `3 xfailed`; no changed crash mode.
 
+- 2026-04-21 14:10 UTC: local no-scale copy baseline completed. Report:
+  `agents/fuzz_local_copy_round25.md`. Selector collected `201/1615` and
+  completed as `197 passed, 4 skipped`; no new bucket.
+
 - 2026-04-21 14:00 UTC: local structural crash repro guardrail completed.
   Report: `agents/fuzz_local_structural_crash_round24.md`. Selector
   `allocator_crash or optimizer_crash` completed as `3 xfailed`; no changed

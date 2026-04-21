@@ -28998,6 +28998,20 @@ Open after this slice:
   existing `FZ-20260421-0005`, `FZ-20260421-0008`, and
   `FZ-20260421-0009`.
 
+## 2026-04-21 14:10 UTC: Round 25 local no-scale copy baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Selector
+  `cp_no_scales and not reports and not high and not cga and not selector and not subword`
+  collected `201/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `197 passed, 4 skipped` (`47p/4s`, `51p`, `51p`, `48p`).
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 ## 2026-04-21 13:55 UTC: Round 24 Lane BH mixed scaled-MMAv5 operands
 
 - Wrote

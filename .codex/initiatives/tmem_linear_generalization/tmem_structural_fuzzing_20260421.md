@@ -2705,6 +2705,19 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no changed crash mode; rows remain existing `FZ-0005`,
   `FZ-0008`, and `FZ-0009`.
 
+### Round 25 local no-scale copy baseline
+
+- Time: 2026-04-21 14:10 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_round25.md`
+- Selector:
+  `cp_no_scales and not reports and not high and not cga and not selector and not subword`
+  collected `201/1615`.
+- Split-4 result:
+  `197 passed, 4 skipped`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*`.
+
 ### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
 
 - Time: 2026-04-21 12:58 UTC
