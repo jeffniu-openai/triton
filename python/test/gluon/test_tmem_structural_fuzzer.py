@@ -130,16 +130,7 @@ LDRED_CASES = [
 
 COPY_CASES = [
     CopyScalesCase("copy-scales-warpx4-1cta", 0x301, False),
-    pytest.param(
-        CopyScalesCase("copy-scales-warpx4-2cta", 0x302, True),
-        marks=pytest.mark.xfail(
-            reason=(
-                "Structural constexpr-branch two-CTA scales copy currently "
-                "executes correctly but emits cta_group::1 instead of cta_group::2"
-            ),
-            strict=True,
-        ),
-    ),
+    CopyScalesCase("copy-scales-warpx4-2cta", 0x302, True),
 ]
 
 
@@ -337,6 +328,8 @@ def test_tmem_structural_fuzzer_copy_scales(case):
     ptx_ops = _extract_tcgen05_copy_ops(compiled.asm["ptx"])
     llir_ops = _extract_tcgen05_copy_ops(compiled.asm["llir"])
     assert ptx_ops == llir_ops
-    expected_group = "cta_group::2" if case.two_ctas else "cta_group::1"
+    # Direct TensorMemoryScalesLayout warpx4 copies are currently a pair of
+    # single-CTA messages even when the kernel runs in a two-CTA CGA.
+    expected_group = "cta_group::1"
     assert ptx_ops
     assert all(expected_group in op for op in ptx_ops), ptx_ops

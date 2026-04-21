@@ -72,39 +72,192 @@ Every structural fuzz case records:
   - `make -j8`: no work to do;
   - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
   - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
-    passed as `8 passed, 1 xfailed`.
+    passed as `8 passed, 1 xfailed` before the stale direct scales-copy
+    expectation was corrected.
+  - After Lane D reclassified direct two-CTA scales-copy opcode expectations,
+    the `ldst or ldred` subset passed `7 passed`, and the full fuzzer should
+    be rerun as a green `9/9` check.
+  - Full fuzzer rerun after correction:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+    passed as `9 passed`.
+
+### Lane D Round 1, Warp-Specialization / Membar / >2 CTA
+
+- Time: 2026-04-21 08:23 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_warpspec_membar_round1.md`
+- Scope: runtime and lit probes for TMEM interactions with warp-specialized
+  shared-input TMA/MMA, partition scheduling, cluster membar insertion, async
+  completion barriers, descriptor-view memdesc chains, pair-leader behavior,
+  and 2/4/16 CTA CGA cases.
+- Result: no backend compiler crash, verifier false unsupported diagnostic,
+  clean-error regression, or runtime miscompile found.
+- Non-backend finding: rerunning `copy-scales-warpx4-2cta` on current HEAD
+  still emits `tcgen05.cp.cta_group::1.warpx4.32x128b`, but the existing
+  runtime-matrix contract for the same direct two-CTA scales-copy geometry also
+  expects `cta_group::1` and passes. Lane D therefore classifies this as a
+  stale structural-fuzzer opcode expectation, not a backend failure.
+
+### Lane B Round 1, Copy
+
+- Time: 2026-04-21 08:24 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_round1.md`
+- Scope: deterministic copy-family runtime probes covering scales/non-scales,
+  `warpx4`, `warpx2::{01_23,02_13}`, indexed and subslice descriptor views,
+  shared subslices, two-CTA cases, >2 CTA clean diagnostics where present, and
+  packed/subword clean diagnostics.
+- Result: no new copy-family compiler crash, runtime miscompile, or unexpected
+  verifier failure.
+- Validation summary:
+  - broad copy selector split-4 passed as `54/54/54/51`;
+  - exact structural copy fuzzer originally passed `1` and xfailed the stale
+    opcode expectation, now corrected locally;
+  - direct single/two-CTA scales copy anchors passed `2/2`;
+  - two-CTA layout in 4-CTA context clean diagnostic passed;
+  - two-CTA `warpx2::02_13` clean unsupported boundary passed `2/2`;
+  - copy descriptor/subslice/diagnostic collect-only inventory selected
+    `70/1615` nodeids.
+
+### Lane C Round 1, Plain MMAv5 / Scaled-MMAv5
+
+- Time: 2026-04-21 08:25 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_round1.md`
+- Result: no compiler crashes, false unsupported diagnostics, opcode
+  mismatches, or runtime miscompiles found.
+- Validation summary:
+  - broad MMA/scaled-MMA selector: `294 passed, 1 skipped`;
+  - plain MMAv5 FPSAN payload selector: `12 passed, 4 skipped`;
+  - scaled-MMAv5 two-CTA accumulator-subslice selector: `28 passed`;
+  - plain MMAv5 indexed/two-CTA accumulator-view selector: `67 passed`.
+
+### Lane E Round 1, Generic Pass / Layout Analysis
+
+- Time: 2026-04-21 08:25 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round1.md`
+- Result: found five real failures: two compiler crashes and three
+  miscompiles around runtime/dynamic memdesc values, helper-returned TMEM view
+  chains, mixed tensor+memdesc captures, and layout-conversion pressure.
+- Exact repro commands and logs are recorded in the lane report.
+
+### Lane A Round 1, ld/st and ld.red
+
+- Time: 2026-04-21 08:25 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_ldred_round1.md`
+- Result: found stable ld/st and ld.red failures plus one false-unsupported
+  candidate. One initial baseline mismatch was classified as a flake after
+  fresh-process reruns passed.
+- Exact repro commands and minimization notes are recorded in the lane report.
 
 ## Failure Catalog
 
-### FZ-20260421-0001: constexpr-branch two-CTA scales copy emits cta_group::1
+### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
 
-- Status: open, discovery-only, not fixed.
-- First seen: Round 0 local fuzzer validation.
-- Case id: `copy-scales-warpx4-2cta`
-- Seed: `0x302`
-- Test: `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_copy_scales[copy-scales-warpx4-2cta]`
-- Command:
-  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_copy_scales[copy-scales-warpx4-2cta]`
-- Observed behavior: runtime output matches input, but PTX/LLIR opcode check
-  sees two `tcgen05.cp.cta_group::1.warpx4.32x128b` instructions.
-- Expected behavior: two-CTA copy should use `cta_group::2`, matching the
-  existing non-constexpr-branch runtime-matrix anchor
-  `test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy`, which still
-  passes.
-- Failure class: opcode mismatch / possible false single-CTA instruction-form
-  selection in a structurally generated kernel.
-- Current minimization hypothesis: the fuzzer kernel expresses one-CTA and
-  two-CTA copy forms behind a `TWO_CTAS` constexpr branch. The existing
-  dedicated two-CTA kernel emits the correct opcode. This points at a
-  structural/codegen specialization or module two-CTA discovery gap rather
-  than a simple copy-planner failure.
-- Current test disposition: checked-in fuzzer marks the case `xfail(strict)`,
-  so it remains visible without making every fuzz sweep red during the
-  discovery phase.
+- Source: Lane E findings `LANE-E-GP-001` and `LANE-E-GP-002`.
+- Failure class: `compiler_crash`.
+- Family: `generic_pass` / dynamic memdesc indexing.
+- Shape: parent `[2, 128, 64]`, selected view `[128, 64]`.
+- View chains:
+  - chain0: `parent.index(runtime_i32).reshape((64,2,64)).permute([1,0,2]).reshape((128,64))`;
+  - chain1: `parent.index(runtime_i32).reshape((64,2,32,2)).permute(...).reshape((128,64))`.
+- Observed: `failed to legalize operation 'ttg.memdesc_index' that was
+  explicitly marked illegal` in `ConvertTritonGPUToLLVM`.
+- Expected: either compile/runtime pass, or a clean unsupported diagnostic if
+  runtime TMEM indexing is intentionally unsupported.
+- Repro: see `fuzz_generic_pass_round1.md` exact commands and
+  `/tmp/lane_e_dynamic_index_chain{0,1}.log`.
+
+### FZ-20260421-0002: helper-returned chain0 TMEM view miscompiles through control flow
+
+- Source: Lane E findings `LANE-E-GP-003`, `LANE-E-GP-004`, and
+  `LANE-E-GP-005`.
+- Failure class: `miscompile`.
+- Family: `generic_pass` / memdesc `scf.if` results and layout-conversion
+  pressure.
+- Shape: parent `[2, 128, 64]`, selected view `[128, 64]`.
+- View chain: helper-returned
+  `reshape((64,2,64)).permute([1,0,2]).reshape((128,64))`.
+- Observed:
+  - dynamic `if` view case: output mismatches `input + 30.0`;
+  - mixed tensor+memdesc capture case: output mismatches `input + input + 3.0`;
+  - layout-conversion pressure case: output mismatches `input`.
+- Control: inline structural fuzzer chain0 baseline passes, so the current
+  evidence points at helper/control-flow/layout-pass interaction.
+- Repro: see `fuzz_generic_pass_round1.md` exact commands and logs.
+
+### FZ-20260421-0003: ld/st descriptor-view chain1 miscompiles
+
+- Source: Lane A finding `A1`.
+- Failure class: `miscompile`.
+- Family: `ldst`.
+- Minimal shape: parent `[2, 64, 32]`, indexed view `[64, 32]`.
+- Dtypes: stable for `f32`; also reproduced for `i32`; some `f16` compiling
+  variants mismatch.
+- View chain:
+  `index(1).reshape((M//2,2,N)).permute([1,0,2]).reshape((M,N))`.
+- Instruction variants: `32x32b`, `16x64b`, and `16x128b`.
+- Observed: runtime output mismatches PyTorch/reference after successful
+  compile.
+- Controls: direct chain and other view chains pass for neighbor cases.
+- Repro: see `fuzz_ldst_ldred_round1.md` exact inline Python command.
+
+### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
+
+- Source: Lane A finding `A2`.
+- Failure class: `opcode_mismatch`.
+- Family: `ldred`.
+- Minimal shape: parent `[2, 64, 32]`, indexed view `[64, 32]`.
+- View chain:
+  `index(1).reshape((M//2,2,N)).permute([1,0,2]).reshape((M,N))`.
+- Observed: output and reduced tensor match, but PTX contains plain
+  `tcgen05.ld.sync.aligned...`, not `.ld.red.`, so hardware reduction
+  selection is lost after descriptor-view chains.
+- Repro: see `fuzz_ldst_ldred_round1.md` exact command.
+
+### FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation
+
+- Source: Lane A finding `A3`.
+- Failure class: `compiler_crash`.
+- Family: `ldst` and `ldred`.
+- Minimal shape: parent `[2, 256, 32]`, indexed view `[256, 32]`.
+- View chain: direct `index(1)`.
+- Observed: assertion from `TensorMemoryAllocation.cpp:65`:
+  `MemoryBitMap::findFirstFit(...): Assertion 'kNumRows - numRows >= 0' failed.`
+- Expected: clean resource diagnostic or supported lowering, not assertion.
+- Repro: see `fuzz_ldst_ldred_round1.md` exact command.
+
+### FZ-20260421-0006: ld.red transpose/slice view may be false unsupported
+
+- Source: Lane A finding `A4`.
+- Failure class: `false_unsupported` candidate.
+- Family: `ldred`.
+- Shape: parent `[2, 64, 128]`, indexed view `[64, 128]`.
+- Layout: row `rotate1`, col `identity`.
+- View chain:
+  `index(1).permute([1,0]).permute([1,0]).slice(0,M,dim=0).slice(0,N,dim=1)`.
+- Observed: `view.get_reg_layout()` rejects with row-anchor diagnostic:
+  required row anchors `32,64` are not directly representable.
+- Status: keep as candidate until planner proves ISA-impossible.
+
+### Retired Non-Bug: direct two-CTA scales copy cta_group expectation
+
+- Initial local fuzzer expected `copy-scales-warpx4-2cta` to emit
+  `cta_group::2`.
+- Lane D verified the current runtime-matrix anchor expects and passes with
+  `tcgen05.cp.cta_group::1.warpx4.32x128b` for this direct scales-copy shape.
+- Classification: stale fuzzer expectation, corrected in the fuzzer.
 
 ## Repro Queue
 
-- FZ-20260421-0001: minimize `TWO_CTAS` constexpr branch interaction and
-  compare TTGIR attributes against the dedicated runtime-matrix two-CTA copy
-  kernel. Do not fix until the active fuzzing campaign stops finding new
-  failures or the user pivots to repair.
+- Minimize FZ-20260421-0001 to lit or checked-in Python runtime repro.
+- Promote FZ-20260421-0002 helper/control-flow miscompile into deterministic
+  fuzzer xfail cases once reduced enough to avoid overlap between variants.
+- Promote FZ-20260421-0003 and FZ-20260421-0004 into deterministic Python
+  fuzzer xfail cases.
+- Capture FZ-20260421-0005 MLIR reproducer and rerun with
+  `triton-opt --run-reproducer`.
+- Expand FZ-20260421-0006 around adjacent row/col permutations before
+  classifying as true boundary.
