@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 promoted Round 7 Lane B `FZ-20260421-0009` into
+  checked-in structural-fuzzer coverage. Added subprocess-isolated strict
+  xfail
+  `test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash` for
+  the 1CTA direct indexed `ld.red` parent `[2,256,32]` allocator assertion in
+  `TritonTensorMemoryAllocationPass`. The sentinel uses the existing direct
+  indexed ld.red kernel path and keeps the C++ assertion contained in a child
+  Python process. Backend repair remains deferred during the active discovery
+  campaign. Validation: required `make -j8` no-op, py-compile passed,
+  collect-only found `33` structural-fuzzer nodeids, the exact new sentinel
+  reported `1 xfailed`, and the full structural fuzzer reported
+  `9 passed, 24 xfailed`.
+
 - Latest: 2026-04-21 completed Round 7 Lane A scaled-MMAv5 accumulator
   control-flow expansion. Wrote
   `agents/fuzz_scaled_mma_controlflow_round7.md` from

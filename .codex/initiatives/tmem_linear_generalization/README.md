@@ -73,6 +73,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21: promoted Round 7 Lane B `FZ-20260421-0009` into checked-in
+  structural-fuzzer coverage. Added subprocess-isolated strict xfail
+  `test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash` for
+  the 1CTA direct indexed `ld.red` parent `[2,256,32]` allocator assertion in
+  `TritonTensorMemoryAllocationPass`. Backend fixes remain deferred during
+  discovery mode. Validation: required `make -j8` no-op, py-compile passed,
+  collect-only found `33` nodeids, the exact new sentinel reported
+  `1 xfailed`, and the full structural fuzzer reported
+  `9 passed, 24 xfailed`.
+
 - 2026-04-21: completed Round 7 Lane A scaled-MMAv5 accumulator control-flow
   expansion. Wrote
   `agents/fuzz_scaled_mma_controlflow_round7.md` from the temporary harness

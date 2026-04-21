@@ -929,8 +929,11 @@ remain family-specific and consume a bounded subset of the inventory.
   - f16 read-only `ld/st` subword chain2 reproduced already-covered
     `FZ-20260421-0003`, while same-view roundtrip and i32 transpose/slice rows
     stopped at clean unsupported descriptor-view diagnostics.
-- Promotion status: report-only for Round 7. If promoted later, use a
-  subprocess-isolated strict xfail and keep it separate from opcode-loss rows.
+- Promotion status: checked-in subprocess-isolated strict xfail as of
+  2026-04-21:
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash`.
+  The subprocess isolation is required because the current failure aborts in
+  `TritonTensorMemoryAllocationPass`.
 
 ### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
 

@@ -1114,6 +1114,37 @@ def _run_ldred_twocta_rowcol_optimizer_crash_case():
     assert any(".ld.red." in op for op in ptx_ops)
 
 
+def _run_ldred_1cta_direct_index_allocator_crash_case():
+    m = 256
+    n = 32
+    torch.manual_seed(0x46708516)
+    layout = _make_linear_layout(m, n, "identity", "identity")
+    parent_layout = _lift_layout(layout, [2])
+    red_layout = ttgl.BlockedLayout([1], [32], [4], [0])
+    inp = torch.randn((m, n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty((m, ), dtype=torch.float32, device="cuda")
+    compiled = _fuzz_ldred_kernel[(1, )](
+        inp,
+        out,
+        red,
+        layout,
+        parent_layout,
+        red_layout,
+        m,
+        n,
+        1,
+        False,
+        num_warps=4,
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.min(inp, dim=1).values, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
+    assert ptx_ops == llir_ops
+    assert any(".ld.red." in op for op in ptx_ops)
+
+
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.xfail(
     strict=True,
@@ -1132,6 +1163,36 @@ mod = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = mod
 spec.loader.exec_module(mod)
 mod._run_ldred_twocta_rowcol_optimizer_crash_case()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=os.getcwd(),
+        env=os.environ.copy(),
+        text=True,
+        capture_output=True,
+        timeout=180,
+    )
+    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.xfail(
+    strict=True,
+    reason="FZ-20260421-0009: 1CTA direct indexed ld.red over 256x32 asserts in TensorMemoryAllocation",
+)
+def test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash():
+    code = """
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location(
+    "tmem_structural_fuzzer",
+    "python/test/gluon/test_tmem_structural_fuzzer.py",
+)
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+mod._run_ldred_1cta_direct_index_allocator_crash_case()
 """
     result = subprocess.run(
         [sys.executable, "-c", code],

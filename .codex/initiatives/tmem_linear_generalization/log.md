@@ -26690,3 +26690,23 @@ Open after this slice:
   - fresh exact reruns confirmed the low-selector miscompile versus high/direct
     green contrasts for `subslice_if`, `indexed_if`, `subslice_helper`, and
     `subslice_loop`.
+
+## 2026-04-21: promoted FZ-20260421-0009 allocator crash sentinel
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Added subprocess-isolated strict xfail coverage in
+  `python/test/gluon/test_tmem_structural_fuzzer.py` for
+  `FZ-20260421-0009`: 1CTA direct indexed `ld.red` over parent `[2,256,32]`
+  failing in `TritonTensorMemoryAllocationPass` with the
+  `TensorMemoryAllocation.cpp:65` allocator assertion.
+- The sentinel reuses the existing `_fuzz_ldred_kernel` direct indexed path
+  with seed `0x46708516`, `TensorMemoryLinearLayout` identity row/col layout,
+  and a `load_min` oracle. It runs in a child Python process so the parent
+  pytest process survives the current C++ assertion.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
+  - collect-only found `33` structural-fuzzer nodeids;
+  - exact new sentinel reported `1 xfailed`;
+  - full structural fuzzer reported `9 passed, 24 xfailed`.

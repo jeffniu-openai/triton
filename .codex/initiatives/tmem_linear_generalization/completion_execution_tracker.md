@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 09:13 UTC
+Last updated: 2026-04-21
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -150,6 +150,14 @@ The project is complete when:
   scaled-format cells. `indexed_helper` exceptions overlap
   `FZ-20260421-0001`; no new independent `FZ-*` id was assigned. Report:
   `agents/fuzz_scaled_mma_controlflow_round7.md`.
+  2026-04-21 promoted Round 7 Lane B `FZ-20260421-0009` into checked-in
+  subprocess-isolated strict xfail coverage:
+  `test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash`.
+  This covers the 1CTA direct indexed `ld.red` parent `[2,256,32]`
+  `TritonTensorMemoryAllocationPass` allocator assertion while keeping the
+  parent pytest process alive. Validation: required `make -j8`, py-compile,
+  `33` collected structural-fuzzer nodeids, exact sentinel `1 xfailed`, and
+  full fuzzer `9 passed, 24 xfailed`. Backend repair remains deferred.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive
