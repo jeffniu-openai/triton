@@ -2187,6 +2187,20 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no new bucket. Checked-in plain/scaled MMAv5 descriptor and
   indexed-accumulator coverage remains green.
 
+### Round 14 local copy risk selector
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_risk_round14.md`
+- Required build: `make -j8` no-op.
+- Selector:
+  `(cp_no_scales_warpx2 or cp_no_scales_twocta or cp_scales_warpx4 or cp_scales) and not reports`
+  collected `135/1615` rows.
+- Split-4 result:
+  `135 passed` (`34`, `34`, `34`, `33` by shard).
+- Classification: no new bucket. Checked-in copy rows remain green next to
+  Lane AI's temporary multi-region mbarrier composition fuzzing.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

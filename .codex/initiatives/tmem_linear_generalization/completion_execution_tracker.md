@@ -1803,3 +1803,9 @@ signal handling:
   `(mma and (descriptor or runtime_selector or indexed_acc or acc_subslice_view or scale_descriptor)) and not reports`
   selector collected `253/1615` and passed split-4 as `239 passed,
   14 skipped`; no new bucket.
+
+- 2026-04-21: local copy risk selector wrote
+  `agents/fuzz_local_copy_risk_round14.md`. The
+  `(cp_no_scales_warpx2 or cp_no_scales_twocta or cp_scales_warpx4 or cp_scales) and not reports`
+  selector collected `135/1615` and passed split-4 as `135 passed`; no new
+  bucket.

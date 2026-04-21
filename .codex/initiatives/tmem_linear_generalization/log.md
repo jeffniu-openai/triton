@@ -28112,3 +28112,19 @@ Open after this slice:
 - Classification: no new bucket. Checked-in plain/scaled MMAv5 descriptor,
   accumulator-subslice, indexed-accumulator, and adjacent selected `ld/st`
   MMAv5-layout descriptor controls stayed green.
+
+## 2026-04-21: Round 14 local copy risk selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_risk_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k '(cp_no_scales_warpx2 or cp_no_scales_twocta or cp_scales_warpx4 or cp_scales) and not reports'`
+  selected `135/1615`.
+- Split-4 runtime execution with stable per-GPU caches reported aggregate
+  `135 passed` (`34`, `34`, `34`, `33` by shard).
+- Classification: no new bucket. Checked-in no-scales `warpx2`, two-CTA
+  no-scales copy, scales `warpx4`, and scaled-MMA scale-copy setup rows stayed
+  green.

@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local Round 14 copy risk selector stayed green while
+  Lane AI probed copy/mbarrier composition. Report:
+  `agents/fuzz_local_copy_risk_round14.md`. Required `make -j8` was a no-op.
+  The selector
+  `(cp_no_scales_warpx2 or cp_no_scales_twocta or cp_scales_warpx4 or cp_scales) and not reports`
+  collected `135/1615` rows and passed split-4 as `135 passed`. No new
+  bucket; checked-in no-scales `warpx2`, two-CTA copy, scales `warpx4`, and
+  scaled-MMA scale-copy setup rows remain green next to temporary `FZ-0014`
+  multi-region mbarrier fuzzing.
+
 - Latest: 2026-04-21 local broad MMAv5 descriptor selector stayed green.
   Report: `agents/fuzz_local_mma_descriptor_broad_round14.md`. Required
   `make -j8` was a no-op. The selector
