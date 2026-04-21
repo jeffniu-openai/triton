@@ -28580,6 +28580,95 @@ Open after this slice:
   known `FZ-20260421-0012` M64 row-permuted `ld.red` destination-layout
   planner gap with `unsupported dst layout`; nearby controls passed.
 
+## 2026-04-21 15:20 UTC: Round 26 local MMAv5-adjacent guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_guard_round26.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector `mma and not mma_scaled and not reports and not clean and not
+  resource` collected `337/1615` runtime-matrix rows.
+- Split-4 result with stable per-GPU caches:
+  `323 passed, 14 skipped`:
+  - GPU 0 / group 1: `71 passed, 14 skipped`;
+  - GPU 1 / group 2: `85 passed`;
+  - GPU 2 / group 3: `85 passed`;
+  - GPU 3 / group 4: `82 passed`.
+- Classification: no new independent `FZ-*` bucket. This is a green guardrail
+  for checked-in plain-MMAv5 and MMAv5-adjacent descriptor/copy setup rows.
+
+## 2026-04-21: Round 26 TMEM verifier robustness lane
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_verifier_round26.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op in the lane.
+- Generated corpora:
+  `/tmp/tmem_verifier_round26/results.json` and
+  `/tmp/tmem_verifier_round26_extra/results.json`.
+- Result: no new independent `FZ-*` bucket. Existing
+  `FZ-20260421-0016` now explicitly covers unencoded tensor operands/results
+  through `ttng.tmem_alloc`, `ttng.tmem_load`, and `ttng.tmem_store`.
+- Clean boundaries stayed clean for encoded-but-unsupported register layouts,
+  wrong load/store shapes, copy wrong source/destination memory spaces, copy
+  shape mismatch, malformed/missing memdesc encoding syntax, tensor-memory
+  memdescs using non-TMEM encodings, and rank errors.
+
+## 2026-04-21: Round 27 checked-in structural fuzzer rerun
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_rerun_round27.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Full checked-in structural fuzzer split across four GPUs stayed stable:
+  `9 passed, 24 xfailed`, with no failures and no XPASS.
+- Representative known xfail diagnostic remained
+  `failed to legalize operation 'ttg.memdesc_index'`, classified as existing
+  `FZ-20260421-0001`.
+
+## 2026-04-21: Round 26 dynamic descriptor SSA lane
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_ssa_round26.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op in the lane.
+- Temporary probe:
+  `/tmp/tmem_dynamic_ssa_round26_probe.py`.
+- Result: no new independent `FZ-*` bucket. Runtime-index `ld.red` and
+  branch-yielded copy descriptor rows map to existing `FZ-20260421-0001`
+  illegal `ttg.memdesc_index` lowering. Nested-helper/loop-carried `ld/st`
+  and branch/mixed-consumer `ld.red` rows map to existing
+  `FZ-20260421-0002` wrong-result descriptor SSA/control-flow semantics.
+- Negative contrast: branch-selected plain-MMAv5 accumulator descriptor passed.
+
+## 2026-04-21: Round 26 high-CGA scaled-MMAv5 mixed ownership lane
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_scaled_round26.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op in the lane.
+- Temporary probe:
+  `/tmp/tmem_high_cga_scaled_round26_probe.py`.
+- Result: no new independent `FZ-*` bucket. High-CGA scaled-MMAv5 controls
+  passed for 4/8/16 CTA launches. Adding local 1CTA/2CTA descriptor-view
+  store, load, reduction load, or copy operations in the same kernel fails at
+  existing `FZ-20260421-0010` layout/context CTA-count diagnostics.
+
+## 2026-04-21: Round 28 broad ld.red rerun
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_round28.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Reran `ld_red and not reports and not resource` and exact failing nodeids.
+- Result: no new independent `FZ-*` bucket. Aggregate stayed
+  `237 passed, 6 failed`; exact rerun reproduced the same six
+  `FZ-20260421-0012` M64 row-permuted `unsupported dst layout` failures.
+
 ## 2026-04-21 12:25 UTC: Round 25 high-CGA mixed ownership
 
 - Wrote
@@ -29791,3 +29880,32 @@ Open after this slice:
   - GPU 3 / group 4: `106 passed`.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
+## 2026-04-21: Round 26 high-CGA scaled-MMAv5 mixed ownership
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_scaled_round26.md`.
+- Continued discovery-only fuzzing; no backend/compiler repair was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe:
+  `/tmp/tmem_high_cga_scaled_round26_probe.py`.
+- Final probe result:
+  high-CGA scaled-MMAv5 controls passed for `num_ctas=4`, `8`, and `16` with
+  the expected scaled opcode and torch reference match. Same-kernel local
+  1CTA/2CTA descriptor-view `st`, `ld`, `ld.red`, and `tcgen05.copy` rows in
+  4/8/16 CTA contexts all produced the existing CTA-count diagnostic.
+- Classification: no new independent `FZ-*`; all mixed rows classify as
+  existing `FZ-20260421-0010`. The lane did not exercise `FZ-0013` or
+  `FZ-0015` because scale descriptors were direct/static by design.
+
+## 2026-04-21: Round 28 broad ld.red runtime slice
+
+- Integrated report-only result from
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_round28.md`.
+- Continued discovery-only fuzzing; no backend/compiler repair was attempted.
+- Selector:
+  `ld_red and not reports and not resource`.
+- Split-4 result:
+  `237 passed, 6 failed`; exact rerun reproduced the same six failures.
+- Classification: no new independent `FZ-*`; all failures are existing
+  `FZ-20260421-0012` M64 row/column-permuted destination-layout planner gaps.

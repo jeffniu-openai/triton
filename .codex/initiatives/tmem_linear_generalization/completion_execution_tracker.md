@@ -2294,3 +2294,58 @@ signal handling:
   existing `FZ-20260421-0012` M64 row-permuted `unsupported dst layout` rows;
   no new bucket or changed failure mode was found. Continue Round 26 subagent
   lanes and local non-overlapping runtime slices.
+
+- 2026-04-21 15:20 UTC: local Round 26 MMAv5-adjacent guardrail completed.
+  Report: `agents/fuzz_local_mma_guard_round26.md`. Required `make -j8` was a
+  no-op. Selector `mma and not mma_scaled and not reports and not clean and not
+  resource` collected `337/1615` and ran split-4 as
+  `323 passed, 14 skipped`. No new bucket was found. Continue Round 26
+  subagent lanes and local non-overlapping runtime slices.
+
+- 2026-04-21: Round 26 verifier robustness lane completed. Report:
+  `agents/fuzz_verifier_round26.md`. No new bucket; broadened existing
+  `FZ-20260421-0016` to shared `verifyTMEMOperand` crashes for unencoded
+  tensor operands/results across `ttng.tmem_alloc`, `ttng.tmem_load`, and
+  `ttng.tmem_store`. Clean copy, malformed memdesc, wrong-shape, wrong-space,
+  rank, and encoded-unsupported diagnostics remained typed diagnostics.
+
+- 2026-04-21: Round 27 structural-fuzzer rerun completed. Report:
+  `agents/fuzz_structural_rerun_round27.md`. Full
+  `python/test/gluon/test_tmem_structural_fuzzer.py` split across four GPUs
+  stayed stable as `9 passed, 24 xfailed`; no XPASS or unexpected failure.
+  Continue the active Round 26 dynamic SSA and high-CGA scaled lanes.
+
+- 2026-04-21: Round 26 high-CGA scaled-MMAv5 mixed-ownership lane completed.
+  Report: `agents/fuzz_high_cga_scaled_round26.md`. Required `make -j8` was a
+  no-op. The repaired harness first proved legal high-CGA scaled-MMAv5 controls
+  for `num_ctas=4`, `8`, and `16` with the expected scaled opcode and torch
+  reference match. Adding local 1CTA/2CTA descriptor-view `st`, `ld`,
+  `ld.red`, or `tcgen05.copy` in the same kernels produced `24` clean
+  `FZ-20260421-0010` CTA-count diagnostics. No new crash, miscompile,
+  assembler failure, or scaled-MMAv5-specific bucket was found.
+
+- 2026-04-21: Round 28 broad `ld.red` runtime slice completed. Report:
+  `agents/fuzz_ldred_round28.md`. Split-4 selector
+  `ld_red and not reports and not resource` completed as
+  `237 passed, 6 failed`; exact rerun confirmed the same six known
+  `FZ-20260421-0012` M64 row/column-permuted planner rows. No new independent
+  bucket or changed failure mode was found.
+
+- 2026-04-21: Round 26 dynamic descriptor SSA lane completed. Report:
+  `agents/fuzz_dynamic_ssa_round26.md`. No new bucket. Runtime-index `ld.red`
+  and branch-yielded copy descriptors sharpen existing `FZ-20260421-0001`;
+  nested-helper/loop-carried `ld/st` and branch/mixed-consumer `ld.red`
+  wrong-output rows sharpen existing `FZ-20260421-0002`. Plain-MMAv5
+  branch-selected accumulator descriptor passed.
+
+- 2026-04-21: Round 26 high-CGA scaled-MMAv5 mixed ownership lane completed.
+  Report: `agents/fuzz_high_cga_scaled_round26.md`. No new bucket. The
+  Round 25 scaled harness limitation is resolved: high-CGA scaled-MMAv5
+  controls pass for 4/8/16 CTA launches, and mixed local 1CTA/2CTA
+  descriptor-view store/load/`ld.red`/copy rows fail cleanly under existing
+  `FZ-20260421-0010`.
+
+- 2026-04-21: Round 28 broad `ld.red` rerun completed. Report:
+  `agents/fuzz_ldred_round28.md`. No new bucket. The broad selector and exact
+  failing-node rerun reconfirmed the same six existing
+  `FZ-20260421-0012` M64 row-permuted `unsupported dst layout` failures.

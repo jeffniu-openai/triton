@@ -7,7 +7,22 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest Round 25 fuzzing checkpoint: 2026-04-21 14:30 UTC. Reports:
+Latest fuzzing checkpoint: 2026-04-21 Round 26-28 discovery lanes. Reports:
+`agents/fuzz_high_cga_scaled_round26.md`,
+`agents/fuzz_verifier_round26.md`,
+`agents/fuzz_local_mma_guard_round26.md`,
+`agents/fuzz_structural_rerun_round27.md`, and
+`agents/fuzz_ldred_round28.md`. No new independent `FZ-*` bucket was found.
+The repaired high-CGA scaled-MMAv5 mixed-ownership harness proved scaled-MMAv5
+controls pass for `num_ctas=4/8/16`, then local 1CTA/2CTA descriptor-view
+`st`, `ld`, `ld.red`, and `tcgen05.copy` rows all classify as existing
+`FZ-20260421-0010`. The verifier lane broadened `FZ-20260421-0016` across
+alloc/load/store unencoded tensor verifier paths. The checked-in structural
+fuzzer stayed stable as `9 passed, 24 xfailed`; the MMAv5 guardrail stayed
+green as `323 passed, 14 skipped`; the broad `ld.red` slice reproduced only
+known `FZ-20260421-0012` rows (`237 passed, 6 failed`).
+
+Previous Round 25 fuzzing checkpoint: 2026-04-21 14:30 UTC. Reports:
 `agents/fuzz_fz0016_code_audit_round25.md`,
 `agents/fuzz_local_fz0016_relayout_round25.md`,
 `agents/fuzz_structural_generator_dynamic_round25.md`, and
@@ -5776,3 +5791,47 @@ When resuming the initiative:
   column-only, M128, descriptor-chain, non-f32 software-reduce, and compatible
   hardware-reduce controls passed. No new bucket or changed failure mode was
   found.
+
+## Latest: 2026-04-21 Round 26 local MMAv5 guardrail
+
+- Local Round 26 MMAv5-adjacent guardrail wrote
+  `agents/fuzz_local_mma_guard_round26.md`. Selector
+  `mma and not mma_scaled and not reports and not clean and not resource`
+  collected `337/1615` rows and completed split-4 as
+  `323 passed, 14 skipped`.
+- No new bucket or changed failure mode was found. This is a green guardrail
+  for checked-in plain-MMAv5 and MMAv5-adjacent descriptor/copy setup rows
+  while the Round 26 subagents continue adversarial dynamic/verifier/high-CGA
+  fuzzing.
+
+## Latest: 2026-04-21 Round 26 verifier and structural rerun
+
+- Round 26 verifier lane wrote `agents/fuzz_verifier_round26.md`. No new
+  independent `FZ-*`; existing `FZ-20260421-0016` now covers the shared
+  `verifyTMEMOperand` path for unencoded tensor operands/results through
+  `ttng.tmem_alloc`, `ttng.tmem_load`, and `ttng.tmem_store`. Clean diagnostic
+  boundaries stayed clean for copy wrong-space/shape cases, malformed memdesc
+  encodings, rank errors, and encoded unsupported-layout controls.
+- Round 27 structural-fuzzer rerun wrote
+  `agents/fuzz_structural_rerun_round27.md`. Full checked-in
+  `python/test/gluon/test_tmem_structural_fuzzer.py` split across four GPUs
+  stayed stable as `9 passed, 24 xfailed`, with no unexpected failure or
+  XPASS.
+
+## Latest: 2026-04-21 Round 26 dynamic and high-CGA lanes
+
+- Round 26 dynamic descriptor SSA lane wrote
+  `agents/fuzz_dynamic_ssa_round26.md`. No new bucket. Runtime-index `ld.red`
+  and branch-yielded copy descriptors sharpen `FZ-20260421-0001`; nested-helper
+  and loop-carried `ld/st` plus branch/mixed-consumer `ld.red` wrong results
+  sharpen `FZ-20260421-0002`. Plain-MMAv5 branch-selected accumulator
+  descriptor passed as a positive control.
+- Round 26 high-CGA scaled-MMAv5 mixed-ownership lane wrote
+  `agents/fuzz_high_cga_scaled_round26.md`. No new bucket. The Round 25 scaled
+  harness limitation is fixed: high-CGA scaled-MMAv5 controls pass for 4/8/16
+  CTA launches, while mixed local 1CTA/2CTA descriptor-view store/load/`ld.red`/
+  copy rows fail cleanly under existing `FZ-20260421-0010` CTA-count ownership
+  diagnostics.
+- Round 28 broad `ld.red` rerun wrote `agents/fuzz_ldred_round28.md`. No new
+  bucket; exact failing-node rerun reconfirmed the same six existing
+  `FZ-20260421-0012` M64 row-permuted `unsupported dst layout` failures.

@@ -69,6 +69,87 @@ remain family-specific and consume a bounded subset of the inventory.
 - Note: this run intentionally stayed in discovery/cataloging mode; no backend
   repair was attempted.
 
+### Round 26 Local, MMAv5-Adjacent Runtime Guardrail
+
+- Time: 2026-04-21 15:20 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_guard_round26.md`
+- Scope: checked-in runtime-matrix rows selected by
+  `mma and not mma_scaled and not reports and not clean and not resource`.
+- Result: no new independent `FZ-*` bucket. The selector collected `337` rows
+  and completed split-4 as `323 passed, 14 skipped`.
+- Note: this is a green guardrail for plain-MMAv5 and MMAv5-adjacent descriptor
+  and copy setup rows while Round 26 subagents fuzz more adversarial dynamic
+  descriptor, verifier, and high-CGA mixed-ownership surfaces.
+
+### Round 26 Lane, TMEM Verifier Robustness
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_verifier_round26.md`
+- Scope: `ttng.tmem_alloc`, `ttng.tmem_load`, `ttng.tmem_store`, and
+  `ttng.tmem_copy` verifier behavior for unencoded tensors, malformed memdesc
+  encodings, wrong memory spaces, wrong shapes, and clean diagnostic
+  boundaries.
+- Result: no new independent `FZ-*` bucket. Existing `FZ-20260421-0016` now
+  covers the shared `verifyTMEMOperand` / compatibility path for unencoded
+  tensor operands/results through alloc, load, and store. `ttng.tmem_copy`
+  stayed on clean memdesc diagnostics for the probed wrong-space/shape cases.
+- Counts: primary corpus `6` dyn-cast aborts, `12` clean diagnostics, `2`
+  passes; follow-up corpus `6` dyn-cast aborts and `6` clean diagnostics.
+
+### Round 27 Lane, Checked-In Structural Fuzzer Rerun
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_rerun_round27.md`
+- Scope: full checked-in `python/test/gluon/test_tmem_structural_fuzzer.py`
+  rerun across four GPUs with stable per-GPU caches.
+- Result: stable expected catalog, `9 passed, 24 xfailed`, no failures and no
+  XPASS. Known xfail output still includes the `FZ-20260421-0001` illegal
+  `ttg.memdesc_index` LLVM-conversion repros.
+
+### Round 26 Lane, Dynamic Descriptor SSA / Control Flow
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_ssa_round26.md`
+- Scope: temporary Python/Gluon probes for nested-helper, branch-yielded,
+  tuple-like, loop-carried, dynamic-index, mixed-consumer, copy, `ld/st`,
+  `ld.red`, and plain-MMAv5 accumulator descriptor SSA paths.
+- Result: no new independent `FZ-*` bucket. Runtime-index `ld.red` and
+  branch-yielded copy rows broaden existing `FZ-20260421-0001` illegal
+  `ttg.memdesc_index` lowering. Nested-helper/loop-carried `ld/st` and
+  branch/mixed-consumer `ld.red` rows broaden existing `FZ-20260421-0002`
+  descriptor SSA/control-flow wrong results. The `ld.red` rows emitted
+  `.ld.red`, so they are not opcode-fallback `FZ-20260421-0004` cases.
+- Positive control: branch-selected plain-MMAv5 accumulator descriptor passed.
+
+### Round 26 Lane, High-CGA Scaled-MMAv5 Mixed Ownership
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_scaled_round26.md`
+- Scope: legal high-CGA scaled-MMAv5 controls mixed with local 1CTA/2CTA TMEM
+  descriptor-view `st`, `ld`, `ld.red`, and `tcgen05.copy` operations in
+  4/8/16 CTA launch contexts.
+- Result: no new independent `FZ-*` bucket. The Round 25 scaled-MMAv5 harness
+  limitation was removed; high-CGA scaled-MMAv5 controls passed for 4/8/16 CTA
+  launches with expected scaled opcodes and torch reference matches. Every
+  mixed local 1CTA/2CTA operation failed at the known `FZ-20260421-0010`
+  layout/context CTA-count ownership gate.
+
+### Round 28 Lane, Broad ld.red Runtime Rerun
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_round28.md`
+- Scope: rerun of `ld_red and not reports and not resource` plus exact
+  failing-node rerun.
+- Result: no new independent `FZ-*` bucket. Aggregate stayed
+  `237 passed, 6 failed`; exact failing-node rerun reproduced the same six
+  `FZ-20260421-0012` M64 row-permuted `unsupported dst layout` rows.
+
 ### Round 0, Campaign Setup
 
 - Time: 2026-04-21 08:18 UTC
@@ -3351,3 +3432,33 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no new independent `FZ-*`. This remains a green checked-in
   nearby control for report-only `FZ-20260421-0013` scale descriptor-view
   miscompile probes.
+
+### Round 26 high-CGA scaled-MMAv5 mixed ownership
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_scaled_round26.md`
+- Temporary probe:
+  `/tmp/tmem_high_cga_scaled_round26_probe.py`; final log at
+  `/tmp/tmem_high_cga_scaled_round26_probe_final.log`.
+- Controls:
+  scaled-MMAv5 high-CGA kernels passed for `num_ctas=4`, `8`, and `16`, emitted
+  the expected scaled opcode, and matched torch matmul reference.
+- Mixed rows:
+  local 1CTA/2CTA descriptor-view `st`, `ld`, `ld.red`, and `tcgen05.copy`
+  inside those 4/8/16 CTA kernels all failed at the existing CTA-count
+  ownership diagnostic.
+- Classification:
+  no new independent `FZ-*`; all mixed rows are existing
+  `FZ-20260421-0010`.
+
+### Round 28 broad `ld.red` runtime slice
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_round28.md`
+- Selector:
+  `ld_red and not reports and not resource`
+- Split-4 result:
+  `237 passed, 6 failed`.
+- Classification:
+  no new independent `FZ-*`; the six failures are existing
+  `FZ-20260421-0012` M64 row/column-permuted destination-layout planner gaps.
