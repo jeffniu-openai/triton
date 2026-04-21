@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local Round 11 no-scales copy non-`warpx2` runtime slice
+  stayed green. Required `make -j8` reported no work to do. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and not warpx2 and not reports'`
+  selected `169/1615` tests. Split-4 execution across GPUs 0-3 with stable
+  caches selected `43`, `43`, `43`, and `40` tests; aggregate result
+  `165 passed, 4 skipped`. Durations were stored at
+  `/tmp/tmem_local_r11_cp_no_scales_nonwarpx2_durations.json`.
+
 - Latest: 2026-04-21 completed Round 10 Lane O opcode/IR consistency
   fuzzing. Report: `agents/fuzz_opcode_consistency_round10.md`. Temporary
   probe `/tmp/tmem_opcode_consistency_round10_probe.py` compared PTX and LLIR

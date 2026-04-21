@@ -5422,3 +5422,14 @@ When resuming the initiative:
   hardware-layout boundary.
 - Active mode remains discovery-only structural fuzzing; backend repair is
   still deferred while Lane N and Lane P continue.
+
+## Latest: 2026-04-21 Round 11 local copy slice
+
+- Ran no-scales copy runtime-matrix coverage outside the already-run `warpx2`
+  selector:
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and not warpx2 and not reports'`.
+- Required `make -j8` was a no-op; collect-only selected `169/1615`.
+- Split-4 execution across GPUs 0-3 passed as aggregate
+  `165 passed, 4 skipped`; durations are in
+  `/tmp/tmem_local_r11_cp_no_scales_nonwarpx2_durations.json`.
+- No new bug bucket was found.

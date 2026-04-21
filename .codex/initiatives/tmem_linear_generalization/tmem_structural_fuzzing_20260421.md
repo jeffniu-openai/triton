@@ -1531,3 +1531,19 @@ remain family-specific and consume a bounded subset of the inventory.
   bucket.
 - Clean boundary: an exotic permuted copy layout reported the expected clean
   unsupported `tcgen05.copy.128x256b` planning diagnostic.
+
+### Round 11 local no-scales copy non-warpx2 slice
+
+- Time: 2026-04-21
+- Required build: `make -j8` no-op.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and not warpx2 and not reports'`
+  selected `169 / 1615` tests.
+- Runtime: split-4 across GPUs 0-3 with stable
+  `/tmp/triton-cache-gpu{0,1,2,3}` and durations stored at
+  `/tmp/tmem_local_r11_cp_no_scales_nonwarpx2_durations.json`.
+- Result: group counts `39 passed, 4 skipped`; `43 passed`; `43 passed`;
+  `40 passed`. Aggregate `165 passed, 4 skipped`.
+- Classification: green contrast coverage for no-scales copy indexed,
+  subslice, two-CTA, subword, and tile-permuted rows outside the already-run
+  `warpx2` selector. No new bucket.

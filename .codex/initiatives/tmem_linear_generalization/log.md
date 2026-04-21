@@ -27251,3 +27251,20 @@ Open after this slice:
   streams still show plain `tcgen05.ld` instead of `.ld.red.`
   (`FZ-20260421-0004`). The exotic permuted copy row remained a clean
   unsupported boundary.
+
+## 2026-04-21: Round 11 local no-scales copy non-warpx2 slice
+
+- Ran a complementary checked-in runtime-matrix copy slice while the next
+  subagent lanes were active. No backend or compiler repairs were attempted.
+- Required `make -j8` reported no work to do.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and not warpx2 and not reports'`
+  selected `169 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r11_cp_no_scales_nonwarpx2_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and not warpx2 and not reports'`
+- Result:
+  - group 1/GPU 0: `39 passed, 4 skipped, 1572 deselected in 24.28s`;
+  - group 2/GPU 1: `43 passed, 1572 deselected in 14.36s`;
+  - group 3/GPU 2: `43 passed, 1572 deselected in 16.39s`;
+  - group 4/GPU 3: `40 passed, 1575 deselected in 24.70s`.
+- Aggregate: `165 passed, 4 skipped`. No new bucket was found.
