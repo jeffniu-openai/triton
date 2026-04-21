@@ -4091,3 +4091,16 @@ discovery.
   broaden `FZ-0001` over dynamic/control-flow-carried copy, `ld.red`,
   MMAv5/scales, and branch/helper-yielded descriptor consumers; then repair
   `FZ-0003` descriptor-view packet/layout mapping exposed by chain0.
+
+- 2026-04-21 17:05 UTC: dynamic `FZ-0001` broad-consumer validation promoted
+  to checked-in tests. Temporary replays showed runtime-index `ld.red`,
+  branch-yielded copy, and runtime-index copy now pass; compiler-only
+  `ld.red`/scales dynamic-index repros no longer fail on illegal
+  `ttg.memdesc_index`; the Round 56 dense copy matrix has five former
+  dense-index `FZ-0001` rows green across 1CTA/2CTA and branch/runtime index.
+  Added structural positives for dynamic branch copy, dynamic runtime copy, and
+  runtime-index `ld.red`. Validation: required `make -j8`; exact new nodeids
+  `3 passed`; full structural fuzzer split-4 `14 passed, 22 xfailed`.
+  Remaining clean-negative/bug inventory: branch-subslice copy belongs with
+  descriptor-view/copy-planning, not late dynamic-index lowering; the next core
+  repair target is `FZ-20260421-0003` descriptor-view packet/layout mapping.

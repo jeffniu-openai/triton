@@ -33192,3 +33192,32 @@ Open after this slice:
   but do not declare the whole bucket closed until dynamic/control-flow-carried
   descriptors feeding copy, `ld.red`, MMAv5/scales, and branch-yielded values
   are revalidated and their expectations adjusted or repaired.
+
+## 2026-04-21 17:05 UTC: FZ-0001 consumer coverage promotion
+
+- Branch/HEAD before this test-promotion slice:
+  `b794ab686 Lower dynamic TMEM memdesc indexes`.
+- Temporary repro replays:
+  `/tmp/tmem_compiler_boundaries_round31b/ldred_dynamic_index_return_fz0001.mlir`
+  and `scales_dynamic_index_load_linear_child.mlir` no longer fail on illegal
+  `ttg.memdesc_index`; both now reach the probe-shape `tt.return` conversion
+  boundary.
+- Runtime repro replays:
+  `/tmp/tmem_dynamic_ssa_round26_probe.py` exact runtime-index `ld.red`,
+  branch copy, and runtime-index copy rows all passed with zero mismatches.
+- Copy matrix contrast:
+  `/tmp/tmem_round56_copy_dynamic_descriptor_lane_probe.py` now reports five
+  former dense-index `FZ-0001` rows as green across branch/runtime index,
+  `128x128b`/`128x256b`, and 1CTA/2CTA. The two branch-subslice rows still
+  fail, but the observed diagnostics are descriptor-view/copy-planning
+  boundaries, not the late illegal `memdesc_index` signature.
+- Checked-in coverage:
+  added structural positives for branch dynamic copy, runtime dynamic copy, and
+  runtime-index `ld.red`.
+- Validation:
+  required `make -j8`; the three new exact nodeids passed; full
+  `python/test/gluon/test_tmem_structural_fuzzer.py` split-4 ran as
+  `14 passed, 22 xfailed`.
+- Next repair target:
+  `FZ-20260421-0003` descriptor-view packet/layout mapping, because dynamic
+  `chain0` now lowers and fails only as a wrong-result descriptor-view case.

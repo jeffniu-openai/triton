@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 17:05 UTC dynamic `FZ-20260421-0001` consumer coverage
+  was broadened after commit `b794ab686`. The prior temporary compiler-only
+  `ld.red` and scales dynamic-index MLIR repros no longer fail on illegal
+  `ttg.memdesc_index`; they progress to the probe harness's illegal
+  `tt.return` boundary. Temporary runtime probes now pass for runtime-index
+  `ld.red`, branch-yielded copy, and runtime-index copy. The Round 56 dense
+  copy matrix shows five former dense-index `FZ-0001` rows green across
+  `128x128b`/`128x256b`, 1CTA/2CTA, branch and runtime indices; branch
+  subslice rows remain outside this repair as descriptor-view/copy-planning
+  failures rather than late `memdesc_index` legalization failures. Checked-in
+  structural coverage now includes dynamic branch copy, dynamic runtime copy,
+  and runtime-index `ld.red` positives. Validation: required `make -j8`; the
+  three new exact nodeids each passed; full structural fuzzer split-4 ran as
+  `14 passed, 22 xfailed`. Next: repair `FZ-20260421-0003` descriptor-view
+  packet/layout mapping, because the only checked-in dynamic-index holdout
+  (`chain0`) now fails there instead of in `FZ-0001`.
+
 - Latest: 2026-04-21 16:59 UTC repair slice 1 implemented dynamic encoded
   TMEM `memdesc_index` lowering for `FZ-20260421-0001`. Branch/HEAD before the
   uncommitted slice was `395f8c10e`. `ViewOpToLLVM.cpp` now decomposes a

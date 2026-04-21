@@ -7,7 +7,20 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 16:59 UTC dynamic encoded TMEM
+Latest repair checkpoint: 2026-04-21 17:05 UTC broadened dynamic
+`FZ-20260421-0001` consumer coverage after the dynamic-index lowering repair.
+Temporary runtime probes now pass for runtime-index `ld.red`, branch-yielded
+copy, and runtime-index copy; temporary compiler-only `ld.red`/scales repros
+no longer show illegal `ttg.memdesc_index`. The Round 56 dense copy matrix
+shows former dense-index `FZ-0001` rows green across `128x128b`/`128x256b`,
+1CTA/2CTA, branch and runtime indices. Checked-in structural tests now include
+dynamic branch copy, dynamic runtime copy, and runtime-index `ld.red` positives.
+Validation: required `make -j8`; new exact nodeids `3 passed`; full structural
+fuzzer split-4 `14 passed, 22 xfailed`. Remaining branch-subslice copy and
+chain0 cases are descriptor-view/planning work, not the late dynamic
+`memdesc_index` legalization bug.
+
+Previous repair checkpoint: 2026-04-21 16:59 UTC dynamic encoded TMEM
 `memdesc_index` lowering landed as the first systematic repair slice for
 `FZ-20260421-0001`. The LLVM conversion now materializes dynamic encoded
 leading-index offsets by XOR-composing per-bit `getTMemViewOffset` basis

@@ -143,6 +143,21 @@ class CopyScalesCase:
 
 
 @dataclass(frozen=True)
+class DynamicCopyCase:
+    case_id: str
+    seed: int
+    selector: int
+    mode: str
+
+
+@dataclass(frozen=True)
+class DynamicLdRedCase:
+    case_id: str
+    seed: int
+    selector: int
+
+
+@dataclass(frozen=True)
 class GenericPassMemdescCase:
     case_id: str
     seed: int
@@ -309,6 +324,15 @@ LDRED_CASES = [
 COPY_CASES = [
     CopyScalesCase("copy-scales-warpx4-1cta", 0x301, False),
     CopyScalesCase("copy-scales-warpx4-2cta", 0x302, True),
+]
+
+DYNAMIC_COPY_CASES = [
+    DynamicCopyCase("copy-dynamic-branch-index-128x4", 0x560002, 1, "branch_index"),
+    DynamicCopyCase("copy-dynamic-runtime-index-128x4", 0x560006, 1, "runtime_index"),
+]
+
+DYNAMIC_LDRED_CASES = [
+    DynamicLdRedCase("ldred-dynamic-runtime-index-128x32", 0x260001, 1),
 ]
 
 GENERIC_PASS_MEMDESC_CASES = [
@@ -918,6 +942,69 @@ def _fuzz_copy_scales_kernel(in_ptr, out_ptr, TWO_CTAS: ttgl.constexpr):
     ttgl.store(out_ptr + out_offs, output)
 
 
+@gluon.jit
+def _fuzz_copy_dynamic_index_kernel(
+    in_ptr,
+    out_ptr,
+    selector_ptr,
+    parent_layout: ttgl.constexpr,
+    mode: ttgl.constexpr,
+):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 4
+    blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+    smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+        alignment=16,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    smem.store(value)
+    fence_async_shared()
+    parent = allocate_tensor_memory(in_ptr.dtype.element_ty, [2, M, N], layout=parent_layout)
+    if mode == "runtime_index":
+        view = parent.index(ttgl.load(selector_ptr))
+    elif ttgl.load(selector_ptr) != 0:
+        view = parent.index(0)
+    else:
+        view = parent.index(1)
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, view)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+    output = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(output, blocked))
+
+
+@gluon.jit
+def _fuzz_ldred_dynamic_index_kernel(
+    in_ptr,
+    out_ptr,
+    red_ptr,
+    selector_ptr,
+    parent_layout: ttgl.constexpr,
+    red_layout: ttgl.constexpr,
+):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 32
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    reg_layout: ttgl.constexpr = parent.index(0).get_reg_layout(instr_variant="32x32b")
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+    parent.index(0).store(ttgl.convert_layout(value + 1.0, reg_layout))
+    parent.index(1).store(ttgl.convert_layout(value + 2.0, reg_layout))
+    view = parent.index(ttgl.load(selector_ptr))
+    out, reduced = view.load_min()
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
+    red_m = ttgl.arange(0, M, red_layout)
+    ttgl.store(red_ptr + red_m, ttgl.convert_layout(reduced, red_layout))
+
+
 def _run_ldst_case(case):
     torch.manual_seed(case.seed)
     layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
@@ -1211,6 +1298,50 @@ def test_tmem_structural_fuzzer_copy_scales(case):
     expected_group = "cta_group::1"
     assert ptx_ops
     assert all(expected_group in op for op in ptx_ops), ptx_ops
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", DYNAMIC_COPY_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_copy_dynamic_index(case):
+    torch.manual_seed(case.seed)
+    m = 128
+    n = 4
+    layout = _lift_layout(_make_linear_layout(m, n), [2])
+    inp = torch.randint(-100, 100, (m, n), dtype=torch.int32, device="cuda")
+    out = torch.empty_like(inp)
+    selector = torch.tensor([case.selector], dtype=torch.int32, device="cuda")
+    compiled = _fuzz_copy_dynamic_index_kernel[(1, )](
+        inp, out, selector, layout, case.mode, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_copy_ops(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_copy_ops(compiled.asm["llir"])
+    assert ptx_ops == llir_ops
+    assert "tcgen05.cp.cta_group::1.128x128b" in ptx_ops
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", DYNAMIC_LDRED_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_ldred_dynamic_index(case):
+    torch.manual_seed(case.seed)
+    m = 128
+    n = 32
+    layout = _lift_layout(_make_linear_layout(m, n), [2])
+    red_layout = ttgl.BlockedLayout([1], [32], [4], [0])
+    inp = torch.randn((m, n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty((m, ), dtype=torch.float32, device="cuda")
+    selector = torch.tensor([case.selector], dtype=torch.int32, device="cuda")
+    compiled = _fuzz_ldred_dynamic_index_kernel[(1, )](
+        inp, out, red, selector, layout, red_layout, num_warps=4
+    )
+    expected = inp + (2.0 if case.selector else 1.0)
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.min(expected, dim=1).values, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
+    assert ptx_ops == llir_ops
+    assert any(".ld.red." in op for op in ptx_ops)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
