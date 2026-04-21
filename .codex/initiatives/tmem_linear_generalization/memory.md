@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:24 UTC Round 38 copy positive guardrail completed.
+  Report: `agents/fuzz_copy_positive_guardrail_round38.md`. Selector
+  `(cp_no_scales or cp_scales) and not reports and not resource and not clean`
+  collected `246/1615` and passed/stably skipped split-4 as
+  `242 passed, 4 skipped` (`58/4 skipped`, `62`, `62`, `60`). No compiler
+  crash, false unsupported diagnostic, opcode absence, runtime miscompile,
+  clean-boundary drift, unexpected xfail/pass transition, or new independent
+  `FZ-*`.
+
 - Latest: 2026-04-21 14:16 UTC Round 37 subword and 64-bit TMEM boundary
   subagent lane integrated. Report:
   `agents/fuzz_subword_i64_boundaries_round37.md`. Required `make -j8` was a

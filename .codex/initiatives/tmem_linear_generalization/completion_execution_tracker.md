@@ -60,6 +60,14 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:24 UTC Round 38 copy positive guardrail completed. Artifact:
+  `agents/fuzz_copy_positive_guardrail_round38.md`. Selector
+  `(cp_no_scales or cp_scales) and not reports and not resource and not clean`
+  collected `246/1615` and passed/stably skipped split-4 as
+  `242 passed, 4 skipped`. No compiler crash, false unsupported diagnostic,
+  opcode absence, runtime miscompile, clean-boundary drift, unexpected
+  xfail/pass transition, or new independent `FZ-*`; backend repair remains
+  deferred.
   2026-04-21 14:16 UTC Round 37 subword and 64-bit boundary subagent lane
   integrated. Artifact: `agents/fuzz_subword_i64_boundaries_round37.md`.
   Checked-in selector collected `123/1648` and passed split-4 as `123 passed`.

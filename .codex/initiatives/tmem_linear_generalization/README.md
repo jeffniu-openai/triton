@@ -7,7 +7,13 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 37 subword and 64-bit boundary
+Latest fuzzing checkpoint: 2026-04-21 Round 38 copy positive guardrail
+completed. Report: `agents/fuzz_copy_positive_guardrail_round38.md`.
+Selector `(cp_no_scales or cp_scales) and not reports and not resource and not clean`
+collected `246/1615` and passed/stably skipped split-4 as
+`242 passed, 4 skipped`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 37 subword and 64-bit boundary
 subagent lane integrated. Report:
 `agents/fuzz_subword_i64_boundaries_round37.md`. Checked-in subword/copy/
 diagnostic selector collected `123/1648` and passed split-4 as `123 passed`.

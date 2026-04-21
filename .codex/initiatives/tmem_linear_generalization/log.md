@@ -30766,6 +30766,19 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:24 UTC: Round 38 copy positive guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_positive_guardrail_round38.md`.
+- Selector:
+  `(cp_no_scales or cp_scales) and not reports and not resource and not clean`.
+- Collection: `246/1615`.
+- Split-4 result: `242 passed, 4 skipped`
+  (`58 passed/4 skipped`, `62 passed`, `62 passed`, `60 passed` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`. Backend repair remains deferred.
+
 ## 2026-04-21 14:16 UTC: Round 37 subword and 64-bit boundary subagent lane integrated
 
 - Integrated
