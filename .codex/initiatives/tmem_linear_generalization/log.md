@@ -1,3 +1,16 @@
+## 2026-04-21 14:21 UTC: Round 43 allocation/rematerialization guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_alloc_remat_guardrail_round43.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Collection selector:
+  `(alloc_lifetime or allocation or source_initialization or rematerializes) and not reports and not resource`.
+- Collection/result: `17/1615` rows, run on GPU0 as `17 passed`.
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, unexpected pass/fail transition,
+  allocation-lifetime drift, or new independent `FZ-*`.
+
 ## 2026-04-21 14:20 UTC: Round 42 high-CGA/cache ownership lane
 
 - Integrated subagent report

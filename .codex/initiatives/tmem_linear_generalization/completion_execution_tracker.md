@@ -60,6 +60,15 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:21 UTC Round 43 allocation/rematerialization guardrail
+  completed. Artifact: `agents/fuzz_alloc_remat_guardrail_round43.md`.
+  Required `make -j8` reported `no work to do`. Selector
+  `(alloc_lifetime or allocation or source_initialization or rematerializes)
+  and not reports and not resource` collected `17/1615` rows and passed on
+  GPU0 as `17 passed`. No compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, unexpected pass/fail transition,
+  allocation-lifetime drift, or new independent `FZ-*`; backend repair remains
+  deferred.
   2026-04-21 14:20 UTC Round 42 high-CGA/cache ownership lane integrated.
   Artifact: `agents/fuzz_high_cga_cache_round42.md`. Required `make -j8`
   reported `no work to do`. Focused high-CGA/multicast selector collected
