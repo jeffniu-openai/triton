@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local Round 10 structural-fuzzer smoke gate remains
+  green while Lane I (`ld.red` modifier/NaN edge fuzzing) and Lane J
+  (descriptor-view composition-depth fuzzing) run in subagents. Required
+  `make -j8` reported no work to do. Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
+  Result: `9 passed, 24 xfailed in 24.16s`. Backend repair remains deferred.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

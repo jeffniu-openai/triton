@@ -214,6 +214,10 @@ The project is complete when:
   copy `warpx2` (`28`), LD.RED descriptor (`30`), and clean diagnostics
   (`96`), with stored durations and least-duration split-4 reruns. Report:
   `agents/fuzz_validation_logistics_round9.md`.
+  2026-04-21 09:44 UTC local Round 10 structural-fuzzer smoke gate remains
+  green while Lane I and Lane J fuzzing are active. Required `make -j8` no-op;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+  reported `9 passed, 24 xfailed in 24.16s`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

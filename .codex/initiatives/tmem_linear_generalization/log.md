@@ -26949,3 +26949,15 @@ Open after this slice:
 - Result: `30 passed, 1585 deselected in 37.83s`.
 - Slowest rows were `n256` and row/col-rotated descriptor-chain cases at
   roughly `1.5-1.7s`.
+
+## 2026-04-21: Round 10 structural-fuzzer smoke gate
+
+- While Lane I (`ld.red` modifier/NaN edge fuzzing) and Lane J
+  (descriptor-view composition-depth fuzzing) were active, reran the checked-in
+  structural fuzzer as the frequent smoke gate.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+    reported `9 passed, 24 xfailed in 24.16s`.
+  - The expected promoted-sentinel state is unchanged; backend repair remains
+    deferred.

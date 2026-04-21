@@ -73,6 +73,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21: local Round 10 structural-fuzzer smoke gate remains green while
+  Lane I and Lane J fuzzing are active. After required `make -j8`, the
+  checked-in structural fuzzer ran on `CUDA_VISIBLE_DEVICES=0` with
+  `TRITON_CACHE_DIR=/tmp/triton-cache-gpu0` and reported
+  `9 passed, 24 xfailed in 24.16s`. This confirms the currently promoted
+  sentinels still match the expected discovery-only state.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as
