@@ -1,3 +1,47 @@
+## 2026-04-21 14:30 UTC: Round 44 structural expansion audit
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_expansion_round44.md`
+  from commit `b63e7216`.
+- Scope: discovery/classification only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Structural overlap selector collected `28/33` and ran split-4 as
+  `5 passed, 23 xfailed`.
+- Dynamic-copy temporary probe produced `4 passed, 2` existing
+  `FZ-20260421-0001` failures; B-scale dynamic descriptor-view probe
+  `5 passed`; focused high-rank/scale runtime controls `4 passed`; same-cache
+  process-order control `2 passed, 1 xfailed`.
+- No new independent `FZ-*`. Main future checked-in candidate is dynamic
+  descriptor plus `ttng.tmem_copy` as an expected `FZ-20260421-0001`
+  copy-specific structural sentinel.
+
+## 2026-04-21 14:30 UTC: Round 44 ld.red M64 boundary lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_m64_boundaries_round44.md`.
+- Scope: discovery/classification only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- `ld_red_m64` selector collected `39/1615` and ran split-4 as
+  `33 passed, 6 failed`; the failures are exact existing
+  `FZ-20260421-0012` M64 row-basis unsupported-layout rows.
+- Clean/resource `ld.red` selector `4 passed`.
+- Structural descriptor/`ld.red` sentinels `3 passed, 11 xfailed`.
+- Round 41 M64 descriptor-chain oracle refresh reproduced existing
+  `FZ-20260421-0003`; direct M64 `ld.red` control passed.
+- No new independent `FZ-*`.
+
+## 2026-04-21 14:30 UTC: Round 44 proxy/TMA core guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_tma_core_guardrail_round44.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Collection selector:
+  `(tma_multicast or multicast_commit or tcgen05_commit or mbarrier or proxy) and not reports and not resource`.
+- Collection/result: `12/19729` rows, run on GPU0 as `12 passed`.
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, proxy/mbarrier diagnostic drift, or new
+  independent `FZ-*`.
+
 ## 2026-04-21 14:27 UTC: Round 44 descriptor/high-rank positive repeat
 
 - Wrote
