@@ -32098,3 +32098,16 @@ Open after this slice:
   half-column descriptor-view signatures were revalidated through existing
   Python `/tmp` harnesses.
 - No backend fix, checked-in test, or new independent `FZ-*`.
+
+## 2026-04-21 14:59 UTC: Round 51 local minimized repro confirmation
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_minimized_repro_local_round51.md`.
+- Re-ran `/tmp/tmem_round51_fz0014_no_store.mlir`:
+  exit code `1`, expected proxy-fence insertion diagnostic.
+- Re-ran `/tmp/tmem_round51_fz0016_min.mlir`:
+  exit code `134`, expected `dyn_cast on a non-existent value` assertion.
+- Re-ran `/tmp/tmem_round51_fz0017_min.mlir`:
+  exit code `134`, expected `bitwidth == 32` assertion.
+- Classification: minimized reproducers stayed stable; no new independent
+  `FZ-*`.

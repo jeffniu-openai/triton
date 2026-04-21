@@ -3516,3 +3516,11 @@ discovery.
   10-line compiler-only MLIR repro. `FZ-20260421-0001` dynamic copy and
   `FZ-20260421-0021` half-column signatures were revalidated through existing
   Python `/tmp` harnesses. No new independent `FZ-*`.
+
+- 2026-04-21 14:59 UTC: Round 51 local minimized repro confirmation
+  completed. Report: `agents/fuzz_minimized_repro_local_round51.md`. Direct
+  reruns of `/tmp/tmem_round51_fz0014_no_store.mlir`,
+  `/tmp/tmem_round51_fz0016_min.mlir`, and
+  `/tmp/tmem_round51_fz0017_min.mlir` reproduced existing `FZ-20260421-0014`
+  with exit code `1` and `FZ-20260421-0016`/`FZ-20260421-0017` with exit code
+  `134` assertion aborts. No new independent `FZ-*`.
