@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 33 local scaled-MMAv5 layout/subslice guardrail
+  completed. Report: `agents/fuzz_local_scaled_layouts_round33.md`. Required
+  `make -j8` was a no-op. Selector
+  `(mma_scaled and not reports and not resource and (layout_format or lhs_subslice or acc_subslice or tile_permuted or indexed_acc))`
+  collected `208/1615` rows and passed split-4 as `208 passed`
+  (`52/52/52/52`). No compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 Round 33 local scale-bearing runtime guardrail
   completed. Report: `agents/fuzz_local_scales_round33.md`. Required
   `make -j8` was a no-op. Selector

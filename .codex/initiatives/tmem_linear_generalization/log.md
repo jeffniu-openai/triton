@@ -30438,3 +30438,15 @@ Open after this slice:
 - Split-4 result: `66 passed` (`17/17/17/15` by group).
 - Classification: no compiler crash, false unsupported diagnostic, opcode
   mismatch, runtime miscompile, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 33 local scaled-MMAv5 layout/subslice guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_layouts_round33.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(mma_scaled and not reports and not resource and (layout_format or lhs_subslice or acc_subslice or tile_permuted or indexed_acc))`.
+- Collection: `208/1615`.
+- Split-4 result: `208 passed` (`52/52/52/52` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*` bucket.

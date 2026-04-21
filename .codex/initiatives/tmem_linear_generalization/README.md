@@ -25,7 +25,8 @@ fuzzing. Reports:
 `agents/fuzz_local_mma_accumulator_round32.md`, and
 `agents/fuzz_ldred_extremes_round31.md`, plus
 `agents/fuzz_structural_rerun_round32.md` and
-`agents/fuzz_local_scales_round33.md`. The scaled operand lane found no
+`agents/fuzz_local_scales_round33.md`, and
+`agents/fuzz_local_scaled_layouts_round33.md`. The scaled operand lane found no
 new bucket and revalidated existing `FZ-0013`, `FZ-0015`, and `FZ-0010`
 boundaries; the 2CTA scaled-MMAv5 guardrail passed as `28 passed`;
 descriptor-heavy `ld.red` plus scaled-MMAv5 rows passed as `54 passed`;
@@ -49,7 +50,9 @@ accumulator/subslice guardrails added `185 passed`. Round 32 lit guardrail
 rows. The checked-in structural fuzzer was rerun again after those guardrails
 and stayed stable as `9 passed, 24 xfailed`. Round 33 scale-bearing runtime
 guardrail collected `66/1615` `ld/st` scales, `ld.red` scales, `cp.scales`,
-and scaled-MMAv5 scale-copy rows and passed split-4 as `66 passed`. The
+and scaled-MMAv5 scale-copy rows and passed split-4 as `66 passed`. Round 33
+scaled-MMAv5 operand-layout/subslice guardrail collected `208/1615` rows and
+passed split-4 as `208 passed`. The
 `ld.red` extremes lane ran
 `23`
 f32 runtime rows with torch reference and opcode checks; `15` passed,

@@ -2580,3 +2580,9 @@ signal handling:
   `((cp_scales or ldst_scales or ld_red_scales) and not cp_no_scales and not reports and not clean and not resource)`
   collected `66/1615` and passed split-4 as `66 passed`. No new independent
   `FZ-*` bucket.
+
+- 2026-04-21: Round 33 local scaled-MMAv5 layout/subslice guardrail completed.
+  Report: `agents/fuzz_local_scaled_layouts_round33.md`. Selector
+  `(mma_scaled and not reports and not resource and (layout_format or lhs_subslice or acc_subslice or tile_permuted or indexed_acc))`
+  collected `208/1615` and passed split-4 as `208 passed`. No new independent
+  `FZ-*` bucket.
