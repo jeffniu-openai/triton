@@ -30766,6 +30766,22 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 13:40 UTC: Round 36 narrow-shape and clean-diagnostic guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_narrow_clean_guardrail_round36.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(x1 or n16 or n32 or clean_unsupported) and not reports and not m64 and not resource`.
+- Collection: `329/1615`.
+- Split-4 result: `259 passed, 70 skipped`
+  (`83 passed`, `19 passed/64 skipped`, `77 passed/6 skipped`, `80 passed`
+  by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, clean-boundary drift, unexpected
+  xfail/pass transition, or new independent `FZ-*` bucket. Backend repair
+  remains deferred while structural fuzzing continues.
+
 ## 2026-04-21: Round 34 local high-rank descriptor ld/st guardrail
 
 - Wrote

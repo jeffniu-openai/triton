@@ -7,7 +7,17 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 36 high-rank `ld.red`
+Latest fuzzing checkpoint: 2026-04-21 Round 36 narrow-shape and
+clean-diagnostic checked-in guardrail completed. Report:
+`agents/fuzz_narrow_clean_guardrail_round36.md`. Required `make -j8` was a
+no-op. Selector
+`(x1 or n16 or n32 or clean_unsupported) and not reports and not m64 and not resource`
+collected `329/1615` and passed split-4 as `259 passed, 70 skipped`
+(`83`, `19/64 skipped`, `77/6 skipped`, `80`). No compiler crash, false
+unsupported diagnostic, opcode absence, runtime miscompile, clean-boundary
+drift, or new independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 36 high-rank `ld.red`
 compile/execute classifier completed. Report:
 `agents/fuzz_high_rank_ldred_compile_round36.md`. Checked-in high-rank
 `ld.red` selector collected no tests, so a temporary subprocess probe ran `72`

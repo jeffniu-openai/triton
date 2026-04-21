@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 13:40 UTC Round 36 narrow-shape and clean-diagnostic
+  checked-in runtime guardrail completed. Report:
+  `agents/fuzz_narrow_clean_guardrail_round36.md`. Required `make -j8` was a
+  no-op. Selector
+  `(x1 or n16 or n32 or clean_unsupported) and not reports and not m64 and not resource`
+  collected `329/1615` rows and passed split-4 as `259 passed, 70 skipped`
+  (`83`, `19 passed/64 skipped`, `77 passed/6 skipped`, `80`). No compiler
+  crash, false unsupported diagnostic, opcode absence, runtime miscompile,
+  clean-boundary drift, unexpected xfail/pass transition, or new independent
+  `FZ-*`. Backend repair remains deferred while fuzzing continues.
+
 - Latest: 2026-04-21 Round 36 local high-rank `ld.red` compile/execute
   classifier completed. Report:
   `agents/fuzz_high_rank_ldred_compile_round36.md`. Checked-in selector

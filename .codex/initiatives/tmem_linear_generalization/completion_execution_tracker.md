@@ -60,6 +60,14 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 13:40 UTC Round 36 narrow-shape and clean-diagnostic guardrail
+  completed. Artifact: `agents/fuzz_narrow_clean_guardrail_round36.md`.
+  Required `make -j8` was a no-op. Selector
+  `(x1 or n16 or n32 or clean_unsupported) and not reports and not m64 and not resource`
+  collected `329/1615` and passed split-4 as `259 passed, 70 skipped`.
+  No compiler crash, false unsupported diagnostic, opcode absence, runtime
+  miscompile, clean-boundary drift, unexpected xfail/pass transition, or new
+  independent `FZ-*`; backend repair remains deferred.
   2026-04-21 13:33 UTC Round 36 B-scale dynamic descriptor-view runtime lane
   completed. Artifact: `agents/fuzz_bscale_dynamic_views_round36.md`.
   Required `make -j8` was a no-op. Checked-in B-scale/shared-scale selector
