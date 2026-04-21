@@ -2,7 +2,20 @@
 
 Last updated: 2026-04-21
 
-Latest fuzzing checkpoint: 2026-04-21 15:34 UTC Round 55 lit negative-boundary
+Latest fuzzing checkpoint: 2026-04-21 16:01 UTC Round 58 scaled-MMAv5
+accumulator tile/narrow boundary lane A completed. Report:
+`agents/fuzz_round58_scaled_tile_boundary_lane.md`. Required `make -j8` was a
+no-op. Checked-in runtime selector collected `83/1615` rows over
+accumulator tile-permuted N32/N64, narrow tile/identity/use-acc, B-scale
+descriptor-view positive and N16 clean-boundary rows, and mixed fp4A clean
+unsupported rows. Split-4 runtime passed as `83 passed` (`21`, `21`, `21`,
+`20`). No temporary probe was needed. Existing `FZ-20260421-0007`,
+`FZ-20260421-0013`, and `FZ-20260421-0015` classifications were unchanged.
+No compiler crash, verifier drift, false unsupported diagnostic,
+clean-boundary drift, runtime miscompile, opcode-count mismatch, hang, or new
+independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 15:34 UTC Round 55 lit negative-boundary
 lane C completed. Report:
 `agents/fuzz_round55_lit_negative_boundary_lane.md`. Required `make -j8` was a
 no-op. Checked-in lit over TMEM/proxy/mbarrier/relayout/allocation/conversion

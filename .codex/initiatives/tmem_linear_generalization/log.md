@@ -32816,3 +32816,20 @@ Open after this slice:
 - Classification:
   no compiler crash, verifier drift, false unsupported diagnostic,
   clean-boundary drift, runtime miscompile, hang, or new independent `FZ-*`.
+
+## 2026-04-21: Round 58 scaled-MMAv5 accumulator tile/narrow lane A
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_scaled_tile_boundary_lane.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `test_tmem_runtime_matrix and mma_scaled and (acc_tile_permuted_32 or acc_tile_permuted_64 or acc_tile_permuted_narrow or acc_n16_bscale_descriptor_view_reports_clean_error or acc_n16_tile_permuted_reports_clean_unsupported or lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported or lhs_subslice_view_mixed_fp4a_reports_clean_unsupported or acc_identity_narrow_format_use_acc or indexed_acc_identity_narrow_view_format_use_acc)`.
+- Collection/result:
+  `83/1615` collected; split-4 runtime `83 passed` (`21`, `21`, `21`, `20`).
+- No temporary Python probe was needed because checked-in coverage was green.
+- Classification:
+  no new independent `FZ-*`; no new signal against existing
+  `FZ-20260421-0007`, `FZ-20260421-0013`, or `FZ-20260421-0015`. Clean
+  unsupported/error rows stayed clean, and no compiler crash, verifier drift,
+  false unsupported diagnostic, runtime miscompile, opcode-count mismatch, or
+  hang was observed.
