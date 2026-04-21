@@ -31975,3 +31975,19 @@ Open after this slice:
   `4 passed`.
 - Classification: no compiler crash, runtime miscompile, nodeid drift after
   correction, or new independent `FZ-*`.
+
+## 2026-04-21 14:51 UTC: Round 50 lit conversion edge fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_lit_conversion_edges_round50.md`.
+- Required `make -j8` was a no-op; `ninja triton-opt` was a no-op.
+- Focused TMEM conversion/lowering lit guardrail:
+  `11 passed`.
+- Broader Conversion lowering guardrail:
+  `8 passed`.
+- Known-red relayout boundary:
+  `relayout_tritongpu.mlir` failed as existing `FZ-20260421-0016`.
+- Saved reproducers revalidated existing `FZ-20260421-0014`,
+  `FZ-20260421-0016`, and `FZ-20260421-0017`.
+- Classification: no new verifier gap, clean-negative gap, FileCheck drift,
+  unsupported-case drift, or independent `FZ-*`.

@@ -3445,3 +3445,12 @@ discovery.
   rank-5 unit-parent `ld/st`, and two-CTA TMA B-transposed TF32 descriptor
   path passed as `4 passed`. No compiler crash, runtime miscompile, nodeid
   drift after correction, or new independent `FZ-*`.
+
+- 2026-04-21 14:51 UTC: Round 50 lit conversion edge fuzzing completed.
+  Report: `agents/fuzz_lit_conversion_edges_round50.md`. Required
+  `make -j8` and `ninja triton-opt` were no-ops. Focused TMEM
+  conversion/lowering lit guardrail passed `11/11`; broader Conversion
+  lowering guardrail passed `8/8`; known-red `relayout_tritongpu.mlir`
+  remained existing `FZ-20260421-0016`; saved reproducers revalidated existing
+  `FZ-20260421-0014`, `FZ-20260421-0016`, and `FZ-20260421-0017`. No new
+  verifier gap, clean-negative gap, FileCheck drift, or independent `FZ-*`.
