@@ -32833,3 +32833,55 @@ Open after this slice:
   unsupported/error rows stayed clean, and no compiler crash, verifier drift,
   false unsupported diagnostic, runtime miscompile, opcode-count mismatch, or
   hang was observed.
+
+## 2026-04-21: Round 58 plain MMAv5 accumulator-view lane C
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_plain_mma_acc_views_lane.md`.
+- Required `make -j8` was a no-op.
+- Focused runtime-matrix selector over plain MMAv5 indexed accumulator views,
+  accumulator subslices, tile-permuted accumulator layouts, `use_acc`, and
+  2CTA variants collected `142/1615` and passed split-4 as `142 passed`.
+- Exact `test_core.py` controls collected `5/18114` and passed.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  opcode/commit mismatch, runtime miscompile, hang, unexpected skip/fail
+  transition, or new independent `FZ-*`; existing `FZ-20260421-0003` and
+  `FZ-20260421-0011` were not reproduced by this lane.
+
+## 2026-04-21: Round 58 local scales load/store and copy lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_local_scales_copy_lane.md`.
+- Required `make -j8` was a no-op.
+- Selector
+  `cp_scales or copy_scales or ldst_scales_direct_roundtrip or ldst_scales_descriptor_view_roundtrip`
+  collected `41/1615`.
+- Split-4 runtime result:
+  `41 passed`.
+- Coverage included scale `ld/st`, scale descriptor-view roundtrips,
+  scale-copy layout probes/rematerialization, TMEM descriptor-view clean
+  unsupported diagnostics, direct and two-CTA `warpx4` scale copy, and
+  scaled-MMAv5 helper copy paths.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  clean-boundary drift, opcode absence, runtime miscompile, hang, or new
+  independent `FZ-*`.
+
+## 2026-04-21: Round 58 high-CGA ownership lane B
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_high_cga_ownership_lane.md`.
+- Required `make -j8` was a no-op.
+- Checked-in high-CGA selector over runtime-matrix and `test_core.py` rows
+  collected `93/19729` and ran split-4 as `87 passed, 6 skipped`.
+- Lit control:
+  `membar-cluster.mlir` passed `1/1`.
+- Temporary ownership probe ran `12` rows: `6` direct local-TMEM-in-larger-CGA
+  rows and `6` parser-wrapped scales-copy rows all classified as existing
+  `FZ-20260421-0010`.
+- Classification:
+  no missed `getModuleTwoCTAs` propagation bug, compiler crash, verifier
+  drift, false unsupported diagnostic outside the known CTA-count gate,
+  runtime miscompile, hang, proxy/TMA/mbarrier ownership regression, or new
+  independent `FZ-*`.

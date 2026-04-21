@@ -4259,3 +4259,71 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification:
   no compiler crash, verifier drift, false unsupported diagnostic,
   clean-boundary drift, runtime miscompile, hang, or new independent `FZ-*`.
+
+### Round 58 scaled-MMAv5 accumulator tile/narrow lane A
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_scaled_tile_boundary_lane.md`
+- Scope:
+  scaled-MMAv5 accumulator tile-permuted N32/N64, narrow tile/identity/use-acc,
+  B-scale descriptor-view positive and N16 clean-boundary rows, and mixed
+  fp4A clean unsupported rows.
+- Result:
+  selector collected `83/1615` and passed split-4 as `83 passed`.
+- Classification:
+  no new independent `FZ-*`; no new signal against existing
+  `FZ-20260421-0007`, `FZ-20260421-0013`, or `FZ-20260421-0015`.
+
+### Round 58 plain MMAv5 accumulator-view lane C
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_plain_mma_acc_views_lane.md`
+- Scope:
+  plain MMAv5 indexed accumulator views, accumulator subslices,
+  tile-permuted accumulator layouts, `use_acc`, and 2CTA variants, plus exact
+  `test_core.py` controls.
+- Result:
+  runtime-matrix selector collected `142/1615` and passed split-4 as
+  `142 passed`; exact `test_core.py` controls collected `5/18114` and passed.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  opcode/commit mismatch, runtime miscompile, hang, unexpected skip/fail
+  transition, or new independent `FZ-*`.
+
+### Round 58 local scales load/store and copy lane
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_local_scales_copy_lane.md`
+- Scope:
+  scale `ld/st`, scale descriptor-view roundtrips, scale-copy layout
+  probes/rematerialization, TMEM descriptor-view clean unsupported diagnostics,
+  direct and two-CTA `warpx4` scale copy, and scaled-MMAv5 helper copy paths.
+- Result:
+  selector
+  `cp_scales or copy_scales or ldst_scales_direct_roundtrip or ldst_scales_descriptor_view_roundtrip`
+  collected `41/1615` and passed split-4 as `41 passed`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  clean-boundary drift, opcode absence, runtime miscompile, hang, or new
+  independent `FZ-*`.
+
+### Round 58 high-CGA ownership lane B
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_high_cga_ownership_lane.md`
+- Scope:
+  high-CGA / CTA ownership boundaries, mbarrier/proxy/TMA controls, local
+  1CTA/2CTA TMEM layouts in 4/8/16 CTA contexts, and max-CGA green controls.
+- Result:
+  checked-in runtime selector collected `93/19729` and ran as
+  `87 passed, 6 skipped`; lit `membar-cluster.mlir` passed; temporary
+  ownership probe ran `12` rows, all existing `FZ-20260421-0010`.
+- Classification:
+  no missed `getModuleTwoCTAs` propagation bug, compiler crash, verifier
+  drift, false unsupported diagnostic outside the known CTA-count gate,
+  runtime miscompile, hang, proxy/TMA/mbarrier ownership regression, or new
+  independent `FZ-*`.

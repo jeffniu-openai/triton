@@ -7,7 +7,38 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 16:01 UTC Round 58 scaled-MMAv5
+Latest fuzzing checkpoint: 2026-04-21 Round 58 local scales load/store and
+copy lane completed. Report:
+`agents/fuzz_round58_local_scales_copy_lane.md`. Required `make -j8` was a
+no-op. Selector over scale `ld/st`, scale descriptor-view roundtrips,
+scale-copy layout probes/rematerialization, TMEM descriptor-view clean
+unsupported diagnostics, direct and two-CTA `warpx4` scale copy, and
+scaled-MMAv5 helper copy paths collected `41/1615` and passed split-4 as
+`41 passed`. No compiler crash, verifier drift, false unsupported diagnostic,
+clean-boundary drift, opcode absence, runtime miscompile, hang, or new
+independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 58 high-CGA ownership lane B
+completed. Report: `agents/fuzz_round58_high_cga_ownership_lane.md`. Required
+`make -j8` was a no-op. Checked-in high-CGA selector collected `93/19729` and
+ran as `87 passed, 6 skipped`; `membar-cluster.mlir` passed; temporary
+ownership probe classified all `12` local-TMEM-in-larger-CGA rows as existing
+`FZ-20260421-0010`. No missed `getModuleTwoCTAs` propagation bug, proxy/TMA/
+mbarrier ownership regression, or new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 16:01 UTC Round 58 plain MMAv5
+accumulator-view lane C completed. Report:
+`agents/fuzz_round58_plain_mma_acc_views_lane.md`. Required `make -j8` was a
+no-op. Focused runtime-matrix selector over plain MMAv5 indexed accumulator
+views, accumulator subslices, tile-permuted accumulator layouts, `use_acc`, and
+2CTA variants collected `142/1615` and passed split-4 as `142 passed` (`36`,
+`36`, `36`, `34`). Exact `test_core.py` controls collected `5/18114` and
+passed. Existing `FZ-20260421-0003` and `FZ-20260421-0011` were not reproduced;
+no compiler crash, verifier drift, false unsupported diagnostic, opcode/commit
+mismatch, runtime miscompile, hang, unexpected skip/fail transition, or new
+independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 16:01 UTC Round 58 scaled-MMAv5
 accumulator tile/narrow boundary lane A completed. Report:
 `agents/fuzz_round58_scaled_tile_boundary_lane.md`. Required `make -j8` was a
 no-op. Checked-in runtime-matrix selector over scaled-MMAv5 accumulator

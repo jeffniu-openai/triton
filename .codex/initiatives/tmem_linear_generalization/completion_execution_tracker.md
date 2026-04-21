@@ -2,7 +2,18 @@
 
 Last updated: 2026-04-21
 
-Latest fuzzing checkpoint: 2026-04-21 16:01 UTC Round 58 scaled-MMAv5
+Latest fuzzing checkpoint: 2026-04-21 Round 58 local scales load/store and
+copy lane completed. Report:
+`agents/fuzz_round58_local_scales_copy_lane.md`. Required `make -j8` was a
+no-op. Selector over scale `ld/st`, scale descriptor-view roundtrips,
+scale-copy layout probes/rematerialization, TMEM descriptor-view clean
+unsupported diagnostics, direct and two-CTA `warpx4` scale copy, and
+scaled-MMAv5 helper copy paths collected `41/1615` and passed split-4 as
+`41 passed`. No compiler crash, verifier drift, false unsupported diagnostic,
+clean-boundary drift, opcode absence, runtime miscompile, hang, or new
+independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 16:01 UTC Round 58 scaled-MMAv5
 accumulator tile/narrow boundary lane A completed. Report:
 `agents/fuzz_round58_scaled_tile_boundary_lane.md`. Required `make -j8` was a
 no-op. Checked-in runtime selector collected `83/1615` rows over
@@ -3902,3 +3913,37 @@ discovery.
   unsupported `16x128b` x1 variants. No compiler crash, verifier drift, false
   unsupported diagnostic, clean-boundary drift, runtime miscompile, hang, or
   new independent `FZ-*`.
+
+- 2026-04-21: Round 58 plain MMAv5 accumulator-view lane C completed. Report:
+  `agents/fuzz_round58_plain_mma_acc_views_lane.md`. Required `make -j8` was
+  a no-op. Focused runtime-matrix selector over plain MMAv5 indexed
+  accumulator views, accumulator subslices, tile-permuted accumulator layouts,
+  `use_acc`, and 2CTA variants collected `142/1615` and passed split-4 as
+  `142 passed`. Exact `test_core.py` plain-MMAv5 controls collected `5/18114`
+  and passed. No compiler crash, verifier drift, false unsupported diagnostic,
+  opcode/commit mismatch, runtime miscompile, hang, unexpected skip/fail
+  transition, or new independent `FZ-*`; existing `FZ-20260421-0003` and
+  `FZ-20260421-0011` were not reproduced by this lane.
+
+- 2026-04-21: Round 58 local scales load/store and copy lane completed.
+  Report: `agents/fuzz_round58_local_scales_copy_lane.md`. Required
+  `make -j8` was a no-op. Selector
+  `cp_scales or copy_scales or ldst_scales_direct_roundtrip or ldst_scales_descriptor_view_roundtrip`
+  collected `41/1615` and passed split-4 as `41 passed`. Coverage included
+  scale `ld/st`, scale descriptor-view roundtrips, scale-copy layout
+  probes/rematerialization, TMEM descriptor-view clean unsupported
+  diagnostics, direct and two-CTA `warpx4` scale copy, and scaled-MMAv5 helper
+  copy paths. No compiler crash, verifier drift, false unsupported
+  diagnostic, clean-boundary drift, opcode absence, runtime miscompile, hang,
+  or new independent `FZ-*`.
+
+- 2026-04-21: Round 58 high-CGA ownership lane B completed. Report:
+  `agents/fuzz_round58_high_cga_ownership_lane.md`. Required `make -j8` was a
+  no-op. Checked-in high-CGA selector over runtime-matrix and `test_core.py`
+  rows collected `93/19729` and ran as `87 passed, 6 skipped`; lit
+  `membar-cluster.mlir` passed `1/1`. Temporary ownership probe ran `12`
+  rows: `6` direct local-TMEM-in-larger-CGA rows and `6` parser-wrapped
+  scales-copy rows all classified as existing `FZ-20260421-0010`. No missed
+  `getModuleTwoCTAs` propagation bug, compiler crash, verifier drift, false
+  unsupported diagnostic outside the known CTA-count gate, runtime miscompile,
+  hang, proxy/TMA/mbarrier ownership regression, or new independent `FZ-*`.
