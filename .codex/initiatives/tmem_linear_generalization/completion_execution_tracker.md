@@ -1797,3 +1797,9 @@ signal handling:
   `FZ-20260421-0012`, and `FZ-20260421-0014`. 4/8/16 CTA verifier probes and
   matmul two-CTA consistency probes did not expose a new bucket. Active phase
   remains continuous discovery/cataloging with backend repairs deferred.
+
+- 2026-04-21: local broad MMAv5 descriptor selector wrote
+  `agents/fuzz_local_mma_descriptor_broad_round14.md`. The
+  `(mma and (descriptor or runtime_selector or indexed_acc or acc_subslice_view or scale_descriptor)) and not reports`
+  selector collected `253/1615` and passed split-4 as `239 passed,
+  14 skipped`; no new bucket.

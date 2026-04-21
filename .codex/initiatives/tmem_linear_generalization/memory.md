@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local broad MMAv5 descriptor selector stayed green.
+  Report: `agents/fuzz_local_mma_descriptor_broad_round14.md`. Required
+  `make -j8` was a no-op. The selector
+  `(mma and (descriptor or runtime_selector or indexed_acc or acc_subslice_view or scale_descriptor)) and not reports`
+  collected `253/1615` rows and passed split-4 as `239 passed, 14 skipped`.
+  No new bucket; checked-in plain/scaled MMAv5 descriptor and indexed-
+  accumulator coverage stays green next to the temporary `FZ-0013` scale
+  descriptor-view miscompile.
+
 - Latest: 2026-04-21 11:15 UTC Round 14 Lane AH completed
   compiler-only/lit/verifier fuzzing. Report:
   `agents/fuzz_lit_verifier_round14.md`. Required `make -j8` and

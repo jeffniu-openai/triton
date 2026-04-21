@@ -28095,3 +28095,20 @@ Open after this slice:
 - 4/8/16 CTA verifier probes stayed clean; matmul two-CTA consistency probes
   for 4/8/16 CTA contexts passed or produced clean verifier diagnostics.
 - No new independent `FZ-*` bucket was assigned.
+
+## 2026-04-21: Round 14 local broad MMAv5 descriptor selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_descriptor_broad_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k '(mma and (descriptor or runtime_selector or indexed_acc or acc_subslice_view or scale_descriptor)) and not reports'`
+  selected `253/1615`.
+- Split-4 runtime execution with stable per-GPU caches reported aggregate
+  `239 passed, 14 skipped` (`50 passed/14 skipped`, `64`, `64`, `61` by
+  shard).
+- Classification: no new bucket. Checked-in plain/scaled MMAv5 descriptor,
+  accumulator-subslice, indexed-accumulator, and adjacent selected `ld/st`
+  MMAv5-layout descriptor controls stayed green.

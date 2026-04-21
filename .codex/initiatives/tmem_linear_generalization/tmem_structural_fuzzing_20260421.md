@@ -2173,6 +2173,20 @@ remain family-specific and consume a bounded subset of the inventory.
   descriptor-view scale-fragment mapping/rematerialized scale storage rather
   than generic scaled-MMAv5 opcode selection.
 
+### Round 14 local broad MMAv5 descriptor selector
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_descriptor_broad_round14.md`
+- Required build: `make -j8` no-op.
+- Selector:
+  `(mma and (descriptor or runtime_selector or indexed_acc or acc_subslice_view or scale_descriptor)) and not reports`
+  collected `253/1615` rows.
+- Split-4 result:
+  `239 passed, 14 skipped` (`50/14`, `64`, `64`, `61` by shard).
+- Classification: no new bucket. Checked-in plain/scaled MMAv5 descriptor and
+  indexed-accumulator coverage remains green.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
