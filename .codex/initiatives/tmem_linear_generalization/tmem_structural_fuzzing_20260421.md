@@ -55,6 +55,62 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ## Round Log
 
+### Round 31 Lane, scaled-MMAv5 TMEM descriptor operands
+
+- Time: 2026-04-21 12:49 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_operand_round31.md`
+- Scope: temporary Python/Gluon probes for scaled-MMAv5 A/B scale operands,
+  scale descriptor-view chains, dynamic direct B-scale selection, A-scale
+  selection controls, same-object B-scale controls, branch-contained B-scale
+  MMA controls, accumulator subslice/multi-MMA controls, and 4/8/16 CTA
+  high-CGA scaled controls.
+- Result: no new independent `FZ-*` bucket. Checked-in
+  `mma_scaled and descriptor_view and not reports` controls passed split-4 as
+  `4 passed`. The dynamic scale-view probe ran `16` rows with `0` unexpected
+  outcomes: `10` direct selected scale rows passed, and `6` descriptor-view
+  rows reproduced `FZ-20260421-0013`. The direct dynamic-scale pytest slice
+  reported `2 failed, 7 passed`; both failures are existing
+  `FZ-20260421-0015` runtime-selected distinct B-scale rows. The
+  descriptor-view/multi-MMA slice reported `3 failed, 7 passed`; all failures
+  are existing `FZ-20260421-0013`. High-CGA scaled controls passed for
+  `num_ctas=4/8/16`; adding local 1CTA/2CTA `st`, `ld`, `ld.red`, or `copy`
+  reproduced existing `FZ-20260421-0010` in `24` rows.
+
+### Round 31 Local, Descriptor Mix / View Copy / Structural Rerun
+
+- Time: 2026-04-21 12:50 UTC
+- Reports:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_descriptor_mix_round31.md`,
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_view_copy_round31.md`,
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_python_descriptor_views_round31.md`,
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_boundaries_round31.md`,
+  and
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_rerun_round31.md`.
+- Scope:
+  - descriptor-heavy `ld.red` plus scaled-MMAv5 rows selected by
+    `(mma_scaled or ld_red or cp_no_scales or copy) and descriptor and not reports and not resource and not clean`;
+  - high-rank `ld/st` descriptor and `tcgen05.copy` `warpx2`
+    indexed/subslice/slice-index rows selected by
+    `(warpx2 or rank5 or multidim_slice or half_rows or slice_index or indexed_view) and not reports and not resource and not clean and not lifted`;
+  - Python/Gluon descriptor-sliced 64-bit TMEM load/store frontend
+    reachability for `FZ-20260421-0017`;
+  - compiler-only verifier/index boundary MLIR probes for dynamic
+    `ttg.memdesc_index`, unencoded tensors, wrong memory spaces, descriptor
+    view errors, and 64-bit load/store operands;
+  - checked-in structural fuzzer strict xfail catalog.
+- Results:
+  descriptor mix `54 passed`; view/copy `123 passed, 74 skipped`;
+  Python descriptor views `48` `ASSERT_BITWIDTH_32`, `40` pass, and `20`
+  Python/compile diagnostics; compiler-boundary matrix `18` passes, `23`
+  clean diagnostics, `12` assertion/stack-dump aborts, and `1` late illegal-op
+  failure across `18` MLIR cases and three pass modes;
+  structural fuzzer `9 passed, 24 xfailed`.
+- Classification: no new independent `FZ-*` bucket. These are green guardrails
+  plus expansions of existing `FZ-20260421-0001`, `FZ-20260421-0016`, and
+  `FZ-20260421-0017`, while Round 31 subagents continue adversarial
+  `ld.red` extreme and descriptor-chain-shape lanes.
+
 ### Round 26 Local, ld.red Runtime Slice
 
 - Time: 2026-04-21 15:05 UTC
@@ -3639,3 +3695,23 @@ remain family-specific and consume a bounded subset of the inventory.
   no new independent `FZ-*`; same-parent branch-selected distinct indices are
   the failing `FZ-0001` shape. Same-index branch, distinct unindexed objects,
   and same-index different-parent controls pass at `N=32`.
+
+### Round 31 Python descriptor-view FZ-0017 follow-up
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_python_descriptor_views_round31.md`
+- Scope:
+  valid Python/Gluon descriptor-view kernels using a larger TMEM parent and an
+  N-sliced view, with input/output tensors already shaped to the view. Covered
+  `float64`, `int64`, `float32`, and `int32`; legacy and linear parents;
+  roundtrip, store-only, and load-only modes; 1CTA offsets `0/64/128`; and
+  2CTA in-bounds/out-of-bounds offsets.
+- Result:
+  no new independent `FZ-*`; expanded `FZ-0017`. The lane ran `108`
+  subprocess cases and produced `48` `ASSERT_BITWIDTH_32`, `40` passes, and
+  `20` Python compile diagnostics. Valid 1CTA `float64`/`int64` descriptor
+  views assert for all layout/mode/offset combinations, while matching 1CTA
+  `float32`/`int32` rows pass and roundtrip correctly. Valid 2CTA 64-bit
+  in-bounds offsets also assert. Out-of-bounds 2CTA rows reject cleanly, and
+  remaining 2CTA 32-bit diagnostics are the existing global-store frontend or
+  harness limitation.

@@ -60,6 +60,34 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 12:49 UTC Round 31 scaled-MMAv5 descriptor operand lane
+  completed. Artifact: `agents/fuzz_scaled_operand_round31.md`. No new
+  independent `FZ-*`; the lane revalidated `FZ-0013` scale descriptor-view
+  miscompiles, `FZ-0015` runtime-selected distinct B-scale miscompiles, and
+  `FZ-0010` high-CGA local-layout CTA-count diagnostics. Green controls:
+  checked-in scaled descriptor-view selector `4 passed`, dynamic direct
+  scale-selection/helper/loop rows `10 passed`, accumulator subslice and
+  multi-MMA scale-reuse controls passed, high-CGA scaled-only controls passed
+  for `4/8/16` CTAs.
+  2026-04-21 Round 31 local guardrails completed. Artifacts:
+  `agents/fuzz_local_descriptor_mix_round31.md` and
+  `agents/fuzz_local_view_copy_round31.md`. Results: descriptor mix
+  `54 passed`; view-chain/copy-`warpx2` `123 passed, 74 skipped`. No new
+  bucket.
+  2026-04-21 Round 31 Python descriptor-view frontend probing completed.
+  Artifact: `agents/fuzz_python_descriptor_views_round31.md`. No new bucket;
+  expands existing `FZ-20260421-0017` to valid Python/Gluon descriptor-sliced
+  64-bit TMEM load/store kernels. Result: `48` `ASSERT_BITWIDTH_32`, `40`
+  passes, and `20` frontend compile diagnostics. Covered legacy/linear
+  parents, offsets `0/64/128`, roundtrip/store/load modes, and in-bounds 2CTA
+  rows for `torch.float64`/`torch.int64`; matching 1CTA `float32`/`int32`
+  controls passed with roundtrip correctness. Backend fixes remain deferred
+  while fuzzing continues.
+  2026-04-21 Round 31 compiler-boundary fuzzing completed. Artifact:
+  `agents/fuzz_compiler_boundaries_round31.md`. No new bucket; expands
+  existing `FZ-0001`, `FZ-0016`, and `FZ-0017` across `18` MLIR probes and
+  three pass modes. Results: `18` passes, `23` clean diagnostics, `12`
+  assertion/stack-dump aborts, and `1` late illegal-op failure.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline
@@ -2450,3 +2478,23 @@ signal handling:
   `agents/fuzz_ldred_round28.md`. No new bucket. The broad selector and exact
   failing-node rerun reconfirmed the same six existing
   `FZ-20260421-0012` M64 row-permuted `unsupported dst layout` failures.
+
+- 2026-04-21 12:50 UTC: Round 31 local guardrails completed. Reports:
+  `agents/fuzz_local_descriptor_mix_round31.md`,
+  `agents/fuzz_local_view_copy_round31.md`, and
+  `agents/fuzz_structural_rerun_round31.md`. Descriptor-heavy `ld.red` plus
+  scaled-MMAv5 rows passed split-4 as `54 passed`; high-rank `ld/st`
+  descriptor plus `tcgen05.copy` `warpx2` indexed/subslice/slice-index rows
+  completed as `123 passed, 74 skipped`; checked-in structural fuzzer stayed
+  stable as `9 passed, 24 xfailed`. No new independent `FZ-*` bucket. Round
+  31 subagent lanes remain active for scaled-MMAv5 operands, `ld.red`
+  extremes, compiler-boundary fuzzing, and descriptor-chain shapes.
+
+- 2026-04-21 12:51 UTC: Round 31 compiler boundary lane completed. Report:
+  `agents/fuzz_compiler_boundaries_round31.md`. Ran `18` generated MLIR cases
+  through verifier, optimize, and lower modes after `make -j8`. Results:
+  `18` passes, `23` clean diagnostics, `12` assertion aborts, and `1` late
+  illegal `ttg.memdesc_index` compiler failure. No new bucket; classifications
+  sharpen `FZ-0001`, `FZ-0016`, and `FZ-0017`. Next compiler-only slice should
+  extend the same matrix to reduction loads, scale TMEM layouts, and
+  descriptor-view chains while keeping TMEM consumers live.

@@ -1,5 +1,46 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 12:51 UTC Round 31 compiler-boundary lane completed.
+  Report: `agents/fuzz_compiler_boundaries_round31.md`. It generated `18`
+  MLIR probes under `/tmp/tmem_compiler_boundaries_round31` and ran verifier,
+  optimize, and allocation+LLVM modes. Matrix result: `18` passes, `23` clean
+  diagnostics, `12` assertion aborts, and `1` late illegal
+  `ttg.memdesc_index` compiler failure. No new bucket; the lane sharpens
+  existing `FZ-20260421-0001`, `FZ-20260421-0016`, and `FZ-20260421-0017`.
+
+- Latest: 2026-04-21 12:49 UTC Round 31 scaled-MMAv5 TMEM descriptor operand
+  lane completed. Report: `agents/fuzz_scaled_operand_round31.md`. Required
+  `make -j8` was a no-op. Checked-in
+  `mma_scaled and descriptor_view and not reports` controls passed split-4 as
+  `4 passed`. Temporary dynamic scale-view probe ran `16` rows with `0`
+  unexpected outcomes: `10` direct dynamic/static/helper/loop selected scale
+  rows passed and `6` descriptor-view rows reproduced existing `FZ-0013`.
+  Direct dynamic-scale pytest slice reported `2 failed, 7 passed`; both
+  failures are existing `FZ-0015` selected distinct B-scale rows. Scale
+  descriptor-view/multi-MMA slice reported `3 failed, 7 passed`; all failures
+  are existing `FZ-0013`, while accumulator subslice and multi-MMA scale reuse
+  controls passed. High-CGA scaled controls passed for `4/8/16` CTAs; adding
+  local 1CTA/2CTA `st`, `ld`, `ld.red`, or `copy` reproduced existing
+  `FZ-0010` in `24` rows. No new independent bucket.
+
+- Latest: 2026-04-21 12:50 UTC local Round 31 guardrails completed. Reports:
+  `agents/fuzz_local_descriptor_mix_round31.md`,
+  `agents/fuzz_local_view_copy_round31.md`,
+  `agents/fuzz_python_descriptor_views_round31.md`,
+  `agents/fuzz_compiler_boundaries_round31.md`, and
+  `agents/fuzz_structural_rerun_round31.md`. Descriptor-heavy `ld.red` plus
+  scaled-MMAv5 rows passed split-4 as `54 passed`; high-rank `ld/st`
+  descriptor rows plus `tcgen05.copy` `warpx2` indexed/subslice/slice-index
+  rows completed split-4 as `123 passed, 74 skipped`; Python descriptor-view
+  frontend probing expanded existing `FZ-0017` with `48` 64-bit
+  `ASSERT_BITWIDTH_32` rows next to `40` passing 32-bit controls; compiler
+  boundary probing expanded existing `FZ-0001`, `FZ-0016`, and `FZ-0017`
+  across `18` MLIR cases and three pass modes; the checked-in structural
+  fuzzer completed as `9 passed, 24 xfailed`. No XPASS, false unsupported
+  diagnostic, opcode mismatch, runtime miscompile, or new independent `FZ-*`
+  bucket was found. Round 31 subagents are still fuzzing `ld.red` extremes and
+  descriptor-chain shapes.
+
 - Latest: 2026-04-21 14:30 UTC local Round 25 descriptor load/store
   non-roundtrip baseline completed. Report:
   `agents/fuzz_local_ldst_descriptor_nonroundtrip_round25.md`. Selector
@@ -16228,6 +16269,19 @@ rejection, not rescue
   reaches make-LLIR input with a dynamic `ttg.memdesc_index` feeding
   `ttng.tmem_copy`.
 
+- Round 31 Python descriptor-view follow-up wrote
+  `agents/fuzz_python_descriptor_views_round31.md`. No new bucket; it expands
+  `FZ-20260421-0017` with a valid frontend descriptor-view harness. The lane
+  ran `108` subprocess-isolated Gluon cases and produced `48`
+  `ASSERT_BITWIDTH_32`, `40` passes, and `20` Python compile diagnostics. All
+  valid 1CTA `torch.float64`/`torch.int64` descriptor-view rows assert across
+  legacy/linear parents, roundtrip/store-only/load-only, and slice offsets
+  `0/64/128`; matching `torch.float32`/`torch.int32` 1CTA rows pass with
+  roundtrip correctness checks. Valid 2CTA 64-bit in-bounds offsets `0/64`
+  also assert. Out-of-bounds 2CTA offset `128` rows reject cleanly; the
+  remaining 2CTA 32-bit load/roundtrip diagnostics are the known frontend or
+  harness global-store issue, not a new TMEM bucket.
+
 - Round 29 memdesc-index lane wrote
   `agents/fuzz_memdesc_index_round29.md`. No new bucket, but it broadens
   `FZ-20260421-0001`: runtime `parent.index(ttgl.load(selector))` leaves
@@ -16262,3 +16316,14 @@ rejection, not rescue
   failing-node reruns: `237 passed, 6 failed`, and the six exact failures are
   all existing `FZ-20260421-0012` M64 row-permuted `unsupported dst layout`
   rows.
+
+- Round 31 compiler boundary lane wrote
+  `agents/fuzz_compiler_boundaries_round31.md`. Generated `18` MLIR probes
+  under `/tmp/tmem_compiler_boundaries_round31` and ran verifier,
+  TMEM-layout optimize, and allocation+LLVM modes. No new independent bucket.
+  Existing buckets sharpened: `FZ-20260421-0001` has compiler-only live
+  dynamic-index load/store/copy repros; `FZ-20260421-0016` unencoded tensor
+  load/store abort in verifier paths; `FZ-20260421-0017` encoded `i64`/`f64`
+  load/store now aborts at verifier time on `bitwidth == 32`. Clean
+  diagnostics were confirmed for malformed subslice/reshape/transpose and
+  wrong memory-space `tmem_load`/`tmem_copy` operands.

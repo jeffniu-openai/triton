@@ -7,7 +7,26 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 26-28 discovery lanes. Reports:
+Latest fuzzing checkpoint: 2026-04-21 12:49-12:51 UTC Round 31 scaled-MMAv5
+operand lane, local guardrails, and compiler-boundary fuzzing. Reports:
+`agents/fuzz_scaled_operand_round31.md`,
+`agents/fuzz_local_descriptor_mix_round31.md`,
+`agents/fuzz_local_view_copy_round31.md`,
+`agents/fuzz_python_descriptor_views_round31.md`, and
+`agents/fuzz_structural_rerun_round31.md`, plus
+`agents/fuzz_compiler_boundaries_round31.md`. The scaled operand lane found no
+new bucket and revalidated existing `FZ-0013`, `FZ-0015`, and `FZ-0010`
+boundaries; descriptor-heavy `ld.red` plus scaled-MMAv5 rows passed as
+`54 passed`; high-rank `ld/st` descriptor and `tcgen05.copy` `warpx2`
+indexed/subslice/slice-index rows completed as `123 passed, 74 skipped`;
+Python descriptor-view frontend probing expanded existing `FZ-0017` with `48`
+64-bit `ASSERT_BITWIDTH_32` rows next to `40` passing 32-bit controls; the
+checked-in structural fuzzer stayed stable as `9 passed, 24 xfailed`; and the
+compiler-boundary lane sharpened existing `FZ-0001`, `FZ-0016`, and
+`FZ-0017`. No new independent `FZ-*` bucket was found. Round 31 subagents are
+still running `ld.red` extreme and descriptor-chain-shape lanes.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 26-28 discovery lanes. Reports:
 `agents/fuzz_high_cga_scaled_round26.md`,
 `agents/fuzz_verifier_round26.md`,
 `agents/fuzz_local_mma_guard_round26.md`,

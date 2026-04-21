@@ -30130,3 +30130,122 @@ Open after this slice:
 - TTGIR/LLIR contrast: passing same-index branch rows have `ttg.memdesc_index`
   in TTGIR but not LLIR, while the failing distinct-index copy reaches
   make-LLIR input with a dynamic `ttg.memdesc_index` feeding `ttng.tmem_copy`.
+
+## 2026-04-21: Round 31 scaled-MMAv5 descriptor operand fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_operand_round31.md`.
+- Required `make -j8` was a no-op.
+- Py-compiled the temporary probes:
+  `/tmp/tmem_scaled_dynamic_scales_round22_probe.py`,
+  `/tmp/tmem_scaled_multi_mma_round15_probe.py`, and
+  `/tmp/tmem_high_cga_scaled_round26_probe.py`.
+- Checked-in selector
+  `mma_scaled and descriptor_view and not reports` passed split-4 as
+  `4 passed`.
+- Dynamic scale-view probe completed `16` rows with `0` unexpected outcomes:
+  `10` direct selected scale rows passed and `6` descriptor-view rows
+  reproduced existing `FZ-20260421-0013`.
+- Direct dynamic-scale pytest slice completed as `2 failed, 7 passed`; both
+  failures are existing `FZ-20260421-0015` selected distinct B-scale rows.
+- Descriptor-view/multi-MMA slice completed as `3 failed, 7 passed`; all
+  failures are existing `FZ-20260421-0013`, while accumulator subslice and
+  scale-reuse controls passed.
+- High-CGA scaled controls passed for `num_ctas=4/8/16`; mixed local 1CTA/2CTA
+  `st`, `ld`, `ld.red`, and `copy` rows reproduced existing
+  `FZ-20260421-0010` in `24` rows.
+- Classification: no new independent `FZ-*`; no backend repairs attempted.
+
+## 2026-04-21: Round 31 Python descriptor-view 64-bit frontend probing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_python_descriptor_views_round31.md`.
+- Command:
+  `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=.:./python:./python/test/gluon python /tmp/tmem_python_descriptor_round31/controller.py`.
+- Result: `48` `ASSERT_BITWIDTH_32`, `40` pass, and `20`
+  Python/compile diagnostics.
+- Classification: no new independent `FZ-*`; expands existing
+  `FZ-20260421-0017` to Python/Gluon descriptor-sliced 64-bit TMEM
+  load/store kernels across 1CTA/2CTA valid rows, with passing 32-bit
+  controls where the harness reaches execution.
+
+## 2026-04-21: Round 31 compiler-boundary fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_boundaries_round31.md`.
+- Generated `18` MLIR probes under `/tmp/tmem_compiler_boundaries_round31`
+  and ran verify, optimize, and allocation/LLVM conversion modes with
+  `triton-opt`.
+- Result across the matrix: `18` passes, `23` clean verifier or lowering
+  diagnostics, `12` assertion/stack-dump aborts, and `1` late illegal-op
+  compiler failure.
+- Classification: no new independent `FZ-*`. Dynamic live
+  `ttg.memdesc_index` rows expand existing `FZ-20260421-0001`; unencoded
+  tensor load/store rows expand existing `FZ-20260421-0016`; encoded `i64`
+  and `f64` TMEM load/store rows expand existing `FZ-20260421-0017`.
+  Wrong-space, static out-of-bounds, rank mismatch, duplicate transpose, and
+  bad reshape rows produced clean diagnostics.
+
+## 2026-04-21: Round 31 local descriptor and copy guardrails
+
+- Wrote:
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_descriptor_mix_round31.md`
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_view_copy_round31.md`
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_rerun_round31.md`
+- Required `make -j8` was a no-op before local runtime sweeps.
+- Descriptor-mix selector:
+  `(mma_scaled or ld_red or cp_no_scales or copy) and descriptor and not reports and not resource and not clean`.
+  Collection was `54/1615`; split-4 result was `54 passed`.
+- View/copy selector:
+  `(warpx2 or rank5 or multidim_slice or half_rows or slice_index or indexed_view) and not reports and not resource and not clean and not lifted`.
+  Collection was `197/1615`; split-4 result was `123 passed, 74 skipped`.
+- Checked-in structural fuzzer:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+  completed as `9 passed, 24 xfailed`.
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, XPASS, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 31 Python descriptor-view FZ-0017 follow-up
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_python_descriptor_views_round31.md`.
+- Required `make -j8` was a no-op.
+- Temporary artifacts:
+  `/tmp/tmem_python_descriptor_round31/child.py`,
+  `/tmp/tmem_python_descriptor_round31/controller.py`,
+  `/tmp/tmem_python_descriptor_round31/run.log`, and
+  `/tmp/tmem_python_descriptor_round31/summary.json`.
+- Command:
+  `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=.:./python:./python/test/gluon python /tmp/tmem_python_descriptor_round31/controller.py`.
+- Result: `48` `ASSERT_BITWIDTH_32`, `40` passes, and `20` Python compile
+  diagnostics.
+- Classification: no new independent `FZ-*`; this removes the Round 30 Python
+  sliced-view harness ambiguity and expands existing `FZ-20260421-0017`.
+  Valid 1CTA Python descriptor-view rows assert for every `torch.float64` and
+  `torch.int64` legacy/linear parent layout, roundtrip/store-only/load-only
+  mode, and N-slice offset `0/64/128`, while matching `torch.float32` and
+  `torch.int32` 1CTA rows pass including roundtrip correctness checks. Valid
+  2CTA 64-bit in-bounds descriptor-view rows at offsets `0/64` also assert.
+  Out-of-bounds 2CTA offset `128` rows reject cleanly, and remaining 2CTA
+  32-bit load/roundtrip diagnostics are the existing frontend/global-store
+  harness limitation (`'list' object has no attribute 'type'`).
+
+## 2026-04-21: Round 31 compiler boundary fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_boundaries_round31.md`.
+- Required `make -j8` was a no-op before probes.
+- Generated `18` compiler-only MLIR probes under
+  `/tmp/tmem_compiler_boundaries_round31` and ran each through verifier-only,
+  `--triton-nvidia-optimize-tmem-layouts`, and allocation+LLVM conversion
+  modes.
+- Raw matrix: `18` passes, `23` clean diagnostics, `12` assertion aborts, and
+  `1` late illegal `ttg.memdesc_index` compiler failure initially matched by
+  the harness as crash-class.
+- No new independent `FZ-*` bucket. The lane sharpens existing buckets:
+  `FZ-20260421-0001` now has compiler-only live load/store/copy dynamic-index
+  repros; `FZ-20260421-0016` still aborts verifier-level unencoded tensor load
+  and store; `FZ-20260421-0017` now reproduces at verifier time for encoded
+  `i64` load and `f64` store via the same `bitwidth == 32` assertion.
+- Clean boundaries confirmed for malformed subslice, reshape, transpose, wrong
+  `tmem_load` source memory space, and wrong `tmem_copy` source memory space.
