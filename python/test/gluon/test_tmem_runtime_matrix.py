@@ -3241,6 +3241,7 @@ def tmem_mma_scaled_bscale_descriptor_view_format_kernel(
     A_FORMAT: ttgl.constexpr,
     B_FORMAT: ttgl.constexpr,
     PAD_B_SCALE_STORAGE: ttgl.constexpr,
+    EXTRA_B_SCALE_USER: ttgl.constexpr = False,
 ):
     A_STORAGE_K: ttgl.constexpr = K // A_ELEM_PER_BYTE
     B_STORAGE_K: ttgl.constexpr = K // B_ELEM_PER_BYTE
@@ -3301,6 +3302,9 @@ def tmem_mma_scaled_bscale_descriptor_view_format_kernel(
         source_scale_n = scale_offs_n
     a_scale_tmem.store(ttgl.load(a_scale + scale_offs_m * (K // VEC_SIZE) + scale_offs_k_m))
     b_scale_tmem.store(ttgl.load(b_scale + source_scale_n * (K // VEC_SIZE) + scale_offs_k_n))
+    if EXTRA_B_SCALE_USER:
+        probe = b_scale_tmem.load()
+        ttgl.store(out_ptr, ttgl.sum(probe.to(ttgl.float32)))
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=1)
@@ -13109,6 +13113,51 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_descriptor_v
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_view_extra_user_rematerializes():
+    m = n = k = 128
+    a_format = b_format = "mxfp8"
+    layout = _make_tmem_linear_layout_tile_permuted(m, n, 32)
+    vec_size = 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_bscale_descriptor_view_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        False,
+        True,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    ttgir = compiled.asm["ttgir"]
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tc_gen5_mma_scaled" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

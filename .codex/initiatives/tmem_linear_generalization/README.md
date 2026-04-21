@@ -73,6 +73,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 06:46 UTC: completed another adversarial scaled-MMAv5 TMEM audit
+  focused on `Dialect.cpp`, `Ops.cpp`, B-scale rematerialization in
+  `TensorMemoryAllocation.cpp`, and runtime-matrix scaled kernels. Found and
+  fixed a real verifier/rewrite mismatch: unpadded B-scale storage was
+  accepted when rematerialization was theoretically possible, but the rewrite
+  refused cases where the original B-scale descriptor had any additional live
+  user. The rematerializer now creates a separate padded B-scale allocation for
+  the MMA while preserving the original descriptor/store for other users.
+  Runtime coverage now exercises a tile-permuted N=32 B-scale descriptor view
+  with an extra live TMEM load user.
+
 - 2026-04-21 06:44 UTC: completed another adversarial audit focused on
   generic warp-specialization / partitioning interactions with TMEM memdesc
   views. Fixed `PartitionScheduling` same-allocation discovery so TMEM

@@ -26058,3 +26058,41 @@ Open after this slice:
     this pass, but it remains a heuristic risk for partition scheduling and
     deserves a focused scheduling-cost test if future TMEM partition placement
     looks unstable.
+
+## 2026-04-21 06:46 UTC: scaled-MMAv5 B-scale rematerialization audit
+
+- User asked for another adversarial audit focused on scaled-MMAv5 TMEM backend
+  correctness, explicitly covering `Dialect.cpp`, `Ops.cpp`,
+  `TensorMemoryAllocation.cpp` B-scale rematerialization, and runtime-matrix
+  scaled kernels/tests.
+- Found a real fixable gap in B-scale rematerialization:
+  - the verifier accepted unpadded B-scale storage for repeated N=32 /
+    tile-permuted scaled accumulators when a padded rematerialized storage
+    shape was theoretically possible;
+  - `RematerializeScaledMmaBScaleFragments` then refused to rewrite if the
+    original B-scale descriptor had any live user other than the producer store
+    and the scaled MMA;
+  - this left an accepted-but-unrewritten scaled MMA to fail later with the
+    repeated-N32 B-scale diagnostic under `PassManager::run failed`.
+- Implemented the scoped fix:
+  - the rematerializer now still finds the unique producer store, creates a
+    separate padded B-scale TMEM allocation for the MMA, and preserves the
+    original descriptor/store/view chain when other users remain live;
+  - when no other users remain, it keeps the old cleanup behavior and erases
+    the original store/view chain where possible.
+- Added runtime coverage:
+  - `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_view_extra_user_rematerializes`
+    keeps the original B-scale descriptor live through a TMEM load while the
+    scaled MMA consumes the rematerialized padded descriptor.
+- Validation:
+  - required `make -j8` passed;
+  - exact new runtime nodeid passed;
+  - neighboring scaled descriptor/tile-permuted selector passed
+    `22 passed, 1593 deselected`;
+  - `python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    passed;
+  - `git diff --check` passed.
+- Dirty-tree boundary:
+  - unrelated concurrent edit in
+    `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` was not touched or
+    staged by this slice.

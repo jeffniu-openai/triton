@@ -14230,6 +14230,37 @@ rejection, not rescue
   - unrelated dirty files in NVIDIA TMEM utilities/allocation and the runtime
     matrix were left untouched and should not be included in this checkpoint.
 
+## Current: 2026-04-21 06:46 UTC scaled-MMAv5 rematerialization gap fixed
+
+- User requested another adversarial scaled-MMAv5 backend audit and asked for
+  real fixable gaps rather than missing tests.
+- Found a verifier/rewrite mismatch in
+  `RematerializeScaledMmaBScaleFragments`:
+  - `TCGen5MMAScaledOp::verify` accepts unpadded B-scale storage when a padded
+    rematerialized shape can make the scaled MMA legal;
+  - the rematerialization rewrite previously required the original B-scale
+    descriptor to have no live users other than one producer store and the MMA;
+  - if another live descriptor user existed, verifier accepted the op but the
+    rewrite declined it, leading to the repeated-N32 B-scale diagnostic later
+    in the pass pipeline.
+- Fix:
+  - rematerialization now duplicates padded B-scale storage for the MMA while
+    leaving the original descriptor/store/view chain alive for other users;
+  - old cleanup behavior remains for the single-use case.
+- New coverage:
+  - `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_view_extra_user_rematerializes`
+    keeps a B-scale descriptor view live through a TMEM load and verifies the
+    tile-permuted N=32 scaled MMA still executes correctly.
+- Validation:
+  - `make -j8`;
+  - exact new nodeid passed;
+  - neighboring scaled selector passed `22 passed, 1593 deselected`;
+  - py-compile passed;
+  - `git diff --check` passed.
+- Dirty-tree boundary:
+  - concurrent `TensorMemoryUtils.cpp` edit is unrelated and must remain out
+    of this commit.
+
 ## Current: 2026-04-21 02:51 UTC max-CTA coverage added
 
 - User asked whether coverage also checks more than 4 CTAs, up to the hardware

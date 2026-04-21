@@ -1140,3 +1140,14 @@ signal handling:
   four-GPU split sweep over examples 01 and 05 with `112/112` selected tests
   passing. Next concrete step is performance comparison/benchmarking for the
   now-green examples, unless the user asks for broader correctness sweeps first.
+
+- 2026-04-21 06:46 UTC: completed another adversarial scaled-MMAv5 audit slice.
+  Fixed the B-scale rematerialization gap where verifier accepted an
+  unpadded/repeated-N32 scaled MMA because padded rematerialization was
+  possible, but the rewrite refused any original B-scale descriptor with an
+  additional live user. The rewrite now rematerializes a separate padded
+  descriptor for the MMA and preserves the original descriptor for other users.
+  Validation: required `make -j8`; exact new runtime nodeid passed; neighboring
+  scaled selector passed `22 passed, 1593 deselected`; py-compile and
+  `git diff --check` passed. Concurrent `TensorMemoryUtils.cpp` edits were not
+  staged.

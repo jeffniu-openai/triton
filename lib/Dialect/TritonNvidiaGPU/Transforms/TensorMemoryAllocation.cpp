@@ -384,15 +384,18 @@ public:
       return failure();
 
     TMEMStoreOp storeOp;
+    bool hasOtherBScaleUsers = false;
     for (Operation *user : llvm::make_early_inc_range(bScale.getUsers())) {
       if (user == mmaOp.getOperation())
         continue;
       auto candidate = dyn_cast<TMEMStoreOp>(user);
-      if (!candidate || candidate.getDst() != bScale)
-        return failure();
-      if (storeOp)
-        return failure();
-      storeOp = candidate;
+      if (candidate && candidate.getDst() == bScale) {
+        if (storeOp)
+          return failure();
+        storeOp = candidate;
+        continue;
+      }
+      hasOtherBScaleUsers = true;
     }
     if (!storeOp)
       return failure();
@@ -464,14 +467,16 @@ public:
     rewriter.modifyOpInPlace(mmaOp, [&] {
       mmaOp.getBScaleMutable().assign(rematerializedAlloc.getResult());
     });
-    rewriter.eraseOp(storeOp);
-    Value unusedView = bScale;
-    while (Operation *defOp = unusedView.getDefiningOp()) {
-      if (defOp == allocOp.getOperation() || !defOp->use_empty() ||
-          !defOp->hasTrait<OpTrait::MemDescViewTrait>())
-        break;
-      unusedView = defOp->getOperand(0);
-      rewriter.eraseOp(defOp);
+    if (!hasOtherBScaleUsers) {
+      rewriter.eraseOp(storeOp);
+      Value unusedView = bScale;
+      while (Operation *defOp = unusedView.getDefiningOp()) {
+        if (defOp == allocOp.getOperation() || !defOp->use_empty() ||
+            !defOp->hasTrait<OpTrait::MemDescViewTrait>())
+          break;
+        unusedView = defOp->getOperand(0);
+        rewriter.eraseOp(defOp);
+      }
     }
     if (allocOp->use_empty())
       rewriter.eraseOp(allocOp);
