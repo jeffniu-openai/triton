@@ -60,6 +60,15 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 13:33 UTC Round 36 B-scale dynamic descriptor-view runtime lane
+  completed. Artifact: `agents/fuzz_bscale_dynamic_views_round36.md`.
+  Required `make -j8` was a no-op. Checked-in B-scale/shared-scale selector
+  collected `7/1615` and passed split-4 as `7 passed`. Temporary probe
+  `/tmp/tmem_bscale_dynamic_views_round36_probe.py` collected `5` valid
+  direct/branch/loop/view-chain/extra-user B-scale descriptor rows feeding
+  `tcgen05_mma_scaled` and passed split-4 as `5 passed`. No new independent
+  `FZ-*`; excluded drafts are clean frontend/API boundaries for scale
+  multibuffering and repeated N=32 public-scale MMAv5 rematerialization.
   2026-04-21 13:10 UTC Round 32 FZ-0018 `ld.red` minimization completed.
   Artifact: `agents/fuzz_ldred_fz0018_min_round32.md`. Required `make -j8`
   was a no-op. Temporary subprocess-isolated runtime probe

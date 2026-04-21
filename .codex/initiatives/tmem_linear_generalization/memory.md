@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 36 B-scale dynamic descriptor-view runtime lane
+  completed. Report: `agents/fuzz_bscale_dynamic_views_round36.md`. Required
+  `make -j8` was a no-op. Checked-in selector
+  `bscale_descriptor_view or shared_scale_descriptor_view_auto_tmem_copy or bscale_view_extra_user`
+  collected `7/1615` rows and passed split-4 as `7 passed` (`2/2/2/1`).
+  Temporary probe `/tmp/tmem_bscale_dynamic_views_round36_probe.py` collected
+  `5` valid rows and passed split-4 as `5 passed` (`2/2/1/0`): direct
+  B-scale descriptor, branch-selected distinct B-scale descriptor,
+  branch-selected descriptor-view chain with extra `b_scale_tmem.load` users,
+  loop-carried descriptor-view chain with extra users, and alternate selector
+  value. No new independent `FZ-*`; valid rows did not reproduce `FZ-0015`,
+  did not use invalid runtime `memdesc_index`, and did not show a compiler
+  crash, false unsupported diagnostic, opcode absence in TTGIR, or runtime
+  miscompile. Excluded probe drafts are clean harness/API boundaries: scales
+  multibuffering is rejected by the frontend and repeated N=32 tile-permuted
+  scaled MMAv5 reports the known clean rematerialization diagnostic.
+
 - Latest: 2026-04-21 Round 35 structural descriptor/`ld.red` fuzzer slice
   completed. Report: `agents/fuzz_structural_descriptor_ldred_round35.md`.
   Selector `descriptor_view or ldst_view or ldred or ld_red` collected `18/33`

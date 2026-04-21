@@ -30662,6 +30662,26 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, unexpected xfail/pass
   transition, or new independent `FZ-*`.
 
+## 2026-04-21: Round 36 B-scale dynamic descriptor-view fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_bscale_dynamic_views_round36.md`.
+- Required `make -j8` was a no-op.
+- Checked-in selector:
+  `bscale_descriptor_view or shared_scale_descriptor_view_auto_tmem_copy or bscale_view_extra_user`.
+- Collection/result: `7/1615`; split-4 `7 passed` (`2/2/2/1`).
+- Temporary probe: `/tmp/tmem_bscale_dynamic_views_round36_probe.py`.
+- Temporary valid rows: `5` collected; split-4 `5 passed` (`2/2/1/0`).
+  Covered direct B-scale descriptor, branch-selected distinct B-scale
+  descriptor, loop-carried selection, descriptor-view chain, extra
+  `b_scale_tmem.load` side users, and both selector values for the branch-view
+  row.
+- Classification: no new independent `FZ-*`. Valid rows did not reproduce
+  `FZ-20260421-0015`, did not hit `FZ-20260421-0001`, and showed no compiler
+  crash, false unsupported diagnostic, TTGIR opcode absence, or runtime
+  miscompile. Excluded harness drafts hit clean scale-multibuffering and
+  repeated-N32 scaled-MMAv5 diagnostics.
+
 ## 2026-04-21: Round 35 ld.red/descriptor positive sweep
 
 - Wrote

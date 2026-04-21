@@ -7,7 +7,23 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 35 structural descriptor/`ld.red`
+Latest fuzzing checkpoint: 2026-04-21 Round 36 B-scale dynamic descriptor-view
+runtime lane completed. Report:
+`agents/fuzz_bscale_dynamic_views_round36.md`. Required `make -j8` was a
+no-op. Checked-in selectors
+`bscale_descriptor_view`, `bscale_view_extra_user`, and
+`shared_scale_descriptor_view_auto_tmem_copy` collected `7/1615` and passed
+split-4 as `7 passed`. Temporary probe
+`/tmp/tmem_bscale_dynamic_views_round36_probe.py` collected `5` valid rows
+covering direct, branch-selected, loop-carried, descriptor-view-chain, and
+extra `b_scale_tmem.load` side-user B-scale descriptors feeding
+`tcgen05_mma_scaled`; split-4 passed as `5 passed`. No compiler crash, false
+unsupported diagnostic, opcode absence in TTGIR, runtime miscompile, or new
+independent `FZ-*` bucket was found. Excluded harness drafts hit clean
+frontend/API boundaries for scales multibuffering and repeated N=32
+tile-permuted scaled MMAv5.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 35 structural descriptor/`ld.red`
 fuzzer slice completed. Report:
 `agents/fuzz_structural_descriptor_ldred_round35.md`. Selector
 `descriptor_view or ldst_view or ldred or ld_red` collected `18/33` structural
