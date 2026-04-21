@@ -1,3 +1,16 @@
+## 2026-04-21 14:18 UTC: Round 42 core TMA/MMAv5 guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_core_tma_mma_guardrail_round42.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Collection selector:
+  `(tcgen05_mma or tma_mma_shared_inputs) and not scaled and not multicast`.
+- Collection/result: `223/18114` rows, split-4 as
+  `172 passed, 51 skipped` (`47/9`, `47/9`, `41/15`, `37/18`).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, unexpected pass/fail transition, or new
+  independent `FZ-*`.
+
 ## 2026-04-21 14:16 UTC: Round 42 ld.red positive layout guardrail
 
 - Wrote

@@ -60,6 +60,14 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:18 UTC Round 42 core TMA/MMAv5 guardrail completed. Artifact:
+  `agents/fuzz_core_tma_mma_guardrail_round42.md`. Selector
+  `(tcgen05_mma or tma_mma_shared_inputs) and not scaled and not multicast`
+  collected `223/18114` rows from `python/test/gluon/test_core.py` and
+  passed/stably skipped split-4 as `172 passed, 51 skipped`
+  (`47/9`, `47/9`, `41/15`, `37/18`). No compiler crash, false unsupported
+  diagnostic, opcode absence, runtime miscompile, unexpected pass/fail
+  transition, or new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 14:16 UTC Round 42 `ld.red` positive layout guardrail completed.
   Artifact: `agents/fuzz_ldred_positive_layout_round42.md`. Selector
   `(ld_red_identity_linear_layout or ld_red_tile_permuted_linear_layout or
