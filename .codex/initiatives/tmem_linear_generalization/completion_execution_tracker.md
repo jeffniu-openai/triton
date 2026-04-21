@@ -133,6 +133,17 @@ The project is complete when:
   `FZ-0001` dynamic descriptor-index lowering, `FZ-0016` unencoded tensor
   handling, and `FZ-0017` encoded 64-bit TMEM load/store/alloc boundaries were
   revalidated or sharpened; backend repair remains deferred.
+  2026-04-21 13:11 UTC Round 33 dynamic descriptor SSA/control-flow runtime
+  lane completed. Artifact:
+  `agents/fuzz_dynamic_descriptor_round33.md`. Required `make -j8` was a
+  no-op. Temporary probe `/tmp/tmem_dynamic_descriptor_round33_probe.py`
+  collected `100` rows and classified `46` pass, `20` existing
+  `FZ-20260421-0001` late illegal `ttg.memdesc_index`, `24` existing
+  `FZ-20260421-0002`/`FZ-20260421-0003` descriptor-view wrong-result rows, and
+  `10` clean unsupported chain0 copy diagnostics. Plain MMAv5 indexed
+  accumulator controls passed as `2 passed`; scaled-MMAv5 low-subslice dynamic
+  accumulator sentinel stayed `1 xfailed` under existing `FZ-0007`. No new
+  independent `FZ-*`; backend repair remains deferred.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline
