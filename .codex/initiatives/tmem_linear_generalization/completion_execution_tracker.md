@@ -60,6 +60,13 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:33 UTC Round 45 mixed exact smoke guardrail completed.
+  Artifact: `agents/fuzz_mixed_exact_smoke_round45.md`. Required `make -j8`
+  reported `no work to do`. Exact nodeids for scaled-MMAv5 B-scale extra-user,
+  rank-5 descriptor-view roundtrip, and two-CTA `warpx2::01_23` dense-shared
+  copy rematerialization passed on GPU0 as `3 passed`. No compiler crash,
+  false unsupported diagnostic, runtime miscompile, or cache/process-order
+  drift; backend repair remains deferred.
   2026-04-21 14:30 UTC Round 44 structural expansion audit integrated.
   Artifact: `agents/fuzz_structural_expansion_round44.md`; subagent commit
   `b63e7216`. Required `make -j8` reported `no work to do`. Structural

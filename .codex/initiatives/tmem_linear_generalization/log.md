@@ -1,3 +1,16 @@
+## 2026-04-21 14:33 UTC: Round 45 mixed exact smoke guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mixed_exact_smoke_round45.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Exact-nodeid smoke covered scaled-MMAv5 B-scale extra-user, rank-5
+  descriptor-view roundtrip, and two-CTA `warpx2::01_23` dense-shared copy
+  rematerialization.
+- Result: `3 passed`.
+- Classification: no compiler crash, false unsupported diagnostic, runtime
+  miscompile, or cache/process-order drift.
+
 ## 2026-04-21 14:30 UTC: Round 44 structural expansion audit
 
 - Integrated subagent report
