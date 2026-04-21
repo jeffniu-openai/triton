@@ -16149,6 +16149,17 @@ rejection, not rescue
   branch/SSA structures pass for `ld/st`, `ld.red`, and copy. This points at
   descriptor-view chain materialization across SSA/control flow rather than
   plain TMEM memdesc values.
+  Follow-up chain-shape matrix found a smaller non-control-flow seed: direct
+  `ld/st` through the chain0 semantically identity descriptor view at
+  `128x32` and `128x64` miscompiles for both direct and indexed roots, while
+  an alternate identity chain passes. `64x32` stops at the clean row-anchor
+  diagnostic. Captured bad/green artifacts show both emit
+  `tcgen05.st.sync.aligned.32x32b.x32.b32` and
+  `tcgen05.ld.sync.aligned.32x32b.x32.b32`; the bad chain0 view reaches load
+  with row basis starting `[[64, 0], [1, 0], ...]` while the alternate chain
+  canonicalizes back to the base layout. This points at an accepted-but-
+  misplanned descriptor-view layout family adjacent to `FZ-20260421-0003`, not
+  a pure SSA/control-flow bug.
 
 - Round 29 local structural smoke wrote
   `agents/fuzz_local_structural_round29.md`. Full checked-in
@@ -16163,8 +16174,13 @@ rejection, not rescue
   for `i8`, `i16`, `f16`, `bf16`, `i32`, and `f32` returned successfully from
   the allocation pass. This is distinct from `FZ-0016` because tensors and
   memdescs are encoded and the crash is in 64-bit load/store planning, not the
-  unencoded tensor verifier path. Existing clean-boundary runtime sweep stayed
-  green as `184 passed`; `lit -v test/TritonNvidiaGPU/invalid.mlir` passed.
+  unencoded tensor verifier path. Python frontend probes show ordinary Gluon
+  kernels that round-trip `torch.float64` or `torch.int64` through TMEM abort
+  during JIT at the same assertion. Narrowing: dead uninitialized 64-bit alloc
+  is eliminated and returns successfully, but initialized alloc, standalone
+  store, and standalone load all crash. Existing clean-boundary runtime sweep
+  stayed green as `184 passed`; `lit -v test/TritonNvidiaGPU/invalid.mlir`
+  passed.
 
 - Round 29 memdesc-index lane wrote
   `agents/fuzz_memdesc_index_round29.md`. No new bucket, but it broadens

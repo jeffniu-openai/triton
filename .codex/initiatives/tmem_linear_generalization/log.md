@@ -29970,6 +29970,17 @@ Open after this slice:
   offset-only and same-object descriptors pass across the same branch/SSA
   structures for `ld/st`, `ld.red`, and copy. Copy dynamic/branch rows remain
   existing `FZ-20260421-0001`.
+- Follow-up chain-shape matrix found a smaller non-control-flow wrong-code
+  seed: direct `ld/st` over the chain0 semantically identity descriptor view
+  at `128x32` and `128x64` miscompiles for direct and indexed roots, while an
+  alternate identity chain passes. `64x32` rows stop at an existing clean
+  row-anchor diagnostic.
+- Captured bad/green artifacts:
+  `/tmp/tmem_chain_shape_round29_chain0_direct_128x32.{ttgir,llir,ptx}` and
+  `/tmp/tmem_chain_shape_round29_alt_direct_128x32.{ttgir,llir,ptx}`. Both
+  emit the same public `tcgen05.st/ld.32x32b.x32.b32` packet shape; the
+  difference is the accepted descriptor-view layout basis, not opcode
+  selection.
 
 ## 2026-04-21: Round 29 structural fuzzer smoke
 
@@ -29998,6 +30009,10 @@ Open after this slice:
   `lowerTMemLdSt` on `Assertion 'bitwidth == 32' failed`. Encoded `i8`,
   `i16`, `f16`, `bf16`, `i32`, and `f32` controls returned successfully from
   the same pass.
+- The same assertion is reachable from ordinary Gluon frontend probes that
+  round-trip `torch.float64` or `torch.int64` through TMEM during JIT
+  compilation. Narrowing showed dead uninitialized 64-bit alloc is eliminated,
+  while initialized alloc, standalone store, and standalone load all crash.
 - Other boundary probes produced clean diagnostics for zero/non-power-of-two
   shapes, shared/TMEM memory-space mismatches, shape mismatches, CTA-count
   mismatches, negative linear basis, explicit out-rank mismatch, malformed

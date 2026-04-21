@@ -36,10 +36,18 @@ or control-flow boundary rather than plain memdesc branch carrying.
 Round 29 arm-symmetry probes further show `FZ-0002` is not selector-arm
 specific, same-object descriptor-view branches still miscompile, and direct
 offset-only/same-object descriptors pass.
+Follow-up chain-shape probes found the minimal wrong-code seed without branch,
+loop, or parent indexing: direct `ld/st` over the chain0 semantically identity
+view at `M=128` miscompiles, while an alternate identity chain passes. Both bad
+and green controls emit the same public `tcgen05.st/ld.32x32b.x32.b32` packet
+shape, pointing at accepted-but-misplanned descriptor-view layout mapping.
 Round 29 clean-boundary fuzzing found new `FZ-20260421-0017`: encoded `i64`
 and `f64` TMEM load/store operands reach `-triton-tensor-memory-allocation`
 and abort in `lowerTMemLdSt` on `bitwidth == 32` instead of producing a clean
-diagnostic or supported lowering.
+diagnostic or supported lowering. The same assertion is reachable from
+ordinary Gluon `torch.float64`/`torch.int64` TMEM round-trip kernels during JIT;
+initialized alloc, standalone store, and standalone load crash, while dead
+uninitialized alloc is eliminated.
 Round 29 memdesc-index fuzzing broadened `FZ-20260421-0001`: runtime
 `parent.index(ttgl.load(selector))` leaves illegal `ttg.memdesc_index` for
 direct load, store, copy, `ld.red`, and mixed consumers, and direct

@@ -2362,6 +2362,11 @@ signal handling:
   direct offset-only/same-object descriptors pass across branch/SSA structures.
   This further narrows `FZ-0002` to descriptor-view chain materialization
   across SSA/control flow. Copy dynamic/branch rows remain `FZ-0001`.
+  Follow-up chain-shape probes found direct `ld/st` chain0 wrong-code at
+  `M=128` without branch, loop, or parent indexing; alternate identity chains
+  pass and both bad/green controls emit the same public packet shape. Treat
+  this as accepted-but-misplanned descriptor-view layout mapping adjacent to
+  `FZ-0003`, with SSA/control-flow rows as amplifications.
 
 - 2026-04-21: Round 29 structural smoke completed. Report:
   `agents/fuzz_local_structural_round29.md`. Checked-in structural fuzzer on
@@ -2375,7 +2380,10 @@ signal handling:
   `Assertion 'bitwidth == 32' failed`. Runtime clean-boundary selector passed
   as `184 passed`; `test/TritonNvidiaGPU/invalid.mlir` lit baseline passed;
   other malformed shape, memory-space, CTA-count, and layout probes produced
-  typed diagnostics.
+  typed diagnostics. Python frontend probes for `torch.float64` and
+  `torch.int64` TMEM round trips abort during JIT at the same assertion; dead
+  uninitialized 64-bit alloc is eliminated, but initialized alloc, standalone
+  store, and standalone load crash.
 
 - 2026-04-21: Round 29 memdesc-index expansion lane completed. Report:
   `agents/fuzz_memdesc_index_round29.md`. No new bucket. Runtime

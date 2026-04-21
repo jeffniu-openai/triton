@@ -3519,6 +3519,12 @@ remain family-specific and consume a bounded subset of the inventory.
   no new independent `FZ-*`. `FZ-0002` is selector-symmetric and requires
   descriptor-view composition across SSA/control flow; direct descriptor branch
   controls pass. Copy dynamic/branch rows stay in `FZ-0001`.
+- Follow-up:
+  chain-shape probes found direct `ld/st` chain0 wrong-code at `M=128` without
+  branch, loop, or parent indexing. Alternate identity chains pass and bad/
+  green controls emit the same public `tcgen05.st/ld.32x32b.x32.b32` packet
+  shape, pointing at accepted-but-misplanned descriptor-view layout mapping
+  adjacent to `FZ-0003`.
 
 ### Round 29 structural fuzzer smoke
 
@@ -3544,7 +3550,10 @@ remain family-specific and consume a bounded subset of the inventory.
   operands reach `-triton-tensor-memory-allocation` and abort in
   `lowerTMemLdSt` on `bitwidth == 32`. Runtime clean-boundary selector passed
   as `184 passed`; `test/TritonNvidiaGPU/invalid.mlir` passed; neighboring
-  boundary probes produced typed diagnostics.
+  boundary probes produced typed diagnostics. Python frontend probes for
+  `torch.float64`/`torch.int64` TMEM round trips reach the same JIT-time
+  assertion; initialized alloc, standalone store, and standalone load crash,
+  while dead uninitialized alloc is eliminated.
 
 ### Round 29 memdesc-index expansion
 

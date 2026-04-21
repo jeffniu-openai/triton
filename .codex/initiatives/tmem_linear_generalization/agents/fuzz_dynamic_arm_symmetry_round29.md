@@ -233,3 +233,171 @@ or same-object branch values. That points away from a blanket "all descriptor
 views through branches are bad" model and toward a chain-shape-specific
 descriptor-view packet/layout mapping issue. The direct descriptor controls
 remain green.
+
+## Follow-up: Chain Shape Matrix
+
+A separate temporary probe swept the original chain0 helper and the alternate
+identity chain over direct-root and indexed-root `ld/st` descriptors for a small
+shape matrix.
+
+Artifacts:
+
+- Probe file: `/tmp/tmem_chain_shape_round29_probe.py`
+- Log: `/tmp/tmem_chain_shape_round29.log`
+
+Commands:
+
+```bash
+PYTHONPATH=.:./python:./python/test/gluon python -m py_compile /tmp/tmem_chain_shape_round29_probe.py
+PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only /tmp/tmem_chain_shape_round29_probe.py
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 \
+  PYTHONPATH=.:./python:./python/test/gluon \
+  pytest -s --tb=short /tmp/tmem_chain_shape_round29_probe.py \
+  2>&1 | tee /tmp/tmem_chain_shape_round29.log
+```
+
+Result:
+
+```text
+12 tests collected
+8 failed, 4 passed in 5.83s
+```
+
+Rows:
+
+| Shape | Root | Chain | Observed result | Classification |
+| --- | --- | --- | --- | --- |
+| `64x32` | direct | chain0 | clean compile-time unsupported row-anchor diagnostic | Existing clean boundary |
+| `64x32` | direct | alternate | same clean unsupported diagnostic before the alternate view can execute | Existing clean boundary |
+| `64x32` | indexed | chain0 | clean compile-time unsupported row-anchor diagnostic | Existing clean boundary |
+| `64x32` | indexed | alternate | same clean unsupported diagnostic | Existing clean boundary |
+| `128x32` | direct | chain0 | wrong output: `4032/4096` mismatches, max abs diff about `6.04` | Existing descriptor-view chain wrong-code family, likely adjacent to `FZ-20260421-0003` |
+| `128x32` | direct | alternate | passed, `0` mismatches | Positive control |
+| `128x32` | indexed | chain0 | wrong output: `4032/4096` mismatches, max abs diff about `5.45` | Existing descriptor-view chain wrong-code family |
+| `128x32` | indexed | alternate | passed, `0` mismatches | Positive control |
+| `128x64` | direct | chain0 | wrong output: `8064/8192` mismatches, max abs diff about `5.91` | Existing descriptor-view chain wrong-code family |
+| `128x64` | direct | alternate | passed, `0` mismatches | Positive control |
+| `128x64` | indexed | chain0 | wrong output: `8064/8192` mismatches, max abs diff about `6.23` | Existing descriptor-view chain wrong-code family |
+| `128x64` | indexed | alternate | passed, `0` mismatches | Positive control |
+
+Updated diagnosis:
+
+The wrong-code is reproducible without parent indexing, without branches, and
+without loop-carried SSA for the chain0 shape at `M=128`. Parent indexing does
+not change the mismatch count. The alternate chain remains a strong positive
+control for both direct and indexed roots at `128x32` and `128x64`. The `64x32`
+cases did not produce runtime evidence because `32x32b` descriptor-view
+`ld/st` correctly stops at the existing row-anchor diagnostic.
+
+This makes the Round 29 branch/SSA rows look like amplifications of a
+chain-shape-specific descriptor-view mapping problem rather than a purely
+control-flow-specific bug. The branch and loop variants still matter because
+they show how the same bad view can travel through generic descriptor SSA, but
+the minimal wrong-code seed for this slice is now "chain0 view + direct
+`ld/st`, M=128".
+
+## Follow-up: IR/PTX Capture for Minimal Bad and Green Control
+
+The minimal bad chain0 direct-root case and the green alternate-chain direct
+control were compiled once more without assertions so their generated artifacts
+could be saved for later repair work.
+
+Artifacts:
+
+- Capture script: `/tmp/tmem_chain_shape_round29_capture.py`
+- Capture log: `/tmp/tmem_chain_shape_round29_capture.log`
+- Bad chain0 direct `128x32`:
+  - `/tmp/tmem_chain_shape_round29_chain0_direct_128x32.ttgir`
+  - `/tmp/tmem_chain_shape_round29_chain0_direct_128x32.llir`
+  - `/tmp/tmem_chain_shape_round29_chain0_direct_128x32.ptx`
+- Green alternate direct `128x32`:
+  - `/tmp/tmem_chain_shape_round29_alt_direct_128x32.ttgir`
+  - `/tmp/tmem_chain_shape_round29_alt_direct_128x32.llir`
+  - `/tmp/tmem_chain_shape_round29_alt_direct_128x32.ptx`
+
+Command:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 \
+  PYTHONPATH=.:./python:./python/test/gluon \
+  python /tmp/tmem_chain_shape_round29_capture.py \
+  2>&1 | tee /tmp/tmem_chain_shape_round29_capture.log
+```
+
+Result:
+
+```text
+chain0_direct_128x32 asm_keys ['cubin', 'llir', 'ptx', 'source', 'ttgir']
+chain0_direct_128x32 mismatch_count 4032 max_abs_diff 5.975822448730469
+alt_direct_128x32 asm_keys ['cubin', 'llir', 'ptx', 'source', 'ttgir']
+alt_direct_128x32 mismatch_count 0 max_abs_diff 0.0
+```
+
+PTX observation:
+
+- Both cases emit the same public packet shape:
+  `tcgen05.st.sync.aligned.32x32b.x32.b32` followed by
+  `tcgen05.ld.sync.aligned.32x32b.x32.b32`.
+- The difference is not opcode selection.
+
+TTGIR observation:
+
+- Bad chain0 direct creates a final descriptor view with row basis
+  `[[64, 0], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]]` before
+  `ttng.tmem_load`.
+- Green alternate direct canonicalizes back to the original
+  `#ttng.tensor_memory_linear` layout before `ttng.tmem_load`; the two
+  opposite permutes disappear into a reshape back to the base descriptor
+  layout.
+
+Updated diagnosis:
+
+The minimal bad case now has a concrete layout signature: a semantically
+identity chain that rotates the row basis so the `64` row anchor becomes the
+first basis vector is accepted for `32x32b` `ld/st`, emits the same packet shape
+as the green control, and then reads back the wrong rows. This looks closer to
+an accepted-but-misplanned descriptor-view layout family than to an SSA
+control-flow issue.
+
+## Follow-up: Direct Row-Basis Roundtrip Controls
+
+A direct-layout control then tested whether the rotated row basis is inherently
+bad when used as the allocation layout itself, with no descriptor view.
+
+Artifacts:
+
+- Probe file: `/tmp/tmem_row_basis_round29_probe.py`
+- Log: `/tmp/tmem_row_basis_round29.log`
+
+Commands:
+
+```bash
+PYTHONPATH=.:./python:./python/test/gluon python -m py_compile /tmp/tmem_row_basis_round29_probe.py
+PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only /tmp/tmem_row_basis_round29_probe.py
+CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 \
+  PYTHONPATH=.:./python:./python/test/gluon \
+  pytest -s --tb=short /tmp/tmem_row_basis_round29_probe.py \
+  2>&1 | tee /tmp/tmem_row_basis_round29.log
+```
+
+Result:
+
+```text
+8 passed in 8.39s
+```
+
+Rows covered:
+
+- `128x32` and `128x64`;
+- row basis orders: identity, `last_first` (`[64, 1, 2, ...]` for `M=128`),
+  reverse, and even/odd;
+- direct `ttng.tmem_alloc`, store, then load with the same descriptor layout.
+
+Updated diagnosis:
+
+The rotated row basis is not inherently broken as a direct allocation layout.
+All direct row-basis roundtrips pass. The wrong-code seed requires a
+cross-layout path: store through the base descriptor layout, then load through a
+semantically identity descriptor-view layout whose row basis has been rotated.
+That points at descriptor-view layout equivalence/materialization, not generic
+row-basis support in `tcgen05.ld/st`.
