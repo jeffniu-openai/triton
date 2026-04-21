@@ -1,3 +1,34 @@
+## 2026-04-21 14:19 UTC: Round 42 scaled-MMAv5 positive guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_positive_round42.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Collection selector covered scaled-MMAv5 root format, `use_acc`,
+  accumulator subslice, tile-permuted 64-wide accumulator, and narrow identity
+  accumulator positives while excluding report/resource/clean-boundary rows.
+- Collection/result: `94/1615` rows, split-4 as `94 passed`
+  (`24/24/24/22`).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, unexpected pass/fail transition, or new
+  independent `FZ-*`.
+
+## 2026-04-21 14:19 UTC: Round 42 cache/state reuse subagent lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_cache_state_reuse_round42.md`
+  from commit `38ec3f39`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Mixed in-process GPU lanes ran positives, clean diagnostics, and expected
+  structural FZ failures in one pytest process; positives after expected
+  failures passed on all four GPUs.
+- Warm-cache process-boundary controls matched prior guardrails:
+  descriptor/high-rank selector `120 passed, 20 skipped`, clean diagnostic
+  selector `22 passed`, and structural known-failure selector
+  `3 passed, 23 xfailed`.
+- Classification: no cache/state bug, process-boundary sensitivity,
+  in-process contamination, or candidate new `FZ-*`.
+
 ## 2026-04-21 14:18 UTC: Round 42 core TMA/MMAv5 guardrail
 
 - Wrote

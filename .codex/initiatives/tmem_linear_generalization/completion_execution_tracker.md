@@ -60,6 +60,25 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:19 UTC Round 42 scaled-MMAv5 positive guardrail completed.
+  Artifact: `agents/fuzz_scaled_positive_round42.md`. Selector over
+  scaled-MMAv5 root format, `use_acc`, accumulator subslice, tile-permuted
+  64-wide accumulator, and narrow identity accumulator positives collected
+  `94/1615` and passed split-4 as `94 passed` (`24/24/24/22`). No compiler
+  crash, false unsupported diagnostic, opcode absence, runtime miscompile,
+  unexpected pass/fail transition, or new independent `FZ-*`; backend repair
+  remains deferred.
+  2026-04-21 14:19 UTC Round 42 cache/state reuse subagent lane integrated.
+  Artifact: `agents/fuzz_cache_state_reuse_round42.md`; subagent commit
+  `38ec3f39`. Required `make -j8` reported `no work to do`. Mixed in-process
+  GPU lanes intentionally ran positives, clean diagnostics, and expected
+  structural FZ failures in one pytest process, then further positives; all
+  post-failure positives passed. Warm-cache process-boundary controls matched
+  prior guardrails: descriptor/high-rank `120 passed, 20 skipped`, clean
+  diagnostics `22 passed`, and structural known-failure controls
+  `3 passed, 23 xfailed`. No cache/state bug, process-boundary sensitivity,
+  in-process contamination, or candidate new `FZ-*`; backend repair remains
+  deferred.
   2026-04-21 14:18 UTC Round 42 core TMA/MMAv5 guardrail completed. Artifact:
   `agents/fuzz_core_tma_mma_guardrail_round42.md`. Selector
   `(tcgen05_mma or tma_mma_shared_inputs) and not scaled and not multicast`
