@@ -14980,6 +14980,21 @@ rejection, not rescue
   crash.
 - Post Lane U/W structural-fuzzer smoke gate passed after required `make -j8`
   no-op: `9 passed, 24 xfailed in 8.69s`.
+- Local runtime-matrix slices stayed green while Round 13 subagents ran:
+  allocation/lifetime selector collected `7/1615` and passed `7/7`; broader
+  two-CTA/multicast-adjacent selector collected `370/1615` and passed split-4
+  as `333 passed, 37 skipped`.
+- Lane X completed allocation/lifetime/commit/barrier fuzzing. The report
+  `agents/fuzz_alloc_lifetime_round13.md` found no new independent `FZ-*` and
+  no runtime miscompile across `28` rows: `18` pass, `4` `FZ-0010`, `2` clean
+  TMEM OOR, `2` clean copy packed-lane unsupported, and `2`
+  harness/shared-layout setup limitations.
+- Local rank5/higher-rank descriptor selector collected `82/1615` and passed
+  split-4 as `62 passed, 20 skipped`.
+- Local lifetime/mbarrier sanity report
+  `agents/fuzz_lifetime_mbarrier_round13.md` found no new `FZ-*`: core
+  commit/mbarrier rows passed `13/13`, allocation lifetime rows passed `7/7`,
+  and descriptor-chain/physical-bitcast rows passed `29/29`.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 

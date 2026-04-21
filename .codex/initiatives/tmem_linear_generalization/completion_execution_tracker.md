@@ -417,6 +417,26 @@ The project is complete when:
   required `make -j8` no-op:
   `python/test/gluon/test_tmem_structural_fuzzer.py` reported
   `9 passed, 24 xfailed in 8.69s`.
+  2026-04-21 local allocation/lifetime selector collected `7/1615` and passed
+  `7 passed, 1608 deselected` after required `make -j8` no-op.
+  2026-04-21 local two-CTA/multicast-adjacent selector collected `370/1615`
+  and passed split-4 across GPUs 0-3 with stable caches as `333 passed,
+  37 skipped`; durations stored at
+  `/tmp/tmem_local_r13_twocta_multicast_durations.json`.
+  2026-04-21 Round 13 Lane X completed allocation/lifetime/commit/barrier
+  fuzzing without backend repairs. No new independent `FZ-*` and no runtime
+  miscompile. Probe total: `28` rows classified as `18` pass, `4`
+  `FZ-20260421-0010`, `2` clean TMEM OOR, `2` clean copy packed-lane
+  unsupported, and `2` harness/shared-layout setup limitations. Report:
+  `agents/fuzz_alloc_lifetime_round13.md`.
+  2026-04-21 local rank5/higher-rank descriptor selector collected `82/1615`
+  and passed split-4 across GPUs 0-3 with stable caches as `62 passed,
+  20 skipped`; durations stored at
+  `/tmp/tmem_local_r13_rank5_higher_rank_durations.json`.
+  2026-04-21 local lifetime/mbarrier sanity report found no new `FZ-*`: core
+  commit/mbarrier rows passed `13/13`, runtime-matrix allocation lifetime rows
+  passed `7/7`, and descriptor-chain/physical-bitcast rows passed `29/29`.
+  Report: `agents/fuzz_lifetime_mbarrier_round13.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

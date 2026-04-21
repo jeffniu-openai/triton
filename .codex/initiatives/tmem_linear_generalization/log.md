@@ -27541,3 +27541,75 @@ Open after this slice:
 - Command:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
 - Result: `9 passed, 24 xfailed in 8.69s`.
+
+## 2026-04-21: local allocation/lifetime and two-CTA runtime slices
+
+- Ran checked-in runtime-matrix coverage while Round 13 allocation/lifetime and
+  FPSAN/MMAv5 subagent lanes were active. No backend or compiler repairs were
+  attempted.
+- Allocation/lifetime collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mbarrier or commit or alloc or lifetime or overlap'`
+  selected `7/1615` rows.
+- Allocation/lifetime command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'mbarrier or commit or alloc or lifetime or overlap'`
+- Allocation/lifetime result after required `make -j8`: `7 passed,
+  1608 deselected in 11.88s`.
+- Two-CTA/multicast-adjacent collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'membar or barrier or twocta or multicast'`
+  selected `370/1615` rows.
+- Two-CTA/multicast-adjacent command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r13_twocta_multicast_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'membar or barrier or twocta or multicast'`
+- Two-CTA/multicast-adjacent result after required `make -j8` per shard:
+  - group 1/GPU 0: `66 passed, 27 skipped, 1522 deselected in 108.99s`;
+  - group 2/GPU 1: `83 passed, 10 skipped, 1522 deselected in 63.26s`;
+  - group 3/GPU 2: `93 passed, 1522 deselected in 51.18s`;
+  - group 4/GPU 3: `91 passed, 1524 deselected in 56.85s`.
+- Aggregate: `333 passed, 37 skipped`. No new bucket was found.
+
+## 2026-04-21: Round 13 Lane X allocation/lifetime fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_alloc_lifetime_round13.md`.
+- Classification: no new independent `FZ-*` bucket and no runtime miscompile.
+- Temporary probe `/tmp/tmem_alloc_lifetime_round13_probe.py` ran `28` rows in
+  fresh subprocesses with a stable cache after required `make -j8` no-op.
+- Final classification: `18` pass, `4` `FZ-20260421-0010` high-CGA CTA-count
+  gate rows, `2` clean TMEM OutOfResources boundaries, `2` clean copy
+  packed-lane unsupported boundaries, and `2` harness/shared-layout setup
+  limitations.
+- Positive coverage candidates include multiple independent live TMEM
+  allocations, overlapping sibling descriptor views with intervening
+  stores/loads, a 1CTA MMA accumulator view sharing a parent with a sibling
+  load/store view, and legal allocator-pressure rows below the 512-column
+  resource limit.
+
+## 2026-04-21: local rank5/higher-rank descriptor slice
+
+- Ran checked-in runtime-matrix coverage for higher-rank and rank5 descriptor
+  views while the FPSAN/MMAv5 subagent lane was still active. No backend or
+  compiler repairs were attempted.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'rank5 or higher_rank'`
+  selected `82/1615` rows.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r13_rank5_higher_rank_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'rank5 or higher_rank'`
+- Result after required `make -j8` per shard:
+  - group 1/GPU 0: `21 passed, 1594 deselected in 3.55s`;
+  - group 2/GPU 1: `18 passed, 3 skipped, 1594 deselected in 3.35s`;
+  - group 3/GPU 2: `4 passed, 17 skipped, 1594 deselected in 3.32s`;
+  - group 4/GPU 3: `19 passed, 1596 deselected in 3.52s`.
+- Aggregate: `62 passed, 20 skipped`. No new bucket was found.
+
+## 2026-04-21: local lifetime/mbarrier sanity report
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_lifetime_mbarrier_round13.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Required `make -j8` was a no-op before each runtime slice.
+- Core commit/mbarrier selector over TMA multicast, 1CTA/2CTA MMAv5 multicast
+  commit, scaled-MMAv5 multicast barrier, and async-copy mbarrier rows passed
+  `13/13` split across GPUs 0-3.
+- Runtime-matrix allocation lifetime selector passed `7/7`.
+- Descriptor-chain and physical-bitcast selector passed `29/29`.

@@ -1762,6 +1762,48 @@ remain family-specific and consume a bounded subset of the inventory.
   repeated reruns keep showing the runtime mismatch instead of the historical
   crash.
 
+### Round 13 Lane X, allocation/lifetime/commit/barrier fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_alloc_lifetime_round13.md`
+- Required build: `make -j8` no-op.
+- Temporary probe:
+  `/tmp/tmem_alloc_lifetime_round13_probe.py`.
+- Scope: 28 subprocess-isolated rows covering two independent live TMEM
+  allocations, sibling descriptor views with overlapping live ranges,
+  copy-plus-ldst with one commit/wait sequence, MMA accumulator views sharing
+  a parent allocation with sibling views, 1/2/4 CTA launch contexts, and
+  allocator pressure around the 512-column hardware limit.
+- Result: no new independent `FZ-*` bucket and no runtime miscompile.
+- Final classification:
+  - `18` pass;
+  - `4` `FZ-20260421-0010` high-CGA CTA-count gate rows;
+  - `2` clean TMEM OutOfResources boundaries;
+  - `2` clean copy packed-lane unsupported boundaries;
+  - `2` harness/shared-layout setup limitations.
+- Positive coverage candidates after discovery: multiple independent live
+  TMEM allocations, overlapping sibling descriptor views, 1CTA MMA accumulator
+  view plus sibling load/store view, and allocator-pressure rows that
+  distinguish legal reuse from clean 512-column rejection.
+
+### Round 13 local lifetime/mbarrier sanity
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_lifetime_mbarrier_round13.md`
+- Required build: `make -j8` no-op before each runtime slice.
+- Scope: existing runtime coverage around TMEM allocation lifetime
+  bookkeeping, commit opcode selection, multicast mbarrier plumbing,
+  descriptor-chain subviews, and physical-bitcast view mapping.
+- Result: no new independent `FZ-*` bucket.
+- Evidence:
+  - core commit/mbarrier selector over TMA multicast, 1CTA/2CTA MMAv5
+    multicast commit, scaled-MMAv5 multicast barrier, and async-copy mbarrier
+    rows passed `13/13`;
+  - runtime-matrix allocation lifetime selector passed `7/7`;
+  - descriptor-chain and physical-bitcast selector passed `29/29`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
