@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:05 UTC Round 37 load/store positive guardrail
+  completed. Report:
+  `agents/fuzz_ldst_positive_guardrail_round37.md`. Selector
+  `ldst and not reports and not resource and not roundtrip and not clean`
+  collected `201/1615` and passed split-4 as `201 passed` (`51/51/51/48`).
+  No compiler crash, false unsupported diagnostic, opcode absence, runtime
+  miscompile, clean-boundary drift, unexpected xfail/pass transition, or new
+  independent `FZ-*`.
+
 - Latest: 2026-04-21 14:00 UTC Round 37 MMAv5 format/use-acc guardrail
   completed. Report:
   `agents/fuzz_mmav5_format_useacc_guardrail_round37.md`. Selector

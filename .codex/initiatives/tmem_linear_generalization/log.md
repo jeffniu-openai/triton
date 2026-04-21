@@ -30766,6 +30766,18 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:05 UTC: Round 37 load/store positive guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_positive_guardrail_round37.md`.
+- Selector:
+  `ldst and not reports and not resource and not roundtrip and not clean`.
+- Collection: `201/1615`.
+- Split-4 result: `201 passed` (`51/51/51/48` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`. Backend repair remains deferred.
+
 ## 2026-04-21 14:00 UTC: Round 37 MMAv5 format and use-acc guardrail
 
 - Wrote

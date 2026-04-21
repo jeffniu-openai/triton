@@ -60,6 +60,13 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:05 UTC Round 37 load/store positive guardrail completed.
+  Artifact: `agents/fuzz_ldst_positive_guardrail_round37.md`. Selector
+  `ldst and not reports and not resource and not roundtrip and not clean`
+  collected `201/1615` and passed split-4 as `201 passed`. No compiler crash,
+  false unsupported diagnostic, opcode absence, runtime miscompile,
+  clean-boundary drift, unexpected xfail/pass transition, or new independent
+  `FZ-*`; backend repair remains deferred.
   2026-04-21 14:00 UTC Round 37 MMAv5 format/use-acc guardrail completed.
   Artifact: `agents/fuzz_mmav5_format_useacc_guardrail_round37.md`. Selector
   `(root_format or use_acc or plain_kind) and not reports and not resource and not m64`
