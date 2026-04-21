@@ -1,3 +1,44 @@
+## 2026-04-21 14:10 UTC: Round 40 copy/dynamic descriptor subagent lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_dynamic_descriptor_round40.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Checked-in runtime selector covering `cp_no_scales`, `cp_scales`,
+  descriptor-view B-scale/scales copy, source initialization, and
+  rematerialization rows collected `270/1615` and passed/stably skipped
+  split-4 as `266 passed, 4 skipped`.
+- Checked-in structural selector `copy_scales or generic_pass or
+  dynamic_index or dynamic_if or descriptor_view` collected `16/33` and stayed
+  stable as `2 passed, 14 xfailed`.
+- Temporary branch-selected `warpx2::{01_23,02_13}` copy descriptor rows all
+  passed with expected `tcgen05.cp` opcodes and correct runtime output.
+- Temporary branch-selected linear `128x128b` copy descriptors reproduced
+  existing `FZ-20260421-0001`, sharpening the bucket for dynamic/
+  control-flow-carried memdesc values consumed by `ttng.tmem_copy`.
+- No new independent `FZ-*`.
+
+## 2026-04-21 14:10 UTC: Round 40 proxy/TMA sequencing subagent lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_tma_sequences_round40.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Checked-in `test_core.py` TMA/multicast/commit/mbarrier selector passed
+  `12` rows.
+- Runtime-matrix proxy/mbarrier/multicast/two-CTA selector collected
+  `322/1615` and passed/stably skipped split-4 as `285 passed, 37 skipped`.
+- Structural selector collected `17/33` and stayed stable as
+  `1 passed, 16 xfailed`.
+- TMA-fed MMAv5 shared-input/core selector collected `217/18114` and
+  passed/stably skipped split-4 as `169 passed, 48 skipped`.
+- Temporary Round 34 proxy/mbarrier replay reproduced existing
+  `FZ-20260421-0014` in three rows and one green mixed init-all contrast.
+- Temporary Round 36 dynamic proxy-view replay classified six rows as existing
+  `FZ-20260421-0001` and two rows as existing clean descriptor-view
+  boundaries.
+- No new independent `FZ-*`.
+
 ## 2026-04-21 14:10 UTC: Round 40 clean-boundary runtime guardrail
 
 - Wrote
