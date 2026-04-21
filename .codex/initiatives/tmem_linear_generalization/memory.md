@@ -20,6 +20,28 @@
   `19`, `19`, `19`, and `17` tests; aggregate result `74 passed`. Durations
   were stored at `/tmp/tmem_local_r12_scaled_acc_subslice_durations.json`.
 
+- Latest: 2026-04-21 local Round 12 lit sanity stayed green:
+  `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+  passed `3/3`.
+
+- Latest: 2026-04-21 completed Round 12 Lane T cache/process stability fuzzing.
+  Report: `agents/fuzz_cache_process_round12.md`. No new cache/process/replay
+  instability candidate. Same-process stable-cache combined run, immediate
+  repeat, fresh subprocess replay with the same cache, and fresh diagnostic
+  cache contrast all matched `7 passed, 5 xfailed`. Bad sentinels remained in
+  their known buckets; green and clean-diagnostic controls remained green.
+
+- Latest: 2026-04-21 completed Round 12 Lane R high-CGA gate minimization.
+  Report: `agents/fuzz_high_cga_gate_round12.md`. `FZ-20260421-0010` is
+  reproduced across `18` minimized high-CGA rows covering 1CTA/2CTA linear
+  `ld/st`, direct `ld.red`, no-scales copy, and scales-copy layout
+  construction diagnostics for 4/8/16 CTA launch contexts. Passing contrast:
+  checked-in high-CGA MMA controls
+  `test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]` and
+  `[True-ctas_per_cga2]` passed `2/2`. The report sharpens the abstraction
+  gap: separate kernel launch/CGA size, layout visibility/multicast mapping,
+  and instruction-local `tcgen05` `cta_group::1/2`.
+
 - Latest: 2026-04-21 completed Round 10 Lane N MMAv5/scaled-MMAv5 dynamic
   descriptor-selection fuzzing. Report: `agents/fuzz_mma_dynamic_round10.md`.
   New report-only bucket candidate `FZ-20260421-0011`: plain MMAv5

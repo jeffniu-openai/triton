@@ -27366,3 +27366,46 @@ Open after this slice:
   - group 3/GPU 2: `19 passed, 1596 deselected in 10.58s`;
   - group 4/GPU 3: `17 passed, 1598 deselected in 5.04s`.
 - Aggregate: `74 passed`. No new bucket was found.
+
+## 2026-04-21: Round 12 lit sanity
+
+- Ran a cheap compiler-only lit sanity pass while Round 12 runtime lanes were
+  active.
+- Command:
+  `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+- Result: `3/3` passed.
+
+## 2026-04-21: Round 12 Lane T cache/process stability
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_cache_process_round12.md`.
+- Classification: no new cache/process/replay instability candidate.
+- Stable-cache same-process combined run and immediate repeat both reported
+  `7 passed, 5 xfailed`.
+- Fresh subprocess replay with the same stable cache matched the same
+  classifications for each row.
+- Fresh diagnostic-cache contrast also reported `7 passed, 5 xfailed`.
+- Environment note: one discarded collect-only attempt imported a stale
+  `/tmp` Triton checkout because `PYTHONPATH=.:./python` was missing; all
+  recorded validations pinned the repo-local path.
+
+## 2026-04-21: Round 12 Lane R high-CGA gate minimization
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_gate_round12.md`.
+- Classification: strengthens `FZ-20260421-0010`.
+- Fresh-process probe reproduced the CTA-count gate across `18` minimized
+  rows covering 1CTA/2CTA linear `ld/st`, direct `ld.red`, no-scales copy, and
+  scales-copy layout diagnostics in 4/8/16 CTA launch contexts.
+- Representative diagnostic:
+  `Layout has 2 CTAs per CGA, but the context requires 16 CTAs per CGA`.
+- Passing contrast high-CGA MMA controls remained green:
+  `test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]` and
+  `test_tcgen05_mma_multicast_commit[True-ctas_per_cga2]` passed `2/2`.
+- The report recommends promoting high-CGA xfails for linear `ld/st`,
+  `ld.red`, no-scales copy, and a smaller scales-layout diagnostic, with the
+  passing high-CGA MMA controls kept as green contrast.

@@ -1623,6 +1623,30 @@ remain family-specific and consume a bounded subset of the inventory.
   kernel CGA shape from instruction-local `cta_group` for linear/scales TMEM
   layouts.
 
+### Round 12 Lane R, high-CGA gate minimization
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_gate_round12.md`
+- Required build: `make -j8` no-op.
+- Probe:
+  `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=.:./python:./python/test/gluon python /tmp/tmem_high_cga_gate_round12_probe.py`.
+- Result: `FZ-20260421-0010` reproduced across `18` minimized rows:
+  - 1CTA/2CTA linear `ld/st` descriptor-view chain in 4/8/16 CTA contexts;
+  - 1CTA/2CTA direct `ld.red` in 4/8/16 CTA contexts;
+  - 1CTA/2CTA no-scales copy in 4/8/16 CTA contexts;
+  - scales-copy layout construction diagnostics for 1CTA/2CTA high-CGA rows.
+- Representative diagnostics remain the exact CTA-count equality gate:
+  `Layout has 1 CTAs per CGA, but the context requires 4 CTAs per CGA` and
+  `Layout has 2 CTAs per CGA, but the context requires 16 CTAs per CGA`.
+- Passing contrast:
+  `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 PYTHONPATH=.:./python pytest -s --tb=short 'python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]' 'python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[True-ctas_per_cga2]'`
+  reported `2 passed in 3.18s`.
+- Promotion recommendation: add xfails for 1CTA and 2CTA linear `ld/st`,
+  direct `ld.red`, and no-scales copy in 4/8/16 CTA contexts, plus a smaller
+  scales-layout diagnostic test. Keep the high-CGA MMA controls as green
+  contrast evidence.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without degenerating into the known

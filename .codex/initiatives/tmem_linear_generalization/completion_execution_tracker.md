@@ -356,6 +356,21 @@ The project is complete when:
   `mma_scaled and acc_subslice_view and not reports`; split-4 across GPUs 0-3
   selected `19/19/19/17` tests and reported aggregate `74 passed`. Durations
   were stored at `/tmp/tmem_local_r12_scaled_acc_subslice_durations.json`.
+  2026-04-21 local Round 12 lit sanity stayed green: `ninja triton-opt` no-op
+  and `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+  passed `3/3`.
+  2026-04-21 Round 12 Lane T completed cache/process stability fuzzing without
+  backend repairs. No new cache/process/replay instability candidate. Stable
+  same-process, immediate repeat, fresh subprocess, and fresh diagnostic-cache
+  contrasts all matched `7 passed, 5 xfailed`; bad rows stayed in known
+  buckets and green controls stayed green. Report:
+  `agents/fuzz_cache_process_round12.md`.
+  2026-04-21 Round 12 Lane R completed high-CGA gate minimization without
+  backend repairs. `FZ-20260421-0010` is reproduced across `18` minimized
+  rows: 1CTA/2CTA linear `ld/st`, direct `ld.red`, no-scales copy, and
+  scales-copy layout-construction diagnostics under 4/8/16 CTA launch
+  contexts. Passing high-CGA MMA controls stayed green as `2 passed in
+  3.18s`. Report: `agents/fuzz_high_cga_gate_round12.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive
