@@ -26558,3 +26558,24 @@ Open after this slice:
     reproduced with `triton-opt --run-reproducer`, aborting with exit `134`.
 - Report:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_crash_round6.md`.
+
+## 2026-04-21 09:08 UTC: Round 6 structural-fuzzer sentinel promotion
+
+- Continued the discovery-only 24-hour TMEM structural fuzzing campaign. No
+  backend or compiler repairs were attempted.
+- Promoted two Round 6 findings into
+  `python/test/gluon/test_tmem_structural_fuzzer.py`:
+  - `FZ-20260421-0007`: strict xfail
+    `mma-scaled-fz20260421-0007-subslice-if-n64-selector0`, covering the
+    scaled-MMAv5 `use_acc` low-column accumulator subslice selected through
+    dynamic `if`;
+  - `FZ-20260421-0008`: subprocess-isolated strict xfail
+    `test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash`,
+    covering the two-CTA indexed `ld.red` chain1 row/col optimizer abort while
+    keeping the parent pytest process alive.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
+  - collect-only found `32` structural-fuzzer nodeids;
+  - exact new sentinels reported `2 xfailed`;
+  - full structural fuzzer reported `9 passed, 23 xfailed`.

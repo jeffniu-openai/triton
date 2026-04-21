@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 Round 6 Lane C
+Last updated: 2026-04-21 09:08 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -103,6 +103,13 @@ The project is complete when:
   `triton-opt --run-reproducer` abort; plain `ld` fallback and clean
   unsupported controls are cataloged separately. No backend/compiler repair
   was attempted.
+  2026-04-21 09:08 UTC promoted `FZ-20260421-0007` and
+  `FZ-20260421-0008` into checked-in structural-fuzzer strict xfails. The
+  scaled-MMAv5 dynamic-if low-subslice row is an in-process expected
+  miscompile sentinel; the `ld.red` row/col optimizer abort is isolated in a
+  subprocess so the parent pytest process survives. Validation: required
+  `make -j8`, py-compile, `32` collected structural-fuzzer nodeids, exact
+  sentinels `2 xfailed`, and full fuzzer `9 passed, 23 xfailed`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

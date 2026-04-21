@@ -19,8 +19,10 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
     fence_async_shared,
     tcgen05_commit,
     tcgen05_copy,
+    tcgen05_mma_scaled,
 )
 from triton.experimental.gluon.language.nvidia.hopper import mbarrier
+from tmem_test_utils import random_quantized_tensor
 
 
 def _permute_bits(bits, kind):
@@ -48,6 +50,18 @@ def _make_linear_layout(m, n, row_kind="identity", col_kind="identity", two_ctas
         kwargs["block_bases"] = [[1, 0]]
         kwargs["two_ctas"] = True
     return TensorMemoryLinearLayout(**kwargs)
+
+
+def _make_permuted_twocta_layout(m, n, row_kind="identity", col_kind="identity"):
+    row_bits = _permute_bits([1 << i for i in range(int(math.log2(m)))], row_kind)
+    col_bits = _permute_bits([1 << i for i in range(int(math.log2(n)))], col_kind)
+    return TensorMemoryLinearLayout(
+        rows=[[bit, 0] for bit in row_bits if bit != 1],
+        cols=[[0, bit] for bit in col_bits],
+        block_bases=[[1, 0]],
+        shape=[m, n],
+        two_ctas=True,
+    )
 
 
 def _lift_layout(base_layout, prefix_shape):
@@ -87,6 +101,11 @@ def _extract_tcgen05_copy_ops(asm):
         r"(tcgen05\.cp(?:\.cta_group::\d+)?(?:\.warpx[24](?:::[^\s.;]+)*)?"
         r"\.\d+x\d+b(?:\.b8x16\.(?:b6x16_p32|b4x16_p64))?)"
     )
+    return pattern.findall(asm)
+
+
+def _extract_tcgen05_mma_ops(asm):
+    pattern = re.compile(r"(tcgen05\.mma\.cta_group::\d+\.kind::[^\s;\"]+)")
     return pattern.findall(asm)
 
 
@@ -150,6 +169,15 @@ class GenericPassLoopCarriedCase:
     selector: int
     loops: int
     instr_variant: str = "32x32b"
+
+
+@dataclass(frozen=True)
+class ScaledMmaControlFlowCase:
+    case_id: str
+    seed: int
+    n: int
+    selector: int
+    loop_count: int
 
 
 @dataclass(frozen=True)
@@ -358,6 +386,16 @@ GENERIC_PASS_LOOP_CARRIED_CASES = [
         marks=pytest.mark.xfail(
             strict=True,
             reason="R5-C: loop-carried TMEM view fails auto-layout inference in GluonResolveAutoEncodingsPass",
+        ),
+    ),
+]
+
+SCALED_MMA_CONTROL_FLOW_CASES = [
+    pytest.param(
+        ScaledMmaControlFlowCase("mma-scaled-fz20260421-0007-subslice-if-n64-selector0", 0x6B00, 64, 0, 2),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0007: scaled-MMAv5 use_acc low subslice selected through dynamic if miscompiles",
         ),
     ),
 ]
@@ -584,6 +622,86 @@ def _fuzz_generic_pass_loop_carried_kernel(
 
 
 @gluon.jit
+def _fuzz_scaled_mma_acc_subslice_if_kernel(
+    out_ptr,
+    selector_ptr,
+    loop_count_ptr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    K: ttgl.constexpr,
+    a,
+    b,
+    a_scale,
+    b_scale,
+    acc_layout: ttgl.constexpr,
+):
+    VEC_SIZE: ttgl.constexpr = 32
+    A_FORMAT: ttgl.constexpr = "e4m3"
+    B_FORMAT: ttgl.constexpr = "e4m3"
+
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
+    smem_layout_a: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for([M, K], a.dtype.element_ty)
+    smem_layout_b: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for([N, K], b.dtype.element_ty)
+    block_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+
+    a_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, block_layout))[:, None]
+    a_offs_k = ttgl.arange(0, K, layout=ttgl.SliceLayout(0, block_layout))[None, :]
+    b_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, block_layout))[:, None]
+    b_offs_k = ttgl.arange(0, K, layout=ttgl.SliceLayout(0, block_layout))[None, :]
+    a_tile = ttgl.load(a + a_offs_m * K + a_offs_k)
+    b_tile = ttgl.load(b + b_offs_n * K + b_offs_k)
+    a_smem = ttgl.allocate_shared_memory(a.dtype.element_ty, [M, K], smem_layout_a, a_tile)
+    b_smem = ttgl.allocate_shared_memory(b.dtype.element_ty, [N, K], smem_layout_b, b_tile)
+
+    acc_parent = allocate_tensor_memory(ttgl.float32, [M, 2 * N], acc_layout)
+    view0 = acc_parent.slice(0, N, dim=1)
+    view1 = acc_parent.slice(N, N, dim=1)
+    layout0: ttgl.constexpr = view0.get_reg_layout()
+    layout1: ttgl.constexpr = view1.get_reg_layout()
+    view0.store(ttgl.full([M, N], 3.0, ttgl.float32, layout=layout0))
+    view1.store(ttgl.full([M, N], 7.0, ttgl.float32, layout=layout1))
+
+    if ttgl.load(selector_ptr) != 0:
+        acc_tmem = view1
+    else:
+        acc_tmem = view0
+
+    scale_layout: ttgl.constexpr = TensorMemoryScalesLayout()
+    a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, K // VEC_SIZE], scale_layout)
+    b_scale_tmem = allocate_tensor_memory(b_scale.dtype.element_ty, [N, K // VEC_SIZE], scale_layout)
+    scale_reg_layout_m: ttgl.constexpr = a_scale_tmem.get_reg_layout()
+    scale_reg_layout_n: ttgl.constexpr = b_scale_tmem.get_reg_layout()
+
+    scale_offs_k_m = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_m))[None, :]
+    scale_offs_k_n = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_n))[None, :]
+    scale_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, scale_reg_layout_m))[:, None]
+    scale_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, scale_reg_layout_n))[:, None]
+    a_scale_tmem.store(ttgl.load(a_scale + scale_offs_m * (K // VEC_SIZE) + scale_offs_k_m))
+    b_scale_tmem.store(ttgl.load(b_scale + scale_offs_n * (K // VEC_SIZE) + scale_offs_k_n))
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_mma_scaled(
+        a_smem,
+        b_smem.permute((1, 0)),
+        acc_tmem,
+        a_scale_tmem,
+        b_scale_tmem,
+        A_FORMAT,
+        B_FORMAT,
+        use_acc=True,
+    )
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    mbarrier.invalidate(bar)
+
+    out_reg = acc_tmem.load()
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, reg_layout))[None, :]
+    ttgl.store(out_ptr + offs_m * N + offs_n, ttgl.convert_layout(out_reg, reg_layout))
+
+
+@gluon.jit
 def _fuzz_ldst_view_kernel(
     in_ptr,
     out_ptr,
@@ -740,6 +858,31 @@ def _fuzz_ldred_twocta_indexed_kernel(
         out, reduced = view.load_max(abs=use_abs, propagate_nan=propagate_nan)
     else:
         out, reduced = view.load_min(abs=use_abs, propagate_nan=propagate_nan)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
+    red_m = ttgl.arange(0, M, red_layout)
+    ttgl.store(red_ptr + red_m, ttgl.convert_layout(reduced, red_layout))
+
+
+@gluon.jit
+def _fuzz_ldred_twocta_indexed_row_chain_kernel(
+    in_ptr,
+    out_ptr,
+    red_ptr,
+    parent_layout: ttgl.constexpr,
+    red_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+):
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    view = parent.index(1)
+    view = view.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))[None, :]
+    offs = offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    view.store(ttgl.convert_layout(value, reg_layout))
+    out, reduced = view.load_min()
     ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
     red_m = ttgl.arange(0, M, red_layout)
     ttgl.store(red_ptr + red_m, ttgl.convert_layout(reduced, red_layout))
@@ -950,6 +1093,57 @@ def test_tmem_structural_fuzzer_ldred(case):
     assert any(".ld.red." in op for op in ptx_ops)
 
 
+def _run_ldred_twocta_rowcol_optimizer_crash_case():
+    m = 256
+    n = 2
+    torch.manual_seed(0x6C00 + m + n + 1)
+    layout = _make_permuted_twocta_layout(m, n, "even_odd", "identity")
+    parent_layout = _lift_layout(layout, [2])
+    red_layout = ttgl.BlockedLayout([1], [32], [8], [0], cga_layout=[[1]])
+    inp = torch.randn((m, n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty((m, ), dtype=torch.float32, device="cuda")
+    compiled = _fuzz_ldred_twocta_indexed_row_chain_kernel[(1, )](
+        inp, out, red, parent_layout, red_layout, m, n, num_warps=8, num_ctas=2
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.min(inp, dim=1).values, atol=1e-5, rtol=1e-5)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
+    assert ptx_ops == llir_ops
+    assert any(".ld.red." in op for op in ptx_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.xfail(
+    strict=True,
+    reason="FZ-20260421-0008: 2CTA indexed ld.red row/col chain aborts in OptimizeTMemLayouts",
+)
+def test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash():
+    code = """
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location(
+    "tmem_structural_fuzzer",
+    "python/test/gluon/test_tmem_structural_fuzzer.py",
+)
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+mod._run_ldred_twocta_rowcol_optimizer_crash_case()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=os.getcwd(),
+        env=os.environ.copy(),
+        text=True,
+        capture_output=True,
+        timeout=180,
+    )
+    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
+
+
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("case", COPY_CASES, ids=lambda case: case.case_id)
 def test_tmem_structural_fuzzer_copy_scales(case):
@@ -1092,3 +1286,39 @@ def test_tmem_structural_fuzzer_generic_pass_loop_carried(case):
     assert ptx_ops == llir_ops
     assert any(".ld." in op for op in ptx_ops)
     assert any(".st." in op for op in ptx_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", SCALED_MMA_CONTROL_FLOW_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_scaled_mma_acc_subslice_control_flow(case):
+    m = 128
+    k = 128
+    torch.manual_seed(case.seed)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, "mxfp8")
+    b, b_scale, b_ref = random_quantized_tensor(case.n, k, "mxfp8")
+    acc_layout = _make_linear_layout(m, 2 * case.n)
+    out = torch.empty((m, case.n), dtype=torch.float32, device="cuda")
+    selector = torch.tensor(case.selector, dtype=torch.int32, device="cuda")
+    loop_count = torch.tensor(case.loop_count, dtype=torch.int32, device="cuda")
+    compiled = _fuzz_scaled_mma_acc_subslice_if_kernel[(1, )](
+        out,
+        selector,
+        loop_count,
+        m,
+        case.n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        acc_layout,
+        num_warps=4,
+    )
+
+    expected_acc = 7.0 if case.selector else 3.0
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T + expected_acc, atol=1e-3, rtol=1e-3)
+    ptx_ops = _extract_tcgen05_mma_ops(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_mma_ops(compiled.asm["llir"])
+    assert ptx_ops == llir_ops
+    assert ptx_ops
+    assert all(op == "tcgen05.mma.cta_group::1.kind::mxf8f6f4" for op in ptx_ops)

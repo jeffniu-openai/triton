@@ -73,6 +73,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 09:08 UTC: promoted the two new Round 6 findings into
+  checked-in structural-fuzzer sentinels. Added a strict xfail for
+  `FZ-20260421-0007`, scaled-MMAv5 `use_acc` over a low-column accumulator
+  subslice selected through dynamic `if`, and a subprocess-isolated strict
+  xfail for `FZ-20260421-0008`, the two-CTA indexed `ld.red` row/col chain1
+  optimizer abort. Backend fixes remain deferred during discovery mode.
+  Validation: required `make -j8` no-op; py-compile passed; collect-only found
+  `32` nodeids; exact new sentinels reported `2 xfailed`; full structural
+  fuzzer reported `9 passed, 23 xfailed`.
+
 - 2026-04-21 09:03 UTC: completed Round 6 Lane C discovery for the
   report-only `ld.red` optimizer crash family. Confirmed a stable
   subprocess-isolated two-CTA indexed chain1 row/col crash,

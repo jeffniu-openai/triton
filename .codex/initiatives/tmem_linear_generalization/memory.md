@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 09:08 UTC promoted the two new Round 6 findings into
+  `python/test/gluon/test_tmem_structural_fuzzer.py`. Added strict xfail
+  `test_tmem_structural_fuzzer_scaled_mma_acc_subslice_control_flow[mma-scaled-fz20260421-0007-subslice-if-n64-selector0]`
+  for the scaled-MMAv5 dynamic-if low-subslice `use_acc` miscompile, and
+  subprocess-isolated strict xfail
+  `test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash` for the
+  `FZ-20260421-0008` optimizer abort. Validation: required `make -j8`
+  no-op; py-compile passed; collect-only found `32` nodeids; exact new
+  sentinels reported `2 xfailed`; full structural fuzzer reported
+  `9 passed, 23 xfailed`.
+
 - Latest: 2026-04-21 Round 6 Lane C completed discovery-only isolation for
   the report-only `ld.red` optimizer crash family. Confirmed
   `FZ-20260421-0008`: a two-CTA indexed chain1 row/col view,

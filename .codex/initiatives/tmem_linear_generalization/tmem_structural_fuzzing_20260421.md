@@ -748,10 +748,10 @@ remain family-specific and consume a bounded subset of the inventory.
     remained green.
 - Exact repro:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short '/tmp/tmem_mma_scaled_controlflow_round6_probe.py::test_round6_scaled_mma_acc_controlflow[r6-scaled-subslice-if-n64-subslice-if-64-0-2]'`.
-- Promotion status: report-only for Round 6. Recommended next promotion is a
-  self-contained strict xfail in
-  `python/test/gluon/test_tmem_structural_fuzzer.py` without importing helpers
-  from other test files.
+- Promotion status: checked-in strict xfail as of 2026-04-21 09:08 UTC:
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_scaled_mma_acc_subslice_control_flow[mma-scaled-fz20260421-0007-subslice-if-n64-selector0]`.
+  The sentinel is self-contained in the structural fuzzer and imports only the
+  non-test `tmem_test_utils.random_quantized_tensor` helper.
 
 ### FZ-20260421-0008: two-CTA indexed ld.red chain1 row/col optimizer crash
 
@@ -788,6 +788,11 @@ remain family-specific and consume a bounded subset of the inventory.
   - `256x2` chain2/chain3 `even_odd` controls are plain `ld` fallback rows,
     not optimizer crashes;
   - `128x32` chain1 `even_odd` remains a clean unsupported boundary.
+- Promotion status: checked-in subprocess-isolated strict xfail as of
+  2026-04-21 09:08 UTC:
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash`.
+  The subprocess isolation is required because the current failure aborts in
+  `TritonNvidiaGPUOptimizeTMemLayoutsPass`.
 - Promotion status: report-only for Round 6. A checked-in strict xfail is
   safe only as a subprocess-isolated test, not as an in-process kernel xfail.
   If promoted, use exactly one sentinel for the `256x2` chain1 `even_odd`
