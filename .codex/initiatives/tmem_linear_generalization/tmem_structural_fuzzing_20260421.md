@@ -2631,6 +2631,34 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 20 Lane AX FZ-0015 allocation order
+
+- Time: 2026-04-21 12:40 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_allocation_order_round20.md`
+- Result: no new independent `FZ-*`. All scale descriptors before the real
+  accumulator fail; dummy scale/acc allocations between scale descriptors and
+  the real accumulator still fail; the real accumulator before B scales or
+  between A/B scales passes.
+- Classification: strengthens `FZ-20260421-0015`; the selected B-scale load
+  side channel is clean in every row, so the issue remains scaled-MMAv5 B-scale
+  operand consumption/lowering and is sensitive to real accumulator allocation
+  order relative to scale descriptors.
+
+### Round 20 local clean-negative and structural xfail selector
+
+- Time: 2026-04-21 12:40 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_xfail_round20.md`
+- Selector:
+  `(reports_clean_unsupported or reports_clean_error or reports_tmem_oor or non_f32_contract or subword_dtypes_report_clean_error or generic_pass or dynamic_index) and not block_descriptor`
+  collected `208/1648`.
+- Split-4 result:
+  `197 passed, 11 xfailed`.
+- Classification: no unexpected pass, unexpected failure, runtime miscompile
+  outside known rows, compiler crash outside known xfails, or new independent
+  `FZ-*`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

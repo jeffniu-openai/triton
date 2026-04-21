@@ -99,6 +99,19 @@ Additional Round 20 green baseline: `agents/fuzz_local_mma_twocta_round20.md`.
 2CTA MMAv5/scaled accumulator-subslice selector collected `90/1615` and passed
 as `90 passed`; no new bucket.
 
+Newest `FZ-0015` allocation-order report:
+`agents/fuzz_fz0015_allocation_order_round20.md`. It shows `FZ-0015` does not
+follow absolute B-scale slot or A-scale involvement. All scale descriptors
+before the real accumulator fail; dummy scale/acc allocations between scales
+and real accumulator still fail; placing the real accumulator before B scales
+or between A/B scales passes. The selected B-scale load side channel stays
+clean in every row.
+
+Newest clean/xfail stability selector:
+`agents/fuzz_local_clean_xfail_round20.md`. Combined clean-negative and
+structural xfail selector collected `208/1648` and completed as
+`197 passed, 11 xfailed`; no unexpected pass/fail.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and

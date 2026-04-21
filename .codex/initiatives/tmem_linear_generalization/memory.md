@@ -14,6 +14,22 @@
   miscompile, compiler crash, unexpected unsupported diagnostic, or new
   `FZ-*` bucket.
 
+- Latest: 2026-04-21 12:40 UTC Lane AX sharpened `FZ-20260421-0015`
+  allocation-order sensitivity. Report:
+  `agents/fuzz_fz0015_allocation_order_round20.md`. All-scale-before-real-acc
+  fails; dummy scale or dummy accumulator inserted between scales and the real
+  accumulator still fails; real accumulator before B scales or between A/B
+  scales passes. The bug does not follow absolute B-scale slot or A-scale
+  involvement. The selected B-scale `tmem_load` side channel stayed clean in
+  every row. Current hypothesis: scaled-MMAv5 B-scale/SFB operand lowering or
+  descriptor-base rematerialization mishandles selected B-scale descriptors
+  when the real accumulator is allocated after all scale descriptors.
+
+- Latest: 2026-04-21 12:40 UTC local clean-negative/xfail selector stayed
+  stable. Report: `agents/fuzz_local_clean_xfail_round20.md`. Selector
+  collected `208/1648` and completed as `197 passed, 11 xfailed`; no
+  unexpected pass/fail or new bucket.
+
 - Latest: 2026-04-21 12:18 UTC Lane AU completed the plain-only proxy-fence
   reproducer comparison. Report:
   `agents/fuzz_proxy_fence_plain_reproducer_round19.md`. Saved MLIR:

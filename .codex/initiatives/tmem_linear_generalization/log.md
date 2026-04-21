@@ -28802,6 +28802,50 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 12:40 UTC: Round 20 Lane AX FZ-0015 allocation order
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_allocation_order_round20.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Exact-file probes varied TMEM allocation order around selected distinct
+  direct B-scale descriptors and the real accumulator, while keeping a selected
+  B-scale `tmem_load` side channel.
+- Result table:
+  - `a0,a1,b0,b1,acc` fails for selectors `0` and `1`;
+  - `a0,a1,acc,b0,b1` passes for selectors `0` and `1`;
+  - `acc,a0,a1,b0,b1` passes for selectors `0` and `1`;
+  - `b0,b1,acc,a0,a1` passes for selectors `0` and `1`;
+  - `a0,a1,b0,b1,dummy_scale,acc` fails for selectors `0` and `1`;
+  - `a0,a1,b0,b1,dummy_acc,acc` fails for selectors `0` and `1`;
+  - `acc,dummy_scale,a0,a1,b0,b1` passes for selectors `0` and `1`.
+- Every selected B-scale side-channel load had `0/512` byte mismatches.
+- Classification: no new independent `FZ-*`. This sharpens
+  `FZ-20260421-0015`: it follows whether the real accumulator is allocated
+  before/between scale groups versus after all scale groups, not absolute
+  B-scale slot, A-scale involvement, generic descriptor selection, or selected
+  scale payload readability.
+
+## 2026-04-21 12:40 UTC: Round 20 local clean-negative/xfail selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_xfail_round20.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector
+  `(reports_clean_unsupported or reports_clean_error or reports_tmem_oor or non_f32_contract or subword_dtypes_report_clean_error or generic_pass or dynamic_index) and not block_descriptor`
+  collected `208/1648`.
+- Split-4 result with stable per-GPU caches:
+  `197 passed, 11 xfailed`:
+  - GPU 0 / group 1: `52 passed`;
+  - GPU 1 / group 2: `52 passed`;
+  - GPU 2 / group 3: `52 passed`;
+  - GPU 3 / group 4: `41 passed, 11 xfailed`.
+- Classification: no unexpected pass, unexpected failure, runtime miscompile,
+  compiler crash outside known xfail rows, or new independent `FZ-*`.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

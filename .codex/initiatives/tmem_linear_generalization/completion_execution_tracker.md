@@ -2060,3 +2060,16 @@ signal handling:
 - 2026-04-21 12:35 UTC: local Round 20 2CTA MMAv5/scaled accumulator-subslice
   selector passed. Report: `agents/fuzz_local_mma_twocta_round20.md`.
   Selector collected `90/1615` and completed as `90 passed`; no new bucket.
+
+- 2026-04-21 12:40 UTC: integrated Lane AX allocation-order report:
+  `agents/fuzz_fz0015_allocation_order_round20.md`. No new bucket. `FZ-0015`
+  follows whether the real accumulator is allocated after all scale descriptors
+  versus before/between scale groups. All-scale-before-real-acc fails even with
+  dummy scale/acc allocations between scales and real acc; accumulator before B
+  scales or between A/B scales passes. Side-channel B-scale loads are clean in
+  every row.
+
+- 2026-04-21 12:40 UTC: local clean-negative/xfail selector passed/xfailed as
+  expected. Report: `agents/fuzz_local_clean_xfail_round20.md`. Selector
+  collected `208/1648` and completed as `197 passed, 11 xfailed`; no unexpected
+  pass/fail and no new bucket.
