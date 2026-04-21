@@ -27427,3 +27427,12 @@ Open after this slice:
 - Promotion guidance: any checked-in strict xfail for `FZ-20260421-0011` must
   explicitly pin FPSAN instrumentation and include dynamic-slice and
   constexpr-index controls.
+
+## 2026-04-21: local high-CGA MMA contrast rerun
+
+- Reran the compact passing high-CGA MMA controls as contrast evidence for
+  `FZ-20260421-0010` while copy and ld.red fuzz lanes were active.
+- Required `make -j8` reported no work to do.
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short 'python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]' 'python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[True-ctas_per_cga2]'`
+- Result: `2 passed in 3.05s`.

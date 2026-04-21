@@ -378,6 +378,9 @@ The project is complete when:
   lifted-linear runtime-index form falls back to known `FZ-20260421-0001`
   illegal `ttg.memdesc_index` lowering. Report:
   `agents/fuzz_plain_mma_runtime_index_round12.md`.
+  2026-04-21 local high-CGA MMA contrast controls stayed green after required
+  `make -j8` no-op: `test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]`
+  and `[True-ctas_per_cga2]` reported `2 passed in 3.05s`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

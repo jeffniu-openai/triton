@@ -1,5 +1,10 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local high-CGA MMA contrast controls stayed green after
+  required `make -j8` no-op:
+  `python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]`
+  and `[True-ctas_per_cga2]` passed `2/2` in `3.05s`.
+
 - Latest: 2026-04-21 local post-report structural-fuzzer smoke gate stayed
   green. Required `make -j8` reported no work to do. Command:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
