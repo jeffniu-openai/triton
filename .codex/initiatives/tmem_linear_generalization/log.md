@@ -32799,3 +32799,20 @@ Open after this slice:
   no new independent `FZ-*`; no compiler crash, verifier drift, false
   unsupported diagnostic, opcode-selection regression, software/hardware
   reduction classification drift, or runtime miscompile.
+
+## 2026-04-21: Round 58 local x1/subword lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_local_x1_subword_lane.md`.
+- Required `make -j8` was a no-op.
+- Selector `ldst_x1 or subword_descriptor_chain or ldst_subword` collected
+  `48/1615`.
+- Split-4 runtime result:
+  `48 passed`.
+- Coverage included subword pack/unpack, subword descriptor-chain roundtrips,
+  x1 subword roundtrips, two-CTA x1 subword and descriptor-chain roundtrips,
+  x1 `f32`/`i32` roundtrips and descriptor-chain roundtrips, and clean
+  unsupported `16x128b` x1 variants.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  clean-boundary drift, runtime miscompile, hang, or new independent `FZ-*`.

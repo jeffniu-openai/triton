@@ -4243,3 +4243,19 @@ remain family-specific and consume a bounded subset of the inventory.
   no new independent `FZ-*`; no compiler crash, verifier drift, false
   unsupported diagnostic, opcode-selection regression, software/hardware
   classification drift, or runtime miscompile.
+
+### Round 58 local x1/subword lane
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round58_local_x1_subword_lane.md`
+- Scope:
+  x1 and subword TMEM load/store coverage including subword pack/unpack,
+  descriptor chains, x1 subword/f32/i32 roundtrips, two-CTA x1 rows, and clean
+  unsupported `16x128b` x1 variants.
+- Result:
+  selector `ldst_x1 or subword_descriptor_chain or ldst_subword` collected
+  `48/1615` and passed split-4 as `48 passed`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  clean-boundary drift, runtime miscompile, hang, or new independent `FZ-*`.

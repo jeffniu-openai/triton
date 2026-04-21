@@ -17080,3 +17080,11 @@ rejection, not rescue
   `8` pass, `12` clean diagnostics, `8` existing `FZ-20260421-0022`, and
   `4` existing `FZ-20260421-0020`. No new independent `FZ-*`; backend repair
   remains deferred.
+
+- Round 58 local x1/subword lane wrote
+  `agents/fuzz_round58_local_x1_subword_lane.md`. Required `make -j8` was a
+  no-op. Selector `ldst_x1 or subword_descriptor_chain or ldst_subword`
+  collected `48/1615` and passed split-4 as `48 passed`. Coverage included
+  subword pack/unpack, descriptor chains, x1 subword/f32/i32, two-CTA x1, and
+  clean unsupported `16x128b` x1 variants. No new independent `FZ-*`; backend
+  repair remains deferred.
