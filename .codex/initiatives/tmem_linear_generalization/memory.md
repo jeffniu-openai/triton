@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:35 UTC Round 16 `FZ-20260421-0015` minimization
+  completed. Report: `agents/fuzz_fz0015_min_round16.md`. Smallest stable
+  trigger: two distinct direct B-scale `TensorMemoryScalesLayout` descriptors
+  with identical payloads, selected by runtime control flow, then consumed as
+  the B-scale operand of `ttng.tc_gen5_mma_scaled`. Compilation succeeds and
+  scaled-MMAv5 PTX/LLIR opcodes match, but runtime results are wrong. The bug
+  survives branch, loop, helper, pass-through, extra selected-scale user,
+  two-MMA, `use_acc=False`, `N=64`, `K=256`, `mxfp4`, and `nvfp4` variants.
+  Selected-descriptor TMEM loads pass `4/4`, so the selected B-scale descriptor
+  contents are readable and the issue is in scaled-MMAv5 consumption/lowering
+  of the merged B-scale memdesc value. Parent-storage probe is still
+  probe-limited by tensor-memory `memdesc_subslice` typing. Backend repair
+  remains deferred.
+
 - Latest: 2026-04-21 11:28 UTC Round 15 descriptor/control and `ld.red`
   semantics checkpoint stayed green or mapped to existing buckets. Reports:
   `agents/fuzz_local_descriptor_control_round15.md` and
@@ -15307,6 +15321,25 @@ rejection, not rescue
 - Next action remains discovery/minimization: parent-index versus independent
   B-scale allocations, `N/K/format` sweep, and TTGIR inspection of selected
   B-scale SSA lowering before backend repair.
+
+## Current: 2026-04-21 11:34 UTC FZ-0015 TTGIR discriminator
+
+- New report: `agents/fuzz_scaled_fz0015_ttgir_round15.md`.
+- Required `make -j8` was rerun and was a no-op.
+- Parent-view discriminator is probe-limited: both `slice(dim=0)` and
+  `reshape((2, N, K/VEC)).index(...)` forms fail before lowering for all rows,
+  including direct controls, with tensor-memory `memdesc_subslice` view
+  diagnostics. Do not count this as `FZ-0015` evidence.
+- TTGIR inspection sharpened the trigger:
+  - direct control feeds `ttng.tc_gen5_mma_scaled` with concrete `%b0`;
+  - constexpr selection feeds concrete `%b1`;
+  - runtime branch selection feeds an `arith.select` result between two
+    B-scale memdescs into scaled MMAv5;
+  - loop selection feeds an `scf.for` memdesc iter_arg result into scaled
+    MMAv5.
+- Updated current hypothesis: `FZ-20260421-0015` is a scaled-MMAv5 lowering or
+  planner gap for merged B-scale memdesc SSA values, not generic control flow
+  around MMA and not merely multiple B-scale descriptors being live.
 
 ## Current: 2026-04-21 08:50 UTC structural fuzzing Round 4 promoted sentinels
 

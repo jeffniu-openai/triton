@@ -1905,3 +1905,24 @@ signal handling:
   branch and loop forms fail, and an extra selected-scale user does not avoid
   the issue. Next minimization: parent-index versus independent allocations,
   `N/K/format` sweep, and TTGIR selected-scale SSA inspection.
+
+- 2026-04-21 11:34 UTC: completed local `FZ-20260421-0015` TTGIR
+  discriminator. Report: `agents/fuzz_scaled_fz0015_ttgir_round15.md`.
+  Parent-view rows are probe-limited because tensor-memory `memdesc_subslice`
+  forms fail before lowering even for direct controls. TTGIR inspection shows
+  direct/constexpr controls pass concrete B-scale memdescs into
+  `ttng.tc_gen5_mma_scaled`, while branch and loop failures pass merged
+  B-scale memdesc SSA values (`arith.select` or `scf.for` iter_arg results).
+  Next slice: generate a small IR reproducer around the selected B-scale
+  operand and inspect the scaled-MMAv5 lowering/planner path, still without
+  backend repair.
+
+- 2026-04-21 11:35 UTC: integrated Round 16 Lane AN `FZ-20260421-0015`
+  minimization. Report: `agents/fuzz_fz0015_min_round16.md`. The strongest
+  current hypothesis is scaled-MMAv5 lowering/codegen mishandles a
+  runtime-selected distinct B-scale TMEM descriptor value. Selected-descriptor
+  loads pass `4/4`, so the descriptor contents are readable outside scaled
+  MMA. The issue reproduces across branch, loop, helper, pass-through,
+  extra-user, two-MMA, `use_acc=False`, `N/K`, `mxfp4`, and `nvfp4` variants.
+  Continue discovery by extracting a small IR reproducer and auditing the
+  B-scale operand path before backend repair.

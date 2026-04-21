@@ -2291,6 +2291,46 @@ remain family-specific and consume a bounded subset of the inventory.
   descriptors with identical payloads selected by runtime control flow before
   `tcgen05_mma_scaled`.
 
+### Round 15 FZ-0015 TTGIR discriminator
+
+- Time: 2026-04-21 11:34 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_fz0015_ttgir_round15.md`
+- Parent-view discriminator is probe-limited: tensor-memory
+  `memdesc_subslice` forms fail before lowering for all rows, including direct
+  controls.
+- TTGIR inspection:
+  - direct and constexpr controls feed concrete B-scale memdescs (`%b0` or
+    `%b1`) into `ttng.tc_gen5_mma_scaled`;
+  - branch failures feed an `arith.select` result between B-scale memdescs into
+    scaled MMAv5;
+  - loop failures feed an `scf.for` memdesc iter_arg result into scaled MMAv5.
+- Classification: `FZ-20260421-0015` is currently best described as a
+  scaled-MMAv5 lowering/planner gap for merged B-scale memdesc SSA values.
+
+### Round 16 Lane AN FZ-0015 minimization
+
+- Time: 2026-04-21 11:35 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_min_round16.md`
+- Probe:
+  `/tmp/tmem_fz0015_min_round16_probe.py`.
+- Smallest stable trigger: two distinct direct B-scale
+  `TensorMemoryScalesLayout` descriptors with identical payloads selected by
+  runtime control flow and consumed as the B-scale operand of
+  `ttng.tc_gen5_mma_scaled`.
+- Green controls: direct B-scale, constexpr distinct B-scale selection,
+  constexpr-folded runtime arm disabled, same-object runtime B-scale
+  selection, runtime A-scale selection, and selected-descriptor TMEM load.
+- Bucket breadth: branch, loop, helper, pass-through, extra selected-scale
+  user, two scaled MMA ops, `use_acc=False`, `N=64`, `K=256`, `mxfp4`, and
+  `nvfp4` all reproduce or preserve the `FZ-0015` wrong-result family.
+- Selected-descriptor load discriminator passed `4/4`, so the selected B-scale
+  TMEM descriptor can be read correctly outside scaled MMAv5.
+- Classification: `FZ-20260421-0015` stays distinct from `FZ-0001`,
+  `FZ-0007`, and `FZ-0013`; current owner hypothesis is the scaled-MMAv5
+  B-scale operand lowering/codegen path for merged memdesc SSA values.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

@@ -28320,6 +28320,61 @@ Open after this slice:
   direct B-scale `TensorMemoryScalesLayout` descriptors with identical
   payloads before `tcgen05_mma_scaled`.
 
+## 2026-04-21 11:34 UTC: Round 15 FZ-0015 TTGIR discriminator
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_fz0015_ttgir_round15.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Parent-view discriminator:
+  - `slice(dim=0)` form collected `5` rows and failed all rows, including
+    direct controls, during parsing with `src and dst must both be of shared
+    memory encoding`;
+  - `reshape((2, N, K/VEC)).index(...)` form collected `5` rows and failed all
+    rows, including direct controls, with a tensor-memory `memdesc_subslice`
+    view diagnostic.
+- TTGIR inspection:
+  - direct and constexpr controls feed scaled MMAv5 with concrete `%b0` or
+    `%b1` B-scale memdescs;
+  - runtime branch failure feeds an `arith.select` result between two B-scale
+    memdescs into `ttng.tc_gen5_mma_scaled`;
+  - loop failure feeds an `scf.for` memdesc iter_arg result into
+    `ttng.tc_gen5_mma_scaled`.
+- Classification: `FZ-20260421-0015` remains distinct and is sharpened to
+  merged B-scale memdesc SSA values feeding scaled MMAv5. Parent-view rows are
+  probe-limited and not counted as `FZ-0015` evidence.
+
+## 2026-04-21 11:35 UTC: Round 16 Lane AN FZ-0015 minimization
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_min_round16.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe `/tmp/tmem_fz0015_min_round16_probe.py` collected `18` rows.
+  The stable no-parent matrix ran as `17 passed, 1 deselected`; rows are
+  written as passing tests that assert expected wrong-result behavior for
+  `FZ-0015` cases.
+- Smallest stable trigger: two distinct direct B-scale
+  `TensorMemoryScalesLayout` descriptors with identical payloads, selected by
+  runtime control flow, then consumed as the B-scale operand of
+  `ttng.tc_gen5_mma_scaled`.
+- Green boundaries: direct B-scale, constexpr distinct B-scale selection,
+  constexpr-folded runtime arm disabled, same-object runtime B-scale
+  selection, and runtime A-scale distinct selection.
+- `FZ-0015` wrong-result rows cover runtime branch, loop-carried, helper
+  returned, pass-through after branch, extra selected-scale user, two scaled
+  MMA ops, `use_acc=False`, `N=64,K=128`, `N=128,K=256`, `mxfp4`, and `nvfp4`.
+- Selected-descriptor load discriminator passed `4/4`: runtime-selected
+  B-scale descriptors can be loaded as ordinary TMEM values with `0/512`
+  selected-scale byte mismatches. The wrong result appears when scaled-MMAv5
+  consumes that same selected B-scale descriptor.
+- Parent-storage probe did not reach runtime due to tensor-memory
+  `memdesc_subslice` type inference diagnostics.
+- Classification: `FZ-20260421-0015` remains distinct from `FZ-0001`,
+  `FZ-0007`, and `FZ-0013`.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

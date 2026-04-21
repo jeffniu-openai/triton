@@ -7,18 +7,20 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:30 UTC Round 15 generic/scaled and
+Latest fuzzing checkpoint: 2026-04-21 11:35 UTC Round 16 `FZ-0015`
+minimization. Report: `agents/fuzz_fz0015_min_round16.md`. The smallest stable
+trigger is two distinct direct B-scale `TensorMemoryScalesLayout` descriptors
+with identical payloads, selected by runtime control flow, then consumed as
+the B-scale operand of `ttng.tc_gen5_mma_scaled`. Compilation succeeds and
+PTX/LLIR scaled-MMAv5 opcodes match, but runtime results are wrong. The issue
+survives branch, loop, helper, pass-through, extra selected-scale user,
+two-MMA, `use_acc=False`, `N=64`, `K=256`, `mxfp4`, and `nvfp4` variants.
+Selected-descriptor TMEM loads pass `4/4`, narrowing the issue to scaled-MMAv5
+consumption of the merged B-scale memdesc value. Backend repair remains
+deferred.
+
+Previous fuzzing checkpoint: 2026-04-21 11:30 UTC Round 15 generic/scaled and
 twoCTA/high-CGA checkpoint. Reports:
-`agents/fuzz_generic_memdesc_control_round15.md`,
-`agents/fuzz_scaled_multi_mma_round15.md`, and
-`agents/fuzz_local_twocta_highcga_round15.md`. Lane AK found no new bucket but
-broadened `FZ-20260421-0001`, `FZ-20260421-0002`, and
-`FZ-20260421-0013` around runtime branch/helper-selected memdesc values. Lane
-AM found new report-only candidate `FZ-20260421-0015`: direct B-scale TMEM
-descriptors selected by runtime branch feed scaled-MMAv5, compile and execute
-with matching PTX/LLIR opcodes, but produce NaN-heavy wrong results. The local
-twoCTA/high-CGA selector passed as `294 passed, 37 skipped`. Active next slice:
-minimize `FZ-0015` in discovery mode before backend repair.
 
 Previous fuzzing checkpoint: 2026-04-21 11:28 UTC Round 15 descriptor/control
 and `ld.red` semantics checkpoint. Reports:
