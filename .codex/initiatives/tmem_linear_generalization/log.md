@@ -29955,3 +29955,72 @@ Open after this slice:
   `197 passed, 4 skipped`.
 - Classification: no compiler crash, verifier failure, runtime miscompile,
   opcode mismatch, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 29 dynamic descriptor arm symmetry
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_arm_symmetry_round29.md`.
+- Temporary probe:
+  `/tmp/tmem_dynamic_arm_symmetry_round29_probe.py`.
+- Exact run:
+  `17 failed, 8 passed` across `25` new selector/control rows.
+- Classification: no new independent `FZ-*`. `FZ-20260421-0002` is not
+  selector-arm-specific, same-object descriptor-view branches still miscompile,
+  and loop-carried no-switch descriptor-view rows still miscompile. Direct
+  offset-only and same-object descriptors pass across the same branch/SSA
+  structures for `ld/st`, `ld.red`, and copy. Copy dynamic/branch rows remain
+  existing `FZ-20260421-0001`.
+
+## 2026-04-21: Round 29 structural fuzzer smoke
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_round29.md`.
+- Command:
+  `python/test/gluon/test_tmem_structural_fuzzer.py` on GPU 0.
+- Result:
+  `9 passed, 24 xfailed`.
+- Classification: no new independent `FZ-*`; checked-in structural-fuzzer
+  expectations remain stable.
+
+## 2026-04-21: Round 29 clean-boundary verifier fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundary_round29.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op in the lane.
+- Checked-in runtime clean-boundary sweep
+  `reports_clean or clean_unsupported or clean_error or tmem_oor` collected
+  `184/1615` rows and passed split-4 as `184 passed`.
+- Lit verifier baseline `lit -v test/TritonNvidiaGPU/invalid.mlir` passed.
+- New candidate `FZ-20260421-0017`: encoded `i64` and `f64` TMEM load/store
+  operands reach `-triton-tensor-memory-allocation`, then abort in
+  `lowerTMemLdSt` on `Assertion 'bitwidth == 32' failed`. Encoded `i8`,
+  `i16`, `f16`, `bf16`, `i32`, and `f32` controls returned successfully from
+  the same pass.
+- Other boundary probes produced clean diagnostics for zero/non-power-of-two
+  shapes, shared/TMEM memory-space mismatches, shape mismatches, CTA-count
+  mismatches, negative linear basis, explicit out-rank mismatch, malformed
+  layout attributes, and non-power-of-two out dimensions.
+
+## 2026-04-21: Round 29 memdesc-index expansion
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_memdesc_index_round29.md`.
+- Temporary probe:
+  `/tmp/tmem_memdesc_index_round29_probe.py`.
+- Matrix:
+  `40` runtime cases across `tmem_load`, `tmem_store`, `tcgen05.copy`,
+  `ld.red`, and mixed consumers; descriptor modes were constant index,
+  same-object branch, distinct branch, and runtime index; forms were direct
+  and reshape/permute/reshape descriptor chains.
+- Classification: no new independent `FZ-*`. Runtime
+  `parent.index(ttgl.load(selector))` leaves illegal `ttg.memdesc_index` for
+  every direct consumer tested, broadening `FZ-20260421-0001`. Direct
+  distinct-branch `tcgen05.copy` also fails late with illegal
+  `ttg.memdesc_index`, while direct branch load/store/`ld.red`/mixed controls
+  pass.
+- Non-`FZ-0001` notes: descriptor-chain `tmem_load`, `ld.red`, and mixed rows
+  miscompile under existing descriptor-view semantic buckets; descriptor-chain
+  stores roundtrip; descriptor-chain copy rows produce clean unsupported copy
+  planner diagnostics.

@@ -3506,3 +3506,58 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification:
   no new independent `FZ-*`; committed no-scale copy positive surface remains
   green outside report-only and high-CGA boundary rows.
+
+### Round 29 dynamic descriptor arm symmetry
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_arm_symmetry_round29.md`
+- Temporary probe:
+  `/tmp/tmem_dynamic_arm_symmetry_round29_probe.py`
+- Exact result:
+  `17 failed, 8 passed` across `25` new selector/control rows.
+- Classification:
+  no new independent `FZ-*`. `FZ-0002` is selector-symmetric and requires
+  descriptor-view composition across SSA/control flow; direct descriptor branch
+  controls pass. Copy dynamic/branch rows stay in `FZ-0001`.
+
+### Round 29 structural fuzzer smoke
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_round29.md`
+- Result:
+  `9 passed, 24 xfailed`
+- Classification:
+  no new independent `FZ-*`; checked-in structural-fuzzer expectations remain
+  stable.
+
+### Round 29 clean-boundary verifier fuzzing
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundary_round29.md`
+- Scope:
+  runtime clean-boundary matrix, `invalid.mlir` lit verifier baseline, and
+  temporary MLIR probes for edge shapes, memory-space mismatches, shape
+  mismatches, CTA-count requirements, malformed linear-layout attributes, and
+  unsupported bitwidth rows.
+- Result:
+  new candidate `FZ-20260421-0017`: encoded `i64` and `f64` TMEM load/store
+  operands reach `-triton-tensor-memory-allocation` and abort in
+  `lowerTMemLdSt` on `bitwidth == 32`. Runtime clean-boundary selector passed
+  as `184 passed`; `test/TritonNvidiaGPU/invalid.mlir` passed; neighboring
+  boundary probes produced typed diagnostics.
+
+### Round 29 memdesc-index expansion
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_memdesc_index_round29.md`
+- Scope:
+  `40` temporary runtime cases across direct and descriptor-chain forms,
+  constant index, same-object branch, distinct branch, runtime index, and
+  load/store/copy/`ld.red`/mixed consumers.
+- Result:
+  no new independent `FZ-*`. Runtime index leaves illegal `ttg.memdesc_index`
+  for every direct consumer tested, broadening `FZ-0001`. Direct
+  distinct-branch `tcgen05.copy` also fails late with illegal
+  `ttg.memdesc_index`, while direct branch load/store/`ld.red` controls pass.
+  Descriptor-chain read/reduction miscompiles remain existing descriptor-view
+  semantic buckets; descriptor-chain copy rows are clean unsupported.

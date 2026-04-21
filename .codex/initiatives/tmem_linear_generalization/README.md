@@ -16,8 +16,9 @@ Latest fuzzing checkpoint: 2026-04-21 Round 26-28 discovery lanes. Reports:
 `agents/fuzz_ldred_round28.md`. Latest local guardrail:
 `agents/fuzz_local_mma_scaled_round29.md` passed the broad checked-in
 scaled-MMAv5 selector as `243 passed`; `agents/fuzz_local_copy_round29.md`
-passed the no-scale copy selector as `197 passed, 4 skipped`. No new
-independent `FZ-*` bucket was found.
+passed the no-scale copy selector as `197 passed, 4 skipped`; and
+`agents/fuzz_local_structural_round29.md` kept the checked-in structural fuzzer
+stable as `9 passed, 24 xfailed`. No new independent `FZ-*` bucket was found.
 The repaired high-CGA scaled-MMAv5 mixed-ownership harness proved scaled-MMAv5
 controls pass for `num_ctas=4/8/16`, then local 1CTA/2CTA descriptor-view
 `st`, `ld`, `ld.red`, and `tcgen05.copy` rows all classify as existing
@@ -32,6 +33,18 @@ branch control passing. Follow-up direct descriptor controls passed for
 branch-selected `ld/st`, same-object branch `ld/st`, and branch-selected
 `ld.red`, narrowing `FZ-0002` to descriptor-view composition crossing the SSA
 or control-flow boundary rather than plain memdesc branch carrying.
+Round 29 arm-symmetry probes further show `FZ-0002` is not selector-arm
+specific, same-object descriptor-view branches still miscompile, and direct
+offset-only/same-object descriptors pass.
+Round 29 clean-boundary fuzzing found new `FZ-20260421-0017`: encoded `i64`
+and `f64` TMEM load/store operands reach `-triton-tensor-memory-allocation`
+and abort in `lowerTMemLdSt` on `bitwidth == 32` instead of producing a clean
+diagnostic or supported lowering.
+Round 29 memdesc-index fuzzing broadened `FZ-20260421-0001`: runtime
+`parent.index(ttgl.load(selector))` leaves illegal `ttg.memdesc_index` for
+direct load, store, copy, `ld.red`, and mixed consumers, and direct
+distinct-branch `tcgen05.copy` fails late even though direct branch load/store/
+`ld.red` controls pass.
 
 Previous Round 25 fuzzing checkpoint: 2026-04-21 14:30 UTC. Reports:
 `agents/fuzz_fz0016_code_audit_round25.md`,

@@ -2355,6 +2355,38 @@ signal handling:
   not subword` collected `201/1615` and passed split-4 as
   `197 passed, 4 skipped`. No new bucket was found.
 
+- 2026-04-21: Round 29 dynamic arm-symmetry lane completed. Report:
+  `agents/fuzz_dynamic_arm_symmetry_round29.md`. No new bucket. Selector 0 and
+  selector 1 both fail for descriptor-view `ld/st` and `ld.red` consumers;
+  same-object view branches and loop-carried no-switch rows still miscompile;
+  direct offset-only/same-object descriptors pass across branch/SSA structures.
+  This further narrows `FZ-0002` to descriptor-view chain materialization
+  across SSA/control flow. Copy dynamic/branch rows remain `FZ-0001`.
+
+- 2026-04-21: Round 29 structural smoke completed. Report:
+  `agents/fuzz_local_structural_round29.md`. Checked-in structural fuzzer on
+  GPU 0 stayed stable as `9 passed, 24 xfailed`; no XPASS or unexpected
+  failure.
+
+- 2026-04-21: Round 29 clean-boundary verifier lane completed. Report:
+  `agents/fuzz_clean_boundary_round29.md`. New candidate
+  `FZ-20260421-0017`: encoded `i64` and `f64` TMEM load/store operands reach
+  `-triton-tensor-memory-allocation` and abort in `lowerTMemLdSt` on
+  `Assertion 'bitwidth == 32' failed`. Runtime clean-boundary selector passed
+  as `184 passed`; `test/TritonNvidiaGPU/invalid.mlir` lit baseline passed;
+  other malformed shape, memory-space, CTA-count, and layout probes produced
+  typed diagnostics.
+
+- 2026-04-21: Round 29 memdesc-index expansion lane completed. Report:
+  `agents/fuzz_memdesc_index_round29.md`. No new bucket. Runtime
+  `parent.index(ttgl.load(selector))` leaves illegal `ttg.memdesc_index` for
+  every direct consumer tested: load, store, copy, `ld.red`, and mixed
+  load/store/`ld.red`. Direct distinct-branch `tcgen05.copy` also fails late
+  with illegal `ttg.memdesc_index`, while direct branch load/store/`ld.red`/
+  mixed controls pass. Descriptor-chain read/reduction miscompiles remain
+  existing descriptor-view semantic buckets; descriptor-chain copy rows are
+  clean unsupported diagnostics.
+
 - 2026-04-21: Round 26 dynamic descriptor SSA lane completed. Report:
   `agents/fuzz_dynamic_ssa_round26.md`. No new bucket. Runtime-index `ld.red`
   and branch-yielded copy descriptors sharpen existing `FZ-20260421-0001`;

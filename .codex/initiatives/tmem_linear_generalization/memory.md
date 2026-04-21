@@ -16140,6 +16140,43 @@ rejection, not rescue
   not subword` collected `201/1615` and completed split-4 as
   `197 passed, 4 skipped`. No new bucket or changed failure mode.
 
+- Round 29 dynamic arm-symmetry lane wrote
+  `agents/fuzz_dynamic_arm_symmetry_round29.md`. No new bucket. It sharpens
+  `FZ-20260421-0002`: nested-helper, loop-carried, branch `ld/st`, and branch
+  `ld.red` descriptor-view consumers fail for both selector arms; same-object
+  descriptor-view branches still miscompile; loop-carried no-switch also
+  miscompiles. Direct offset-only and same-object descriptors crossing the same
+  branch/SSA structures pass for `ld/st`, `ld.red`, and copy. This points at
+  descriptor-view chain materialization across SSA/control flow rather than
+  plain TMEM memdesc values.
+
+- Round 29 local structural smoke wrote
+  `agents/fuzz_local_structural_round29.md`. Full checked-in
+  `python/test/gluon/test_tmem_structural_fuzzer.py` on GPU 0 stayed stable as
+  `9 passed, 24 xfailed`.
+
+- Round 29 clean-boundary lane wrote
+  `agents/fuzz_clean_boundary_round29.md`. New candidate
+  `FZ-20260421-0017`: encoded `i64` and `f64` TMEM load/store operands pass
+  verifier checks far enough to reach `-triton-tensor-memory-allocation`, then
+  abort in `lowerTMemLdSt` on `Assertion 'bitwidth == 32' failed`. Controls
+  for `i8`, `i16`, `f16`, `bf16`, `i32`, and `f32` returned successfully from
+  the allocation pass. This is distinct from `FZ-0016` because tensors and
+  memdescs are encoded and the crash is in 64-bit load/store planning, not the
+  unencoded tensor verifier path. Existing clean-boundary runtime sweep stayed
+  green as `184 passed`; `lit -v test/TritonNvidiaGPU/invalid.mlir` passed.
+
+- Round 29 memdesc-index lane wrote
+  `agents/fuzz_memdesc_index_round29.md`. No new bucket, but it broadens
+  `FZ-20260421-0001`: runtime `parent.index(ttgl.load(selector))` leaves
+  illegal `ttg.memdesc_index` for direct `tmem_load`, `tmem_store`,
+  `tcgen05.copy`, `ld.red`, and mixed `load -> store -> ld.red` consumers.
+  Direct distinct-branch `tcgen05.copy` also fails late with illegal
+  `ttg.memdesc_index`, unlike direct distinct-branch load/store/`ld.red`/
+  mixed controls, which pass. Descriptor-chain read/reduction rows miscompile
+  under existing descriptor-view semantic buckets; descriptor-chain stores
+  roundtrip; descriptor-chain copy rows are clean unsupported diagnostics.
+
 - Round 26 dynamic descriptor SSA lane wrote
   `agents/fuzz_dynamic_ssa_round26.md`. No new independent `FZ-*`. It
   sharpened `FZ-20260421-0001` with runtime-index `ld.red` and branch-yielded
