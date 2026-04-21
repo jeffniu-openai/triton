@@ -7,7 +7,16 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 34 high-rank descriptor `ld/st`
+Latest fuzzing checkpoint: 2026-04-21 Round 34 copy `warpx2`/`warpx4`
+runtime guardrail completed. Report:
+`agents/fuzz_local_copy_warpx2_round34.md`. Selector
+`(cp_no_scales and (warpx2 or warpx4 or dense_shared or twocta_128x128b) and not resource)`
+collected `83/1615` checked-in runtime rows and passed split-4 as `83 passed`
+(`21/21/21/20`). No compiler crash, false unsupported diagnostic, opcode
+mismatch, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+transition, or new independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 34 high-rank descriptor `ld/st`
 guardrail completed. Report:
 `agents/fuzz_local_high_rank_ldst_round34.md`. Selector
 `(ldst_descriptor and not reports and not resource and (rank5 or higher_rank or multidim or roundtrip))`
@@ -17,7 +26,7 @@ descriptor roundtrip rows. No compiler crash, false unsupported diagnostic,
 opcode mismatch, runtime miscompile, clean-boundary drift, unexpected skip/pass
 transition, or new independent `FZ-*` bucket was found.
 
-Previous fuzzing checkpoint: 2026-04-21 Round 34 no-scale copy
+Earlier fuzzing checkpoint: 2026-04-21 Round 34 no-scale copy
 tile/subword/2CTA guardrail completed. Report:
 `agents/fuzz_local_copy_tile_subword_round34.md`. Selector
 `(cp_no_scales and not reports and not resource and (tile_permuted or subword or twocta_codegen or twocta_128x128b or dense_shared))`

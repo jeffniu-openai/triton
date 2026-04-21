@@ -92,6 +92,19 @@ remain family-specific and consume a bounded subset of the inventory.
   with `255` registers/four `.ld.red` occurrences, so the issue is not simply
   "all 255-register kernels fail."
 
+### Round 34 Local, copy warpx2/warpx4 runtime guardrail
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_warpx2_round34.md`
+- Scope: checked-in no-scale `tcgen05.copy` `warpx2`/adjacent runtime rows
+  selected by
+  `(cp_no_scales and (warpx2 or warpx4 or dense_shared or twocta_128x128b) and not resource)`.
+- Result: `83/1615` rows collected and passed split-4 as `83 passed`
+  (`21/21/21/20`). No compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, unexpected
+  xfail/pass transition, or new independent `FZ-*`.
+
 ### Round 32 Lane, Subword/Narrow-Shape Python Runtime TMEM
 
 - Time: 2026-04-21 12:57 UTC

@@ -30557,6 +30557,21 @@ Open after this slice:
   shows the finding should not be reduced to "all 255-register kernels fail";
   it remains a large 4-warp hardware-`ld.red` resource-planning/ptxas boundary.
 
+## 2026-04-21: Round 34 copy warpx2/warpx4 runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_warpx2_round34.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(cp_no_scales and (warpx2 or warpx4 or dense_shared or twocta_128x128b) and not resource)`.
+- Collection: `83/1615`.
+- Split-4 result: `83 passed` (`21/21/21/20` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, unexpected
+  xfail/pass transition, or new independent `FZ-*` bucket. This keeps the
+  no-scale copy `warpx2`/dense-shared/two-CTA positive and clean-boundary
+  runtime surface stable before deeper compiler-only copy probing.
+
 ## 2026-04-21: Round 34 local no-scale copy tile/subword/2CTA guardrail
 
 - Wrote

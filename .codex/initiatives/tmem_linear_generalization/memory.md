@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 34 copy `warpx2`/`warpx4` runtime guardrail
+  completed. Report: `agents/fuzz_local_copy_warpx2_round34.md`. Required
+  `make -j8` was a no-op. Selector
+  `(cp_no_scales and (warpx2 or warpx4 or dense_shared or twocta_128x128b) and not resource)`
+  collected `83/1615` rows and passed split-4 as `83 passed`
+  (`21/21/21/20`). No compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, unexpected
+  xfail/pass transition, or new independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 Round 34 local high-rank descriptor `ld/st` guardrail
   completed. Report: `agents/fuzz_local_high_rank_ldst_round34.md`. Required
   `make -j8` was a no-op. Selector

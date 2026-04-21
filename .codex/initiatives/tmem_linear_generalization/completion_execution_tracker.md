@@ -169,6 +169,13 @@ The project is complete when:
   compiler crash, false unsupported diagnostic, opcode mismatch, runtime
   miscompile, clean-boundary drift, unexpected skip/pass transition, or new
   independent `FZ-*`.
+  2026-04-21 Round 34 copy `warpx2`/`warpx4` runtime guardrail completed.
+  Artifact: `agents/fuzz_local_copy_warpx2_round34.md`. Selector
+  `(cp_no_scales and (warpx2 or warpx4 or dense_shared or twocta_128x128b) and not resource)`
+  collected `83/1615` and passed split-4 as `83 passed`; no compiler crash,
+  false unsupported diagnostic, opcode mismatch, runtime miscompile,
+  clean-boundary drift, unexpected xfail/pass transition, or new independent
+  `FZ-*`.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline
