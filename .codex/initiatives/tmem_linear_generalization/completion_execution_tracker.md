@@ -60,6 +60,15 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:40 UTC Round 38 compiler-boundary subagent lane integrated.
+  Artifact: `agents/fuzz_compiler_boundaries_round38.md`. Build-tree lit
+  controls `tmem_layouts.mlir`, `interleave_tmem.mlir`, and
+  `memdesc-subview-split.mlir` passed. Generated `14` MLIR probes under
+  `/tmp/tmem_compiler_boundaries_round38`; matrix over four compiler modes was
+  `18` pass, `24` clean diagnostics, `5` late illegal-op failures, and `9`
+  abort/crash classifications. No new independent `FZ-*`; existing
+  `FZ-20260421-0001`, `FZ-20260421-0016`, and `FZ-20260421-0017` were
+  broadened or revalidated; backend repair remains deferred.
   2026-04-21 14:35 UTC Round 38 `test_core.py` TMEM/MMAv5 guardrail
   completed. Artifact: `agents/fuzz_test_core_tmem_guardrail_round38.md`.
   Selector `tcgen05 and (tmem or mma or copy or multicast or mbarrier)` over

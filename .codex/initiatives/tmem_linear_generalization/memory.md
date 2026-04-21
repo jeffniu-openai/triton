@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:40 UTC Round 38 compiler-boundary subagent lane
+  integrated. Report: `agents/fuzz_compiler_boundaries_round38.md`.
+  Required `make -j8` and `ninja triton-opt` were no-ops. Build-tree lit
+  controls passed: `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+  `test/TritonNvidiaGPU/interleave_tmem.mlir`, and
+  `test/TritonGPU/memdesc-subview-split.mlir`. Generated
+  `/tmp/tmem_compiler_boundaries_round38` with `14` MLIR probes across verify,
+  `OptimizeTMemLayouts`, explicit TMEM allocation, and LLVM conversion. Matrix:
+  `18` pass, `24` clean diagnostics, `5` late illegal-op failures, and `9`
+  abort/crash classifications. No new independent `FZ-*`. Existing
+  `FZ-20260421-0001` now explicitly includes dynamic MMAv5 accumulator
+  descriptors and dynamic scaled-MMAv5 scale descriptors reaching late illegal
+  `ttg.memdesc_index`; `FZ-20260421-0016` is sharpened by unencoded store and
+  unencoded `ld.red` reduction-result rows; `FZ-20260421-0017` is revalidated
+  with encoded `i64` descriptor-chain load.
+
 - Latest: 2026-04-21 14:35 UTC Round 38 `test_core.py` TMEM/MMAv5 guardrail
   completed. Report:
   `agents/fuzz_test_core_tmem_guardrail_round38.md`. Selector

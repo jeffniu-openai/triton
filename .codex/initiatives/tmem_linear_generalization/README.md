@@ -7,7 +7,19 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 38 `test_core.py` TMEM/MMAv5
+Latest fuzzing checkpoint: 2026-04-21 Round 38 compiler-boundary subagent lane
+integrated. Report: `agents/fuzz_compiler_boundaries_round38.md`. Build-tree
+lit controls `tmem_layouts.mlir`, `interleave_tmem.mlir`, and
+`memdesc-subview-split.mlir` passed. Generated `/tmp/tmem_compiler_boundaries_round38`
+with `14` MLIR probes across verify, `OptimizeTMemLayouts`,
+`triton-tensor-memory-allocation`, and LLVM conversion: `18` pass,
+`24` clean diagnostics, `5` late illegal-op failures, and `9`
+abort/crash classifications. No new independent `FZ-*`; the lane broadens
+existing `FZ-20260421-0001` to dynamic MMAv5 accumulator and scaled-MMAv5 scale
+descriptors, sharpens `FZ-20260421-0016`, and revalidates
+`FZ-20260421-0017`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 38 `test_core.py` TMEM/MMAv5
 guardrail completed. Report:
 `agents/fuzz_test_core_tmem_guardrail_round38.md`. Selector
 `tcgen05 and (tmem or mma or copy or multicast or mbarrier)` over

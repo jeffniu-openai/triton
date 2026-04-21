@@ -30766,6 +30766,30 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:40 UTC: Round 38 compiler-boundary subagent lane integrated
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_boundaries_round38.md`.
+- Required `make -j8` was a no-op; `ninja triton-opt` was a no-op.
+- Build-tree lit controls passed:
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+  `test/TritonNvidiaGPU/interleave_tmem.mlir`, and
+  `test/TritonGPU/memdesc-subview-split.mlir`.
+- Generated compiler-only corpus:
+  `/tmp/tmem_compiler_boundaries_round38`, `14` MLIR probes across verifier,
+  `OptimizeTMemLayouts`, `triton-tensor-memory-allocation`, and LLVM
+  conversion.
+- Matrix: `18` pass, `24` clean diagnostics, `5` late illegal-op failures,
+  and `9` abort/crash classifications.
+- Classification: no new independent `FZ-*`. Existing
+  `FZ-20260421-0001` expands to dynamic MMAv5 accumulator and dynamic
+  scaled-MMAv5 scale descriptors; `FZ-20260421-0016` is sharpened by
+  unencoded store and unencoded `ld.red` reduction-result rows; existing
+  `FZ-20260421-0017` encoded 64-bit non-reduction load/store boundary remains
+  the owner of encoded `i64` descriptor-chain load aborts. Clean malformed
+  layout, wrong-memory-space copy, non-f32 `ld.red`, and high-rank preserved
+  view diagnostics stayed clean.
+
 ## 2026-04-21 14:35 UTC: Round 38 test_core.py TMEM/MMAv5 guardrail
 
 - Wrote
