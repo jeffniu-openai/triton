@@ -32131,3 +32131,16 @@ Open after this slice:
   miscompile, or new backend `FZ-*`. Harness note: bare collection of
   `05-moe-bmm1-fused-gather.py` needs `./python/triton_kernels` on
   `PYTHONPATH`.
+
+## 2026-04-21 15:00 UTC: Round 51 local two-CTA exact probe
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_twocta_exact_round51.md`.
+- Required `make -j8` was a no-op.
+- Exact runtime probe:
+  `4 passed`.
+- Covered clean two-CTA-in-four-CTA diagnostic, two-CTA `warpx2` dense shared
+  rematerialization, two-CTA indexed-accumulator MMAv5, and two-CTA scales
+  copy.
+- Classification: no clean-diagnostic drift, compiler crash, runtime
+  miscompile, or new independent `FZ-*`.

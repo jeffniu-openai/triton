@@ -3536,3 +3536,10 @@ discovery.
   LoRA/side projection, and layout-as-epilogue executed. No backend `FZ-*`;
   only harness issue is bare collection of `05-moe-bmm1-fused-gather.py`
   needing `./python/triton_kernels` on `PYTHONPATH`.
+
+- 2026-04-21 15:00 UTC: Round 51 local two-CTA exact probe completed. Report:
+  `agents/fuzz_twocta_exact_round51.md`. Required `make -j8` was a no-op.
+  Exact probe over clean two-CTA-in-four-CTA diagnostic, two-CTA `warpx2`
+  dense shared rematerialization, two-CTA indexed-accumulator MMAv5, and
+  two-CTA scales copy passed as `4 passed`. No clean-diagnostic drift,
+  compiler crash, runtime miscompile, or new independent `FZ-*`.
