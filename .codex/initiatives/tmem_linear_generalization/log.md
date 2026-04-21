@@ -1,3 +1,24 @@
+## 2026-04-21 14:10 UTC: Round 39 high-rank descriptor-chain subagent lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_rank_chain_shapes_round39.md`
+  from commit `a82c17ce3`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Checked-in selector:
+  `(higher_rank or rank5 or half_rows or ld_red and descriptor_chain) and not reports and not resource`.
+- Result: `92 passed, 20 skipped` across the selected checked-in rows.
+- Temporary subprocess matrix covered `ld/st`, `load_min`, and `load_max`
+  over direct, rank-4/rank-5 unit-prefix, inner-unit-rank, rank-5 half-row,
+  and unit-rank half-column views with identity, row-reverse, column-reverse,
+  and even/odd-plus-rotated row/column bases.
+- Aggregate classification: `80 pass`, `16` existing
+  `FZ-20260421-0004` opcode-loss rows, `24` clean TMEM resource boundaries,
+  and `24` existing `FZ-20260421-0021` half-column/unit-rank aborts.
+- No new independent `FZ-*`. The opcode-loss signal broadens existing
+  `FZ-20260421-0004` to rank-5 lower half-row descriptor views across
+  `min`/`max`, `auto`/`32x32b`, and four row/column basis layouts.
+
 ## 2026-04-21 14:10 UTC: Round 40 copy/dynamic descriptor subagent lane
 
 - Integrated subagent report
