@@ -3427,6 +3427,88 @@ def tmem_mma_scaled_scale_descriptor_view_format_kernel(
 
 
 @gluon.jit
+def tmem_mma_scaled_dynamic_bscale_direct_kernel(
+    out_ptr,
+    selector_ptr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    K: ttgl.constexpr,
+    a,
+    b,
+    a_scale,
+    b_scale0,
+    b_scale1,
+    acc_layout: ttgl.constexpr,
+    SELECT_MODE: ttgl.constexpr,
+):
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
+    block_layout_a: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+    block_layout_b: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+    smem_a_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for([M, K], a.dtype.element_ty)
+    smem_b_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for([N, K], b.dtype.element_ty)
+
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, block_layout_a))[:, None]
+    offs_ak = ttgl.arange(0, K, layout=ttgl.SliceLayout(0, block_layout_a))[None, :]
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, block_layout_b))[:, None]
+    offs_bk = ttgl.arange(0, K, layout=ttgl.SliceLayout(0, block_layout_b))[None, :]
+    a_smem = ttgl.allocate_shared_memory(a.dtype.element_ty, [M, K], smem_a_layout, ttgl.load(a + offs_m * K + offs_ak))
+    b_smem = ttgl.allocate_shared_memory(b.dtype.element_ty, [N, K], smem_b_layout, ttgl.load(b + offs_n * K + offs_bk))
+
+    scale_layout: ttgl.constexpr = TensorMemoryScalesLayout()
+    a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, K // 32], scale_layout)
+    b_scale_tmem0 = allocate_tensor_memory(b_scale0.dtype.element_ty, [N, K // 32], scale_layout)
+    b_scale_tmem1 = allocate_tensor_memory(b_scale1.dtype.element_ty, [N, K // 32], scale_layout)
+    scale_reg_layout_m: ttgl.constexpr = a_scale_tmem.get_reg_layout()
+    scale_reg_layout_n: ttgl.constexpr = b_scale_tmem0.get_reg_layout()
+
+    scale_offs_k_m = ttgl.arange(0, K // 32, layout=ttgl.SliceLayout(0, scale_reg_layout_m))[None, :]
+    scale_offs_k_n = ttgl.arange(0, K // 32, layout=ttgl.SliceLayout(0, scale_reg_layout_n))[None, :]
+    scale_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, scale_reg_layout_m))[:, None]
+    scale_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, scale_reg_layout_n))[:, None]
+    a_scale_tmem.store(ttgl.load(a_scale + scale_offs_m * (K // 32) + scale_offs_k_m))
+    b_scale_tmem0.store(ttgl.load(b_scale0 + scale_offs_n * (K // 32) + scale_offs_k_n))
+    b_scale_tmem1.store(ttgl.load(b_scale1 + scale_offs_n * (K // 32) + scale_offs_k_n))
+
+    b_scale_selected = b_scale_tmem0
+    if SELECT_MODE == "branch":
+        if ttgl.load(selector_ptr) != 0:
+            b_scale_selected = b_scale_tmem1
+        else:
+            b_scale_selected = b_scale_tmem0
+    else:
+        for i in range(0, 2, 1):
+            if i == ttgl.load(selector_ptr):
+                b_scale_selected = b_scale_tmem1
+            else:
+                b_scale_selected = b_scale_selected
+
+    acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
+    acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+    acc_tmem.store(ttgl.zeros([M, N], ttgl.float32, layout=acc_reg_layout))
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_mma_scaled(
+        a_smem,
+        b_smem.permute((1, 0)),
+        acc_tmem,
+        a_scale_tmem,
+        b_scale_selected,
+        "e4m3",
+        "e4m3",
+        use_acc=True,
+    )
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    mbarrier.invalidate(bar)
+
+    out_reg = acc_tmem.load()
+    out_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, reg_layout))[:, None]
+    out_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, reg_layout))[None, :]
+    ttgl.store(out_ptr + out_m * N + out_n, ttgl.convert_layout(out_reg, reg_layout))
+
+
+@gluon.jit
 def tmem_mma_scaled_indexed_acc_format_kernel(
     out_ptr,
     M: ttgl.constexpr,
@@ -13219,6 +13301,57 @@ def test_tmem_runtime_matrix_mma_scaled_linear_scale_descriptor_view(scale_side)
     assert "ttg.memdesc_reshape" in ttgir
     assert "ttg.memdesc_trans" in ttgir
     assert "ttng.tc_gen5_mma_scaled" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "select_mode,selector,n,k",
+    [
+        ("branch", 0, 128, 128),
+        ("branch", 1, 128, 128),
+        ("loop", 0, 128, 128),
+        ("loop", 1, 128, 128),
+        ("loop", 1, 64, 128),
+        ("loop", 1, 128, 256),
+    ],
+)
+def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_direct(select_mode, selector, n, k):
+    m = 128
+    torch.manual_seed(1515 + selector + n + k + len(select_mode))
+    a, a_scale, a_ref = random_quantized_tensor(m, k, "mxfp8")
+    b, b_scale0, b_ref0 = random_quantized_tensor(n, k, "mxfp8")
+    b_scale1 = torch.randint(64, 130, (n, k // 32), dtype=torch.uint8, device="cuda")
+    b_ref1 = b.to(torch.float32) * _fp8e8m0_to_float32(b_scale1).repeat_interleave(32, dim=1)
+    b_ref = b_ref1 if select_mode == "loop" or selector else b_ref0
+    selector_tensor = torch.tensor([selector], dtype=torch.int32, device="cuda")
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_dynamic_bscale_direct_kernel[(1, )](
+        out,
+        selector_tensor,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale0,
+        b_scale1,
+        _make_tmem_linear_layout(m, n),
+        select_mode,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == (k // 128) * _expected_scaled_mma_acc_subslice_count("mxfp8", "mxfp8")
+    assert all(op == _expected_scaled_mma_opcode("mxfp8", "mxfp8", 1) for op in mma_ops)
+    ttgir = compiled.asm["ttgir"]
+    assert "ttng.tc_gen5_mma_scaled" in ttgir
+    assert "arith.select" in ttgir
+    if select_mode == "loop":
+        assert "scf.for" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

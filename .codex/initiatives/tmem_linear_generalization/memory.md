@@ -1,6 +1,29 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 22:19 UTC repair slice 10 fixed valid
+- Latest: 2026-04-21 22:39 UTC repair slice 11 fixed the remaining valid
+  `FZ-20260421-0015` selected direct B-scale scaled-MMAv5 rows. The direct
+  branch/helper/pass-through rows were already green on current head after the
+  earlier selected-alias liveness repairs, but the loop-carried `scf.for`
+  B-scale row still wrong-resulted because allocation liveness did not connect
+  a control-flow-carried memdesc operand consumed by scaled MMA back to all of
+  its root `ttng.tmem_alloc` sources. The accumulator reused scale columns
+  while the loop result still selected those descriptors. Implementation:
+  `TensorMemoryAllocation` now computes consumer-aware extra live users for
+  tensor-memory memdesc operands by tracing each operand through `getAlloc`;
+  the alias walk also follows `scf.for` init operands to region iter args and
+  loop results and records direct alias users explicitly. New runtime coverage
+  `test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_direct` covers branch
+  and loop selected direct B-scale descriptors, selectors `0/1`, `N=64`, and
+  `K=256` with distinct B-scale payloads. Validation: required `make -j8`;
+  new dynamic B-scale test `6 passed`; temporary Round 17 audit rows all show
+  `0` mismatches for valid direct/selected/A-scale controls; focused
+  scaled-MMAv5 selector split-4 `113 passed`; structural fuzzer split-4
+  `36 passed`; broader positive scaled-MMAv5 split-4 `251 passed`; targeted
+  lit `2 passed`; `py_compile` and `git diff --check` passed. The old
+  parent-slice minimizer row is still a separate unsupported frontend shape
+  and is not counted as live `FZ-0015`.
+
+- Previous: 2026-04-21 22:19 UTC repair slice 10 fixed valid
   `FZ-20260421-0013` scaled-MMAv5 scale descriptor views. Root cause: scaled
   MMA scale operands that were descriptor views rooted in
   `TensorMemoryScalesLayout` could reach lowering as transformed memdescs, so

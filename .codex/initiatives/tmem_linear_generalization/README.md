@@ -7,7 +7,31 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 22:19 UTC repaired valid
+Latest repair checkpoint: 2026-04-21 22:39 UTC repaired the remaining valid
+`FZ-20260421-0015` selected direct B-scale scaled-MMAv5 runtime rows. The
+branch/helper/pass-through `arith.select` rows were already stale on current
+head after the earlier alias-liveness work, but the loop-carried `scf.for`
+row still miscompiled because tensor-memory allocation liveness did not map a
+control-flow-carried memdesc consumer back to all root TMEM allocations. The
+accumulator could therefore reuse the B-scale columns while the loop result
+still fed scaled MMA. `TensorMemoryAllocation` now records consumer-aware
+extra live users for tensor-memory memdesc operands by tracing each operand
+through `getAlloc`, and the alias walk also follows `scf.for` init operands to
+their region iter args and loop results. New checked-in coverage
+`test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_direct` covers branch and
+loop selected direct B-scale descriptors, both selectors, and the old `N=64`
+and `K=256` minimizer variants with distinct B-scale payloads. Validation:
+required `make -j8`; new dynamic B-scale runtime test `6 passed`; temporary
+Round 17 audit now shows direct, constexpr, same-object, branch-selected,
+loop-carried, and A-scale dynamic rows all `0` mismatches; focused
+scaled-MMAv5 selector split-4 `113 passed`; full structural fuzzer split-4
+`36 passed`; broader positive scaled-MMAv5 split-4 `251 passed`; targeted
+lit `tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`; `py_compile`
+and `git diff --check` passed. The old parent-slice
+probe row remains a separate frontend unsupported shape, not a live
+`FZ-0015` selected direct B-scale runtime bug.
+
+Previous repair checkpoint: 2026-04-21 22:19 UTC repaired valid
 `FZ-20260421-0013` scaled-MMAv5 scale descriptor-view operands. The gap was
 not limited to repeated/narrow B-scale fragments: when a scaled MMA consumed
 an A-scale or B-scale descriptor view rooted in `TensorMemoryScalesLayout`, the

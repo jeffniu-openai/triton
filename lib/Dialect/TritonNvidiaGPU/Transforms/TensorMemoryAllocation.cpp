@@ -117,8 +117,11 @@ private:
 };
 
 static Interval<int> getLiveIntervals(Value value, Liveness &liveness,
-                                      DenseMap<Operation *, int> &operationId) {
+                                      DenseMap<Operation *, int> &operationId,
+                                      ArrayRef<Operation *> extraLiveUsers) {
   auto liveOperations = liveness.resolveLiveness(value);
+  liveOperations.insert(liveOperations.end(), extraLiveUsers.begin(),
+                        extraLiveUsers.end());
   // Merge the alloc liverange with the liverange of any view derived from the
   // allocation so we do not reuse the backing rows/cols while a later
   // materialization load/store still needs the parent allocation.
@@ -137,8 +140,26 @@ static Interval<int> getLiveIntervals(Value value, Liveness &liveness,
     if (!seenValues.insert(current).second)
       continue;
     for (Operation *user : current.getUsers()) {
+      // Keep the interval conservative even when MLIR liveness does not look
+      // through tensor-memory descriptor aliases carried by control flow.
+      liveOperations.push_back(user);
       if (auto selectOp = dyn_cast<arith::SelectOp>(user)) {
         addAliasedResult(selectOp.getResult());
+        continue;
+      }
+      if (auto forOp = dyn_cast<scf::ForOp>(user)) {
+        unsigned numControlOperands = forOp.getNumControlOperands();
+        for (OpOperand &operand : forOp->getOpOperands()) {
+          if (operand.getOperandNumber() < numControlOperands ||
+              operand.get() != current)
+            continue;
+          unsigned iterArgIdx =
+              operand.getOperandNumber() - numControlOperands;
+          if (iterArgIdx < forOp.getRegionIterArgs().size())
+            addAliasedResult(forOp.getRegionIterArgs()[iterArgIdx]);
+          if (iterArgIdx < forOp.getNumResults())
+            addAliasedResult(forOp.getResult(iterArgIdx));
+        }
         continue;
       }
       if (user->hasTrait<OpTrait::MemDescViewTrait>() ||
@@ -772,6 +793,7 @@ allocateTMem(Operation *parentOp,
              DenseMap<triton::nvidia_gpu::TMEMAllocOp, int> &offsets) {
   SmallVector<triton::nvidia_gpu::TMEMAllocOp> allocs;
   DenseMap<Operation *, int> operationId;
+  DenseMap<Operation *, SmallVector<Operation *>> extraLiveUsers;
   RowIdConstraints rowIdConstraints;
   parentOp->walk<WalkOrder::PostOrder>([&](Operation *op) {
     operationId[op] = operationId.size();
@@ -792,6 +814,19 @@ allocateTMem(Operation *parentOp,
               rowIdConstraints.joinOps(lhsAlloc, accAlloc);
         }
       }
+    }
+  });
+  parentOp->walk([&](Operation *op) {
+    for (Value operand : op->getOperands()) {
+      auto memDescType = dyn_cast<ttg::MemDescType>(operand.getType());
+      if (!memDescType ||
+          !isa<TensorMemorySpaceAttr>(memDescType.getMemorySpace()))
+        continue;
+      // Consumers can see a selected/yielded memdesc while the actual storage
+      // comes from multiple root TMEM allocations. Keep all roots live through
+      // that consumer so the allocator cannot reuse their backing columns.
+      for (Operation *alloc : getAlloc(operand))
+        extraLiveUsers[alloc].push_back(op);
     }
   });
   int totalMemorySize = 0;
@@ -818,7 +853,12 @@ allocateTMem(Operation *parentOp,
       }
     }
 
-    Interval<int> liveInterval = getLiveIntervals(alloc, liveness, operationId);
+    auto extraIt = extraLiveUsers.find(alloc.getOperation());
+    ArrayRef<Operation *> allocExtraLiveUsers =
+        extraIt == extraLiveUsers.end() ? ArrayRef<Operation *>()
+                                        : ArrayRef<Operation *>(extraIt->second);
+    Interval<int> liveInterval =
+        getLiveIntervals(alloc, liveness, operationId, allocExtraLiveUsers);
     auto memDescType = alloc.getType();
     TMemAllocation allocSize = getTmemAllocSizes(memDescType);
     updateMap(memoryMap, liveInterval, intervalLiverangeEnd);

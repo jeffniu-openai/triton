@@ -1,8 +1,34 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 22:19 UTC
+Last updated: 2026-04-21 22:39 UTC
 
-Latest repair checkpoint: 2026-04-21 22:19 UTC `FZ-20260421-0013` is repaired
+Latest repair checkpoint: 2026-04-21 22:39 UTC `FZ-20260421-0015` is repaired
+for valid selected direct B-scale scaled-MMAv5 rows. Current-head replay
+showed that direct branch/helper/pass-through selected B-scale rows were
+already stale-green, but the loop-carried `scf.for` B-scale row still
+miscompiled. Root cause: allocation liveness followed some alias values, but
+it did not map a tensor-memory memdesc operand consumed by scaled MMA back to
+all root TMEM allocations when that operand was produced by loop-carried
+control flow. The accumulator was allocated over still-live B-scale columns.
+Implementation: `TensorMemoryAllocation` now traces every tensor-memory
+memdesc operand through `getAlloc` to attach the consuming op as an extra live
+user of each root allocation, records direct alias users explicitly, and
+follows `scf.for` init operands to region iter args/results. New positive
+runtime coverage `test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_direct`
+covers branch and loop selected direct B-scale descriptors, both selectors,
+`N=64`, and `K=256` with distinct scale payloads. Validation: required
+`make -j8`; exact new test `6 passed`; temporary Round 17 audit rows for
+direct, constexpr, same-object, branch-selected, loop-carried, and A-scale
+dynamic controls all show `0` mismatches; focused scaled-MMAv5 selector
+split-4 `113 passed`; structural fuzzer split-4 `36 passed`; targeted lit
+`2 passed`; broader positive scaled-MMAv5 split-4 `251 passed`; `py_compile`
+and `git diff --check` passed. Remaining checked-in structural xfails: none.
+The old parent-slice row in the temporary minimizer
+remains a separate frontend unsupported-shape boundary, not live `FZ-0015`.
+Next frontier: copy `warpx2`/scales boundaries, broader MMAv5 reachable-family
+support, heuristic cleanup, and staged broad validation.
+
+Previous repair checkpoint: 2026-04-21 22:19 UTC `FZ-20260421-0013` is repaired
 for valid scaled-MMAv5 scale descriptor-view operands. `TensorMemoryAllocation`
 now canonicalizes A-scale and B-scale descriptor views before MMA by finding
 the unique producer store through the scale alias chain, replaying supported

@@ -33551,3 +33551,49 @@ Open after this slice:
   no checked-in structural xfails remain. Continue with copy `warpx2`/scales
   boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
   staged broad validation.
+
+## 2026-04-21 22:39 UTC: FZ-0015 selected B-scale loop liveness repair
+
+- Branch/HEAD before this repair slice:
+  `1401b39d2 Fix scaled MMA scale descriptor views`.
+- Dirty files at checkpoint:
+  `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`,
+  `python/test/gluon/test_tmem_runtime_matrix.py`, plus initiative docs.
+- Root cause:
+  current-head replay showed the original direct branch/helper/pass-through
+  selected B-scale rows were already green, but the loop-carried `scf.for`
+  selected B-scale row still miscompiled. The allocator was not tracing a
+  control-flow-carried tensor-memory memdesc operand consumed by scaled MMA
+  back to all root `ttng.tmem_alloc` values, so it could place the accumulator
+  at `base+4` over still-live B-scale columns at `base+8/base+12`.
+- Completed implementation:
+  `TensorMemoryAllocation` now records consumer-aware extra live users for
+  tensor-memory memdesc operands by tracing each operand through `getAlloc`.
+  The alias liveness walk also records direct alias users explicitly and
+  follows `scf.for` init operands to their region iter args and loop results.
+  The loop-carried reproducer now allocates the accumulator at `base+16`,
+  preserving the selected B-scale storage through scaled MMA.
+- New checked-in runtime coverage:
+  `test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_direct`, covering branch
+  and loop selected direct B-scale descriptors, selectors `0/1`, `N=64`, and
+  `K=256` with distinct B-scale payloads.
+- Validation evidence:
+  required `make -j8`; exact new runtime test `6 passed`; temporary Round 17
+  lowering-audit replay shows all valid direct/selected/A-scale controls,
+  including the loop-carried row, at `0` mismatches; focused scaled-MMAv5
+  selector split-4 ran as group1 `29 passed`, group2 `29 passed`, group3
+  `29 passed`, and group4 `26 passed`; full structural fuzzer split-4 ran as
+  `9 + 9 + 9 + 9 = 36 passed`; targeted lit
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`; broader positive
+  scaled-MMAv5 split-4 ran as `63 + 63 + 63 + 62 = 251 passed`; runtime and
+  structural `py_compile` passed; `git diff --check` passed.
+- Reclassification:
+  valid selected direct B-scale scaled-MMAv5 runtime rows are green on current
+  head. The temporary parent-slice minimizer row still hits a separate
+  frontend unsupported tensor-memory view shape and is not counted as live
+  `FZ-20260421-0015`.
+- Remaining repair-plan frontier:
+  no checked-in structural xfails remain. Continue with copy `warpx2`/scales
+  boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
+  staged broad validation.
