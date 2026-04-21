@@ -2777,6 +2777,31 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no new independent `FZ-*`; promotion-ready dynamic
   descriptor generator seed table produced.
 
+### Round 25 local dynamic structural guardrail
+
+- Time: 2026-04-21 14:35 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_dynamic_structural_round25.md`
+- Selector:
+  `generic_pass or dynamic_index or loop_carried or scaled_mma_acc_subslice`
+  collected `12/33`.
+- Result:
+  `12 xfailed`.
+- Classification: no unexpected pass, changed crash mode, runtime miscompile
+  outside existing xfail set, or new independent `FZ-*`.
+
+### Round 25 local scaled descriptor-view control
+
+- Time: 2026-04-21 14:35 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_descriptor_view_round25.md`
+- Selector:
+  `mma_scaled and descriptor_view and not reports`.
+- Result:
+  `4 passed`.
+- Classification: no new independent `FZ-*`; checked-in green control for
+  report-only `FZ-20260421-0013`.
+
 ### Round 25 Lane BJ dynamic descriptor structural generator
 
 - Time: 2026-04-21 14:28 UTC
@@ -3256,3 +3281,59 @@ remain family-specific and consume a bounded subset of the inventory.
 - Structural crash repro wrappers completed as `3 xfailed`.
 - Classification: no unexpected pass/fail, changed crash mode, or new
   independent `FZ-*` bucket.
+
+### Round 25 Lane BL high-CGA mixed ownership
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_mixed_round25.md`
+- Temporary probe:
+  `/tmp/tmem_high_cga_mixed_round25_probe.py`; logs at
+  `/tmp/tmem_high_cga_mixed_round25_probe.log` and
+  `/tmp/tmem_high_cga_mixed_round25_probe_verbose.log`.
+- Result:
+  same-kernel TMA multicast plus local copy rows and same-kernel 2CTA MMAv5
+  multicast/commit plus local copy rows all failed at the local TMEM allocation
+  with the existing CTA-count diagnostic. Covered local 1CTA/2CTA copies in
+  4/8/16 CTA contexts for TMA and in 4/8 CTA contexts for MMAv5.
+- Classification: no new independent `FZ-*`. This sharpens
+  `FZ-20260421-0010` as a local-layout/context ownership gate even when a
+  legal high-CGA operation is present earlier in the same kernel. The attempted
+  scaled-MMAv5 plus local indexed-view row hit a temporary probe setup
+  limitation before reaching the local ownership check and is not counted as
+  new backend evidence.
+
+### Round 21 local scaled-MMAv5 layout rerun
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_layouts_round21.md`
+- Follow-up rerun used read-only `least_duration` splitting after concurrent
+  `--store-durations` writes changed shard boundaries during an ad hoc rerun.
+- Stable aggregate result:
+  `91 passed` (`11`, `58`, `11`, `11` across groups 1-4).
+- Classification: still green; no new bucket outside excluded `FZ-0015` rows.
+
+### Round 25 local dynamic descriptor guardrail
+
+- Time: 2026-04-21 14:38 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_dynamic_structural_round25.md`
+- Selector:
+  `generic_pass or dynamic_index or loop_carried or scaled_mma_acc_subslice`
+  collected `12/33`.
+- Split-4 result:
+  `12 xfailed`.
+- Classification: no unexpected pass, changed crash mode, runtime miscompile
+  outside the existing xfail set, or new independent `FZ-*` bucket.
+
+### Round 25 local scaled descriptor-view baseline
+
+- Time: 2026-04-21 14:35 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_descriptor_view_round25.md`
+- Selector:
+  `mma_scaled and descriptor_view and not reports`
+- Result:
+  `4 passed, 1611 deselected`.
+- Classification: no new independent `FZ-*`. This remains a green checked-in
+  nearby control for report-only `FZ-20260421-0013` scale descriptor-view
+  miscompile probes.

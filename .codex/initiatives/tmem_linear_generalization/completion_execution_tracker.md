@@ -2245,10 +2245,22 @@ signal handling:
   Executing selector collected `53/1615` and passed split-4 as `53 passed`;
   no new bucket.
 
+- 2026-04-21 14:35 UTC: local scaled-MMAv5 descriptor-view baseline
+  completed. Report: `agents/fuzz_local_scaled_descriptor_view_round25.md`.
+  Selector passed as `4 passed, 1611 deselected`; no new bucket.
+
 - 2026-04-21 14:28 UTC: Lane BJ dynamic structural generator completed.
   Report: `agents/fuzz_structural_generator_dynamic_round25.md`. No new
   bucket; generated seeds sharpened `FZ-0001`/`FZ-0002` and produced a
   promotion-ready seed table.
+
+- 2026-04-21 14:35 UTC: local dynamic structural guardrail completed. Report:
+  `agents/fuzz_local_dynamic_structural_round25.md`. Selector collected
+  `12/33` and completed as `12 xfailed`; no new bucket.
+
+- 2026-04-21 14:35 UTC: local scaled descriptor-view control completed.
+  Report: `agents/fuzz_local_scaled_descriptor_view_round25.md`. Selector
+  passed as `4 passed`; no new bucket.
 
 - 2026-04-21 14:28 UTC: Lane BJ dynamic descriptor structural generator
   completed. Report: `agents/fuzz_structural_generator_dynamic_round25.md`.
@@ -2266,3 +2278,11 @@ signal handling:
   Report: `agents/fuzz_local_structural_crash_round24.md`. Selector
   `allocator_crash or optimizer_crash` completed as `3 xfailed`; no changed
   failure mode and no new bucket.
+
+- 2026-04-21 12:25 UTC: Round 25 Lane BL high-CGA mixed ownership completed.
+  Report: `agents/fuzz_high_cga_mixed_round25.md`. Discovery-only, no backend
+  repair. Same-kernel TMA multicast plus local copy and same-kernel 2CTA MMAv5
+  multicast/commit plus local copy rows produced `10` existing
+  `FZ-20260421-0010` CTA-count diagnostics and no new crash/miscompile. The
+  scaled-MMAv5/local-view attempt was harness-limited before the local check.
+  Local scaled-layout selector rerun stayed green as `91 passed`.

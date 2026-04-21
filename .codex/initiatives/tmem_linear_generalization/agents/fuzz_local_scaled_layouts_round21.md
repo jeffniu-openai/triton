@@ -93,3 +93,26 @@ known selected-B-scale `FZ-20260421-0015` rows. It suggests that the current
 scaled-MMA failures remain more specific to selected/dynamic descriptor
 operands and allocation/addressing interactions than to these static layout
 families alone.
+
+## Follow-up Rerun
+
+The selector was rerun on 2026-04-21 after noticing that one ad hoc shard
+command had omitted `acc_tile_permuted_32` and that concurrent
+`--store-durations` writes can race on the shared duration file. The clean
+follow-up used read-only duration splitting:
+
+```bash
+CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> \
+  PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> \
+  --splitting-algorithm=least_duration \
+  --durations-path /tmp/tmem_r21_scaled_layouts_durations.json \
+  python/test/gluon/test_tmem_runtime_matrix.py \
+  -k 'mma_scaled and (lhs_subslice or lhs_tile_permuted or acc_tile_permuted_64 or acc_tile_permuted_32 or acc_identity_narrow) and not reports and not fz0015'
+```
+
+Stable aggregate result: `91 passed`.
+
+- GPU 0 / group 1: `11 passed, 1604 deselected`.
+- GPU 1 / group 2: `58 passed, 1557 deselected`.
+- GPU 2 / group 3: `11 passed, 1604 deselected`.
+- GPU 3 / group 4: `11 passed, 1604 deselected`.

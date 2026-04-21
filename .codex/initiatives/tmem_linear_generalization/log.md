@@ -28561,6 +28561,54 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 12:25 UTC: Round 25 high-CGA mixed ownership
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_mixed_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe:
+  `/tmp/tmem_high_cga_mixed_round25_probe.py`; verbose log:
+  `/tmp/tmem_high_cga_mixed_round25_probe_verbose.log`.
+- Result: `10` same-kernel mixed ownership rows classified as existing
+  `FZ-20260421-0010`. Legal high-CGA TMA multicast or 2CTA MMAv5
+  multicast/commit appeared earlier in the same kernel, and the failure still
+  occurred at the later local 1CTA/2CTA no-scales copy allocation with the
+  CTA-count diagnostic.
+- One scaled-MMAv5 plus local indexed-view attempt failed before the local
+  ownership check due to temporary high-CGA scale-layout setup and was not
+  counted as a new backend bucket.
+- The scaled-MMAv5 static layout selector was rerun with read-only duration
+  splitting and remained green as `91 passed` outside excluded `FZ-0015` rows.
+
+## 2026-04-21 14:38 UTC: Round 25 local dynamic descriptor guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_dynamic_structural_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Selector
+  `generic_pass or dynamic_index or loop_carried or scaled_mma_acc_subslice`
+  collected `12/33` rows.
+- Split-4 result with stable per-GPU caches:
+  `12 xfailed` (`3x/3x/3x/3x`).
+- Classification: no unexpected pass, changed crash mode, runtime miscompile
+  outside the existing xfail set, or new independent `FZ-*` bucket was found.
+
+## 2026-04-21 14:35 UTC: Round 25 local scaled descriptor-view baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_descriptor_view_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Selector `mma_scaled and descriptor_view and not reports` passed as
+  `4 passed, 1611 deselected`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found. This
+  remains a green checked-in nearby control for report-only `FZ-0013`
+  scale descriptor-view miscompile probes.
+
 ## 2026-04-21 13:50 UTC: Round 24 local selector-permuted copy guardrail
 
 - Wrote
@@ -29098,6 +29146,31 @@ Open after this slice:
   - green contrasts: `4` rows.
 - Classification: no new independent `FZ-*`; the lane produced
   promotion-ready dynamic generator seeds and sharpened `FZ-0001`/`FZ-0002`.
+
+## 2026-04-21 14:35 UTC: Round 25 local dynamic structural guardrail
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_dynamic_structural_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Selector
+  `generic_pass or dynamic_index or loop_carried or scaled_mma_acc_subslice`
+  in `test_tmem_structural_fuzzer.py` collected `12/33` rows.
+- Split-4 result with stable per-GPU caches: `12 xfailed` (`3/3/3/3`).
+- Classification: no unexpected pass, changed crash mode, runtime miscompile
+  outside existing xfail set, or new independent `FZ-*`.
+
+## 2026-04-21 14:35 UTC: Round 25 local scaled descriptor-view control
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_descriptor_view_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Selector `mma_scaled and descriptor_view and not reports` completed as
+  `4 passed, 1611 deselected`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*`. This remains a green
+  checked-in nearby control for report-only `FZ-20260421-0013`.
 
 ## 2026-04-21 14:28 UTC: Round 25 Lane BJ dynamic descriptor generator
 

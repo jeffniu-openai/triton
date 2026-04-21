@@ -9,6 +9,13 @@
   but all rows pre-skipped due the current Blackwell TMEM allocation limit, so
   it is not counted as runtime evidence.
 
+- Latest: 2026-04-21 14:35 UTC local scaled-MMAv5 descriptor-view baseline
+  completed. Report: `agents/fuzz_local_scaled_descriptor_view_round25.md`.
+  Selector `mma_scaled and descriptor_view and not reports` passed as
+  `4 passed, 1611 deselected`; no new bucket. This remains a checked-in green
+  nearby control for report-only `FZ-0013` temporary scale-view miscompile
+  rows.
+
 - Latest: 2026-04-21 14:28 UTC Lane BJ dynamic descriptor structural
   generator prototype completed. Report:
   `agents/fuzz_structural_generator_dynamic_round25.md`. No new independent
@@ -15883,6 +15890,18 @@ rejection, not rescue
   likely `ld.red` consumer extensions where full-output readback is already
   wrong; `3` clean copy unsupported boundaries; `4` green contrasts.
 
+- Local Round 25 dynamic structural guardrail integrated
+  `agents/fuzz_local_dynamic_structural_round25.md`. Selector
+  `generic_pass or dynamic_index or loop_carried or scaled_mma_acc_subslice`
+  collected `12/33` structural-fuzzer rows and completed split-4 as
+  `12 xfailed` (`3/3/3/3`). No unexpected pass/fail and no new bucket.
+
+- Local Round 25 scaled descriptor-view control integrated
+  `agents/fuzz_local_scaled_descriptor_view_round25.md`. Selector
+  `mma_scaled and descriptor_view and not reports` completed as
+  `4 passed, 1611 deselected`. No new bucket; checked-in descriptor-view rows
+  remain green controls for report-only `FZ-20260421-0013`.
+
 - Round 22 Lane BA wrote
   `agents/fuzz_scaled_dynamic_scales_round22.md`. No new independent `FZ-*`.
   Temporary probe `/tmp/tmem_scaled_dynamic_scales_round22_probe.py` ran
@@ -16017,3 +16036,30 @@ rejection, not rescue
   rows `4 passed`; structural non-crash rows `9 passed, 21 xfailed`; crash
   repro wrappers `3 xfailed`. No unexpected outcome, changed crash mode, or
   new independent `FZ-*` bucket.
+
+## Current: 2026-04-21 Round 25 local dynamic/scaled guardrails
+
+- Local dynamic descriptor structural guardrail wrote
+  `agents/fuzz_local_dynamic_structural_round25.md`. Selector
+  `generic_pass or dynamic_index or loop_carried or scaled_mma_acc_subslice`
+  collected `12/33` rows and completed split-4 as `12 xfailed`. No unexpected
+  pass, changed crash mode, or new independent `FZ-*` bucket was found.
+- Local scaled-MMAv5 descriptor-view baseline wrote
+  `agents/fuzz_local_scaled_descriptor_view_round25.md`. Selector
+  `mma_scaled and descriptor_view and not reports` passed as
+  `4 passed, 1611 deselected`. This remains a green checked-in nearby control
+  for the report-only `FZ-20260421-0013` scale descriptor-view miscompile
+  bucket.
+
+- Round 25 Lane BL wrote `agents/fuzz_high_cga_mixed_round25.md`. No new
+  independent `FZ-*`. Same-kernel mixed ownership rows combining legal
+  high-CGA TMA multicast or 2CTA MMAv5 multicast/commit with local 1CTA/2CTA
+  no-scales copies fail cleanly at the local TMEM allocation under existing
+  `FZ-20260421-0010`; no proxy-fence crash, assembler failure, or runtime
+  wrong result was found. The scaled-MMAv5/local indexed-view attempt hit a
+  temporary direct-scale setup limitation before reaching the ownership check.
+
+- Local scaled-MMAv5 layout baseline was rerun with read-only
+  `least_duration` splitting after an ad hoc duration-store race was noticed.
+  Stable result: `91 passed` across groups `11/58/11/11`, still green outside
+  excluded `FZ-20260421-0015` rows.

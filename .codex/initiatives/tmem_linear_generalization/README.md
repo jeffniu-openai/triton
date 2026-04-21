@@ -5734,3 +5734,33 @@ When resuming the initiative:
   `agents/fuzz_local_structural_crash_round24.md` reran the three checked-in
   child-process crash rows and stayed `3 xfailed`, preserving existing
   `FZ-0005`, `FZ-0008`, and `FZ-0009` classifications.
+
+## Latest: 2026-04-21 Round 25 high-CGA mixed ownership
+
+- Lane BL completed `agents/fuzz_high_cga_mixed_round25.md`. No backend or
+  compiler repair was attempted.
+- Same-kernel mixed TMA multicast plus local 1CTA/2CTA copy rows and same-
+  kernel 2CTA MMAv5 multicast/commit plus local 1CTA/2CTA copy rows all failed
+  at the local TMEM allocation with existing `FZ-20260421-0010` CTA-count
+  diagnostics. There were no proxy-fence crashes, PTX assembler failures, or
+  runtime wrong results in the rows that reached the intended check.
+- The attempted scaled-MMAv5 plus local indexed-view row hit a temporary probe
+  setup limitation before reaching the local ownership check, so it is not a
+  new backend bucket.
+- The local scaled-MMAv5 layout selector was also rerun with read-only
+  duration splitting and stayed green as `91 passed`, excluding known
+  `FZ-0015` rows.
+
+## Latest: 2026-04-21 Round 25 local guardrails
+
+- Local dynamic descriptor structural guardrail wrote
+  `agents/fuzz_local_dynamic_structural_round25.md`. Selector
+  `generic_pass or dynamic_index or loop_carried or scaled_mma_acc_subslice`
+  collected `12/33` rows and completed split-4 as `12 xfailed`. No expected
+  xfail changed mode and no new bucket was found.
+- Local scaled-MMAv5 descriptor-view baseline wrote
+  `agents/fuzz_local_scaled_descriptor_view_round25.md`. Selector
+  `mma_scaled and descriptor_view and not reports` passed as
+  `4 passed, 1611 deselected`. This remains a green checked-in nearby control
+  for the report-only `FZ-20260421-0013` scale descriptor-view miscompile
+  bucket.
