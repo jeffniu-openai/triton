@@ -30766,6 +30766,25 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:45 UTC: Round 38 copy/scale rematerialization subagent lane integrated
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_scale_remat_round38.md`.
+- Required `make -j8` was a no-op in the subagent lane.
+- Runtime-matrix copy/scales/rematerialization selector collected `176/1615`
+  rows and passed split-4 as `176 passed` (`44/44/44/44`).
+- Structural copy-scales fuzzer assigned rows passed: `2` real rows; two empty
+  split groups returned pytest no-tests exit code as an expected split artifact.
+- Temporary replay probe:
+  `/root/tmp/fuzz_copy_scale_remat_round38_probe.py`; `18` rows collected and
+  passed split-4 as `18 passed` (`5/5/5/3`).
+- `python/test/gluon/test_core.py::test_mma_scaled_tcgen05_copy` collected
+  `96` rows and passed split-4 as `96 passed` (`24/24/24/24`).
+- Classification: no compiler crash, opcode absence, false unsupported
+  diagnostic, runtime miscompile, clean-boundary drift, or new independent
+  `FZ-*`. Existing clean unsupported copy/scale descriptor boundaries stayed
+  clean; public shared-scale/B-scale descriptor rematerialization stayed green.
+
 ## 2026-04-21 14:40 UTC: Round 38 compiler-boundary subagent lane integrated
 
 - Integrated

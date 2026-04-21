@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:45 UTC Round 38 copy/scale rematerialization
+  subagent lane integrated. Report:
+  `agents/fuzz_copy_scale_remat_round38.md`. Required `make -j8` was a no-op.
+  Runtime-matrix copy/scales/remat selector collected `176/1615` and passed
+  split-4 as `176 passed` (`44/44/44/44`). Structural copy-scales fuzzer
+  assigned rows passed (`2` real rows; two empty split groups returned
+  no-tests exit code as expected). Temporary replay probe
+  `/root/tmp/fuzz_copy_scale_remat_round38_probe.py` collected `18` rows and
+  passed split-4 as `18 passed` (`5/5/5/3`). `test_core.py::test_mma_scaled_tcgen05_copy`
+  collected `96` and passed split-4 as `96 passed` (`24/24/24/24`). No
+  compiler crash, opcode absence, false unsupported diagnostic, runtime
+  miscompile, clean-boundary drift, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 14:40 UTC Round 38 compiler-boundary subagent lane
   integrated. Report: `agents/fuzz_compiler_boundaries_round38.md`.
   Required `make -j8` and `ninja triton-opt` were no-ops. Build-tree lit

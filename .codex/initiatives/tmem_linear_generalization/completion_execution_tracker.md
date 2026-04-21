@@ -60,6 +60,15 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:45 UTC Round 38 copy/scale rematerialization subagent lane
+  integrated. Artifact: `agents/fuzz_copy_scale_remat_round38.md`.
+  Runtime-matrix copy/scales/remat selector collected `176/1615` and passed
+  split-4 as `176 passed`; structural copy-scales assigned rows passed;
+  temporary replay probe collected `18` rows and passed split-4 as `18 passed`;
+  `test_core.py::test_mma_scaled_tcgen05_copy` collected `96` and passed
+  split-4 as `96 passed`. No compiler crash, opcode absence, false unsupported
+  diagnostic, runtime miscompile, clean-boundary drift, or new independent
+  `FZ-*`; backend repair remains deferred.
   2026-04-21 14:40 UTC Round 38 compiler-boundary subagent lane integrated.
   Artifact: `agents/fuzz_compiler_boundaries_round38.md`. Build-tree lit
   controls `tmem_layouts.mlir`, `interleave_tmem.mlir`, and

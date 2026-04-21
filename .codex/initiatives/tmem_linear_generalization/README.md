@@ -7,7 +7,18 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 38 compiler-boundary subagent lane
+Latest fuzzing checkpoint: 2026-04-21 Round 38 copy/scale rematerialization
+subagent lane integrated. Report:
+`agents/fuzz_copy_scale_remat_round38.md`. Runtime-matrix copy/scales/remat
+selector collected `176/1615` and passed split-4 as `176 passed`; structural
+copy-scales fuzzer assigned rows passed; temp probe
+`/root/tmp/fuzz_copy_scale_remat_round38_probe.py` collected `18` rows and
+passed split-4 as `18 passed`; `test_core.py::test_mma_scaled_tcgen05_copy`
+collected `96` and passed split-4 as `96 passed`. No compiler crash, opcode
+absence, false unsupported diagnostic, runtime miscompile, or new independent
+`FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 38 compiler-boundary subagent lane
 integrated. Report: `agents/fuzz_compiler_boundaries_round38.md`. Build-tree
 lit controls `tmem_layouts.mlir`, `interleave_tmem.mlir`, and
 `memdesc-subview-split.mlir` passed. Generated `/tmp/tmem_compiler_boundaries_round38`
