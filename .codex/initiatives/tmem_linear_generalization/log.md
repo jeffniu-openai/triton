@@ -30536,6 +30536,33 @@ Open after this slice:
   `FZ-20260421-0017` for descriptor-chain `i64` load, descriptor-chain `f64`
   store, and initialized `i64` alloc.
 
+## 2026-04-21 13:17 UTC: Round 34 mbarrier/proxy-fence composition
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mbarrier_composition_round34.md`.
+- Required `make -j8` was a no-op.
+- Temporary probe: `/tmp/tmem_mbarrier_composition_round34_probe.py`.
+- Probe collection: `4` rows covering sequential 2CTA no-scale
+  `tcgen05.copy.warpx2::01_23`, 2CTA `cp.scales`
+  `tcgen05.copy.warpx4`, direct TMEM load/store, and plain mbarrier intervals.
+- Split-4 probe result: `4 passed` as harness tests
+  (`1/1/1/1` by group). Manual classification: `3` existing
+  `FZ-20260421-0014` proxy-fence insertion reproductions and `1` green
+  init-all contrast.
+- The green contrast emitted one
+  `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b` and two
+  `tcgen05.cp.cta_group::2.warpx4.32x128b` PTX opcode occurrences while also
+  performing direct TMEM load/store and a plain mbarrier wait.
+- Adjacent checked-in selector
+  `(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`
+  collected `55/1615` and passed split-4 as `55 passed`
+  (`14/14/14/13`).
+- Classification: no new independent `FZ-*`. The lane broadens
+  `FZ-20260421-0014` to sequential no-scale plus scale-copy orderings and to
+  no-scale copy plus direct `ld/st` plus plain mbarrier plus another no-scale
+  copy. No `FZ-20260421-0010` ownership diagnostic appeared because all
+  temporary rows used a legal `num_ctas=2` context.
+
 ## 2026-04-21 13:13 UTC: Round 33 FZ-0018 PTX artifact capture
 
 - Wrote
@@ -30614,3 +30641,16 @@ Open after this slice:
 - Classification: no compiler crash, false unsupported diagnostic, opcode
   mismatch, runtime miscompile, clean-boundary drift, unexpected skip/pass
   transition, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 34 local two-CTA MMAv5/TMA guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_twocta_tma_round34.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(mma_twocta and not reports and not resource and (tma or transposed or plain_kind or indexed_acc))`.
+- Collection: `103/1615`.
+- Split-4 result: `103 passed` (`26/26/26/25` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, or new independent
+  `FZ-*` bucket.

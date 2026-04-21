@@ -183,6 +183,12 @@ The project is complete when:
   compiler crash, false unsupported diagnostic, opcode mismatch, runtime
   miscompile, clean-boundary drift, unexpected skip/pass transition, or new
   independent `FZ-*`.
+  2026-04-21 Round 34 local two-CTA MMAv5/TMA guardrail completed. Artifact:
+  `agents/fuzz_local_mma_twocta_tma_round34.md`. Selector
+  `(mma_twocta and not reports and not resource and (tma or transposed or plain_kind or indexed_acc))`
+  collected `103/1615` and passed split-4 as `103 passed`; no compiler crash,
+  false unsupported diagnostic, opcode mismatch, runtime miscompile,
+  clean-boundary drift, or new independent `FZ-*`.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline
@@ -2668,4 +2674,16 @@ signal handling:
   shared-memory boundaries, `6` were clean tensor-memory boundaries, and `20`
   were clean power-of-two shape boundaries. `FZ-0018` remains an open backend
   resource-policy/planning bug; repair is intentionally deferred during
-  discovery.
+discovery.
+
+- 2026-04-21 13:17 UTC: Round 34 mbarrier/proxy-fence composition lane
+  completed. Report: `agents/fuzz_mbarrier_composition_round34.md`. Required
+  `make -j8` was a no-op. Temporary probe
+  `/tmp/tmem_mbarrier_composition_round34_probe.py` collected `4` rows and
+  passed split-4 as harness tests (`1/1/1/1`), manually classified as `3`
+  existing `FZ-20260421-0014` proxy-fence insertion reproductions and `1`
+  green init-all contrast. Adjacent checked-in
+  `cp_scales`/mbarrier/proxy/clean-boundary selector collected `55/1615` and
+  passed split-4 as `55 passed`. No new independent `FZ-*`; no
+  `FZ-20260421-0010` ownership diagnostic in the legal `num_ctas=2` temporary
+  rows.

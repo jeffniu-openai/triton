@@ -7,7 +7,27 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 34 `test_core.py`
+Latest fuzzing checkpoint: 2026-04-21 Round 34 two-CTA MMAv5/TMA guardrail
+completed. Report: `agents/fuzz_local_mma_twocta_tma_round34.md`. Selector
+`(mma_twocta and not reports and not resource and (tma or transposed or plain_kind or indexed_acc))`
+collected `103/1615` rows and passed split-4 as `103 passed`. No compiler
+crash, false unsupported diagnostic, opcode mismatch, runtime miscompile,
+clean-boundary drift, or new independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 34 mbarrier/proxy-fence
+composition lane completed. Report:
+`agents/fuzz_mbarrier_composition_round34.md`. Temporary Python/Gluon probe
+`/tmp/tmem_mbarrier_composition_round34_probe.py` collected `4` rows mixing
+sequential 2CTA no-scale `tcgen05.copy.warpx2::01_23`, 2CTA `cp.scales`
+`tcgen05.copy.warpx4`, direct TMEM load/store, and plain mbarrier intervals.
+Result: `1` green init-all contrast and `3` existing
+`FZ-20260421-0014` proxy-fence insertion reproductions; no
+`FZ-20260421-0010` ownership diagnostic and no new independent `FZ-*`.
+Adjacent checked-in selector
+`(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`
+collected `55/1615` and passed split-4 as `55 passed`.
+
+Earlier fuzzing checkpoint: 2026-04-21 Round 34 `test_core.py`
 TMEM/multicast guardrail completed. Report:
 `agents/fuzz_local_test_core_tmem_round34.md`. Selector
 `(tcgen05 or tmem) and (multicast or shared_inputs or twocta or mma)`

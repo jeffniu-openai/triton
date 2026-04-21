@@ -1,5 +1,30 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 34 local two-CTA MMAv5/TMA guardrail completed.
+  Report: `agents/fuzz_local_mma_twocta_tma_round34.md`. Required `make -j8`
+  was a no-op. Selector
+  `(mma_twocta and not reports and not resource and (tma or transposed or plain_kind or indexed_acc))`
+  collected `103/1615` rows and passed split-4 as `103 passed`
+  (`26/26/26/25`). No compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, or new independent
+  `FZ-*` bucket.
+
+- Latest: 2026-04-21 13:17 UTC Round 34 mbarrier/proxy-fence composition
+  lane completed. Report: `agents/fuzz_mbarrier_composition_round34.md`.
+  Required `make -j8` was a no-op. Temporary probe
+  `/tmp/tmem_mbarrier_composition_round34_probe.py` collected `4` rows mixing
+  sequential 2CTA no-scale `tcgen05.copy.warpx2::01_23`, 2CTA `cp.scales`
+  `tcgen05.copy.warpx4`, direct TMEM load/store, and plain mbarrier
+  intervals. Split-4 result: `4 passed` as harness tests, with manual
+  classification `1` green init-all contrast and `3` existing
+  `FZ-20260421-0014` proxy-fence insertion reproductions. Adjacent checked-in
+  selector
+  `(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`
+  collected `55/1615` rows and passed split-4 as `55 passed`
+  (`14/14/14/13`). No `FZ-20260421-0010` ownership diagnostic, runtime
+  wrong-result, opcode mismatch, false unsupported diagnostic, or new
+  independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 Round 34 local `test_core.py` TMEM/multicast guardrail
   completed. Report: `agents/fuzz_local_test_core_tmem_round34.md`. Required
   `make -j8` was a no-op. Selector
