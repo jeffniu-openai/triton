@@ -30766,6 +30766,18 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:30 UTC: Round 38 clean-boundary guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundary_guardrail_round38.md`.
+- Selector:
+  `(clean_unsupported or clean_error or reports_clean or tmem_oor) and not reports`.
+- Collection: `22/1615`.
+- Result: `22 passed`.
+- Classification: no verifier over-strictness drift, unexpected compiler
+  crash, false unsupported diagnostic, unexpected pass/fail transition, or new
+  independent `FZ-*`. Backend repair remains deferred.
+
 ## 2026-04-21 14:24 UTC: Round 38 copy positive guardrail
 
 - Wrote

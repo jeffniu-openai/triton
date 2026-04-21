@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:30 UTC Round 38 clean-boundary guardrail completed.
+  Report: `agents/fuzz_clean_boundary_guardrail_round38.md`. Selector
+  `(clean_unsupported or clean_error or reports_clean or tmem_oor) and not reports`
+  collected `22/1615` and passed as `22 passed`. No verifier
+  over-strictness drift, unexpected compiler crash, false unsupported
+  diagnostic, unexpected pass/fail transition, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 14:24 UTC Round 38 copy positive guardrail completed.
   Report: `agents/fuzz_copy_positive_guardrail_round38.md`. Selector
   `(cp_no_scales or cp_scales) and not reports and not resource and not clean`

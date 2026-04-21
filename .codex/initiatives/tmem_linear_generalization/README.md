@@ -7,7 +7,12 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 38 copy positive guardrail
+Latest fuzzing checkpoint: 2026-04-21 Round 38 clean-boundary guardrail
+completed. Report: `agents/fuzz_clean_boundary_guardrail_round38.md`.
+Selector `(clean_unsupported or clean_error or reports_clean or tmem_oor) and not reports`
+collected `22/1615` and passed as `22 passed`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 38 copy positive guardrail
 completed. Report: `agents/fuzz_copy_positive_guardrail_round38.md`.
 Selector `(cp_no_scales or cp_scales) and not reports and not resource and not clean`
 collected `246/1615` and passed/stably skipped split-4 as
