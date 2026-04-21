@@ -26580,6 +26580,42 @@ Open after this slice:
   - exact new sentinels reported `2 xfailed`;
   - full structural fuzzer reported `9 passed, 23 xfailed`.
 
+## 2026-04-21 09:12 UTC: Round 7 Lane B generator-backed ld/st and ld.red discovery
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Used `/tmp/tmem_structural_case_generator_round6.py` as a deterministic row
+  selector and refreshed `/tmp/tmem_structural_case_generator_round7.json`:
+  `25245` generated descriptors, `31` checked-in structural-fuzzer ids, and
+  `0` exact normalized-id matches.
+- Temporary probe:
+  `/tmp/tmem_generator_ldst_ldred_round7_probe.py`.
+- New stable finding: `FZ-20260421-0009`, a 1CTA direct indexed `ld.red`
+  parent `[2,256,32]` / selected view `[256,32]` compiler crash in
+  `TritonTensorMemoryAllocationPass` with the
+  `TensorMemoryAllocation.cpp:65` `kNumRows - numRows >= 0` assertion.
+  Extracted MLIR
+  `/tmp/tmem_generator_ldst_ldred_round7_ldred256x32_alloc_assert.mlir`
+  reproduces with `triton-opt --run-reproducer` and exits `134`.
+- Boundary classifications:
+  - `ldred-f32-1cta-ncta1-128x64-index-even_odd-identity-32x32b-min`
+    passed and emitted hardware `.ld.red.`;
+  - two-CTA `256x64` direct indexed `ld.red` remains existing
+    `FZ-20260421-0004` opcode fallback, runtime-correct but plain
+    `tcgen05.ld`;
+  - f16 read-only `ld/st` chain2 identity reproduced already-covered
+    `FZ-20260421-0003`;
+  - same-view f16 roundtrip and i32 transpose/slice descriptor views stopped
+    at clean unsupported diagnostics.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - probe py-compile passed;
+  - collect-only found `8` nodeids;
+  - four-GPU split logs plus exact reruns recorded the expected failures and
+    positive boundary rows.
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generator_ldst_ldred_round7.md`.
+
 ## 2026-04-21 09:11 UTC: Round 7 Lane D generic-pass / analysis fuzzing
 
 - Continued the discovery-only structural fuzzing campaign. No backend or

@@ -120,6 +120,17 @@ The project is complete when:
   `FZ-20260421-0002` with a fresh `8063 / 8192` runtime mismatch. No new
   independent FZ id was assigned. Report:
   `agents/fuzz_generic_analysis_round7.md`.
+  2026-04-21 09:12 UTC Round 7 Lane B completed generator-backed `ld/st` and
+  `ld.red` discovery without backend repairs. The Round 6 `/tmp` descriptor
+  generator selected eight compact rows. New `FZ-20260421-0009`: 1CTA direct
+  indexed `ld.red` over parent `[2,256,32]` aborts in
+  `TritonTensorMemoryAllocationPass` with the allocator assertion
+  `kNumRows - numRows >= 0`; extracted MLIR replay exits `134`. Positive and
+  boundary rows confirmed `128x64` indexed `.ld.red.`, existing
+  `FZ-20260421-0004` 2CTA `256x64` opcode fallback, already-covered
+  `FZ-20260421-0003` f16 subword read-only miscompile, and clean unsupported
+  descriptor-view diagnostics. Report:
+  `agents/fuzz_generator_ldst_ldred_round7.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -846,6 +846,44 @@ remain family-specific and consume a bounded subset of the inventory.
   If promoted, use exactly one sentinel for the `256x2` chain1 `even_odd`
   `min` row and keep it separate from `FZ-20260421-0004`.
 
+### FZ-20260421-0009: 1CTA indexed ld.red 256-row parent allocator assertion
+
+- Source: Round 7 Lane B generator-backed `ld/st` and `ld.red` probe.
+- Failure class: `compiler_crash`.
+- Family: `ldred`.
+- Likely owner surface: `TritonTensorMemoryAllocationPass`.
+- Seed/case id:
+  `ldred-f32-1cta-ncta1-256x32-index-identity-identity-32x32b-min`,
+  seed `0x46708516`.
+- Shape: parent `[2,256,32]`, indexed view `[256,32]`.
+- Layout: 1CTA `TensorMemoryLinearLayout`, row `identity`, col `identity`,
+  lifted through prefix `[2]`.
+- View chain: direct `parent.index(1)`.
+- Operation: store full tile, then `view.load_min()`.
+- Observed: no runtime/opcode stage is reached. The compiler emits an MLIR
+  reproducer and fails while executing `TritonTensorMemoryAllocationPass`.
+- Assertion:
+  `TensorMemoryAllocation.cpp:65: MemoryBitMap::findFirstFit(...): Assertion
+  'kNumRows - numRows >= 0' failed.`
+- Exact repro:
+  ```bash
+  CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-r7b-confirm-ldred256x32 PYTHONPATH=.:./python:python/test/gluon pytest -s --tb=short '/tmp/tmem_generator_ldst_ldred_round7_probe.py::test_generator_ldred_round7[ldred-f32-1cta-ncta1-256x32-index-identity-identity-32x32b-min]'
+  ```
+- MLIR replay:
+  `/tmp/tmem_generator_ldst_ldred_round7_ldred256x32_alloc_assert.mlir`
+  aborts with exit `134` under `triton-opt --run-reproducer`.
+- Boundary evidence from the same lane:
+  - `ldred-f32-1cta-ncta1-128x64-index-even_odd-identity-32x32b-min`
+    passed and emitted hardware `.ld.red.`;
+  - `ldred-f32-2cta-ncta2-256x64-index-identity-identity-32x32b-min`
+    remains an existing `FZ-20260421-0004` opcode-loss row, runtime-correct
+    but plain `tcgen05.ld`;
+  - f16 read-only `ld/st` subword chain2 reproduced already-covered
+    `FZ-20260421-0003`, while same-view roundtrip and i32 transpose/slice rows
+    stopped at clean unsupported descriptor-view diagnostics.
+- Promotion status: report-only for Round 7. If promoted later, use a
+  subprocess-isolated strict xfail and keep it separate from opcode-loss rows.
+
 ### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
 
 - Source: Lane A finding `A2`.

@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 09:12 UTC completed Round 7 Lane B generator-backed
+  `ld/st` and `ld.red` discovery. The lane used the Round 6 `/tmp`
+  descriptor generator as a deterministic selector and ran eight compact
+  Python/Gluon probes from
+  `/tmp/tmem_generator_ldst_ldred_round7_probe.py`. New stable finding:
+  `FZ-20260421-0009`, a 1CTA direct indexed `ld.red` source over parent
+  `[2,256,32]`, selected view `[256,32]`, fails in
+  `TritonTensorMemoryAllocationPass` with the
+  `TensorMemoryAllocation.cpp:65` allocator assertion
+  `kNumRows - numRows >= 0`. The extracted MLIR
+  `/tmp/tmem_generator_ldst_ldred_round7_ldred256x32_alloc_assert.mlir`
+  reproduces under `triton-opt --run-reproducer` with exit `134`.
+  Boundary rows classified as positive `128x64` indexed `.ld.red.`,
+  existing `FZ-20260421-0004` 2CTA `256x64` opcode fallback,
+  already-covered `FZ-20260421-0003` f16 subword read-only miscompile, and
+  clean unsupported descriptor-view diagnostics. No backend/compiler repair
+  was attempted. Report:
+  `agents/fuzz_generator_ldst_ldred_round7.md`.
+
 - Latest: 2026-04-21 09:11 UTC completed Round 7 Lane D generic-pass /
   analysis interaction fuzzing after the scaled-MMAv5 and `ld.red`
   promotions. Temporary harness `/tmp/tmem_generic_analysis_round7.py`

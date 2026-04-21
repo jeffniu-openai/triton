@@ -73,6 +73,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 09:12 UTC: completed Round 7 Lane B generator-backed `ld/st` and
+  `ld.red` discovery. Used the Round 6 `/tmp` descriptor generator as the
+  deterministic selector for eight compact runtime probes. Cataloged new
+  `FZ-20260421-0009`: a 1CTA direct indexed `ld.red` source over parent
+  `[2,256,32]` aborts in `TritonTensorMemoryAllocationPass` with
+  `TensorMemoryAllocation.cpp:65` / `kNumRows - numRows >= 0` before runtime
+  or opcode inspection. Boundary rows confirmed a positive `128x64`
+  even/odd indexed `.ld.red.`, existing `FZ-20260421-0004` 2CTA `256x64`
+  opcode fallback, already-covered f16 subword `FZ-20260421-0003`, and clean
+  unsupported descriptor-view diagnostics. No backend repair was attempted.
+  See `agents/fuzz_generator_ldst_ldred_round7.md`.
+
 - 2026-04-21 09:11 UTC: completed Round 7 Lane D discovery for
   generic-pass and analysis interactions after the scaled/ld.red promotions.
   Wrote `agents/fuzz_generic_analysis_round7.md`. The stable results split
