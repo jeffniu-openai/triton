@@ -33455,3 +33455,47 @@ Open after this slice:
 - Remaining repair-plan frontier:
   checked-in structural xfails are now down to `1`: `FZ-20260421-0007`
   scaled-MMAv5 dynamic-if low-subslice wrong result.
+
+## 2026-04-21 21:56 UTC: FZ-0007 alias-liveness and B-scale view-order repair
+
+- Branch/HEAD before this repair slice:
+  `962bda806 Fix no-op full-slice TMEM descriptor replay`.
+- Dirty files at checkpoint:
+  `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`,
+  `python/test/gluon/test_tmem_structural_fuzzer.py`, plus initiative
+  documentation.
+- Root causes:
+  the `FZ-0007` scaled-MMAv5 dynamic-if row selected between low/high
+  accumulator subslices with `arith.select`. TMEM allocation liveness extended
+  the parent allocation through direct descriptor views but stopped at the
+  selected memdesc alias, so the low-half accumulator allocation could be
+  reused by later scale allocations while the selected descriptor was still
+  consumed by MMA/load. A broader scaled-MMAv5 selector then exposed a separate
+  rematerialization issue: for B-scale descriptor views whose producer store
+  is on an upstream parent alias, the pass padded/repeated the parent storage
+  row order instead of first reconstructing the logical B-scale view row order.
+- Completed implementation:
+  `getLiveIntervals` now follows memdesc aliases through `arith.select`,
+  descriptor-view results, `TMEMSubSliceOp`, and `scf.yield` results for
+  `scf.if`/`scf.for`. `RematerializeScaledMmaBScaleFragments` now records the
+  alias that owns the producer store and applies supported reshape/transpose
+  descriptor-view transforms to the stored tensor before grouping, broadcasting,
+  and reshaping it into padded scale storage.
+- Promoted checked-in positive:
+  `mma-scaled-fz20260421-0007-subslice-if-n64-selector0`; the structural fuzzer
+  now has no checked-in xfails.
+- Validation evidence:
+  required `make -j8`; exact promoted FZ-0007 row `1 passed`; exact B-scale
+  descriptor-view, extra-user, and padded controls `3 passed`; full structural
+  fuzzer split-4 ran as group1 `9 passed`, group2 `9 passed`, group3
+  `9 passed`, and group4 `9 passed`; scaled-MMAv5 use-acc/B-scale selector
+  split-4 ran as group1 `14 passed`, group2 `14 passed`, group3 `14 passed`,
+  and group4 `13 passed`; targeted lit `test/TritonNvidiaGPU/tmem_layouts.mlir`
+  and `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`; structural and
+  runtime test `py_compile` passed; `git diff --check` passed.
+- Remaining repair-plan frontier:
+  no checked-in structural xfails remain. Continue with the broader cataloged
+  backend gaps and completion phases rather than treating the initiative as
+  finished: M64 `ld.red` destination planning (`FZ-20260421-0012`), copy
+  `warpx2`/scales boundaries, broader MMAv5 reachable-family support, heuristic
+  cleanup, and staged broad validation remain the next work queue.

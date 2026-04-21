@@ -124,19 +124,40 @@ static Interval<int> getLiveIntervals(Value value, Liveness &liveness,
   // materialization load/store still needs the parent allocation.
   DenseSet<Value> seenValues;
   SmallVector<Value> worklist{value};
+  auto addAliasedResult = [&](Value result) {
+    if (!isa<ttg::MemDescType>(result.getType()))
+      return;
+    auto userLiveness = liveness.resolveLiveness(result);
+    liveOperations.insert(liveOperations.end(), userLiveness.begin(),
+                          userLiveness.end());
+    worklist.push_back(result);
+  };
   while (!worklist.empty()) {
     Value current = worklist.pop_back_val();
     if (!seenValues.insert(current).second)
       continue;
     for (Operation *user : current.getUsers()) {
-      if (!user->hasTrait<OpTrait::MemDescViewTrait>() &&
-          !isa<TMEMSubSliceOp>(user))
+      if (auto selectOp = dyn_cast<arith::SelectOp>(user)) {
+        addAliasedResult(selectOp.getResult());
         continue;
-      Value result = user->getResult(0);
-      auto userLiveness = liveness.resolveLiveness(result);
-      liveOperations.insert(liveOperations.end(), userLiveness.begin(),
-                            userLiveness.end());
-      worklist.push_back(result);
+      }
+      if (user->hasTrait<OpTrait::MemDescViewTrait>() ||
+          isa<TMEMSubSliceOp>(user)) {
+        addAliasedResult(user->getResult(0));
+        continue;
+      }
+      if (auto yieldOp = dyn_cast<scf::YieldOp>(user)) {
+        Operation *parent = yieldOp->getParentOp();
+        unsigned resultIdx = llvm::find(yieldOp.getResults(), current) -
+                             yieldOp.getResults().begin();
+        if (auto ifOp = dyn_cast<scf::IfOp>(parent)) {
+          if (resultIdx < ifOp.getNumResults())
+            addAliasedResult(ifOp.getResult(resultIdx));
+        } else if (auto forOp = dyn_cast<scf::ForOp>(parent)) {
+          if (resultIdx < forOp.getNumResults())
+            addAliasedResult(forOp.getResult(resultIdx));
+        }
+      }
     }
   }
   auto minId = std::numeric_limits<int>::max();
@@ -296,6 +317,45 @@ static bool isAliasViewChainEdge(Operation *user,
   return aliases.contains(user->getResult(0));
 }
 
+static FailureOr<Value> applyAliasViewChainToTensor(
+    PatternRewriter &rewriter, Location loc, Value tensor, Value sourceAlias,
+    Value targetAlias, ArrayRef<Value> aliases) {
+  auto sourceIt = llvm::find(aliases, sourceAlias);
+  auto targetIt = llvm::find(aliases, targetAlias);
+  if (sourceIt == aliases.end() || targetIt == aliases.end())
+    return failure();
+
+  unsigned sourceIdx = std::distance(aliases.begin(), sourceIt);
+  unsigned targetIdx = std::distance(aliases.begin(), targetIt);
+  if (sourceIdx < targetIdx)
+    return failure();
+
+  SmallVector<Operation *> viewOps;
+  for (unsigned idx = sourceIdx; idx > targetIdx; --idx) {
+    Operation *viewOp = aliases[idx - 1].getDefiningOp();
+    if (!viewOp || viewOp->getNumOperands() == 0 ||
+        viewOp->getOperand(0) != aliases[idx])
+      return failure();
+    if (!isa<ttg::MemDescReshapeOp, ttg::MemDescTransOp>(viewOp))
+      return failure();
+    viewOps.push_back(viewOp);
+  }
+
+  Value current = tensor;
+  for (Operation *viewOp : viewOps) {
+    if (auto reshapeOp = dyn_cast<ttg::MemDescReshapeOp>(viewOp)) {
+      auto resultTy = cast<ttg::MemDescType>(reshapeOp.getType());
+      current = triton::ReshapeOp::create(rewriter, loc, resultTy.getShape(),
+                                          current, /*allowReorder=*/false);
+      continue;
+    }
+    auto transOp = cast<ttg::MemDescTransOp>(viewOp);
+    current = triton::TransOp::create(rewriter, loc, current,
+                                      transOp.getOrder());
+  }
+  return current;
+}
+
 class MaterializeSharedMMAScalesToTMem
     : public OpRewritePattern<TCGen5MMAScaledOp> {
 public:
@@ -412,6 +472,7 @@ public:
       bScaleAliasSet.insert(alias);
 
     TMEMStoreOp storeOp;
+    Value storeAlias;
     for (Value alias : bScaleAliases) {
       for (Operation *user : alias.getUsers()) {
         auto candidate = dyn_cast<TMEMStoreOp>(user);
@@ -420,6 +481,7 @@ public:
         if (storeOp)
           return failure();
         storeOp = candidate;
+        storeAlias = alias;
       }
     }
     if (!storeOp)
@@ -439,9 +501,25 @@ public:
     }
 
     auto storedType = dyn_cast<RankedTensorType>(storeOp.getSrc().getType());
-    if (!storedType || storedType.getShape() != bScaleType.getShape() ||
-        storedType.getRank() != 2)
+    auto storeAliasType = cast<ttg::MemDescType>(storeAlias.getType());
+    if (!storedType || storedType.getShape() != storeAliasType.getShape() ||
+        bScaleType.getRank() != 2)
       return failure();
+
+    rewriter.setInsertionPoint(storeOp);
+    Value stored = storeOp.getSrc();
+    if (storeAlias != bScale) {
+      FailureOr<Value> logicalStored = applyAliasViewChainToTensor(
+          rewriter, storeOp.getLoc(), stored, storeAlias, bScale,
+          bScaleAliases);
+      if (failed(logicalStored))
+        return failure();
+      stored = *logicalStored;
+    }
+
+    storedType = cast<RankedTensorType>(stored.getType());
+    assert(storedType.getShape() == bScaleType.getShape() &&
+           "alias view replay should materialize the B-scale logical shape");
 
     if (storedType.getShape()[0] != static_cast<int64_t>(ctaColumns) ||
         instrSizeN == 0 || ctaColumns % instrSizeN != 0)
@@ -458,11 +536,10 @@ public:
         instructionCount, 1, static_cast<int64_t>(instrSizeN),
         storedType.getShape()[1]};
 
-    rewriter.setInsertionPoint(storeOp);
     Location loc = storeOp.getLoc();
     Value grouped =
-        triton::ReshapeOp::create(rewriter, loc, groupedShape,
-                                  storeOp.getSrc(), /*allowReorder=*/false);
+        triton::ReshapeOp::create(rewriter, loc, groupedShape, stored,
+                                  /*allowReorder=*/false);
     auto groupedType = cast<RankedTensorType>(grouped.getType());
     SmallVector<int64_t> broadcastShape(groupedType.getShape().begin(),
                                         groupedType.getShape().end());

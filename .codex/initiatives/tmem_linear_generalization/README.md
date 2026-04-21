@@ -7,7 +7,29 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 21:39 UTC repaired the checked-in
+Latest repair checkpoint: 2026-04-21 21:56 UTC repaired the final checked-in
+structural xfail, `FZ-20260421-0007`, and hardened the scaled-MMAv5 B-scale
+descriptor-view rematerialization path exposed by validation. The dynamic
+scaled-MMAv5 low-accumulator subslice row was not an MMA lowering bug: TMEM
+allocation liveness followed direct descriptor views but not `arith.select`
+memdesc aliases, so the selected low-half accumulator could be freed and
+reused by scale allocations before the MMA. Allocation liveness now follows
+memdesc aliases through `arith.select`, descriptor views, `TMEMSubSliceOp`, and
+`scf.yield` results for `scf.if`/`scf.for`. The B-scale validation failure was
+a separate alias-order bug in rematerialization: when the producer store lived
+on an upstream descriptor alias, the pass padded/repeated the parent storage
+row order instead of the logical B-scale view row order consumed by MMA. The
+rematerializer now replays supported reshape/transpose descriptor-view
+transforms on the stored tensor before padding. Validation: required
+`make -j8`; exact B-scale descriptor-view, extra-user, and padded controls
+`3 passed`; full structural fuzzer split-4 `36 passed`; scaled-MMAv5
+use-acc/B-scale selector split-4 `55 passed`; targeted lit
+`tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`; `py_compile` and
+`git diff --check` passed. Remaining checked-in structural xfails: none; the
+next frontier moves back to the broader cataloged backend gaps and long-term
+completion phases.
+
+Previous repair checkpoint: 2026-04-21 21:39 UTC repaired the checked-in
 `FZ-20260421-0006` execution blocker for rotate/transpose/full-slice
 `ld.red`. Full-shape `tensor_memory_descriptor.slice(0, shape[dim], dim)` now
 canonicalizes to the original descriptor, so identity full-slice view chains no

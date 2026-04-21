@@ -2,7 +2,28 @@
 
 Last updated: 2026-04-21
 
-Latest repair checkpoint: 2026-04-21 21:39 UTC checked-in
+Latest repair checkpoint: 2026-04-21 21:56 UTC checked-in `FZ-0007`
+(`mma-scaled-fz20260421-0007-subslice-if-n64-selector0`) is repaired and the
+checked-in structural fuzzer has no remaining xfails. The core bug was TMEM
+allocation liveness, not scaled MMA lowering: selected/yielded memdesc aliases
+did not extend the parent allocation lifetime, letting later scale allocations
+reuse the low accumulator subslice before the selected descriptor reached MMA
+and load. `TensorMemoryAllocation` now follows `arith.select`, descriptor
+views, `TMEMSubSliceOp`, and `scf.yield` aliases for `scf.if`/`scf.for`.
+Validation exposed and repaired a related scaled-MMAv5 B-scale
+descriptor-view gap: rematerialization now replays reshape/transpose
+descriptor-view transforms on the producer store tensor before padding row
+fragments, so it repeats logical B-scale rows rather than upstream parent
+storage rows. Validation: required `make -j8`; exact promoted FZ-0007 row
+`1 passed`; exact B-scale descriptor-view controls `3 passed`; full structural
+fuzzer split-4 `36 passed`; scaled-MMAv5 use-acc/B-scale selector split-4
+`55 passed`; targeted lit `2 passed`; `py_compile` and `git diff --check`
+passed. Remaining checked-in structural xfails: none. Next repair-plan
+frontier: broader cataloged backend gaps and long-term completion phases
+(`FZ-20260421-0012` M64 `ld.red`, copy `warpx2`/scales, broader MMAv5,
+heuristic cleanup, staged broad validation).
+
+Previous repair checkpoint: 2026-04-21 21:39 UTC checked-in
 `FZ-20260421-0006` is repaired as an execution blocker. Static no-op
 full-shape descriptor slices are now canonicalized away in Gluon, so the
 rotate/transpose/full-slice chain reaches backend replay instead of failing
@@ -266,9 +287,14 @@ The project is complete when:
   (`FZ-20260421-0005`, `FZ-20260421-0008`, `FZ-20260421-0009`), and
   loop-carried full-view replay (`R5-C`), and no-op full-slice descriptor
   canonicalization for `FZ-20260421-0006` as a correct software-reduce
-  fallback. Current next unblocked slice after checkpoint: repair the final
-  checked-in structural xfail, `FZ-0007`, without regressing the newly promoted
-  full-view, allocation, or `ld.red` positives.
+  fallback, and selected/yielded memdesc alias liveness plus B-scale
+  descriptor-view row-order rematerialization for `FZ-20260421-0007`.
+  Current state after checkpoint: no checked-in structural fuzzer xfails
+  remain. Current next unblocked slice: resume the broader completion queue
+  from the remaining cataloged backend gaps, prioritizing high-value items such
+  as `FZ-20260421-0012` M64 `ld.red` destination planning, copy
+  `warpx2`/scales boundaries, broader MMAv5 reachable-family support,
+  heuristic cleanup, and staged broad validation.
 
 - Phase Z, 24-hour structural fuzzing campaign: active as of 2026-04-21
   08:18 UTC. Build a systematic deterministic Python/Gluon runtime fuzzer plus

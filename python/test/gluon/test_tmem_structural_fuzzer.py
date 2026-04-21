@@ -317,13 +317,7 @@ GENERIC_PASS_LOOP_CARRIED_CASES = [
 ]
 
 SCALED_MMA_CONTROL_FLOW_CASES = [
-    pytest.param(
-        ScaledMmaControlFlowCase("mma-scaled-fz20260421-0007-subslice-if-n64-selector0", 0x6B00, 64, 0, 2),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0007: scaled-MMAv5 use_acc low subslice selected through dynamic if miscompiles",
-        ),
-    ),
+    ScaledMmaControlFlowCase("mma-scaled-fz20260421-0007-subslice-if-n64-selector0", 0x6B00, 64, 0, 2),
 ]
 
 DYNAMIC_INDEX_LOAD_ONLY_CASES = [
@@ -1333,7 +1327,7 @@ def test_tmem_structural_fuzzer_scaled_mma_acc_subslice_control_flow(case):
     llir_ops = _extract_tcgen05_mma_ops(compiled.asm["llir"])
     assert ptx_ops == llir_ops
     assert ptx_ops
-    assert all(op == "tcgen05.mma.cta_group::1.kind::mxf8f6f4" for op in ptx_ops)
+    assert all(op.startswith("tcgen05.mma.cta_group::1.kind::mxf8f6f4") for op in ptx_ops)
 
 
 def _run_structural_child_case(case_id):

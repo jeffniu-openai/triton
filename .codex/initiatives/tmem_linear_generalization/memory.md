@@ -1,6 +1,30 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 21:39 UTC repair slice 8 fixed the checked-in
+- Latest: 2026-04-21 21:56 UTC repair slice 9 fixed the final checked-in
+  structural xfail, `FZ-20260421-0007`, and corrected a scaled-MMAv5 B-scale
+  descriptor-view rematerialization gap exposed by the broader selector.
+  Root causes: TMEM allocation liveness followed direct descriptor views but
+  did not follow memdesc aliases produced by `arith.select` or yielded through
+  `scf.if`/`scf.for`, so a dynamically selected low accumulator subslice could
+  be reused by later scale allocations; and B-scale rematerialization repeated
+  the upstream parent-store row order when the MMA consumed a downstream
+  descriptor view. Implementation: `TensorMemoryAllocation` now extends
+  allocation live ranges through `arith.select`, descriptor-view results,
+  `TMEMSubSliceOp`, and `scf.yield` results for `scf.if`/`scf.for`; the
+  B-scale rematerializer records which alias owns the producer store and
+  replays supported reshape/transpose descriptor-view transforms on the stored
+  tensor before padding/repeating rows into the rematerialized scale storage.
+  Validation: required `make -j8`; exact B-scale descriptor-view, extra-user,
+  and padded controls `3 passed`; full structural fuzzer split-4 `36 passed`;
+  scaled-MMAv5 use-acc/B-scale selector split-4 `55 passed`; targeted lit
+  `tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`; structural/runtime
+  test `py_compile` and `git diff --check` passed. Remaining checked-in
+  structural xfails: none. Next: resume the broader remaining catalog, starting
+  from high-value completion gaps such as `FZ-20260421-0012` M64 `ld.red`
+  destination planning, copy `warpx2`, broader MMAv5 families, and heuristic
+  cleanup/broad validation.
+
+- Previous: 2026-04-21 21:39 UTC repair slice 8 fixed the checked-in
   `FZ-20260421-0006` rotate/transpose/full-slice `ld.red` execution blocker.
   Root cause: no-op full-shape descriptor slices remained in the descriptor
   chain and prevented Gluon layout inference from seeing the replayable full
