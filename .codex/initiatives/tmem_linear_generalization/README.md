@@ -73,6 +73,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 09:03 UTC: completed Round 6 Lane C discovery for the
+  report-only `ld.red` optimizer crash family. Confirmed a stable
+  subprocess-isolated two-CTA indexed chain1 row/col crash,
+  `FZ-20260421-0008`, in `TritonNvidiaGPUOptimizeTMemLayoutsPass`: parent
+  `[2,256,2]`, selected `[256,2]`, row `even_odd`, col `identity`, with the
+  chain `index(1).reshape((128,2,2)).permute([1,0,2]).reshape((256,2))`.
+  Extracted `/tmp/tmem_ldred_crash_round6_min_256x2_evenodd.mlir`, which
+  reproduces via `triton-opt --run-reproducer` and aborts with the same
+  row/col vs row/col/block dimension mismatch. Plain `ld` fallback and clean
+  unsupported controls are cataloged separately. Backend fixes remain deferred
+  during discovery mode. See `agents/fuzz_ldred_crash_round6.md`.
+
 - 2026-04-21 09:20 UTC: promoted the Round 5 generic-pass loop-carried
   memdesc-view crash into checked-in structural fuzzer coverage. Added
   `generic-pass-loop-carried-memdesc-view-chain0` as a strict xfail in

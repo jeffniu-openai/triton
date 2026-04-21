@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 Round 6 Lane B
+Last updated: 2026-04-21 Round 6 Lane C
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -94,6 +94,15 @@ The project is complete when:
   matrix selectors remained green, so the next promotion slice should add a
   self-contained strict xfail to `test_tmem_structural_fuzzer.py` for the
   dynamic-if low-subslice boundary before repair work begins.
+  2026-04-21 Round 6 Lane C isolated `FZ-20260421-0008`, a report-only
+  two-CTA indexed `ld.red` chain1 row/col optimizer crash in
+  `TritonNvidiaGPUOptimizeTMemLayoutsPass`. The minimized crash row is parent
+  `[2,256,2]`, selected view `[256,2]`, row `even_odd`, col `identity`, chain
+  `index(1).reshape((128,2,2)).permute([1,0,2]).reshape((256,2))`. It
+  reproduces in a subprocess Python child and as an extracted MLIR
+  `triton-opt --run-reproducer` abort; plain `ld` fallback and clean
+  unsupported controls are cataloged separately. No backend/compiler repair
+  was attempted.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

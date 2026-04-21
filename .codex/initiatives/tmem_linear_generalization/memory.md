@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 6 Lane C completed discovery-only isolation for
+  the report-only `ld.red` optimizer crash family. Confirmed
+  `FZ-20260421-0008`: a two-CTA indexed chain1 row/col view,
+  parent `[2,256,2]`, row `even_odd`, col `identity`, fails in
+  `TritonNvidiaGPUOptimizeTMemLayoutsPass` with a row/col vs row/col/block
+  dimension mismatch before runtime or opcode inspection. The same owner
+  surface reproduces for `max`, `min(abs=True)`, NaN-propagating `min`, and
+  the earlier `256x64` identity/reverse chain1 row. Chain2/chain3 `256x2`
+  controls are plain `ld` fallbacks, `256x32` identity chain1 remains
+  `FZ-20260421-0004`, and `128x32` even_odd chain1 is a clean unsupported
+  boundary. Artifacts:
+  `agents/fuzz_ldred_crash_round6.md`,
+  `/tmp/tmem_ldred_crash_round6_probe.py`, and
+  `/tmp/tmem_ldred_crash_round6_min_256x2_evenodd.mlir`. Backend fixes remain
+  deferred during discovery mode.
+
 - Latest: 2026-04-21 Round 6 Lane B completed discovery-only MMAv5 /
   scaled-MMAv5 control-flow descriptor-view fuzzing. Existing focused
   scaled-MMAv5 and plain-MMAv5 runtime-matrix selectors stayed green, but a

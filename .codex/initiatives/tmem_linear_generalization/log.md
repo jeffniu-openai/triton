@@ -26532,3 +26532,29 @@ Open after this slice:
   passed.
 - Report:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_scaled_controlflow_round6.md`.
+
+## 2026-04-21 Round 6 Lane C: ld.red optimizer crash isolation
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Confirmed `FZ-20260421-0008`, a crash-only `ld.red` bucket distinct from
+  the plain-load opcode fallback rows:
+  - two-CTA indexed parent `[2,256,2]`, selected view `[256,2]`;
+  - row `even_odd`, col `identity`;
+  - chain1 `index(1).reshape((128,2,2)).permute([1,0,2]).reshape((256,2))`;
+  - `load_min` fails in `TritonNvidiaGPUOptimizeTMemLayoutsPass` with
+    `["row", "col"]` vs `["row", "col", "block"]`.
+- Expansion showed the same optimizer crash for `max`, `min(abs=True)`,
+  NaN-propagating `min`, and the earlier `256x64` identity/reverse chain1
+  row. `256x2` chain2/chain3 controls are plain `ld` fallbacks, and
+  `128x32` even_odd chain1 remains a clean unsupported boundary.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_ldred_crash_round6_probe.py` py-compiled and collected `9`
+    nodeids;
+  - subprocess-isolated parent pytest reported `9 passed`;
+  - direct minimized child command reproduced the optimizer failure;
+  - extracted MLIR `/tmp/tmem_ldred_crash_round6_min_256x2_evenodd.mlir`
+    reproduced with `triton-opt --run-reproducer`, aborting with exit `134`.
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_crash_round6.md`.
