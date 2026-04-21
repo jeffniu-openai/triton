@@ -3398,3 +3398,21 @@ discovery.
   produced `276 passed, 1339 deselected`. No compiler crash, false
   unsupported diagnostic, runtime miscompile, opcode drift, or new independent
   `FZ-*`.
+
+- 2026-04-21 14:49 UTC: Round 49 structural exact smoke completed. Report:
+  `agents/fuzz_structural_exact_smoke_round49.md`. Required `make -j8` was a
+  no-op. Exact structural smoke over two positives and two expected failures
+  completed as `2 passed, 2 xfailed`; xfail signatures remained existing
+  `FZ-20260421-0001` and `FZ-20260421-0004`. No XPASS drift, unexpected
+  compiler crash, false unsupported diagnostic, positive-row failure, or new
+  independent `FZ-*`.
+
+- 2026-04-21 14:48 UTC: Round 49 checked-in test promotion candidates
+  completed. Report: `agents/fuzz_promotion_candidates_round49.md`. Required
+  `make -j8` was a no-op. Reconfirmed candidate evidence: dynamic linear
+  `ttng.tmem_copy` expected `FZ-20260421-0001` as `1 failed, 1 passed`;
+  sequential mbarrier expected `FZ-20260421-0014` via saved reproducer plus
+  copy probe `2 failed, 6 passed`; relayout verifier expected
+  `FZ-20260421-0016` lit `1 failed`; unit-rank half-column expected
+  `FZ-20260421-0021` process abort; positives `3 passed`, proxy-fence lit
+  `1 passed`, and rank-5 half-row worker passed. No new independent `FZ-*`.

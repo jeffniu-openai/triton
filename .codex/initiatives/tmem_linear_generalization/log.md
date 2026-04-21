@@ -31894,3 +31894,36 @@ Open after this slice:
 - Result: `276 passed, 1339 deselected`.
 - Classification: no compiler crash, false unsupported diagnostic, runtime
   miscompile, opcode drift, or new independent `FZ-*`.
+
+## 2026-04-21 14:49 UTC: Round 49 structural exact smoke
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_exact_smoke_round49.md`.
+- Required `make -j8` was a no-op.
+- Exact structural smoke result:
+  `2 passed, 2 xfailed`.
+- Expected xfail signatures remained existing `FZ-20260421-0001` and
+  `FZ-20260421-0004`.
+- Classification: no XPASS drift, unexpected compiler crash, false unsupported
+  diagnostic, positive-row failure, or new independent `FZ-*`.
+
+## 2026-04-21 14:48 UTC: Round 49 checked-in test promotion candidates
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_promotion_candidates_round49.md`.
+- Required `make -j8` was a no-op.
+- Reconfirmed `FZ-20260421-0001` dynamic linear `ttng.tmem_copy` candidate:
+  `1 failed, 1 passed` with adjacent `warpx2` positive.
+- Reconfirmed `FZ-20260421-0014` sequential mbarrier candidate:
+  saved reproducer failed with expected proxy-fence diagnostic and copy probe
+  completed as `2 failed, 6 passed`.
+- Reconfirmed `FZ-20260421-0016` relayout verifier candidate:
+  `Conversion/relayout_tritongpu.mlir` failed with the known verifier
+  assertion.
+- Reconfirmed `FZ-20260421-0021` unit-rank half-column candidate:
+  disposable worker aborted with the known memdesc invariant.
+- Positive controls stayed green: runtime controls `3 passed`,
+  proxy-fence lit `1 passed`, and rank-5 half-row worker passed.
+- Ranked future promotion order: dynamic copy xfail, sequential mbarrier xfail,
+  unencoded TMEM verifier clean-negative, unit-rank half-column xfail, and
+  nearby compact positives.
