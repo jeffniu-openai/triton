@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:00 UTC Round 37 MMAv5 format/use-acc guardrail
+  completed. Report:
+  `agents/fuzz_mmav5_format_useacc_guardrail_round37.md`. Selector
+  `(root_format or use_acc or plain_kind) and not reports and not resource and not m64`
+  collected `255/1615` and passed split-4 as `255 passed` (`64/64/64/63`).
+  No compiler crash, false unsupported diagnostic, opcode absence, runtime
+  miscompile, clean-boundary drift, unexpected xfail/pass transition, or new
+  independent `FZ-*`. Backend repair remains deferred while fuzzing continues.
+
 - Latest: 2026-04-21 13:50 UTC Round 36 indexed-accumulator and subslice
   guardrail completed. Report:
   `agents/fuzz_indexed_subslice_guardrail_round36.md`. Selector

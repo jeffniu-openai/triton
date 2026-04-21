@@ -7,7 +7,14 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 36 indexed-accumulator and
+Latest fuzzing checkpoint: 2026-04-21 Round 37 MMAv5 format/use-acc guardrail
+completed. Report:
+`agents/fuzz_mmav5_format_useacc_guardrail_round37.md`. Selector
+`(root_format or use_acc or plain_kind) and not reports and not resource and not m64`
+collected `255/1615` and passed split-4 as `255 passed`. No new independent
+`FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 36 indexed-accumulator and
 subslice guardrail completed. Report:
 `agents/fuzz_indexed_subslice_guardrail_round36.md`. Selector
 `(indexed_acc or subslice_view or lhs_subslice) and not reports and not resource and not m64`

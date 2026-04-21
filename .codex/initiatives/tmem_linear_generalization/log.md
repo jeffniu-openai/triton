@@ -30766,6 +30766,18 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:00 UTC: Round 37 MMAv5 format and use-acc guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mmav5_format_useacc_guardrail_round37.md`.
+- Selector:
+  `(root_format or use_acc or plain_kind) and not reports and not resource and not m64`.
+- Collection: `255/1615`.
+- Split-4 result: `255 passed` (`64/64/64/63` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`. Backend repair remains deferred.
+
 ## 2026-04-21 13:50 UTC: Round 36 indexed-accumulator and subslice guardrail
 
 - Wrote
