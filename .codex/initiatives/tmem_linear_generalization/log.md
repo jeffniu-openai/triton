@@ -27036,3 +27036,56 @@ Open after this slice:
   - group 3/GPU 2: `8 skipped, 1607 deselected in 2.92s`;
   - group 4/GPU 3: `8 skipped, 1607 deselected in 3.18s`.
 - Aggregate: `8 passed, 24 skipped`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 Lane J descriptor-depth fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_descriptor_depth_round10.md`.
+- Classification: no new independent `FZ-*` bucket. The temporary
+  subprocess-isolated probe covered `ld/st` and `ld.red` direct, deeper
+  reshape/permute/reshape, double-transpose, rank-4/rank-5, sibling-view, and
+  immediate-readback rows.
+- Result: `7` passes and `3` clean diagnostics:
+  - rank-4/rank-5 `ld/st` rows hit the existing unsupported direct-layout
+    register-materialization boundary;
+  - rank-5 sibling-view `ld.red` hit clean tensor-memory OOR
+    (`2048` required, hardware limit `512`).
+
+## 2026-04-21: Round 10 Lane I ld.red modifier fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_modifiers_round10.md`.
+- Classification: no new independent `FZ-*` bucket. The temporary
+  subprocess-isolated probe ran `266` rows over min/max, `abs`, NaN
+  propagation, NaN placement, 1CTA and 2CTA indexed/chained descriptor
+  reductions, and opcode suffix checks.
+- Reclassified result:
+  - `140` pass;
+  - `70` opcode fallback rows broadening `FZ-20260421-0004`;
+  - `28` optimizer abort rows broadening `FZ-20260421-0008`;
+  - `28` clean TMEM OutOfResources diagnostics;
+  - `0` runtime miscompile;
+  - `0` allocator assertion.
+- Fresh confirmations covered a positive `.ld.red.min.abs.NaN.f32` row, a
+  2CTA plain-`ld` fallback row, a row-chain optimizer abort, and a clean
+  parent-view `N=256` OOR row.
+
+## 2026-04-21: Round 10 broad ld/st descriptor slice
+
+- Collected and ran the broader checked-in non-rowcol `ld/st` descriptor
+  selector across all four GPUs with stable per-GPU caches.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and descriptor and not rowcol and not rank5 and not higher_rank and not reports'`
+  selected `162 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_ldst_descriptor_broad_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and descriptor and not rowcol and not rank5 and not higher_rank and not reports'`
+- Result:
+  - group 1/GPU 0: `41 passed, 1574 deselected in 56.88s`;
+  - group 2/GPU 1: `7 passed, 34 skipped, 1574 deselected in 20.69s`;
+  - group 3/GPU 2: `21 passed, 20 skipped, 1574 deselected in 27.36s`;
+  - group 4/GPU 3: `39 passed, 1576 deselected in 41.53s`.
+- Aggregate: `108 passed, 54 skipped`. No backend repairs were attempted.

@@ -47,6 +47,34 @@
   `8` tests per shard; aggregate result `8 passed, 24 skipped`. Durations
   were stored at `/tmp/tmem_local_r10_ldst_rowcol_descriptor_durations.json`.
 
+- Latest: 2026-04-21 completed Round 10 Lane J descriptor-view
+  composition-depth fuzzing. Report:
+  `agents/fuzz_descriptor_depth_round10.md`. Temporary probe
+  `/tmp/tmem_descriptor_depth_round10_probe.py` ran subprocess-isolated
+  `ld/st` and `ld.red` descriptor-depth rows. Result: `7` passes,
+  `3` clean diagnostics, and no compiler crash, false unsupported verifier
+  failure, miscompile, or new independent `FZ-*`. Clean rows were rank-4/rank-5
+  `ld/st` unsupported direct-layout materialization and rank-5 sibling
+  `ld.red` tensor-memory OOR (`2048` required vs `512` hardware limit).
+
+- Latest: 2026-04-21 completed Round 10 Lane I `ld.red` modifier/NaN edge
+  fuzzing. Report: `agents/fuzz_ldred_modifiers_round10.md`. Temporary probe
+  `/tmp/tmem_ldred_modifiers_round10_probe.py` ran `266` subprocess-isolated
+  rows over `N in {2,16,32,64,128,256}`, 1CTA/2CTA direct/indexed/chained
+  reductions, min/max, `abs`, NaN propagation, and NaN placement. Reclassified
+  result: `140` pass, `70` opcode fallback broadening `FZ-20260421-0004`,
+  `28` optimizer abort broadening `FZ-20260421-0008`, and `28` clean
+  OutOfResources diagnostics. No runtime miscompile, allocator assertion, or
+  new independent `FZ-*`.
+
+- Latest: 2026-04-21 local Round 10 broad non-rowcol `ld/st` descriptor slice
+  stayed green. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and descriptor and not rowcol and not rank5 and not higher_rank and not reports'`
+  selected `162/1615` tests. Split-4 execution across GPUs 0-3 selected
+  `41`, `41`, `41`, and `39` tests; aggregate result `108 passed, 54 skipped`.
+  Durations were stored at
+  `/tmp/tmem_local_r10_ldst_descriptor_broad_durations.json`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

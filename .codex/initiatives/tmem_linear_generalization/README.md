@@ -112,6 +112,32 @@ When resuming the initiative:
   `/tmp/tmem_local_r10_ldst_rowcol_descriptor_durations.json`. Aggregate
   result: `8 passed, 24 skipped`.
 
+- 2026-04-21: completed Round 10 Lane J descriptor-view composition-depth
+  fuzzing. Wrote `agents/fuzz_descriptor_depth_round10.md` from
+  `/tmp/tmem_descriptor_depth_round10_probe.py`. No new independent `FZ-*`
+  bucket was found. The subprocess-isolated sweep produced `7` passes and
+  `3` clean diagnostics: rank-4/rank-5 `ld/st` rows hit the existing
+  unsupported direct-layout materialization boundary, and the rank-5
+  sibling-view `ld.red` row hit clean tensor-memory OOR (`2048` required,
+  hardware limit `512`).
+
+- 2026-04-21: completed Round 10 Lane I `ld.red` modifier/NaN edge fuzzing.
+  Wrote `agents/fuzz_ldred_modifiers_round10.md` from
+  `/tmp/tmem_ldred_modifiers_round10_probe.py`. No new independent `FZ-*`
+  bucket was found. The 266-row subprocess-isolated sweep reclassified to
+  `140` passes, `70` opcode fallback rows broadening `FZ-20260421-0004`,
+  `28` optimizer abort rows broadening `FZ-20260421-0008`, and `28` clean
+  TMEM OOR diagnostics. No runtime miscompile or allocator assertion was
+  found.
+
+- 2026-04-21: local Round 10 broad non-rowcol `ld/st` descriptor slice stayed
+  green. The selector
+  `ldst and descriptor and not rowcol and not rank5 and not higher_rank and not reports`
+  collected `162/1615` tests and ran split-4 across GPUs 0-3 with stable
+  caches and durations at
+  `/tmp/tmem_local_r10_ldst_descriptor_broad_durations.json`. Aggregate
+  result: `108 passed, 54 skipped`.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

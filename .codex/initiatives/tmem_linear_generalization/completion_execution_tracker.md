@@ -241,6 +241,24 @@ The project is complete when:
   `8/8/8/8` tests, and the aggregate result was `8 passed, 24 skipped`.
   Durations were stored at
   `/tmp/tmem_local_r10_ldst_rowcol_descriptor_durations.json`.
+  2026-04-21 Round 10 Lane J completed descriptor-view composition-depth
+  fuzzing without backend repairs. No new independent `FZ-*` id. The temporary
+  probe found `7` passes and `3` clean diagnostics: rank-4/rank-5 `ld/st`
+  unsupported direct-layout materialization and rank-5 sibling-view `ld.red`
+  tensor-memory OOR (`2048` required, hardware limit `512`). Report:
+  `agents/fuzz_descriptor_depth_round10.md`.
+  2026-04-21 Round 10 Lane I completed `ld.red` modifier/NaN edge fuzzing
+  without backend repairs. No new independent `FZ-*` id. The `266`-row
+  subprocess sweep reclassified to `140` pass, `70` opcode fallback rows
+  broadening `FZ-20260421-0004`, `28` optimizer abort rows broadening
+  `FZ-20260421-0008`, and `28` clean OutOfResources diagnostics. No runtime
+  miscompile or allocator assertion. Report:
+  `agents/fuzz_ldred_modifiers_round10.md`.
+  2026-04-21 local Round 10 broad non-rowcol `ld/st` descriptor slice stayed
+  green: collect-only selected `162/1615`, split-4 across GPUs 0-3 selected
+  `41/41/41/39` tests, and the aggregate result was `108 passed, 54 skipped`.
+  Durations were stored at
+  `/tmp/tmem_local_r10_ldst_descriptor_broad_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

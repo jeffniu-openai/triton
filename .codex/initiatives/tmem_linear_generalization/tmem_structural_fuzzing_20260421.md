@@ -160,6 +160,40 @@ remain family-specific and consume a bounded subset of the inventory.
   fresh-process reruns passed.
 - Exact repro commands and minimization notes are recorded in the lane report.
 
+### Lane J Round 10, Descriptor-View Composition Depth
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_descriptor_depth_round10.md`
+- Scope: subprocess-isolated `/tmp` fuzzing for deeper `ld/st` and `ld.red`
+  descriptor-view chains: `reshape/permute/reshape`, double transpose,
+  slice/slice mixes, rank-4/rank-5 parents, sibling views, and immediate
+  readback.
+- Result: no new independent `FZ-*` bucket. The final sweep had `7` passes
+  and `3` clean diagnostics. Rank-4 and rank-5 `ld/st` rows hit the existing
+  unsupported direct-layout register-materialization boundary; rank-5 sibling
+  `ld.red` hit clean tensor-memory OOR (`2048` required, hardware limit
+  `512`).
+- Follow-up: keep using these clean boundaries as descriptor-depth guardrails;
+  no backend repairs are warranted from this lane during discovery mode.
+
+### Lane I Round 10, LD.RED Modifier and NaN Edges
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_modifiers_round10.md`
+- Scope: subprocess-isolated `/tmp` fuzzing of `tcgen05.ld.red` min/max,
+  `abs`, NaN propagation, first/last/multi-payload NaN placement, 1CTA and
+  2CTA direct/indexed/chained descriptor reductions, and opcode suffix checks
+  for `.min`, `.max`, `.abs`, `.NaN`, and `.f32`.
+- Result: no new independent `FZ-*` bucket. The `266` rows reclassified as
+  `140` pass, `70` opcode fallback rows broadening `FZ-20260421-0004`,
+  `28` optimizer abort rows broadening `FZ-20260421-0008`, and `28` clean
+  OutOfResources diagnostics. No runtime miscompile, allocator assertion, or
+  clean `.x1` diagnostic was found.
+- Follow-up: keep `FZ-20260421-0004` and `FZ-20260421-0008` as the owners for
+  these modifier/NaN variants; no backend repairs during discovery mode.
+
 ### Lane A2 Round 2, ld/st and ld.red Promotion
 
 - Time: 2026-04-21 09:10 UTC
