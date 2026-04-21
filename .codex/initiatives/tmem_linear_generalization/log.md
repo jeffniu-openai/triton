@@ -30766,6 +30766,16 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 15:18 UTC: Round 39 TMEM lit guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_lit_tmem_guardrail_round39.md`.
+- Command:
+  `cd $(PYTHONPATH="./python" python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())') && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/interleave_tmem.mlir test/TritonGPU/memdesc-subview-split.mlir`.
+- Result: `ninja triton-opt` no-op; lit `3 passed`.
+- Classification: no unexpected IR/diagnostic drift and no new independent
+  `FZ-*`. Backend repair remains deferred.
+
 ## 2026-04-21 15:12 UTC: Round 39 MMAv5 dynamic descriptor/view subagent lane integrated
 
 - Integrated

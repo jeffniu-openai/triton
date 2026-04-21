@@ -7,7 +7,14 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 39 MMAv5 dynamic descriptor/view
+Latest fuzzing checkpoint: 2026-04-21 Round 39 TMEM lit guardrail completed.
+Report: `agents/fuzz_lit_tmem_guardrail_round39.md`. Build-tree `ninja
+triton-opt` was a no-op; `lit -v` passed
+`test/TritonNvidiaGPU/tmem_layouts.mlir`,
+`test/TritonNvidiaGPU/interleave_tmem.mlir`, and
+`test/TritonGPU/memdesc-subview-split.mlir`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 39 MMAv5 dynamic descriptor/view
 subagent lane integrated. Report:
 `agents/fuzz_mmav5_dynamic_views_round39.md`. Checked-in runtime selector
 collected `190/19729` and passed split-4 as `190 passed`; structural selector

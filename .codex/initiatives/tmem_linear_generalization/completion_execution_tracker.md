@@ -60,6 +60,11 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 15:18 UTC Round 39 TMEM lit guardrail completed. Artifact:
+  `agents/fuzz_lit_tmem_guardrail_round39.md`. Build-tree `ninja triton-opt`
+  was a no-op. Lit passed `tmem_layouts.mlir`, `interleave_tmem.mlir`, and
+  `memdesc-subview-split.mlir`. No unexpected IR/diagnostic drift or new
+  independent `FZ-*`; backend repair remains deferred.
   2026-04-21 15:12 UTC Round 39 MMAv5 dynamic descriptor/view subagent lane
   integrated. Artifact: `agents/fuzz_mmav5_dynamic_views_round39.md`.
   Checked-in runtime selector collected `190/19729` and passed split-4 as

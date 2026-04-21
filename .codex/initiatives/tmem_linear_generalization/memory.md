@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 15:18 UTC Round 39 TMEM lit guardrail completed.
+  Report: `agents/fuzz_lit_tmem_guardrail_round39.md`. Build-tree
+  `ninja triton-opt` was a no-op. `lit -v` passed
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+  `test/TritonNvidiaGPU/interleave_tmem.mlir`, and
+  `test/TritonGPU/memdesc-subview-split.mlir`. No unexpected IR/diagnostic
+  drift or new independent `FZ-*`.
+
 - Latest: 2026-04-21 15:12 UTC Round 39 MMAv5 dynamic descriptor/view
   subagent lane integrated. Report:
   `agents/fuzz_mmav5_dynamic_views_round39.md`. Required `make -j8` was a
