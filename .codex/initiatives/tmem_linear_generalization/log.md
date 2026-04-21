@@ -25850,3 +25850,22 @@ Open after this slice:
     passed: group 1 `27 passed`, group 2 `27 passed`, group 3 `27 passed`,
     group 4 `24 passed`;
   - `git diff --check`.
+
+## 2026-04-21 02:30 UTC: multi-CTA CGA backend audit
+
+- Audited the TMEM backend for remaining `num_ctas > 2`
+  ownership/synchronization risks after the scaled-copy gap.
+- Added
+  `.codex/initiatives/tmem_linear_generalization/multi_cta_cga_backend_audit_20260421.md`.
+- Main follow-up buckets:
+  - TMA load/gather `cta_group` selection currently comes from module-wide
+    `getModuleTwoCTAs`;
+  - return-side cluster-barrier suppression currently relies on module-wide
+    two-CTA state and TMEM deallocation sync;
+  - TMEM copy/commit pair-leader lowering appears conceptually right but needs
+    4-CTA PTX coverage;
+  - descriptor-less TMEM copy recipient masks only model bit-0 pair broadcast;
+  - mixed single-CTA/two-CTA TMEM remains intentionally rejected by a
+    module-wide consistency pass.
+- No tests were run because this slice only records the static audit and does
+  not change compiler behavior.

@@ -14120,3 +14120,26 @@ rejection, not rescue
   - affected lit suite passed `11/11`;
   - upstream MLIR symbol audit reports `TOTAL_MISSING_FUNCS 0`;
   - `git diff --check` passed.
+
+## Current: 2026-04-21 02:30 UTC multi-CTA CGA backend audit recorded
+
+- User asked for a backend-wide audit after the CGA ownership gap exposed by
+  scaled-copy/direct-multicast runtime tests.
+- New audit artifact:
+  `.codex/initiatives/tmem_linear_generalization/multi_cta_cga_backend_audit_20260421.md`.
+- Main finding: several paths still consume module-wide `ttng.two-ctas` and
+  need review for `num_ctas > 2`. The most important are:
+  - TMA load/gather lowering appends `cta_group::2` from
+    `getModuleTwoCTAs(op)`, even for potentially unrelated TMA ops in mixed
+    kernels;
+  - cluster-barrier insertion suppresses return-side cluster barriers for any
+    two-CTA module by relying on TMEM deallocation sync;
+  - TMEM copy/commit pair-leader lowering appears conceptually correct but
+    needs 4-CTA PTX coverage proving both pairs emit;
+  - barrier recipient masks fall back to bit 0 when descriptors are absent,
+    which is a future risk for TMEM copy with outer-CGA barrier ownership;
+  - the module-wide two-CTA consistency pass remains an intentional mixed-mode
+    restriction and should not be relaxed until allocation/lowering/barriers
+    are per-op/per-type.
+- No code was changed for this audit beyond documentation. No tests were run
+  in this audit slice.

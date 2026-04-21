@@ -1081,3 +1081,19 @@ signal handling:
   symbols against `origin/main` merge-base (`TOTAL_MISSING_FUNCS 0`). Current
   active slice is ready to commit/push after final status review; next broad
   work can resume GB200/Gluon sweeps from a coverage-preserving branch.
+
+- 2026-04-21 02:30 UTC: completed a static multi-CTA CGA backend audit and
+  recorded it in
+  `.codex/initiatives/tmem_linear_generalization/multi_cta_cga_backend_audit_20260421.md`.
+  Active follow-up checklist:
+  1. Add mixed-kernel lit coverage for TMA load/gather so unrelated TMA ops do
+     not inherit `cta_group::2` merely because the module has two-CTA TMEM.
+  2. Add return-side cluster-barrier coverage for `num_ctas > 2` kernels that
+     mix two-CTA TMEM with other distributed shared-memory/TMA dependencies.
+  3. Add PTX coverage proving 4-CTA TMEM copy/commit emits from each even CTA
+     pair leader, not only CTA 0.
+  4. Add instrumentation/barrier-recipient coverage for TMEM copy with
+     outer-CGA barrier ownership.
+  5. Keep module-wide mixed single-CTA/two-CTA TMEM as an explicit design
+     restriction until all consumers derive instruction group from per-op or
+     per-type state.
