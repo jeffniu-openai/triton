@@ -29012,6 +29012,18 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+## 2026-04-21 14:18 UTC: Round 25 local scale-copy baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_cpscales_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Selector `cp_scales and not reports` collected `33/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `33 passed` (`9/9/9/6`).
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 ## 2026-04-21 13:55 UTC: Round 24 Lane BH mixed scaled-MMAv5 operands
 
 - Wrote

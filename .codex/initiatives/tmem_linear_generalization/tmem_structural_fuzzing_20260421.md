@@ -2718,6 +2718,18 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*`.
 
+### Round 25 local scale-copy baseline
+
+- Time: 2026-04-21 14:18 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_cpscales_round25.md`
+- Selector:
+  `cp_scales and not reports` collected `33/1615`.
+- Split-4 result:
+  `33 passed` (`9/9/9/6`).
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*`.
+
 ### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
 
 - Time: 2026-04-21 12:58 UTC

@@ -15825,6 +15825,11 @@ rejection, not rescue
   collected `201/1615` rows and completed split-4 as
   `197 passed, 4 skipped` (`47p/4s`, `51p`, `51p`, `48p`). No new bucket.
 
+- Local Round 25 scale-copy baseline wrote
+  `agents/fuzz_local_cpscales_round25.md`. Selector
+  `cp_scales and not reports` collected `33/1615` rows and completed split-4
+  as `33 passed` (`9/9/9/6`). No new bucket.
+
 - Round 22 Lane BA wrote
   `agents/fuzz_scaled_dynamic_scales_round22.md`. No new independent `FZ-*`.
   Temporary probe `/tmp/tmem_scaled_dynamic_scales_round22_probe.py` ran
