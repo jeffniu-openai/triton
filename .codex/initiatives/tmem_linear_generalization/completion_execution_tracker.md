@@ -2097,3 +2097,25 @@ signal handling:
 - 2026-04-21 12:03 UTC: local split-N/fixed-offset baseline completed.
   Report: `agents/fuzz_local_splitn_fixed_round22.md`. Selector collected
   `33/1615` and passed split-4 as `33 passed`; no new bucket.
+
+- 2026-04-21 12:03 UTC: local structural fuzzer guardrail completed.
+  Report: `agents/fuzz_local_structural_round22.md`. Selector collected
+  `30/33` and passed split-4 as `9 passed, 21 xfailed`; no unexpected
+  pass/fail and no new bucket.
+
+- 2026-04-21 12:22 UTC: Lane BB `ld.red` layout fuzzing completed. Report:
+  `agents/fuzz_ldred_layouts_round22.md`. No new bucket; broad selector
+  completed as `237 passed, 6 failed`, all existing `FZ-0012`, with additional
+  fallback, descriptor-chain, M64 modifier, and M=128 contrast controls passing.
+
+- 2026-04-21 12:58 UTC: Lane BA scaled dynamic scale descriptor fuzzing
+  completed. Report: `agents/fuzz_scaled_dynamic_scales_round22.md`. No new
+  bucket; `10` direct selected-scale controls passed and `6` descriptor-view
+  scale rows sharpened existing `FZ-0013`, with clean side-channel scale loads.
+
+- 2026-04-21 12:55 UTC: Lane BC copy/ld-st generic descriptor fuzzing
+  completed. Report: `agents/fuzz_copy_ldst_generic_round22.md`. No new
+  bucket; temporary probe sharpened `FZ-0001` branch-yielded copy descriptors
+  and `FZ-0002` multi-consumer branch-selected ld/st descriptors. Checked-in
+  selector ran as `254 passed, 61 skipped, 14 xfailed`; scale-copy/high-CGA
+  selector passed as `36 passed`.

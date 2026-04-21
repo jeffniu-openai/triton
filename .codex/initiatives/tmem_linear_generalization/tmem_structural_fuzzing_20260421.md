@@ -2437,6 +2437,122 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 22 local structural fuzzer guardrail
+
+- Time: 2026-04-21 12:03 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_round22.md`
+- Selector:
+  `structural_fuzzer and not allocator_crash and not optimizer_crash`
+  collected `30/33`.
+- Split-4 result:
+  `9 passed, 21 xfailed`.
+- Classification: no unexpected pass, unexpected failure, runtime miscompile
+  outside known sentinels, compiler crash outside known xfail rows, or new
+  independent `FZ-*` bucket.
+
+### Round 22 Lane BB ld.red layout fuzzing
+
+- Time: 2026-04-21 12:22 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_layouts_round22.md`
+- Broad selector:
+  `ld_red and not reports and not resource` completed as
+  `237 passed, 6 failed`; all six failures are existing `FZ-20260421-0012`
+  M64 row-basis rows.
+- Additional controls:
+  structural `ldred` `3 passed, 8 xfailed`; fallback dtype/scales/n-sharded
+  `60 passed`; M64 split-N/modifier controls `38 passed`; descriptor-chain
+  reductions `30 passed`; temporary M64/M128 cross-product probe produced
+  `8` M64 row-basis failures and `16` adjacent controls passed.
+- Classification: no new independent `FZ-*`. The lane sharpens `FZ-0012` as
+  specific to the M64 split-N destination-layout planner: M64 row-basis rows
+  fail across min/max/abs/NaN/default/explicit split-N, while M64 column-only
+  and M=128,N=32 row-permuted hardware reductions pass and emit `.ld.red.`
+  opcodes.
+
+### Round 22 Lane BA scaled dynamic scale descriptors
+
+- Time: 2026-04-21 12:58 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_dynamic_scales_round22.md`
+- Temporary probe:
+  `/tmp/tmem_scaled_dynamic_scales_round22_probe.py`.
+- Result:
+  `10` direct selected-scale controls passed; `6` legal
+  reshape/permute/reshape scale descriptor-view rows miscompiled under
+  existing `FZ-20260421-0013`. Nearby checked-in descriptor-view baseline
+  passed as `4 passed`.
+- Classification: no new independent `FZ-*`. The lane sharpens `FZ-0013`:
+  scaled-MMAv5 consuming scale descriptor views miscompiles while side-channel
+  scale loads are correct. It also provides a negative contrast for `FZ-0015`:
+  simplified direct runtime-selected B-scale descriptors did not reproduce the
+  allocation-order-sensitive failure.
+
+### Round 22 Lane BC copy/ld-st generic descriptors
+
+- Time: 2026-04-21 12:55 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_ldst_generic_round22.md`
+- Temporary probe:
+  `/tmp/tmem_round22_copy_generic_probe.py`.
+- Checked-in selector:
+  `(cp_no_scales and (indexed_view or subslice_view or warpx2 or twocta or linear) and not reports) or (generic_pass and not mma) or (ldst_descriptor and not reports)`
+  collected `329/1648` and completed as
+  `254 passed, 61 skipped, 14 xfailed`.
+- Scale-copy/high-CGA diagnostic selector:
+  `36 passed`.
+- Classification: no new independent `FZ-*`. The lane sharpens `FZ-0001`
+  with branch-yielded generic copy descriptors leaving illegal
+  `ttg.memdesc_index`, and sharpens `FZ-0002` with multi-consumer
+  branch-selected ld/st descriptor miscompiles. Loop-carried copy descriptors
+  and `warpx2::01_23` branch-selected copy descriptors passed as contrasts.
+
+### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
+
+- Time: 2026-04-21 12:58 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_dynamic_scales_round22.md`
+- Temporary probe:
+  `/tmp/tmem_scaled_dynamic_scales_round22_probe.py`
+- Result:
+  final probe ran `16` cases with expected classifications: `10` direct
+  dynamic selected-scale controls passed, and `6` reshape/permute/reshape
+  scale-view rows miscompiled under existing `FZ-20260421-0013`.
+- Checked-in nearby selector:
+  `mma_scaled and descriptor_view and not reports` passed as
+  `4 passed, 1611 deselected`.
+- Classification: no new independent `FZ-*`. Direct runtime-selected
+  A/B-scale descriptors, nested/helper/loop-carried selected direct B-scale
+  descriptors, mixed selected-scale side-channel loads, two-MMA direct
+  selected-scale, and accumulator-first/last direct controls stayed green in
+  this simplified same-payload probe. Legal same-layout scale descriptor views
+  still produce large wrong-result mismatches while side-channel loads from the
+  same selected scale descriptors are correct, sharpening `FZ-0013` and
+  providing a negative contrast for the narrower direct selected-B-scale
+  allocation-order `FZ-0015`.
+
+### Round 22 Lane BC copy/ld-st generic descriptors
+
+- Time: 2026-04-21 12:55 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_ldst_generic_round22.md`
+- Temporary probe:
+  `/tmp/tmem_round22_copy_generic_probe.py`
+- Checked-in selector:
+  `(cp_no_scales and (indexed_view or subslice_view or warpx2 or twocta or linear) and not reports) or (generic_pass and not mma) or (ldst_descriptor and not reports)`
+  collected `329/1648` and ran split-4 as
+  `254 passed, 61 skipped, 14 xfailed`.
+- Additional scale-copy/high-CGA selector:
+  `36 passed`.
+- Classification: no new independent `FZ-*`. The temporary branch-yielded
+  linear-copy descriptor row hits existing `FZ-20260421-0001` with illegal
+  `ttg.memdesc_index` left for LLVM conversion; branch-selected multi-consumer
+  ld/st descriptors hit existing `FZ-20260421-0002` wrong results. Loop-carried
+  copy descriptors and 1CTA/2CTA `warpx2::01_23` branch-selected copy
+  descriptors passed, narrowing the failure to generic descriptor SSA lowering
+  rather than the copy planner or hardware-copy schedule.
+
 ### Round 18 local MMAv5 and scaled-MMAv5 selector
 
 - Time: 2026-04-21 11:54 UTC

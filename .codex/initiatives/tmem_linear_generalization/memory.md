@@ -15654,3 +15654,72 @@ rejection, not rescue
   bucket; this is a green non-reduction contrast for split-N and fixed-offset
   ld/st while the delegated `ld.red` lane probes hardware-reduction planner
   edges.
+
+- Local Round 22 structural fuzzer guardrail wrote
+  `agents/fuzz_local_structural_round22.md`. Required `make -j8` was a no-op.
+  Selector `structural_fuzzer and not allocator_crash and not optimizer_crash`
+  collected `30/33` rows and passed split-4 as `9 passed, 21 xfailed`
+  (`5p/3xf`, `2p/6xf`, `2p/6xf`, `6xf`). No unexpected pass/fail and no new
+  bucket.
+
+- Round 22 Lane BB wrote `agents/fuzz_ldred_layouts_round22.md`. No new
+  independent `FZ-*`; this further sharpens `FZ-20260421-0012`. Broad
+  `ld_red and not reports and not resource` runtime-matrix sweep completed as
+  `237 passed, 6 failed`, with all six failures in the existing M64 row-basis
+  bucket. Additional controls passed: structural `ldred` as
+  `3 passed, 8 xfailed`, fallback dtype/scales/n-sharded `60 passed`, M64
+  split-N/modifier controls `38 passed`, descriptor-chain reductions
+  `30 passed`, and a temporary M64/M128 cross-product probe with `16` adjacent
+  controls passing. The important sharpened contrast is that M64 f32
+  row-basis `ld.red` fails across min/max/abs/NaN/default/explicit split-N,
+  while M64 column-only permutations and M=128,N=32 row-permuted hardware
+  reductions pass and emit the expected `.ld.red.` opcodes.
+
+- Round 22 Lane BA wrote `agents/fuzz_scaled_dynamic_scales_round22.md`. No
+  new independent `FZ-*`; it sharpens `FZ-20260421-0013`. A temporary probe ran
+  `16` cases: `10` direct selected-scale controls passed, while `6`
+  TensorMemoryScalesLayout reshape/permute/reshape scale descriptor-view cases
+  miscompiled with large output mismatches and clean side-channel scale loads.
+  Static, runtime-selected, nested-selected, and mixed A/B selected view forms
+  all stayed in `FZ-0013`. It also adds a negative contrast for `FZ-0015`:
+  simplified direct runtime-selected B-scale descriptors did not reproduce the
+  allocation-order-sensitive failure, even with accumulator-last order.
+
+- Round 22 Lane BC wrote `agents/fuzz_copy_ldst_generic_round22.md`. No new
+  independent `FZ-*`. Temporary probe sharpened `FZ-20260421-0001` with
+  branch-yielded generic TMEM descriptors feeding `ttng.tmem_copy` plus
+  readback and leaving illegal `ttg.memdesc_index` at LLVM conversion. It also
+  sharpened `FZ-20260421-0002` with branch-selected ld/st descriptors with
+  multiple consumers miscompiling (`16128/16384` mismatches). Loop-carried copy
+  descriptors and 1CTA/2CTA `warpx2::01_23` branch-selected copy descriptors
+  passed as negative contrasts. Checked-in selector collected `329/1648` and
+  ran as `254 passed, 61 skipped, 14 xfailed`; scale-copy/high-CGA diagnostic
+  selector passed as `36 passed`.
+
+- Round 22 Lane BA wrote
+  `agents/fuzz_scaled_dynamic_scales_round22.md`. No new independent `FZ-*`.
+  Temporary probe `/tmp/tmem_scaled_dynamic_scales_round22_probe.py` ran
+  `16` cases: `10` direct dynamic selected-scale controls passed, including
+  nested/helper/loop-carried selected B-scale descriptors, A-scale and A/B
+  selected descriptors, two-MMAv5 direct selected scale use, and
+  accumulator-first/last direct allocation orders. `6` legal
+  reshape/permute/reshape scale-view rows miscompiled with large mismatches
+  while side-channel `tmem_load` probes from the same selected scale
+  descriptors were correct. This sharpens `FZ-20260421-0013` as a scaled-MMAv5
+  scale-view operand-consumption bug and provides a negative contrast for the
+  narrower direct selected-B-scale allocation-order `FZ-20260421-0015`.
+
+- Round 22 Lane BC wrote
+  `agents/fuzz_copy_ldst_generic_round22.md`. No new independent `FZ-*`.
+  Temporary probe `/tmp/tmem_round22_copy_generic_probe.py` adds a useful
+  copy-family reproducer for existing `FZ-20260421-0001`: branch-yielded
+  generic descriptors feeding `ttng.tmem_copy` plus readback leave illegal
+  `ttg.memdesc_index` ops at LLVM conversion. It also sharpens
+  `FZ-20260421-0002`: branch-selected ld/st descriptors with multiple
+  consumers compile but miscompile. Negative contrasts are important:
+  loop-carried copy descriptors passed, and 1CTA/2CTA `warpx2::01_23`
+  branch-selected copy descriptor probes passed, so the failure is generic
+  descriptor SSA lowering rather than the copy planner or `warpx2` schedule.
+  Checked-in copy/ldst/generic selector stayed expected as
+  `254 passed, 61 skipped, 14 xfailed`; scale-copy/high-CGA diagnostic selector
+  passed `36`.
