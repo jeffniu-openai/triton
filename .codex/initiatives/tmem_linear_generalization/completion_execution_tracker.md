@@ -1926,3 +1926,11 @@ signal handling:
   extra-user, two-MMA, `use_acc=False`, `N/K`, `mxfp4`, and `nvfp4` variants.
   Continue discovery by extracting a small IR reproducer and auditing the
   B-scale operand path before backend repair.
+
+- 2026-04-21 11:38 UTC: local Round 17 copy/ldst selector stayed green.
+  Report: `agents/fuzz_local_copy_ldst_round17.md`. Required `make -j8` was a
+  no-op. Checked-in structural fuzzer reported `9 passed, 24 xfailed`.
+  Runtime-matrix selector
+  `(cp_no_scales or cp_scales or ldst_descriptor_compositions or ldst_descriptor_roundtrip) and not reports`
+  collected `344/1615` rows and passed split-4 as
+  `289 passed, 55 skipped`. Continue active Round 17 subagent lanes.

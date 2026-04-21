@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:38 UTC local Round 17 copy/ldst selector stayed
+  green. Report: `agents/fuzz_local_copy_ldst_round17.md`. Required `make -j8`
+  was a no-op. Runtime-matrix selector
+  `(cp_no_scales or cp_scales or ldst_descriptor_compositions or ldst_descriptor_roundtrip) and not reports`
+  collected `344/1615` rows and passed split-4 as
+  `289 passed, 55 skipped`. Adjacent checked-in structural fuzzer smoke
+  reported `9 passed, 24 xfailed`. No runtime miscompile, compiler crash,
+  false unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 - Latest: 2026-04-21 11:35 UTC Round 16 `FZ-20260421-0015` minimization
   completed. Report: `agents/fuzz_fz0015_min_round16.md`. Smallest stable
   trigger: two distinct direct B-scale `TensorMemoryScalesLayout` descriptors

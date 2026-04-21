@@ -2331,6 +2331,19 @@ remain family-specific and consume a bounded subset of the inventory.
   `FZ-0007`, and `FZ-0013`; current owner hypothesis is the scaled-MMAv5
   B-scale operand lowering/codegen path for merged memdesc SSA values.
 
+### Round 17 local copy/ldst selector
+
+- Time: 2026-04-21 11:38 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_ldst_round17.md`
+- Checked-in structural-fuzzer smoke: `9 passed, 24 xfailed`.
+- Runtime-matrix selector:
+  `(cp_no_scales or cp_scales or ldst_descriptor_compositions or ldst_descriptor_roundtrip) and not reports`
+  collected `344/1615`.
+- Split-4 result:
+  `289 passed, 55 skipped`.
+- Classification: no new independent `FZ-*` bucket and no runtime miscompile.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

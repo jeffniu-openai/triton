@@ -28375,6 +28375,26 @@ Open after this slice:
 - Classification: `FZ-20260421-0015` remains distinct from `FZ-0001`,
   `FZ-0007`, and `FZ-0013`.
 
+## 2026-04-21 11:38 UTC: Round 17 local copy/ldst runtime selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_ldst_round17.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Checked-in structural-fuzzer smoke reported `9 passed, 24 xfailed in 8.20s`.
+- Runtime-matrix selector
+  `(cp_no_scales or cp_scales or ldst_descriptor_compositions or ldst_descriptor_roundtrip) and not reports`
+  collected `344/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `289 passed, 55 skipped`:
+  - GPU 0 / group 1: `35 passed, 51 skipped`;
+  - GPU 1 / group 2: `82 passed, 4 skipped`;
+  - GPU 2 / group 3: `86 passed`;
+  - GPU 3 / group 4: `86 passed`.
+- Classification: no runtime miscompile, compiler crash, false unsupported
+  diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote
