@@ -15704,6 +15704,59 @@ rejection, not rescue
   (`64/64/64/63`). No new bucket. This is a green contrast against the active
   scaled-MMAv5-specific findings.
 
+- Local Round 23 subword baseline wrote
+  `agents/fuzz_local_subword_round23.md`. Required `make -j8` was a no-op.
+  Selector `subword and not reports and not cp_no_scales_warpx2` collected
+  `42/1615` rows and passed split-4 as `42 passed` (`11/11/11/9`). No new
+  bucket.
+
+- Round 23 Lane BE wrote `agents/fuzz_scaled_accumulator_round23.md`. No new
+  independent `FZ-*`; this sharpens `FZ-20260421-0007`. Checked-in
+  accumulator selector `mma_scaled and acc and not reports and not fz0015`
+  passed `206` rows (`52/52/52/50`), and broader
+  `mma_scaled and not reports and not fz0015` passed `243` rows
+  (`61/61/61/60`). Dynamic selected accumulator mixed-consumer probe still
+  miscompiled branch/helper/loop selector-0 rows with `4413/16384` mismatches
+  and NaNs while the same selected descriptor's `tmem_load` side channel was
+  correct. Direct/static accumulator views and direct low/high controls pass,
+  so the gap is specific to scaled-MMAv5 consuming dynamic selected
+  accumulator views, not ordinary TMEM load consumers or static accumulator
+  layouts.
+
+- Local Round 23 ld/st descriptor guardrail integrated
+  `agents/fuzz_local_ldst_descriptor_round23.md`. Selector
+  `(ldst_descriptor or descriptor_view) and not reports and not mma_scaled`
+  collected `149/1615` rows and completed as `88 passed, 61 skipped`
+  (`29p/9s`, `38s`, `34p/4s`, `25p/10s`). No new bucket; ordinary static
+  descriptor-view load/store composition remains green/skipped as expected.
+
+- Round 23 Lane BD wrote `agents/fuzz_high_cga_round23.md`. No new
+  independent `FZ-*`; it reconfirms `FZ-20260421-0010`. Checked-in
+  high-CGA/CTA selector passed as `16 passed`; high-CGA TMA multicast, MMAv5
+  multicast/commit, scaled-MMAv5 copy+MMA, and TMA+MMA controls all passed.
+  Temporary local-TMEM-in-high-CGA probes classified valid 1CTA/2CTA ld/st,
+  `ld.red`, no-scales copy, and scales-copy rows in 4/8/16 CTA contexts as
+  the existing CTA-count diagnostic. This remains an over-strict
+  layout-context ownership gate, not a general high-CGA execution failure.
+
+- Round 23 Lane BF wrote `agents/fuzz_compiler_lit_round23.md`. New candidate
+  `FZ-20260421-0016`: compiler-only parse/verify crash in
+  `test/Conversion/relayout_tritongpu.mlir` for `ttng.tmem_alloc` with an
+  unencoded tensor operand and `TensorMemoryScalesEncodingAttr` result.
+  `verifyTMEMOperand` calls into TMEM encoding-info compatibility and asserts
+  in `toLinearEncoding` (`dyn_cast on a non-existent value`) instead of
+  accepting pre-relayout IR or producing a typed diagnostic. Green lit
+  baselines passed for TMEM layouts, MMAv5 lowering, proxy fence insertion,
+  interleave/hoist/NVWS TMEM tests, and memdesc subview split. Saved repros
+  reconfirmed existing `FZ-0014`, `FZ-0008`, and `FZ-0009`.
+
+- Local Round 23 multi-CTA guardrail integrated
+  `agents/fuzz_local_multicta_round23.md`. Selector
+  `(twocta or multicast or cta or cga) and tmem and not reports` collected
+  `430/1615` rows and completed as `393 passed, 37 skipped`
+  (`81p/27s`, `98p/10s`, `108p`, `106p`). No new bucket; ordinary checked-in
+  2CTA/multicast/high-CGA runtime coverage remains green/skipped as expected.
+
 - Round 22 Lane BA wrote
   `agents/fuzz_scaled_dynamic_scales_round22.md`. No new independent `FZ-*`.
   Temporary probe `/tmp/tmem_scaled_dynamic_scales_round22_probe.py` ran
@@ -15731,3 +15784,39 @@ rejection, not rescue
   Checked-in copy/ldst/generic selector stayed expected as
   `254 passed, 61 skipped, 14 xfailed`; scale-copy/high-CGA diagnostic selector
   passed `36`.
+
+## Current: 2026-04-21 Round 23 compiler-only lit audit
+
+- Integrated Round 23 Lane BF report
+  `agents/fuzz_compiler_lit_round23.md`. Discovery/cataloging only; no
+  backend/compiler code changed.
+- Required `make -j8` and `ninja triton-opt` were no-ops.
+- Green existing lit coverage:
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+  `test/TritonNvidiaGPU/mma_lowering.mlir`,
+  `test/TritonGPU/proxy_fence_insertion.mlir`,
+  `test/TritonNvidiaGPU/interleave_tmem.mlir`,
+  `test/NVWS/aref-tmem-insertion.mlir`,
+  `test/NVWS/hoist_tmem_store.mlir`,
+  `test/TritonGPU/hoist-tmem-alloc.mlir`, and
+  `test/TritonGPU/memdesc-subview-split.mlir`.
+- New candidate `FZ-20260421-0016`: `test/Conversion/relayout_tritongpu.mlir`
+  crashes in parse-time verifier code on `ttng.tmem_alloc` with an unencoded
+  `tensor<128x128xi8>` operand and a tensor-memory-scales memdesc result. The
+  stack is `TMEMAllocOp::verify -> verifyTMEMOperand ->
+  computeTMemLdStEncodingInfo -> toLinearEncoding -> toLinearLayout`, ending
+  in `dyn_cast on a non-existent value`. This is a verifier/encoding-info gap:
+  the path must either accept this pre-relayout form or produce a typed
+  diagnostic instead of asserting.
+- Saved compiler repros re-confirmed existing buckets:
+  `FZ-20260421-0014` proxy-fence insertion, `FZ-20260421-0008` `ld.red`
+  row/col/block compose crash, and `FZ-20260421-0009` `ld.red` allocator
+  assertion.
+
+- Local Round 23 multi-CTA TMEM guardrail wrote
+  `agents/fuzz_local_multicta_round23.md`. Selector
+  `(twocta or multicast or cta or cga) and tmem and not reports` collected
+  `430/1615` and completed split-4 as `393 passed, 37 skipped`
+  (`81p/27s`, `98p/10s`, `108p`, `106p`). No new bucket; ordinary checked-in
+  2CTA/multicast/CGA TMEM runtime paths remain green while `FZ-0010` stays
+  focused on local 1CTA/2CTA layouts inside larger 4/8/16 CTA contexts.

@@ -2123,3 +2123,48 @@ signal handling:
 - 2026-04-21 13:05 UTC: local plain MMAv5 baseline completed. Report:
   `agents/fuzz_local_plain_mma_round23.md`. Selector collected `255/1615` and
   passed split-4 as `255 passed`; no new bucket.
+
+- 2026-04-21 13:18 UTC: local subword baseline completed. Report:
+  `agents/fuzz_local_subword_round23.md`. Selector collected `42/1615` and
+  passed split-4 as `42 passed`; no new bucket.
+
+- 2026-04-21 12:20 UTC: Lane BE scaled accumulator fuzzing completed. Report:
+  `agents/fuzz_scaled_accumulator_round23.md`. No new bucket; checked-in
+  accumulator selector passed `206` rows, broader scaled-MMAv5 selector passed
+  `243` rows, and dynamic selected accumulator mixed-consumer rows sharpened
+  existing `FZ-0007`.
+
+- 2026-04-21 12:32 UTC: local ld/st descriptor guardrail completed. Report:
+  `agents/fuzz_local_ldst_descriptor_round23.md`. Selector collected
+  `149/1615` and completed as `88 passed, 61 skipped`; no new bucket.
+
+- 2026-04-21 12:13 UTC: Round 23 Lane BF compiler-only lit audit completed.
+  Report: `agents/fuzz_compiler_lit_round23.md`. Required `make -j8` and
+  `ninja triton-opt` were no-ops. Selected lit tests passed for TMEM layouts,
+  MMAv5 lowering, proxy fence insertion, interleave/hoist/NVWS TMEM, and
+  memdesc subview splitting. New candidate `FZ-20260421-0016`:
+  `test/Conversion/relayout_tritongpu.mlir` parse-time verifier crash for
+  `ttng.tmem_alloc` with an unencoded tensor source and tensor-memory-scales
+  result. Saved repro replays stayed in existing `FZ-0014`, `FZ-0008`, and
+  `FZ-0009`.
+
+- 2026-04-21 13:20 UTC: Lane BD high-CGA fuzzing completed. Report:
+  `agents/fuzz_high_cga_round23.md`. No new bucket; it reconfirmed `FZ-0010`
+  across ld/st, `ld.red`, no-scales copy, and scales-copy local 1CTA/2CTA
+  layouts in 4/8/16 CTA contexts while high-CGA controls passed.
+
+- 2026-04-21 12:13 UTC: Lane BF compiler-only audit completed. Report:
+  `agents/fuzz_compiler_lit_round23.md`. New candidate `FZ-20260421-0016`:
+  `relayout_tritongpu.mlir` parse/verify crash for unencoded tensor operand
+  feeding TensorMemoryScales `ttng.tmem_alloc`. Existing compiler repros for
+  `FZ-0014`, `FZ-0008`, and `FZ-0009` still reproduce.
+
+- 2026-04-21 12:42 UTC: local multi-CTA guardrail completed. Report:
+  `agents/fuzz_local_multicta_round23.md`. Selector collected `430/1615` and
+  completed as `393 passed, 37 skipped`; no new bucket.
+
+- 2026-04-21 12:42 UTC: local multi-CTA TMEM guardrail completed. Report:
+  `agents/fuzz_local_multicta_round23.md`. Selector
+  `(twocta or multicast or cta or cga) and tmem and not reports` collected
+  `430/1615` and completed split-4 as `393 passed, 37 skipped`; no new
+  bucket.

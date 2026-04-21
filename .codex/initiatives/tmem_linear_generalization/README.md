@@ -5656,3 +5656,37 @@ When resuming the initiative:
 - Active campaign mode remains discovery-only. Backend repairs stay deferred
   while new fuzzing findings continue to land; the next local slice is the
   scaled-MMAv5 layout selector excluding known `FZ-0015` rows.
+
+## Latest: 2026-04-21 Round 23 compiler-only lit audit
+
+- Lane BF wrote `agents/fuzz_compiler_lit_round23.md` in discovery-only mode.
+- Required `make -j8` and `ninja triton-opt` were both no-ops.
+- Existing lit baselines passed for TMEM layouts, MMAv5 lowering, proxy fence
+  insertion, interleave/hoist/NVWS TMEM, and memdesc subview splitting.
+- New candidate `FZ-20260421-0016`: `test/Conversion/relayout_tritongpu.mlir`
+  crashes during parse-time `ttng.tmem_alloc` verification for an unencoded
+  tensor operand feeding a `TensorMemoryScalesEncodingAttr` result. The stack
+  runs through `verifyTMEMOperand`, `computeTMemLdStEncodingInfo`, and
+  `toLinearEncoding`, which asserts on a missing tensor encoding instead of
+  accepting pre-relayout IR or emitting a typed diagnostic.
+- Saved repro replays stayed in existing buckets: `FZ-0014` proxy-fence
+  insertion, `FZ-0008` `ld.red` row/col/block layout-compose crash, and
+  `FZ-0009` `ld.red` allocator row-count assertion.
+- Backend repairs remain deferred while discovery is active.
+
+## Latest: 2026-04-21 Round 23 fuzzing
+
+- Lane BD completed `agents/fuzz_high_cga_round23.md`. No new independent
+  `FZ-*`; it reconfirms `FZ-20260421-0010` across local `ld/st`, `ld.red`,
+  no-scales copy, and scales copy in 4/8/16 CTA launch contexts. The red rows
+  are clean CTA-count diagnostics, while high-CGA TMA multicast, MMAv5
+  multicast/commit, scaled-MMAv5 copy+MMA, and TMA+MMA controls passed.
+- Local Round 23 guardrails passed: subword baseline `42 passed`, plain MMAv5
+  baseline `255 passed`, scaled accumulator selector `206 passed`, broader
+  scaled-MMAv5 selector `243 passed`, and ld/st descriptor guardrail
+  `88 passed, 61 skipped`.
+- Local multi-CTA TMEM guardrail
+  `agents/fuzz_local_multicta_round23.md` passed/skipped as
+  `393 passed, 37 skipped` over `430` collected 2CTA/multicast/CGA runtime
+  rows.
+- No new buckets from those green slices.

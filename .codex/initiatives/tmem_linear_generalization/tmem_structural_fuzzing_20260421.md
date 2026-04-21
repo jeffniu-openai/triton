@@ -2521,6 +2521,90 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 23 local subword baseline
+
+- Time: 2026-04-21 13:18 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_subword_round23.md`
+- Selector:
+  `subword and not reports and not cp_no_scales_warpx2` collected `42/1615`.
+- Split-4 result:
+  `42 passed` (`11/11/11/9`).
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
+### Round 23 Lane BE scaled accumulator descriptors
+
+- Time: 2026-04-21 12:20 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_accumulator_round23.md`
+- Checked-in accumulator selector:
+  `mma_scaled and acc and not reports and not fz0015` collected `206/1615`
+  and passed as `206 passed`.
+- Broader adjacent selector:
+  `mma_scaled and not reports and not fz0015` collected `243/1615` and passed
+  as `243 passed`.
+- Dynamic selected accumulator probe:
+  branch/helper/loop selector-0 rows failed with `4413/16384` mismatches and
+  NaNs while the same selected descriptor's `tmem_load` side channel stayed
+  correct.
+- Classification: no new independent `FZ-*`; sharpens `FZ-20260421-0007` as
+  a scaled-MMAv5 dynamic selected accumulator-view materialization issue,
+  distinct from scale descriptor-view `FZ-0013` and selected B-scale
+  `FZ-0015`.
+
+### Round 23 local ld/st descriptor guardrail
+
+- Time: 2026-04-21 12:32 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_descriptor_round23.md`
+- Selector:
+  `(ldst_descriptor or descriptor_view) and not reports and not mma_scaled`
+  collected `149/1615`.
+- Split-4 result:
+  `88 passed, 61 skipped`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
+### Round 23 Lane BD high-CGA ownership
+
+- Time: 2026-04-21 13:20 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_round23.md`
+- Checked-in selector `cga or cta_per_cga` passed as `16 passed`.
+- High-CGA controls passed: TMA multicast `2`, MMAv5 multicast/commit `4`,
+  scaled-MMAv5 copy+MMA `3`, and TMA+MMA `2`.
+- Temporary probes classified local 1CTA/2CTA ld/st, `ld.red`, no-scales copy,
+  and scales-copy rows inside 4/8/16 CTA contexts as existing `FZ-0010`
+  CTA-count diagnostics.
+- Classification: no new independent `FZ-*`.
+
+### Round 23 Lane BF compiler-only TMEM audit
+
+- Time: 2026-04-21 12:13 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_lit_round23.md`
+- Green lit baselines passed: TMEM layouts, MMAv5 lowering, proxy fence,
+  interleave/hoist/NVWS TMEM, and memdesc subview split.
+- New candidate `FZ-20260421-0016`: `relayout_tritongpu.mlir` crashes while
+  verifying `ttng.tmem_alloc` with an unencoded tensor operand and
+  TensorMemoryScales result, via `verifyTMEMOperand` ->
+  `computeTMemLdStEncodingInfo` -> `toLinearEncoding`.
+- Existing saved repros reconfirmed `FZ-0014`, `FZ-0008`, and `FZ-0009`.
+
+### Round 23 local multi-CTA guardrail
+
+- Time: 2026-04-21 12:42 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_multicta_round23.md`
+- Selector:
+  `(twocta or multicast or cta or cga) and tmem and not reports` collected
+  `430/1615`.
+- Split-4 result:
+  `393 passed, 37 skipped`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 ### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
 
 - Time: 2026-04-21 12:58 UTC
@@ -2857,5 +2941,38 @@ remain family-specific and consume a bounded subset of the inventory.
   collected `91/1615`.
 - Split-4 result:
   `91 passed` (`23/23/23/22`).
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
+### Round 23 Lane BF compiler-only lit audit
+
+- Time: 2026-04-21 12:13 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_lit_round23.md`
+- Commands:
+  - `make -j8`
+  - build-dir `ninja triton-opt`
+  - selected `lit -v` tests for TMEM layouts, MMAv5 lowering, proxy fence,
+    interleave/hoist/NVWS TMEM, memdesc subview splitting, and relayout
+  - saved `triton-opt --run-reproducer` replays for proxy fence, copy/mbarrier,
+    `ld.red` optimizer, and `ld.red` allocator repros
+- New candidate `FZ-20260421-0016`: compiler-only verifier/encoding-info crash
+  in `test/Conversion/relayout_tritongpu.mlir` for `ttng.tmem_alloc` with an
+  unencoded tensor source and `TensorMemoryScalesEncodingAttr` result.
+- Existing buckets re-confirmed: `FZ-20260421-0014`, `FZ-20260421-0008`, and
+  `FZ-20260421-0009`.
+- Green compiler-only baselines: all selected lit tests except
+  `Conversion/relayout_tritongpu.mlir`.
+
+### Round 23 local multi-CTA TMEM guardrail
+
+- Time: 2026-04-21 12:42 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_multicta_round23.md`
+- Selector:
+  `(twocta or multicast or cta or cga) and tmem and not reports` collected
+  `430/1615`.
+- Split-4 result:
+  `393 passed, 37 skipped`.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.

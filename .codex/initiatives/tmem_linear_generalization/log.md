@@ -28644,6 +28644,135 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 13:18 UTC: Round 23 local subword baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_subword_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector `subword and not reports and not cp_no_scales_warpx2` collected
+  `42/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `42 passed`:
+  - GPU 0 / group 1: `11 passed`;
+  - GPU 1 / group 2: `11 passed`;
+  - GPU 2 / group 3: `11 passed`;
+  - GPU 3 / group 4: `9 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
+## 2026-04-21 12:20 UTC: Round 23 Lane BE scaled accumulator fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_accumulator_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op in the subagent lane.
+- Checked-in accumulator selector `mma_scaled and acc and not reports and not fz0015`
+  collected `206/1615` rows and passed split-4 as `206 passed`
+  (`52/52/52/50`).
+- Broader adjacent scaled-MMAv5 selector `mma_scaled and not reports and not fz0015`
+  collected `243/1615` rows and passed split-4 as `243 passed`
+  (`61/61/61/60`).
+- Dynamic selected-accumulator mixed-consumer probe reproduced existing
+  `FZ-20260421-0007`: branch/helper/loop selector-0 rows failed with
+  `4413/16384` mismatches and NaNs while same-descriptor side-channel
+  `tmem_load` stayed correct.
+- Round 8 exact high-selector/dynamic-indexed contrasts were rerun; direct
+  low/high accumulator rows passed while `slice_if` and `indexed_if`
+  dynamic-selected accumulator rows recorded expected miscompile classifications
+  with matching PTX/LLIR scaled-MMAv5 opcodes.
+- Classification: no new independent `FZ-*`; this sharpens `FZ-0007` as a
+  scaled-MMAv5 accumulator address/view materialization issue for dynamic
+  selected accumulator views, distinct from scale descriptor-view `FZ-0013`
+  and selected B-scale `FZ-0015`.
+
+## 2026-04-21 12:32 UTC: Round 23 local ld/st descriptor guardrail
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_descriptor_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was already a no-op for Round 23.
+- Selector `(ldst_descriptor or descriptor_view) and not reports and not mma_scaled`
+  collected `149/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `88 passed, 61 skipped`:
+  - GPU 0 / group 1: `29 passed, 9 skipped`;
+  - GPU 1 / group 2: `38 skipped`;
+  - GPU 2 / group 3: `34 passed, 4 skipped`;
+  - GPU 3 / group 4: `25 passed, 10 skipped`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
+## 2026-04-21 13:20 UTC: Round 23 Lane BD high-CGA ownership fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op in the subagent lane.
+- Checked-in high-CGA/CTA diagnostic selector `cga or cta_per_cga` completed
+  split-4 as `16 passed`.
+- Green controls passed:
+  - TMA multicast 4/16 CTA controls: `2 passed`;
+  - MMAv5 multicast/commit 8/16 CTA controls: `4 passed`;
+  - scaled-MMAv5 copy+MMA 4/8/16 CTA controls: `3 passed`;
+  - TMA+MMA 16 CTA controls: `2 passed`.
+- Temporary local-TMEM-in-high-CGA probes classified all valid ld/st,
+  `ld.red`, no-scales copy, and scales-copy 1CTA/2CTA-in-4/8/16-CTA rows as
+  existing `FZ-20260421-0010` CTA-count diagnostics.
+- Classification: no new independent `FZ-*`; this reconfirms `FZ-0010` as an
+  over-strict layout-context ownership gate, not a general high-CGA execution
+  failure and not the hardware `getModuleTwoCTAs` consistency rule.
+
+## 2026-04-21 12:13 UTC: Round 23 Lane BF compiler-only audit
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_lit_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` and `ninja triton-opt` were no-ops in the subagent lane.
+- Passing lit coverage:
+  `TritonNvidiaGPU/tmem_layouts.mlir`,
+  `TritonNvidiaGPU/mma_lowering.mlir`,
+  `TritonGPU/proxy_fence_insertion.mlir`,
+  `TritonNvidiaGPU/interleave_tmem.mlir`,
+  `NVWS/aref-tmem-insertion.mlir`,
+  `NVWS/hoist_tmem_store.mlir`,
+  `TritonGPU/hoist-tmem-alloc.mlir`, and
+  `TritonGPU/memdesc-subview-split.mlir`.
+- New candidate `FZ-20260421-0016`: `test/Conversion/relayout_tritongpu.mlir`
+  crashes during parsing/verifying a `ttng.tmem_alloc` whose operand tensor
+  has no encoding and whose result uses `TensorMemoryScalesEncodingAttr`.
+  `verifyTMEMOperand` reaches `computeTMemLdStEncodingInfo` /
+  `toLinearEncoding` and asserts with `dyn_cast on a non-existent value`
+  instead of accepting the pre-relayout input or producing a typed verifier
+  diagnostic.
+- Saved compiler repros reconfirmed existing buckets:
+  `FZ-20260421-0014` proxy-fence insertion, `FZ-20260421-0008` `ld.red`
+  optimizer row/col/block dimensionality crash, and `FZ-20260421-0009`
+  allocator row-count assertion.
+
+## 2026-04-21 12:42 UTC: Round 23 local multi-CTA guardrail
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_multicta_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was already a no-op for Round 23.
+- Selector `(twocta or multicast or cta or cga) and tmem and not reports`
+  collected `430/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `393 passed, 37 skipped`:
+  - GPU 0 / group 1: `81 passed, 27 skipped`;
+  - GPU 1 / group 2: `98 passed, 10 skipped`;
+  - GPU 2 / group 3: `108 passed`;
+  - GPU 3 / group 4: `106 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:54 UTC: Round 18 local MMAv5 and scaled-MMAv5 selector
 
 - Wrote
@@ -29145,3 +29274,41 @@ Open after this slice:
   1CTA/2CTA `warpx2::01_23` branch-selected copy descriptors passed, so the
   copy-specific negative contrast points back to generic descriptor SSA
   lowering rather than the copy planner.
+
+## 2026-04-21 12:13 UTC: Round 23 Lane BF compiler-only lit audit
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_lit_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` and build-dir `ninja triton-opt` were no-ops.
+- Existing lit tests passed for TMEM layout planning, MMAv5 lowering, proxy
+  fence insertion, interleave/hoist/NVWS TMEM, and memdesc subview split.
+- New candidate `FZ-20260421-0016`: `test/Conversion/relayout_tritongpu.mlir`
+  crashes with `dyn_cast on a non-existent value` while verifying a
+  `ttng.tmem_alloc` whose source is an unencoded tensor and whose result is a
+  tensor-memory-scales memdesc. The parse-time stack runs through
+  `TMEMAllocOp::verify`, `verifyTMEMOperand`, `computeTMemLdStEncodingInfo`,
+  and `toLinearEncoding`.
+- Saved repros re-confirmed existing buckets: `FZ-0014` proxy-fence
+  insertion, `FZ-0008` `ld.red` row/col/block compose crash, and `FZ-0009`
+  allocator row-count assertion.
+
+## 2026-04-21 12:42 UTC: Round 23 local multi-CTA TMEM guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_multicta_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was already a no-op for Round 23.
+- Selector
+  `(twocta or multicast or cta or cga) and tmem and not reports`
+  collected `430/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `393 passed, 37 skipped`:
+  - GPU 0 / group 1: `81 passed, 27 skipped`;
+  - GPU 1 / group 2: `98 passed, 10 skipped`;
+  - GPU 2 / group 3: `108 passed`;
+  - GPU 3 / group 4: `106 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
