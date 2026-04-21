@@ -193,6 +193,12 @@ When resuming the initiative:
   `/tmp/tmem_local_r10_clean_diagnostics_durations.json`; shards reported
   `19`, `25`, `24`, and `24` passed tests, for `92 passed` total.
 
+- 2026-04-21: local Round 10 checked-in `ld.red` NaN/modifier selector stayed
+  green. The selector `ld_red and propagate_nan and not non_f32` collected
+  `176/1615` tests and ran split-4 across GPUs 0-3 with stable caches and
+  durations at `/tmp/tmem_local_r10_ldred_nan_durations.json`; each shard
+  selected `44` tests, for `176 passed` total.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

@@ -27214,3 +27214,20 @@ Open after this slice:
   - group 3/GPU 2: `24 passed, 1591 deselected in 7.72s`;
   - group 4/GPU 3: `24 passed, 1591 deselected in 7.41s`.
 - Aggregate: `92 passed`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 checked-in ld.red NaN/modifier selector
+
+- Collected and ran the checked-in `ld.red` NaN/modifier selector across all
+  four GPUs, complementing Lane I's temporary modifier fuzzing with stable
+  runtime-matrix coverage.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and propagate_nan and not non_f32'`
+  selected `176 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_ldred_nan_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and propagate_nan and not non_f32'`
+- Result:
+  - group 1/GPU 0: `44 passed, 1571 deselected in 31.62s`;
+  - group 2/GPU 1: `44 passed, 1571 deselected in 26.23s`;
+  - group 3/GPU 2: `44 passed, 1571 deselected in 64.36s`;
+  - group 4/GPU 3: `44 passed, 1571 deselected in 58.13s`.
+- Aggregate: `176 passed`. No backend repairs were attempted.

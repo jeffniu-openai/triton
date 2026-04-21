@@ -297,6 +297,10 @@ The project is complete when:
   duration-aware splitting: collect-only selected `92/1615`, split-4
   least-duration across GPUs 0-3 selected `19/25/24/24` tests, and all `92`
   passed using `/tmp/tmem_local_r10_clean_diagnostics_durations.json`.
+  2026-04-21 local Round 10 checked-in `ld.red` NaN/modifier selector stayed
+  green: collect-only selected `176/1615`, split-4 across GPUs 0-3 selected
+  `44/44/44/44` tests, and all `176` passed. Durations were stored at
+  `/tmp/tmem_local_r10_ldred_nan_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

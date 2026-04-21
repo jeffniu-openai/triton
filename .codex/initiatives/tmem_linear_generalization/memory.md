@@ -133,6 +133,13 @@
   selected `19`, `25`, `24`, and `24` tests; aggregate result `92 passed`.
   Durations file reused: `/tmp/tmem_local_r10_clean_diagnostics_durations.json`.
 
+- Latest: 2026-04-21 local Round 10 checked-in `ld.red` NaN/modifier selector
+  stayed green. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and propagate_nan and not non_f32'`
+  selected `176/1615` tests. Split-4 execution across GPUs 0-3 selected
+  `44` tests per shard; aggregate result `176 passed`. Durations were stored
+  at `/tmp/tmem_local_r10_ldred_nan_durations.json`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`
