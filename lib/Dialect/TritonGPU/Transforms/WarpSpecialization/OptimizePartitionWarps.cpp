@@ -55,7 +55,15 @@ static OwningOpRef<ModuleOp> takeIntoFunction(ModuleAxisInfoAnalysis &axisInfo,
   assert(funcInfo && "expected to find function axis info");
   for (auto [i, capture] :
        llvm::enumerate(wsOp.getPartitionOp().getExplicitCaptures())) {
-    AxisInfo info = funcInfo->lookup(capture);
+    auto it = funcInfo->find(capture);
+    if (it == funcInfo->end())
+      continue;
+    AxisInfo info = it->second;
+    // Only scalar AxisInfo can be forwarded as function argument attributes.
+    // Memdesc captures carry memory-view metadata and intentionally do not have
+    // AxisInfo entries.
+    if (info.getRank() != 1)
+      continue;
     containerFunc.setArgAttr(i, "tt.contiguity",
                              b.getI64IntegerAttr(info.getContiguity(0)));
     containerFunc.setArgAttr(i, "tt.divisibility",

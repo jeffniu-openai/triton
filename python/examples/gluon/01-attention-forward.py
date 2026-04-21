@@ -603,7 +603,8 @@ def _softmax_inner_loop(tile_id: gl.constexpr, config, prog,  #
             qk_max = gl.convert_layout(qk_max, m_i.type.layout)
             m_ij = gl.maximum(m_i, qk_max * config.qk_scale)
         else:
-            m_ij = gl.maximum(m_i, gl.max(qk, 1) * config.qk_scale)
+            qk_max = gl.convert_layout(gl.max(qk, 1), m_i.type.layout)
+            m_ij = gl.maximum(m_i, qk_max * config.qk_scale)
         alpha = gl.exp2(m_i - m_ij)
 
         alpha_tmem = _borrow_s_as_alpha(config, s_tmem)

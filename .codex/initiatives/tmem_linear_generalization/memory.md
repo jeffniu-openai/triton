@@ -14184,3 +14184,30 @@ rejection, not rescue
   - focused lit rerun of
     `test/Conversion/tritongpu_to_llvm_blackwell.mlir` and
     `test/TritonNvidiaGPU/membar-cluster.mlir` passed `2/2`.
+
+## Current: 2026-04-21 04:16 UTC examples correctness green
+
+- Active user priority is correctness first, then performance, for
+  `python/examples/gluon/01-attention-forward.py` and
+  `python/examples/gluon/05-moe-bmm1-fused-gather.py`.
+- Fixed current branch correctness regressions against main:
+  - attention non-causal fallback max reduction had a row-vector layout from
+    the joined-N QK tile, while `m_i` used the original QK row layout. The
+    reduction now explicitly converts to `m_i.type.layout`;
+  - example-5 reference persistent matmul exposed a backend assertion in
+    `TritonGPUOptimizePartitionWarps` because memdesc warp-specialization
+    captures have no AxisInfo entries. The pass now skips missing or non-rank-1
+    AxisInfo captures when forwarding function argument attributes;
+  - the later scaled-MMAv5 legality check now treats single-fragment narrow-N
+    B-scale storage as supported, which restores the main-green persistent
+    matmul shape used by the example-5 reference path.
+- Validation evidence:
+  - required `make -j8` passed;
+  - original saved partition-warps MLIR reproducer passed
+    `triton-opt --run-reproducer`;
+  - four-GPU split examples sweep passed all `112` selected tests
+    (`28/28/28/28`).
+- Remaining boundary note:
+  - the existing multi-fragment tile-permuted narrow scaled-MMAv5 selector
+    still fails its 20 selected rows with the B-scale fragment diagnostic; this
+    was intentionally not relaxed by the single-fragment example recovery.

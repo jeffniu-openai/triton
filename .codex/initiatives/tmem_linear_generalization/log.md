@@ -25906,3 +25906,37 @@ Open after this slice:
   - focused lit rerun of
     `test/Conversion/tritongpu_to_llvm_blackwell.mlir` and
     `test/TritonNvidiaGPU/membar-cluster.mlir` passed `2/2`.
+
+## 2026-04-21 04:16 UTC: examples correctness recovery
+
+- User asked to fix correctness before benchmarking the Gluon examples.
+- Recovered the two failing example surfaces:
+  - `01-attention-forward.py` non-causal fallback row reductions now convert
+    `gl.max(qk, 1)` to the running-max layout before broadcasting against
+    `m_i`, matching the explicit `load_max` path and fixing the joined-N
+    layout mismatch;
+  - `OptimizePartitionWarps` no longer assumes every warp-specialization
+    explicit capture has scalar AxisInfo. Memdesc captures intentionally do
+    not participate in AxisInfo after the branch changes, so the pass now
+    forwards argument AxisInfo only for present rank-1 entries;
+  - single-fragment narrow-N scaled MMAv5 B-scale storage is accepted as
+    supported. The example-5 reference persistent matmul has CTA N=16 with
+    one N fragment, so it should not require B-scale padding/rematerialization.
+- Validation:
+  - required `make -j8` passed;
+  - saved MLIR reproducer for the original
+    `TritonGPUOptimizePartitionWarps` assertion passed with
+    `triton-opt --run-reproducer`;
+  - exact focused examples passed:
+    `01-attention-forward.py::test_op[False-triton-fp16-False-64-1024-32-4]`
+    and `05-moe-bmm1-fused-gather.py::test_op[128-c0]`;
+  - four-GPU split sweep over
+    `python/examples/gluon/01-attention-forward.py` and
+    `python/examples/gluon/05-moe-bmm1-fused-gather.py` passed all four
+    groups: `28`, `28`, `28`, and `28` selected tests.
+- Boundary check:
+  - `python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_narrow"` still fails all 20 selected
+    multi-fragment tile-permuted narrow scaled-MMAv5 rows with the existing
+    B-scale fragment diagnostic, so the example fix did not broaden that
+    unsupported surface.

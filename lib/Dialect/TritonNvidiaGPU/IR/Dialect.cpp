@@ -1786,6 +1786,8 @@ getMMAv5ScaledRepeatedN32BScaleRematerializedShape(
 bool isMMAv5ScaledNarrowNBScaleStorageSupported(
     MemDescType bScaleType,
     const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement) {
+  if (requirement.nInstructionCount <= 1)
+    return true;
   auto paddingFactor = getMMAv5ScaledNarrowNPaddingFactor(requirement);
   if (!paddingFactor)
     return false;

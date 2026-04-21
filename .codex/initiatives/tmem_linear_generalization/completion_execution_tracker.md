@@ -1115,3 +1115,14 @@ signal handling:
   and membar lit covers 16-CTA pre-copy cluster-barrier insertion. Validation
   passed: required `make -j8` no-op and focused lit for the two touched files
   passed `2/2`.
+
+- 2026-04-21 04:16 UTC: completed correctness-first recovery for the requested
+  Gluon example benchmark targets. Fixed the attention non-causal joined-N row
+  max layout mismatch, the `OptimizePartitionWarps` memdesc-capture AxisInfo
+  assertion, and the single-fragment narrow-N scaled-MMAv5 B-scale legality
+  false negative hit by the example-5 reference persistent matmul. Validation
+  passed: required `make -j8`; saved `triton-opt --run-reproducer` for the
+  original partition-warps crash; exact attention and MoE repro nodeids; and
+  four-GPU split sweep over examples 01 and 05 with `112/112` selected tests
+  passing. Next concrete step is performance comparison/benchmarking for the
+  now-green examples, unless the user asks for broader correctness sweeps first.

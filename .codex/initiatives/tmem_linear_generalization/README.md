@@ -4929,3 +4929,23 @@ When resuming the initiative:
   - focused pytest over the three retained files passed `37 passed in 23.47s`;
   - script benchmark transcripts were refreshed from local runs of `05`, `06`,
     and `08`.
+
+## Latest: 2026-04-21 04:16 UTC examples 01 and 05 correctness restored
+
+- Current user priority is correctness first for the existing Gluon examples
+  before resuming branch-vs-main performance comparison.
+- Fixed branch regressions affecting:
+  - `python/examples/gluon/01-attention-forward.py` non-causal cases;
+  - `python/examples/gluon/05-moe-bmm1-fused-gather.py` reference persistent
+    matmul compilation.
+- Backend fixes:
+  - partition-warp relayout now skips memdesc/non-scalar explicit captures when
+    forwarding AxisInfo argument attributes;
+  - single-fragment narrow-N scaled MMAv5 B-scale storage is accepted as
+    supported.
+- Validation:
+  - required `make -j8` passed;
+  - saved partition-warp MLIR reproducer passed `triton-opt --run-reproducer`;
+  - four-GPU split sweep over examples 01 and 05 passed all `112` selected
+    tests.
+- Next step: resume the requested performance comparison against main.
