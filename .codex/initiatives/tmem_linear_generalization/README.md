@@ -7,7 +7,15 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 36 B-scale dynamic descriptor-view
+Latest fuzzing checkpoint: 2026-04-21 Round 36 high-rank `ld.red`
+compile/execute classifier completed. Report:
+`agents/fuzz_high_rank_ldred_compile_round36.md`. Checked-in high-rank
+`ld.red` selector collected no tests, so a temporary subprocess probe ran `72`
+rank-5 descriptor-view `view.load_min/load_max` cases and all passed
+compile/execute classification. This is not a runtime-correctness oracle; no
+new independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 36 B-scale dynamic descriptor-view
 runtime lane completed. Report:
 `agents/fuzz_bscale_dynamic_views_round36.md`. Required `make -j8` was a
 no-op. Checked-in selectors

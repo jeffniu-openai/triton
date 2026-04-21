@@ -69,6 +69,14 @@ The project is complete when:
   `tcgen05_mma_scaled` and passed split-4 as `5 passed`. No new independent
   `FZ-*`; excluded drafts are clean frontend/API boundaries for scale
   multibuffering and repeated N=32 public-scale MMAv5 rematerialization.
+  2026-04-21 Round 36 local high-rank `ld.red` compile/execute classifier
+  completed. Artifact: `agents/fuzz_high_rank_ldred_compile_round36.md`.
+  Checked-in selector `ld_red and (higher_rank or rank5 or multidim)`
+  collected no tests. Temporary subprocess probe
+  `/tmp/tmem_high_rank_ldred_round35_probe.py` ran `72` rank-5
+  descriptor-view `view.load_min/load_max` consumers and all passed
+  compile+execute classification. This is not a runtime-correctness oracle;
+  no new independent `FZ-*`.
   2026-04-21 13:35 UTC Round 35 `ld.red` descriptor-view chain lane
   completed. Artifact: `agents/fuzz_ldred_descriptor_views_round35.md`.
   Required `make -j8` was a no-op. Temporary subprocess probe

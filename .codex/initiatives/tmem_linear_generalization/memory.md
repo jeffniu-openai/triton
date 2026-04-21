@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 36 local high-rank `ld.red` compile/execute
+  classifier completed. Report:
+  `agents/fuzz_high_rank_ldred_compile_round36.md`. Checked-in selector
+  `ld_red and (higher_rank or rank5 or multidim)` collected no tests, so
+  temporary subprocess probe `/tmp/tmem_high_rank_ldred_round35_probe.py`
+  covered `72` rank-5 descriptor-view `view.load_min/load_max` consumers over
+  unit-parent, nonunit-prefix, and mixed-prefix parents; identity, row-reversed,
+  and column-reversed layouts; `N=64/128`; and `auto/32x32b` variants. Result:
+  `SUMMARY {"pass": 72}`. This is compile/execute coverage only; an invalid
+  full-tile output oracle was discarded, so this lane does not claim runtime
+  correctness. No new independent `FZ-*`.
+
 - Latest: 2026-04-21 13:35 UTC Round 35 `ld.red` descriptor-view chain
   fuzzing completed. Report:
   `agents/fuzz_ldred_descriptor_views_round35.md`. Required `make -j8` was a

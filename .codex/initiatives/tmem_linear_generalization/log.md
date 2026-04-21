@@ -1,3 +1,20 @@
+## 2026-04-21: Round 36 high-rank ld.red compile/execute classifier
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_rank_ldred_compile_round36.md`.
+- Checked-in high-rank `ld.red` selector
+  `ld_red and (higher_rank or rank5 or multidim)` collected no tests.
+- Temporary probe:
+  `/tmp/tmem_high_rank_ldred_round35_probe.py`.
+- Probe axes: rank-5 unit-parent, nonunit-prefix, and mixed-prefix
+  descriptor-view chains; identity, row-reversed, and column-reversed layouts;
+  `N=64/128`; `auto/32x32b`; min/max.
+- Result: `72` subprocess rows passed compile+execute classification.
+- Classification: no compiler crash, process abort, false unsupported
+  diagnostic, runtime exception, or new independent `FZ-*`. This is not a
+  runtime-correctness oracle; an initial invalid full-tile output comparison
+  was discarded before recording the final result.
+
 ## 2026-04-21: Round 24 FZ-0016 minimization
 
 - Continued discovery-only structural fuzzing; no backend or compiler repair
