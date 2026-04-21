@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:21 UTC Round 14 Lane AI completed copy/mbarrier
+  composition fuzzing. Report:
+  `agents/fuzz_copy_mbarrier_composition_round14.md`. Required `make -j8` was
+  a no-op. Checked-in copy baseline
+  `cp_no_scales and (warpx2 or twocta) and not reports` collected `103/1615`
+  and passed split-4 as `103 passed`. A temporary fresh-subprocess probe
+  classified `8` rows as `4` green controls, `2` clean `FZ-20260421-0010`
+  context diagnostics, and `2` `FZ-20260421-0014` proxy-fence crashes.
+  `FZ-0014` is broadened: two independent legal 2CTA no-scales copy/mbarrier
+  regions are sufficient to trigger proxy-fence insertion failure for both
+  direct and descriptor-chain destinations; scales copy is not required. No
+  runtime miscompile and no new independent `FZ-*` bucket was found.
+
 - Latest: 2026-04-21 local Round 14 structural-fuzzer smoke gate stayed
   stable. Report: `agents/fuzz_local_structural_smoke_round14b.md`. Required
   `make -j8` was a no-op. Full

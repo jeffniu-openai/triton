@@ -7,17 +7,18 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:15 UTC Round 14 Lane AH completed
-compiler-only/lit/verifier fuzzing. Report:
-`agents/fuzz_lit_verifier_round14.md`. Required `make -j8` and
-`ninja triton-opt` were no-ops. Anchor lit files passed `5/5`. Temporary
-`triton-opt` probes classified as `7` pass/clean expected diagnostics and `4`
-known-bucket failures: `FZ-20260421-0001` dynamic `ttg.memdesc_index` illegal
-lowering, `FZ-20260421-0012` M64 row-rotated `ld.red` unsupported
-destination layout, and `FZ-20260421-0014` full proxy-fence reproducer.
-4/8/16 CTA verifier probes stayed clean, and matmul two-CTA consistency
-probes for 4/8/16 CTA contexts passed or produced clean verifier diagnostics.
-No new independent `FZ-*` bucket was assigned.
+Latest fuzzing checkpoint: 2026-04-21 11:21 UTC Round 14 Lane AI completed
+copy/mbarrier composition fuzzing. Report:
+`agents/fuzz_copy_mbarrier_composition_round14.md`. Required `make -j8` was a
+no-op. Checked-in copy baseline selector
+`cp_no_scales and (warpx2 or twocta) and not reports` collected `103/1615`
+and passed split-4 as `103 passed`. A temporary fresh-subprocess probe
+classified `8` rows as `4` green controls, `2` clean `FZ-20260421-0010`
+context diagnostics, and `2` `FZ-20260421-0014` proxy-fence crashes. The
+`FZ-0014` rows show that two independent legal 2CTA no-scales copy/mbarrier
+regions are enough to trigger the proxy-fence insertion abort, both for direct
+and descriptor-chain destinations; scales copy is not required. No runtime
+miscompile and no new independent `FZ-*` bucket was found.
 
 ## How To Use This Folder
 

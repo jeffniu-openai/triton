@@ -60,6 +60,16 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
+  without backend repairs. Report:
+  `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline
+  `cp_no_scales and (warpx2 or twocta) and not reports` passed split-4 as
+  `103 passed`; temporary fresh-subprocess rows classified as `4` green
+  controls, `2` clean `FZ-20260421-0010` context diagnostics, and `2`
+  `FZ-20260421-0014` proxy-fence crashes. `FZ-0014` is broadened to multiple
+  independent legal 2CTA no-scales copy/mbarrier regions, direct or
+  descriptor-chain, without scales copy. No runtime miscompile and no new
+  independent `FZ-*` bucket was found.
   2026-04-21 08:30 UTC Lane E2 promoted FZ-20260421-0001 and
   FZ-20260421-0002 into checked-in strict xfail runtime coverage in
   `python/test/gluon/test_tmem_structural_fuzzer.py`, with exact fresh-process

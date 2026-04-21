@@ -28141,3 +28141,28 @@ Open after this slice:
 - Result: `9 passed, 24 xfailed in 10.00s`.
 - Classification: no new bucket. The expected xfail diagnostics remained tied
   to the existing structural-fuzzer `FZ-*` owners.
+
+## 2026-04-21 11:21 UTC: Round 14 Lane AI copy/mbarrier composition fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_mbarrier_composition_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Checked-in copy baseline selector
+  `cp_no_scales and (warpx2 or twocta) and not reports` collected `103/1615`
+  and passed split-4 with stable per-GPU caches as `103 passed`
+  (`26/26/26/25`).
+- Temporary probe
+  `/tmp/tmem_copy_mbarrier_composition_round14_probe.py` collected `8` rows
+  and was run as fresh exact-node subprocesses. Classification: `4` green
+  controls, `2` clean `FZ-20260421-0010` context diagnostics, and `2`
+  `FZ-20260421-0014` proxy-fence crashes.
+- `FZ-0014` is broadened: scales copy is not required. Two independent legal
+  `num_ctas=2` no-scales copy/mbarrier regions trigger the same proxy-fence
+  insertion abort for both direct TMEM destinations and descriptor-chain
+  destinations. Extracted reproducers:
+  `/tmp/tmem_copy_mbarrier_round14_ai001_direct_two_copy_fail.mlir` and
+  `/tmp/tmem_copy_mbarrier_round14_ai002_chain_two_copy_fail.mlir`.
+- No runtime wrong-result/miscompile and no new independent `FZ-*` bucket was
+  found.
