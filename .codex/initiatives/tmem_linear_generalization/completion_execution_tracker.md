@@ -3811,3 +3811,22 @@ discovery.
   `60 passed`. No compiler crash, verifier drift, false unsupported
   diagnostic, opcode absence, hardware/software classification drift, runtime
   miscompile, hang, or new independent `FZ-*`.
+
+- 2026-04-21: Round 56 local descriptor composition positive lane completed.
+  Report: `agents/fuzz_round56_local_descriptor_positive_lane.md`. Required
+  `make -j8` was a no-op. Selector over positive `ld/st` descriptor
+  composition, roundtrip, deep roundtrip, multidimensional positive slice,
+  direct half-row, and rank-5 rows collected `19/1615`; split-4 runtime
+  executed as `5 passed, 14 skipped` under local capability guards. No
+  selected executed row failed; no compiler crash, verifier drift, false
+  unsupported diagnostic, runtime miscompile, hang, or new independent `FZ-*`.
+
+- 2026-04-21: Round 56 `test_core.py` TMEM breadth lane C completed. Report:
+  `agents/fuzz_round56_test_core_breadth_lane.md`. Required `make -j8` was a
+  no-op. Main TMEM breadth selector collected `305/18114` and passed split-4
+  as `297 passed, 8 skipped`; high-CGA scaled-copy selector collected
+  `48/18114` and passed as `48 passed`; TMA-to-TMEM shared-input selector
+  collected `63/18114` and passed as `57 passed, 6 skipped`. No compiler
+  crash, verifier drift, false unsupported diagnostic, opcode absence, runtime
+  miscompile, hang, unexpected skip/fail transition, or new independent
+  `FZ-*`.

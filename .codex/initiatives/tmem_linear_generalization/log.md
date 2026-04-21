@@ -32600,6 +32600,23 @@ Open after this slice:
   clean indexed-view-chain boundary.
 - Classification: no new independent `FZ-*`.
 
+## 2026-04-21 15:48 UTC: Round 56 `test_core.py` TMEM breadth lane C
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_test_core_breadth_lane.md`.
+- Required `make -j8` was a no-op.
+- Main breadth selector over allocation/lifetime, multicast commit,
+  TMA/mbarrier/multicast, no-scale copy, runtime/descriptor linear views,
+  reductions, plain MMAv5, scaled copy, and related atom-shape rows collected
+  `305/18114` and passed split-4 as `297 passed, 8 skipped`.
+- High-CGA scaled-copy selector collected `48/18114` and passed as
+  `48 passed`.
+- TMA-to-TMEM shared-input selector collected `63/18114` and passed as
+  `57 passed, 6 skipped`.
+- Classification: no compiler crash, verifier drift, false unsupported
+  diagnostic, opcode absence, runtime miscompile, hang, unexpected skip/fail
+  transition, or new independent `FZ-*`.
+
 ## 2026-04-21: Round 56 scaled dynamic lane B
 
 - Wrote
@@ -32639,3 +32656,39 @@ Open after this slice:
 - Classification: no compiler crash, verifier drift, false unsupported
   diagnostic, opcode absence, hardware/software classification drift, runtime
   miscompile, hang, or independent `FZ-*`.
+
+## 2026-04-21: Round 56 local descriptor composition positives
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_local_descriptor_positive_lane.md`.
+- Required `make -j8` was a no-op.
+- Selector over positive `ld/st` descriptor composition, roundtrip, deep
+  roundtrip, multidimensional positive slice, direct half-row, and rank-5
+  rows, excluding `reports`, `twocta`, `ld_red`, `x1`, and `scales`:
+  `19/1615` collected.
+- Split-4 runtime result:
+  `5 passed, 14 skipped` under local capability guards.
+- Classification:
+  no selected executed row failed; no compiler crash, verifier drift, false
+  unsupported diagnostic, runtime miscompile, hang, or independent `FZ-*`.
+
+## 2026-04-21: Round 56 test_core TMEM breadth lane C
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_test_core_breadth_lane.md`.
+- Required `make -j8` was a no-op.
+- Main `python/test/gluon/test_core.py` TMEM breadth selector collected
+  `305/18114` and passed split-4 as `297 passed, 8 skipped`.
+- High-CGA scaled-copy selector collected `48/18114` and passed split-4 as
+  `48 passed`.
+- TMA-to-TMEM shared-input selector collected `63/18114` and passed split-4 as
+  `57 passed, 6 skipped`.
+- Coverage included TMEM roundtrip/allocation/lifetime, multicast commit,
+  TMA/mbarrier/multicast, no-scale copy, scaled-copy, linear runtime
+  descriptor views, descriptor-chain matrices, `ld.red` hardware/software
+  rows, plain MMAv5, scaled-MMAv5, i8 clean diagnostics, and high-CGA
+  scaled-copy rows.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, opcode
+  absence, runtime miscompile, hang, unexpected skip/fail transition, or new
+  independent `FZ-*`.

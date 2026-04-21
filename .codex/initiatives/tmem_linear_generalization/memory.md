@@ -17020,3 +17020,14 @@ rejection, not rescue
   `FZ-20260421-0001` illegal `ttg.memdesc_index` LLVM-conversion failures.
   Adjacent checked-in copy/plain-MMAv5/scaled-MMAv5 controls passed as
   `47 passed`. No new independent `FZ-*`; backend repair remains deferred.
+
+- Round 56 `test_core.py` TMEM breadth lane C wrote
+  `agents/fuzz_round56_test_core_breadth_lane.md`. Required `make -j8` was a
+  no-op. Main breadth selector collected `305/18114` and passed split-4 as
+  `297 passed, 8 skipped`; high-CGA scaled-copy selector collected `48/18114`
+  and passed as `48 passed`; TMA-to-TMEM shared-input selector collected
+  `63/18114` and passed as `57 passed, 6 skipped`. Coverage included
+  allocation/lifetime, multicast commit, TMA/mbarrier/multicast, no-scale copy,
+  linear runtime views, descriptor-chain matrix rows, `ld.red`, plain MMAv5,
+  scaled copy, and high-CGA scaled-copy rows. No new independent `FZ-*`;
+  backend repair remains deferred.
