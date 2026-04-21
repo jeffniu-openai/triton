@@ -1,3 +1,21 @@
+## 2026-04-21 14:20 UTC: Round 42 high-CGA/cache ownership lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_cache_round42.md`.
+- Scope: discovery/classification only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Focused high-CGA/multicast selector collected `28/19762` and passed split-4
+  as `28 passed`.
+- Broader adjacent selector collected `317/19729` and ran as
+  `311 passed, 6 failed`.
+- The six failures are existing `FZ-20260421-0012` M64 row/row-column
+  permuted `ld.red` unsupported-layout rows, not high-CGA ownership failures.
+- Repeated the existing `FZ-20260421-0010` 2CTA-layout-in-4CTA-context clean
+  diagnostic through stable warm caches on GPU0 and GPU1 as `1 passed` each
+  run.
+- Classification: no cache/process sensitivity, high-CGA ownership drift, or
+  new independent `FZ-*`.
+
 ## 2026-04-21 14:19 UTC: Round 42 scaled-MMAv5 positive guardrail
 
 - Wrote

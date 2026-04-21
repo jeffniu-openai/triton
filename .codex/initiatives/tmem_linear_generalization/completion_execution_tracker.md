@@ -60,6 +60,17 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:20 UTC Round 42 high-CGA/cache ownership lane integrated.
+  Artifact: `agents/fuzz_high_cga_cache_round42.md`. Required `make -j8`
+  reported `no work to do`. Focused high-CGA/multicast selector collected
+  `28/19762` and passed split-4 as `28 passed`. Broader adjacent selector
+  collected `317/19729` and ran as `311 passed, 6 failed`; the six failures
+  are existing `FZ-20260421-0012` M64 row/row-column-permuted `ld.red`
+  unsupported-layout rows, not high-CGA ownership. Repeated the
+  `FZ-20260421-0010` 2CTA-layout-in-4CTA-context clean diagnostic through
+  stable warm caches on GPU0 and GPU1 as `1 passed` each run. No cache/process
+  sensitivity, high-CGA drift, or new independent `FZ-*`; backend repair
+  remains deferred.
   2026-04-21 14:19 UTC Round 42 scaled-MMAv5 positive guardrail completed.
   Artifact: `agents/fuzz_scaled_positive_round42.md`. Selector over
   scaled-MMAv5 root format, `use_acc`, accumulator subslice, tile-permuted
