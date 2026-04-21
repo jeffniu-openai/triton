@@ -1,5 +1,42 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 13:18 UTC Round 33 compiler-boundary fuzz lane
+  completed. Report: `agents/fuzz_compiler_boundaries_round33.md`. Required
+  `make -j8` was a no-op. Generated `16` MLIR probes under
+  `/tmp/tmem_compiler_boundaries_round33` and ran verify, TMEM-layout
+  optimize, and allocation+LLVM modes. Matrix result: `10` passes, `18` clean
+  diagnostics, `16` assertion/stack-dump aborts, and `4` late illegal-op
+  failures (`3` existing `FZ-0001`, `1` tensor-return harness limitation).
+  No new independent `FZ-*` bucket. Existing `FZ-0016` is sharpened by a
+  single-unencoded-reduction-result row that verifies/optimizes but crashes in
+  LLVM type conversion; existing `FZ-0017` is revalidated for descriptor-chain
+  `i64` load, descriptor-chain `f64` store, and initialized `i64` alloc.
+  Malformed linear layouts, CGA-mismatched `warpx2`/`warpx4` copy candidates,
+  noncanonical scale-copy layout, and `i64` scale TMEM all diagnosed cleanly.
+
+- Latest: 2026-04-21 13:10 UTC Round 32 FZ-0018 `ld.red` minimization
+  completed. Report: `agents/fuzz_ldred_fz0018_min_round32.md`. Required
+  `make -j8` was a no-op. Temporary subprocess-isolated runtime probe:
+  `/tmp/tmem_ldred_fz0018_min_round32.py`, summary
+  `/tmp/tmem_ldred_fz0018_min_round32/summary.json`. Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon python /tmp/tmem_ldred_fz0018_min_round32.py`.
+  Result: `60` rows classified as `16` `FZ-20260421-0018`, `12` pass, `6`
+  clean shared-memory boundaries, `6` clean tensor-memory boundaries, and
+  `20` clean power-of-two shape boundaries. Classification: FZ-0018 is not
+  direct-only because same-footprint descriptor-view chains reproduce it; not
+  a generic high-`N` impossibility because `M64xN512` and `M128xN512`
+  column-reversed hardware `.ld.red` pass; and it generalizes to
+  `M256xN256,w4`, while matching `w8` rows cleanly diagnose shared-memory OOR.
+  Backend repair remains deferred.
+
+- Latest: 2026-04-21 Round 33 local positive `ld.red` runtime guardrail
+  completed. Report: `agents/fuzz_local_ldred_positive_round33.md`. Required
+  `make -j8` was a no-op. Selector
+  `(ld_red and not reports and not resource and not m64)` collected
+  `204/1615` rows and passed split-4 as `204 passed` (`51/51/51/51`). No
+  compiler crash, false unsupported diagnostic, opcode mismatch, runtime
+  miscompile, or new independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 Round 33 local scaled-MMAv5 layout/subslice guardrail
   completed. Report: `agents/fuzz_local_scaled_layouts_round33.md`. Required
   `make -j8` was a no-op. Selector

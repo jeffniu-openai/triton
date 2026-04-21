@@ -55,6 +55,25 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ## Round Log
 
+### Round 32 Local, FZ-0018 ld.red minimization
+
+- Time: 2026-04-21 13:10 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_fz0018_min_round32.md`
+- Scope: subprocess-isolated Python/Gluon runtime minimization for
+  `FZ-20260421-0018`, sweeping `M={96,128,160,256}`,
+  `N={256,384,512}`, `num_warps={4,8}`, direct/indexed/chain roots,
+  same-footprint descriptor-view chains, explicit `32x32b`, row/column/tile
+  layout perturbations, and `min`/`max`.
+- Result: no backend/test source edits. `60` rows classified as `16`
+  `FZ-20260421-0018`, `12` pass, `6` clean shared-memory boundaries, `6`
+  clean tensor-memory boundaries, and `20` clean power-of-two shape
+  boundaries. `FZ-0018` is not direct-only: same-footprint descriptor-view
+  chains reproduce it. It is not a generic high-`N` impossibility:
+  `M64xN512` and `M128xN512` column-reversed hardware `.ld.red` pass. It also
+  generalizes to `M256xN256,w4`; matching `w8` rows diagnose clean
+  shared-memory OOR.
+
 ### Round 32 Lane, Subword/Narrow-Shape Python Runtime TMEM
 
 - Time: 2026-04-21 12:57 UTC
@@ -1720,31 +1739,46 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ### FZ-20260421-0018: M128xN512 f32 ld.red reaches late ptxas register allocation failure
 
-- Source: Round 31 `ld.red` descriptor/layout extremes.
+- Source: Round 31 `ld.red` descriptor/layout extremes; expanded by Round 32
+  FZ-0018 minimization.
 - Failure class: `compiler_crash` / late toolchain resource failure without a
   clean frontend/backend diagnostic.
 - Family: `ldred`.
-- Shape: direct `[128,512]` f32 TMEM tile.
-- Layout: 1CTA direct `TensorMemoryLinearLayout`, identity row/col bases.
+- Shapes: direct or same-footprint descriptor-view `[128,512]` f32 TMEM tile;
+  direct/legacy-equivalent `[256,256]` f32 TMEM tile.
+- Layout: 1CTA direct `TensorMemoryLinearLayout` identity, row-reversed, and
+  tile-swapped row/column bases. Column-reversed `M128xN512` is a passing
+  hardware `.ld.red` control.
 - Operation: store full tile, then `load_min()` with hardware `.ld.red`
-  expected.
+  expected; Round 32 also reproduced with `load_max()`.
 - Observed: compilation reaches `ptxas-blackwell`, then fails with register
   allocation count `255` instead of an earlier clean resource or unsupported
   diagnostic.
 - Rows:
-  - `direct_m128_n512_identity`;
-  - `direct_m128_n512_identity_32x32b_splitn`.
+  - Round 31: `direct_m128_n512_identity` and
+    `direct_m128_n512_identity_32x32b_splitn`;
+  - Round 32: `direct` and same-footprint descriptor-chain `M128xN512,w4`
+    identity/row-reverse/tile-swap rows with `auto` or explicit `32x32b`;
+  - Round 32: direct and legacy-equivalent `M256xN256,w4`;
+  - Round 32: `M128xN512,w4,max`.
 - Independence evidence:
   - not `FZ-20260421-0012`: no `unsupported dst layout`; lowering reaches
     ptxas;
   - not `FZ-20260421-0010`: no CTA ownership mismatch;
   - not a generic `N=512` impossibility: `direct_m64_n512_identity_splitn`
     executes correctly and emits four `16x32bx2.x64` `.ld.red` instructions;
-  - same `M128xN512` shape with `num_warps=8` reports clean shared-memory OOR.
+  - not a generic large-footprint impossibility: `M128xN512` column-reversed
+    direct and same-footprint descriptor-chain rows execute correctly with
+    eight hardware `.ld.red` instructions;
+  - matching `M128xN512` and `M256xN256` shapes with `num_warps=8` report
+    clean shared-memory OOR.
 - Artifacts:
   `/tmp/tmem_ldred_extremes_round31.py`,
   `/tmp/tmem_ldred_extremes_round31/summary.json`, and per-case stdout/stderr
-  files under `/tmp/tmem_ldred_extremes_round31/`.
+  files under `/tmp/tmem_ldred_extremes_round31/`; Round 32 minimizer
+  `/tmp/tmem_ldred_fz0018_min_round32.py`,
+  `/tmp/tmem_ldred_fz0018_min_round32/summary.json`, and per-case logs under
+  `/tmp/tmem_ldred_fz0018_min_round32/`.
 - Repair guidance: add a compiler-only minimizer and decide whether the correct
   outcome is supported codegen with a better resource plan or an earlier clean
   resource diagnostic. Backend repair is intentionally deferred during the
@@ -1782,10 +1816,11 @@ remain family-specific and consume a bounded subset of the inventory.
 - Round 7 Lane C found no new copy/readback failure to add to the repro queue.
   Future copy generator work should promote a stable repo-local runnable case
   adapter before replacing the current runtime-matrix-backed launcher.
-- FZ-20260421-0018 needs a compiler-only minimizer that preserves `.ld.red`
-  generation while sweeping `M=128`, high `N`, `num_warps`, and explicit
-  variants; keep it report-only until the minimized repro is ready for
-  checked-in subprocess or lit coverage.
+- FZ-20260421-0018 now has a subprocess-isolated runtime minimizer covering
+  direct and same-footprint descriptor-chain rows. Optional next work is a
+  compiler-only minimizer that preserves the failing `.ld.red` resource plan
+  without needing runtime execution; keep it report-only until the minimized
+  repro is ready for checked-in subprocess or lit coverage.
 - Round 8 Lane C found no new copy/readback failure to add to the repro queue.
   It validated 18 temporary generator-adapter rows and kept scales
   descriptor-view copy as a clean unsupported boundary.

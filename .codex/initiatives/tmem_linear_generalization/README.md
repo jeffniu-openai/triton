@@ -7,7 +7,21 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 31-32 scaled-MMAv5 operand lane,
+Latest fuzzing checkpoint: 2026-04-21 Round 33 dynamic descriptor SSA/control-
+flow lane completed. Report:
+`agents/fuzz_dynamic_descriptor_round33.md`. A temporary Python/Gluon runtime
+probe collected `100` rows across runtime `parent.index(load(selector))`,
+same-parent distinct-index branch selection, loop-carried descriptors, direct
+versus chain0 descriptor views, and load, store, `tcgen05.copy`, `.ld.red`,
+and mixed load/store/`.ld.red` consumers. Result: `46` pass, `20` existing
+`FZ-20260421-0001` late illegal `ttg.memdesc_index`, `24` existing
+descriptor-view wrong-result rows under `FZ-20260421-0002` /
+`FZ-20260421-0003`, and `10` clean unsupported chain0 copy planner
+diagnostics. Practical MMAv5 controls added `2 passed` plain indexed
+accumulator rows and `1 xfailed` scaled-MMAv5 `FZ-20260421-0007` sentinel. No
+new independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 31-33 scaled-MMAv5 operand lane,
 local guardrails, compiler-boundary fuzzing, and subword/narrow-shape runtime
 fuzzing. Reports:
 `agents/fuzz_scaled_operand_round31.md`,
@@ -26,7 +40,10 @@ fuzzing. Reports:
 `agents/fuzz_ldred_extremes_round31.md`, plus
 `agents/fuzz_structural_rerun_round32.md` and
 `agents/fuzz_local_scales_round33.md`, and
-`agents/fuzz_local_scaled_layouts_round33.md`. The scaled operand lane found no
+`agents/fuzz_local_scaled_layouts_round33.md`, and
+`agents/fuzz_local_ldred_positive_round33.md`, and
+`agents/fuzz_ldred_fz0018_min_round32.md`, and
+`agents/fuzz_compiler_boundaries_round33.md`. The scaled operand lane found no
 new bucket and revalidated existing `FZ-0013`, `FZ-0015`, and `FZ-0010`
 boundaries; the 2CTA scaled-MMAv5 guardrail passed as `28 passed`;
 descriptor-heavy `ld.red` plus scaled-MMAv5 rows passed as `54 passed`;
@@ -52,7 +69,9 @@ and stayed stable as `9 passed, 24 xfailed`. Round 33 scale-bearing runtime
 guardrail collected `66/1615` `ld/st` scales, `ld.red` scales, `cp.scales`,
 and scaled-MMAv5 scale-copy rows and passed split-4 as `66 passed`. Round 33
 scaled-MMAv5 operand-layout/subslice guardrail collected `208/1615` rows and
-passed split-4 as `208 passed`. The
+passed split-4 as `208 passed`. Round 33 positive `ld.red` runtime guardrail
+collected `204/1615` rows excluding reports/resources/M64 and passed split-4
+as `204 passed`. The
 `ld.red` extremes lane ran
 `23`
 f32 runtime rows with torch reference and opcode checks; `15` passed,
@@ -61,6 +80,22 @@ clean resource boundaries, and `2` established new candidate
 `FZ-20260421-0018`: direct `M128xN512` hardware `ld.red` reaches ptxas register
 allocation failure instead of a clean resource diagnostic, while `M64xN512`
 passes and `M128xN512` with `num_warps=8` reports clean shared-memory OOR.
+Round 32 FZ-0018 minimization then ran `60` subprocess-isolated runtime rows:
+`16` reproduced FZ-0018, `12` passed, `6` were clean shared-memory boundaries,
+`6` were clean tensor-memory boundaries, and `20` were clean power-of-two
+shape boundaries. FZ-0018 is not direct-only because same-footprint
+descriptor-view chains reproduce it; it is not a generic high-`N`
+impossibility because `M64xN512` and `M128xN512` column-reversed hardware
+`.ld.red` rows pass; it generalizes to `M256xN256,w4`, while matching `w8`
+rows cleanly report shared-memory OOR.
+Round 33 compiler-boundary fuzzing generated `16` MLIR probes and ran verify,
+TMEM-layout optimize, and allocation+LLVM modes with `10` passes, `18` clean
+diagnostics, `16` assertion/stack-dump aborts, and `4` late illegal-op
+failures. No new independent `FZ-*` bucket was found; the lane revalidated
+`FZ-0001`, sharpened `FZ-0016` with a verifier-missed unencoded reduction
+result that crashes later in LLVM type conversion, and revalidated `FZ-0017`
+for descriptor-chain `i64` load, descriptor-chain `f64` store, and initialized
+`i64` alloc.
 Round 31 subagents are still running descriptor-chain-shape lanes.
 
 Previous fuzzing checkpoint: 2026-04-21 Round 26-28 discovery lanes. Reports:

@@ -60,6 +60,17 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 13:10 UTC Round 32 FZ-0018 `ld.red` minimization completed.
+  Artifact: `agents/fuzz_ldred_fz0018_min_round32.md`. Required `make -j8`
+  was a no-op. Temporary subprocess-isolated runtime probe
+  `/tmp/tmem_ldred_fz0018_min_round32.py` classified `60` rows as `16`
+  `FZ-20260421-0018`, `12` pass, `6` clean shared-memory boundaries, `6`
+  clean tensor-memory boundaries, and `20` clean power-of-two shape
+  boundaries. Classification: FZ-0018 is not direct-only because
+  same-footprint descriptor-view chains reproduce it; not a generic high-`N`
+  impossibility because `M64xN512` and `M128xN512` column-reversed hardware
+  `.ld.red` pass; and it generalizes to `M256xN256,w4`, while matching `w8`
+  rows cleanly report shared-memory OOR. Backend repair remains deferred.
   2026-04-21 12:49 UTC Round 31 scaled-MMAv5 descriptor operand lane
   completed. Artifact: `agents/fuzz_scaled_operand_round31.md`. No new
   independent `FZ-*`; the lane revalidated `FZ-0013` scale descriptor-view
@@ -113,6 +124,15 @@ The project is complete when:
   Artifact: `agents/fuzz_compiler_boundaries_round31b.md`. No new bucket;
   dynamic indexed reduction/scale loads expand `FZ-0001`, and unencoded
   reduction load results expand `FZ-0016`.
+  2026-04-21 13:18 UTC Round 33 compiler-boundary fuzz lane completed.
+  Artifact: `agents/fuzz_compiler_boundaries_round33.md`. No new independent
+  `FZ-*`; generated `16` MLIR probes under
+  `/tmp/tmem_compiler_boundaries_round33` and ran verify, optimize, and
+  allocation+LLVM modes. Result: `10` pass, `18` clean diagnostics, `16`
+  assertion/stack-dump aborts, and `4` late illegal-op failures. Existing
+  `FZ-0001` dynamic descriptor-index lowering, `FZ-0016` unencoded tensor
+  handling, and `FZ-0017` encoded 64-bit TMEM load/store/alloc boundaries were
+  revalidated or sharpened; backend repair remains deferred.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline
@@ -2586,3 +2606,16 @@ signal handling:
   `(mma_scaled and not reports and not resource and (layout_format or lhs_subslice or acc_subslice or tile_permuted or indexed_acc))`
   collected `208/1615` and passed split-4 as `208 passed`. No new independent
   `FZ-*` bucket.
+
+- 2026-04-21: Round 33 local positive `ld.red` runtime guardrail completed.
+  Report: `agents/fuzz_local_ldred_positive_round33.md`. Selector
+  `(ld_red and not reports and not resource and not m64)` collected `204/1615`
+  and passed split-4 as `204 passed`. No new independent `FZ-*` bucket.
+
+- 2026-04-21: Round 32 FZ-0018 `ld.red` minimization completed. Report:
+  `agents/fuzz_ldred_fz0018_min_round32.md`. Temporary subprocess harness ran
+  `60` rows: `16` reproduced `FZ-20260421-0018`, `12` passed, `6` were clean
+  shared-memory boundaries, `6` were clean tensor-memory boundaries, and `20`
+  were clean power-of-two shape boundaries. `FZ-0018` remains an open backend
+  resource-policy/planning bug; repair is intentionally deferred during
+  discovery.

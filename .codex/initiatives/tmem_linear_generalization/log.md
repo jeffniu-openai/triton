@@ -30450,3 +30450,56 @@ Open after this slice:
 - Split-4 result: `208 passed` (`52/52/52/52` by group).
 - Classification: no compiler crash, false unsupported diagnostic, opcode
   mismatch, runtime miscompile, or new independent `FZ-*` bucket.
+
+## 2026-04-21 13:10 UTC: Round 32 FZ-0018 ld.red minimization
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_fz0018_min_round32.md`.
+- Required `make -j8` was a no-op.
+- Temporary subprocess-isolated runtime driver:
+  `/tmp/tmem_ldred_fz0018_min_round32.py`; child harness and per-case logs
+  under `/tmp/tmem_ldred_fz0018_min_round32/`.
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon python /tmp/tmem_ldred_fz0018_min_round32.py`.
+- Result: `60` rows classified as `16` `FZ-20260421-0018`, `12` pass, `6`
+  clean shared-memory boundaries, `6` clean tensor-memory boundaries, and
+  `20` clean power-of-two shape boundaries.
+- Classification: FZ-0018 is not direct-only because same-footprint
+  descriptor-view chains reproduce it; not a generic high-`N` impossibility
+  because `M64xN512` and `M128xN512` column-reversed hardware `.ld.red` rows
+  pass; and it generalizes to `M256xN256,w4`, while matching `w8` rows cleanly
+  report shared-memory OOR. Parent-expanding indexed/chain high-N rows are
+  clean tensor-memory OOR and do not reach the failing resource plan.
+
+## 2026-04-21: Round 33 local positive ld.red runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldred_positive_round33.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(ld_red and not reports and not resource and not m64)`.
+- Collection: `204/1615`.
+- Split-4 result: `204 passed` (`51/51/51/51` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*` bucket.
+
+## 2026-04-21 13:18 UTC: Round 33 compiler-boundary fuzz lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_compiler_boundaries_round33.md`.
+- Required `make -j8` was a no-op.
+- Generated `16` MLIR probes under `/tmp/tmem_compiler_boundaries_round33`
+  covering descriptor-view chains, unencoded tensors, encoded 64-bit
+  alloc/load/store, malformed near-valid linear layouts, `warpx2`/`warpx4`
+  copy candidates, reduction operands, and scale operands.
+- Ran three compiler modes per case: plain `triton-opt`, TMEM-layout optimize,
+  and allocation+LLVM lowering with `compute-capability=100 ptx-version=87`.
+- Matrix result: `10` pass, `18` clean diagnostics, `16`
+  assertion/stack-dump aborts, and `4` late illegal-op failures. The late
+  failures are `3` existing `FZ-20260421-0001` dynamic `ttg.memdesc_index`
+  lowerings plus `1` tensor-returning probe-shape limitation.
+- Classification: no new independent `FZ-*`. The lane sharpens
+  `FZ-20260421-0016` with a verifier-missed single-unencoded-reduction-result
+  row that crashes later in LLVM type conversion, and revalidates
+  `FZ-20260421-0017` for descriptor-chain `i64` load, descriptor-chain `f64`
+  store, and initialized `i64` alloc.
