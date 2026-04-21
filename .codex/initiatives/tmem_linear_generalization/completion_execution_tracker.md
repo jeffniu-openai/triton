@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-20 23:25 UTC
+Last updated: 2026-04-21 05:29 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -236,7 +236,11 @@ Current buckets:
 - Scaled-MMAv5 narrow accumulator `N=8/16`: closed as positive support.
   Narrow accumulator families now lower with B-scale storage
   rematerialization/padding, and the former clean-negative matrix is now
-  runtime-positive.
+  runtime-positive. The 2026-04-21 follow-up hardened the single-fragment
+  narrow-N predicate so direct support still requires tensor-memory-scales
+  storage with enough addressable rows, added identity `N=16` runtime coverage
+  across scaled format pairs, and added a clean-negative `N=16` tile-permuted
+  row for the public MMAv5 in-tile basis-order boundary.
 
 ## Current Runtime Matrix Validation
 

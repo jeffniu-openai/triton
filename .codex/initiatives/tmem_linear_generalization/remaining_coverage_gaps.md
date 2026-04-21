@@ -1,6 +1,6 @@
 # TMEM Linear-Layout Remaining Coverage Gaps
 
-Last updated: 2026-04-18 23:03 UTC
+Last updated: 2026-04-21 05:29 UTC
 
 This is the stable reference list for remaining TMEM support gaps whose
 coverage depends on linear-layout generalization. The list was reconsolidated
@@ -72,12 +72,19 @@ Each gap should be examined with the same decision standard:
 
 ## Gap #2: Narrow Scaled-MMAv5 `N=8/16`
 
-- Status: closed at 2026-04-18 23:03 UTC.
+- Status: closed at 2026-04-18 23:03 UTC; coverage hardened at
+  2026-04-21 05:29 UTC.
 - Area: block-scaled MMAv5 accumulator layouts that require narrow N
   instruction fragments, especially `N=8` and `N=16`.
 - Current state: positive supported. Scaled accumulator planning now admits the
   same narrow `N=8/16` linear-layout families as plain MMAv5 when the
-  accumulator tile itself is instruction-family compatible.
+  accumulator tile itself is instruction-family compatible. The single-fragment
+  narrow-N path is direct only when B-scale storage is
+  `TensorMemoryScalesLayout` storage with enough addressable rows; otherwise it
+  must use the same padding/rematerialization path or fail with a typed
+  diagnostic. Current runtime coverage includes identity `N=16` positives
+  across scaled format pairs and a clean-negative `N=16` tile-permuted row for
+  the true public-atom in-tile basis-order boundary.
 - Implementation: the tensor-memory allocation pass rematerializes matrix-B
   scale storage for narrow fragments by padding each logical N-fragment group
   to the public 64-column scale-fragment addressing granularity. Lowering then

@@ -5064,10 +5064,16 @@ SCALED_MMA_ACC_TILE_PERMUTED_N32_CASES = [
     for k in (128, 256)
 ]
 
-SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES = [
+SCALED_MMA_ACC_TILE_PERMUTED_NARROW_CASES = [
     (a_format, b_format, n, tile_n, k)
     for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
     for n, tile_n in ((32, 8), (64, 16))
+    for k in (128, 256)
+]
+
+SCALED_MMA_ACC_IDENTITY_NARROW_CASES = [
+    (a_format, b_format, 16, k)
+    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
     for k in (128, 256)
 ]
 
@@ -12975,7 +12981,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix(a_for
 
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
 
-    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert len(mma_ops) == expected_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
@@ -13018,7 +13024,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_descriptor_v
 
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
 
-    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert len(mma_ops) == expected_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
@@ -13120,7 +13126,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_use_acc(a_fo
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format,n,tile_n,k", SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES)
+@pytest.mark.parametrize("a_format,b_format,n,tile_n,k", SCALED_MMA_ACC_TILE_PERMUTED_NARROW_CASES)
 def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_format_matrix(a_format, b_format, n, tile_n, k):
     m = 128
     layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
@@ -13160,6 +13166,93 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_format_matrix(a
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,n,k", SCALED_MMA_ACC_IDENTITY_NARROW_CASES)
+def test_tmem_runtime_matrix_mma_scaled_acc_identity_narrow_format_matrix(a_format, b_format, n, k):
+    m = 128
+    layout = _make_tmem_linear_layout(m, n)
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_layout_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        0.0,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_mma_scaled_acc_n16_tile_permuted_reports_clean_unsupported(capfd):
+    m, n, k = 128, 16, 128
+    a_format = b_format = "mxfp8"
+    layout = _make_tmem_linear_layout_tile_permuted(m, n, 4)
+    vec_size = 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
+    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        tmem_mma_scaled_layout_format_kernel[(1, )](
+            out,
+            m,
+            n,
+            k,
+            a,
+            b,
+            a_scale,
+            b_scale,
+            layout,
+            vec_size,
+            a_elem_per_byte,
+            b_elem_per_byte,
+            a_tcgen_format,
+            b_tcgen_format,
+            0.0,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "expected accumulator layout to be directly supported MMAv5 block-scaled tensor memory" in text
+    assert "logical shape 128x16" in text
+    assert "Public tcgen05.mma atoms require each 64x8 or larger instruction tile" in text
+    assert "first noncanonical in-tile basis" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 05:29 UTC broadened the scaled-MMAv5 narrow-N gap
+  analysis after the example-5 investigation. The previous handoff note saying
+  `mma_scaled_acc_tile_permuted_narrow` still failed was stale at pushed
+  `HEAD`: the selector is positive. The real remaining weakness was coverage
+  and classification precision around the single-fragment narrow-N path. The
+  backend support predicate now requires B-scale storage to be actual
+  `TensorMemoryScalesLayout` storage with enough addressable scale rows even
+  for single-fragment narrow-N, instead of returning true unconditionally.
+  Runtime-matrix coverage now includes positive identity `N=16` scaled-MMAv5
+  rows across the scaled format pairs and a clean-negative `N=16`
+  tile-permuted row that documents the true in-tile basis-order hardware
+  boundary. Validation: required `make -j8`; focused runtime-matrix selector
+  `31 passed`; four-GPU split examples 01+05 sweep passed `20` selected tests
+  per group.
+
 - Latest: 2026-04-20 23:34 UTC upstream-main merge is in progress. Fetched
   and merged `upstream/main` at `2c7ce4925d37802dd84dfde1f6458cae19485617`
   into `codex/tmem` from pre-merge

@@ -1787,7 +1787,8 @@ bool isMMAv5ScaledNarrowNBScaleStorageSupported(
     MemDescType bScaleType,
     const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement) {
   if (requirement.nInstructionCount <= 1)
-    return true;
+    return isMMAv5ScaledBScaleStoragePadded(
+        bScaleType, requirement.ctaColumns, /*paddingFactor=*/1);
   auto paddingFactor = getMMAv5ScaledNarrowNPaddingFactor(requirement);
   if (!paddingFactor)
     return false;

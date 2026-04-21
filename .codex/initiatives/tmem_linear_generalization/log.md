@@ -25940,3 +25940,37 @@ Open after this slice:
     multi-fragment tile-permuted narrow scaled-MMAv5 rows with the existing
     B-scale fragment diagnostic, so the example fix did not broaden that
     unsupported surface.
+
+## 2026-04-21 05:29 UTC: narrow scaled-MMAv5 coverage hardening
+
+- Rechecked the scaled-MMAv5 narrow-N gap after the example-5 regression
+  discussion. The pushed branch no longer reproduced the stale handoff claim:
+  `mma_scaled_acc_tile_permuted_narrow_format_matrix` passed all 20 selected
+  rows at current `HEAD`.
+- Broadened the classification instead of leaving the example-only fix:
+  - `isMMAv5ScaledNarrowNBScaleStorageSupported` now treats single-fragment
+    narrow-N as directly supported only when B-scale storage is a
+    tensor-memory-scales descriptor with enough addressable rows. This keeps
+    the relaxed single-fragment path tied to the real storage contract instead
+    of accepting arbitrary memdesc encodings.
+  - Added runtime-matrix positive coverage for identity `N=16` narrow
+    scaled-MMAv5 accumulators across the scaled format pairs and `K=128/256`.
+  - Added a clean-negative `N=16` tile-permuted case proving that in-tile
+    basis-order violations remain rejected with a typed diagnostic. This keeps
+    the boundary hardware/layout based: identity narrow-N is legal; arbitrary
+    permutations inside the public 64x8-or-larger instruction tile are not.
+- Validation:
+  - required
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`
+    passed;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
+    PYTHONPATH=.:./python pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_scaled_acc_identity_narrow_format_matrix or
+    mma_scaled_acc_tile_permuted_narrow_format_matrix or
+    mma_scaled_acc_n16_tile_permuted_reports_clean_unsupported'` passed
+    `31 passed, 1574 deselected`;
+  - four-GPU split sweep over
+    `python/examples/gluon/01-attention-forward.py` and
+    `python/examples/gluon/05-tmem-moe-router.py` passed all groups:
+    `20 passed, 60 deselected` per group.

@@ -73,6 +73,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 05:29 UTC: broadened and hardened the scaled-MMAv5 narrow-N
+  coverage after the example-5 investigation. The stale handoff claim that
+  `mma_scaled_acc_tile_permuted_narrow` still failed was corrected: current
+  `HEAD` passes that selector. The backend now requires tensor-memory-scales
+  B-scale storage even for the direct single-fragment narrow-N path, the
+  runtime matrix has identity `N=16` positive coverage across scaled format
+  pairs, and a clean-negative `N=16` tile-permuted row records the true
+  public-atom in-tile basis-order boundary.
+
 - 2026-04-21 01:13 UTC: restored upstream lit coverage and fixed the main
   regression in 2CTA/larger-CGA scaled `tcgen05.copy` execution tests. The
   previous post-merge xfails for `test_mma_scaled_tcgen05_copy*` and
