@@ -32190,3 +32190,16 @@ Open after this slice:
   failure in the same pytest process.
 - Classification: no new independent `FZ-*` and no process-contamination
   signal.
+
+## 2026-04-21 15:04 UTC: Round 52 local MoE example harness path check
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_moe_harness_path_round52.md`.
+- Bare collection:
+  `PYTHONPATH=.:./python`, exit code `2`, missing
+  `triton_kernels.distributed`.
+- Corrected collection:
+  `PYTHONPATH=.:./python:./python/triton_kernels`, exit code `0`,
+  `48 tests collected`.
+- Classification: harness/import-path issue, not a compiler crash, verifier
+  issue, runtime miscompile, or backend `FZ-*`.

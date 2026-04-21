@@ -3567,3 +3567,11 @@ discovery.
   failed row is existing `FZ-20260421-0012` M64 f32 `ld.red`
   destination-layout planner gap, and adjacent split-N/warpx2 positives passed
   afterward. No new independent `FZ-*` and no process-contamination signal.
+
+- 2026-04-21 15:04 UTC: Round 52 local MoE example harness path check
+  completed. Report: `agents/fuzz_moe_harness_path_round52.md`. Bare
+  collection of `python/examples/gluon/05-moe-bmm1-fused-gather.py` with
+  `PYTHONPATH=.:./python` failed with exit code `2` and
+  `ModuleNotFoundError: No module named 'triton_kernels.distributed'`;
+  adding `./python/triton_kernels` collected `48` tests with exit code `0`.
+  Classification: harness/import-path issue, not a TMEM backend `FZ-*`.
