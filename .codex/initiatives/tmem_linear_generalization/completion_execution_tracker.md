@@ -60,6 +60,18 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:08 UTC Round 39 `ld.red` extremes subagent lane integrated.
+  Artifact: `agents/fuzz_ldred_extremes_round39.md`; subagent commit
+  `88e3a31d4`. Required `make -j8` reported `no work to do`. Checked-in
+  positive selector `ld_red and not reports and not resource and not m64 and
+  not non_f32` collected `160/1615` rows and passed split-4 as `160 passed`.
+  Temporary resource/extreme rows reproduced existing `FZ-20260421-0018`,
+  clean shared-memory/tensor-memory resource boundaries, and passing hardware
+  controls. Half-view rows reproduced existing `FZ-20260421-0020` and
+  `FZ-20260421-0022`, plus clean descriptor-view/scalar-message diagnostics
+  and passes. No new independent `FZ-*` was proposed. One
+  `same_chain_m64_n256_m64_row_reverse_w4` wrong-output signal was explicitly
+  left unpromoted pending a smaller descriptor-chain oracle/minimizer.
   2026-04-21 14:12 UTC Round 40 plain MMAv5 runtime guardrail completed.
   Artifact: `agents/fuzz_mmav5_plain_guardrail_round40.md`. Required
   `make -j8` reported `no work to do`. Selector

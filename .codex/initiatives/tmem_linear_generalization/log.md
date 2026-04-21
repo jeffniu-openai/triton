@@ -1,3 +1,25 @@
+## 2026-04-21 14:08 UTC: Round 39 ld.red extremes subagent lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_extremes_round39.md`
+  from commit `88e3a31d4`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Checked-in positive selector:
+  `ld_red and not reports and not resource and not m64 and not non_f32`.
+- Collection/result: `160/1615` rows, split-4 as `160 passed`
+  (`40/40/40/40`).
+- Temporary large/resource matrix: reproduced existing `FZ-20260421-0018` for
+  large 4-warp hardware `ld.red` tiles, clean shared-memory and tensor-memory
+  resource boundaries, and adjacent passing hardware controls.
+- Temporary half-view matrix: `32` rows classified as `8` pass, `8` clean
+  unsupported descriptor-view diagnostics, `4` clean scalar `.x1`
+  diagnostics, `4` existing `FZ-20260421-0020`, and `8` existing
+  `FZ-20260421-0022`.
+- No new independent `FZ-*` was proposed. The report records one
+  `same_chain_m64_n256_m64_row_reverse_w4` wrong-output signal but leaves it
+  unpromoted until a smaller descriptor-chain oracle/minimizer can confirm it.
+
 ## 2026-04-21 14:12 UTC: Round 40 plain MMAv5 runtime guardrail
 
 - Wrote
