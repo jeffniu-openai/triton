@@ -6501,6 +6501,26 @@ When resuming the initiative:
   Convolution plus TMEM MoE router collected `64` tests; a focused selector
   collected `12` and ran split-4 as `12 passed, 0 failed, 0 skipped`. No new
   independent `FZ-*`; no repairs attempted.
+- Local `test_core.py` TMEM slice wrote
+  `agents/fuzz_round62_local_test_core_tmem_lane.md`. Selector
+  `tmem and (copy or ld or load or store or mma or tcgen05)` collected
+  `55/18114` and ran split-4 as `50 passed, 5 skipped`; skips are existing
+  OOR TMEM copy matrix guards.
+- Random runtime-matrix lane wrote
+  `agents/fuzz_round62_random_runtime_matrix_lane.md`. Seed `6042162`
+  selected `80` exact nodeids with zero exact overlap against the Round 60-61
+  avoid set; split-4 result was `75 passed, 5 skipped`, with skips from known
+  lifted-descriptor allocation-limit and shared-memory OOR boundaries.
+- Backend audit lane wrote `agents/fuzz_round62_backend_audit_lane.md`.
+  It ran one focused runtime pair as `2 passed` and cataloged future probe
+  gaps around reinterpret/view arithmetic, scale-root chains, `ld.red` after
+  reinterpret, mixed explicit two-CTA diagnostics, 4x256 refresh through
+  subviews, and AxisInfo/TMEM metadata interaction.
+- Generated contrast lane wrote
+  `agents/fuzz_round62_generated_contrast_lane.md`. It reproduced only
+  existing buckets `FZ-0001`, `FZ-0003`, `FZ-0007`, `FZ-0012`, `FZ-0013`,
+  `FZ-0015`, `FZ-0020`, and `FZ-0022`; clean unsupported boundaries stayed
+  clean.
 
 ## Previous: 2026-04-21 Round 60 frontend, examples, and random runtime fuzzing
 

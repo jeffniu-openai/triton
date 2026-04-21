@@ -33094,3 +33094,71 @@ Open after this slice:
   no compiler crash, verifier drift, false unsupported diagnostic, runtime
   miscompile, hang, example-level correctness regression, or new independent
   `FZ-*`.
+
+## 2026-04-21: Round 62 local test_core.py TMEM slice
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round62_local_test_core_tmem_lane.md`.
+- Required `make -j8` had just run as a no-op for the Round 62 local examples
+  lane.
+- Selector `tmem and (copy or ld or load or store or mma or tcgen05)` over
+  `python/test/gluon/test_core.py` collected `55/18114`.
+- Split-4 runtime result:
+  `50 passed, 5 skipped`.
+- Skip reason:
+  existing OOR TMEM copy matrix guards for `M=256, N=256` with
+  `BLOCK_N=16/32/64/128/256`, `swizzle=32`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, unexpected skip/fail transition, or new independent
+  `FZ-*`.
+
+## 2026-04-21: Round 62 backend source audit lane C
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round62_backend_audit_lane.md`.
+- Required `make -j8` was a no-op.
+- Focused runtime pair:
+  `cp_no_scales_warpx2_01_23_twocta_positive[f32]` and
+  `ld_red_descriptor_chain_n_sweep[identity_n64]` ran as `2 passed`.
+- Audit covered TMEM `memdesc_index`, `memdesc_subslice`, `memdesc_reinterpret`,
+  scale-root discovery, direct load/store planning, `ld.red` layout planning,
+  copy plan realization, optimize-layout replay paths, and `getModuleTwoCTAs`.
+- Classification:
+  no new independent `FZ-*`; audit produced future probe candidates only.
+
+## 2026-04-21: Round 62 random runtime-matrix lane A
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round62_random_runtime_matrix_lane.md`.
+- Required `make -j8` was a no-op.
+- Full runtime-matrix collection found `1615` tests.
+- Seed `6042162` selected `80` exact nodeids with `0` exact overlap against
+  the Round 60-61 avoid set.
+- Split-4 runtime result:
+  `75 passed, 5 skipped, 0 failed`.
+- Skip reasons:
+  `4` known lifted descriptor roundtrip allocation-limit skips and `1`
+  shared-memory OOR no-scale copy skip.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic,
+  clean-boundary drift, opcode assertion failure, runtime miscompile, hang,
+  process/device contamination, or new independent `FZ-*`.
+
+## 2026-04-21: Round 62 generated structural/runtime contrast lane B
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round62_generated_contrast_lane.md`.
+- Required `make -j8` was a no-op.
+- Probes covered dynamic TMEM `memdesc_index`, `ld/st` descriptor views,
+  `ld.red` half/row/column views, scaled-MMAv5 scale descriptor views, and
+  two-CTA copy/indexed views.
+- Existing buckets reproduced:
+  `FZ-20260421-0001`, `FZ-20260421-0003`, `FZ-20260421-0007`,
+  `FZ-20260421-0012`, `FZ-20260421-0013`, `FZ-20260421-0015`,
+  `FZ-20260421-0020`, and `FZ-20260421-0022`.
+- Clean unsupported boundaries stayed clean for N16 scaled B-scale descriptor
+  views, two-CTA noncanonical copy, half-row `auto` descriptor views, and
+  scalar `.x1` `ld.red` message shapes.
+- Classification:
+  no new independent `FZ-*`; no repair attempted.

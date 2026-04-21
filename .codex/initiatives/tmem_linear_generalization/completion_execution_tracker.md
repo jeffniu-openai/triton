@@ -4051,3 +4051,27 @@ discovery.
   Required `make -j8` was a no-op. Broad collection found `64` tests; focused
   selector collected `12` and ran split-4 as `12 passed, 0 failed, 0 skipped`.
   No new independent `FZ-*`.
+
+- 2026-04-21: Round 62 local `test_core.py` TMEM slice completed. Report:
+  `agents/fuzz_round62_local_test_core_tmem_lane.md`. Selector
+  `tmem and (copy or ld or load or store or mma or tcgen05)` collected
+  `55/18114` and ran split-4 as `50 passed, 5 skipped`. Skips are existing
+  OOR TMEM copy matrix guards; no new independent `FZ-*`.
+
+- 2026-04-21: Round 62 backend audit lane C completed. Report:
+  `agents/fuzz_round62_backend_audit_lane.md`. Required `make -j8` was a
+  no-op and focused runtime pair ran as `2 passed`. Audit produced future
+  probe candidates only; no observed new independent `FZ-*`.
+
+- 2026-04-21: Round 62 random runtime-matrix lane A completed. Report:
+  `agents/fuzz_round62_random_runtime_matrix_lane.md`. Seed `6042162`
+  selected `80` exact nodeids with zero overlap against the Round 60-61 avoid
+  set. Split-4 runtime result: `75 passed, 5 skipped, 0 failed`; skips were
+  known lifted descriptor allocation-limit and shared-memory OOR boundaries.
+  No new independent `FZ-*`.
+
+- 2026-04-21: Round 62 generated contrast lane B completed. Report:
+  `agents/fuzz_round62_generated_contrast_lane.md`. Probes reproduced only
+  existing buckets `FZ-0001`, `FZ-0003`, `FZ-0007`, `FZ-0012`, `FZ-0013`,
+  `FZ-0015`, `FZ-0020`, and `FZ-0022`; clean unsupported boundaries stayed
+  clean. No new independent `FZ-*`.

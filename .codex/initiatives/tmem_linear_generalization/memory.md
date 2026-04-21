@@ -17272,3 +17272,33 @@ rejection, not rescue
   router found `64` tests; focused exact selector collected `12` and ran
   split-4 as `12 passed, 0 failed, 0 skipped`. No new independent `FZ-*`;
   backend repair remains deferred.
+
+- Round 62 local `test_core.py` TMEM slice wrote
+  `agents/fuzz_round62_local_test_core_tmem_lane.md`. Selector
+  `tmem and (copy or ld or load or store or mma or tcgen05)` collected
+  `55/18114` and ran split-4 as `50 passed, 5 skipped`; skips are existing
+  OOR TMEM copy matrix guards for `M=256, N=256` with swizzle `32`. No new
+  independent `FZ-*`; backend repair remains deferred.
+
+- Round 62 backend audit lane wrote `agents/fuzz_round62_backend_audit_lane.md`.
+  Required `make -j8` was a no-op; focused runtime pair passed as `2 passed`.
+  The audit found future probe candidates around reinterpret/view composition,
+  scale-root forwarding chains, `ld.red` after reinterpret, mixed explicit
+  two-CTA diagnostics, 4x256 refresh through subviews, and AxisInfo/TMEM
+  metadata interaction, but no observed new `FZ-*`.
+
+- Round 62 random runtime-matrix lane wrote
+  `agents/fuzz_round62_random_runtime_matrix_lane.md`. Seed `6042162`
+  selected `80` exact nodeids from `1615` collected tests with zero exact
+  overlap against Round 60-61 avoid rows; split-4 runtime result was
+  `75 passed, 5 skipped, 0 failed`. Skips were known lifted descriptor
+  allocation-limit and shared-memory OOR boundaries. No new independent
+  `FZ-*`; backend repair remains deferred.
+
+- Round 62 generated contrast lane wrote
+  `agents/fuzz_round62_generated_contrast_lane.md`. It reproduced only
+  existing buckets `FZ-20260421-0001`, `FZ-20260421-0003`,
+  `FZ-20260421-0007`, `FZ-20260421-0012`, `FZ-20260421-0013`,
+  `FZ-20260421-0015`, `FZ-20260421-0020`, and `FZ-20260421-0022`; clean
+  unsupported boundaries stayed clean. No new independent `FZ-*`; backend
+  repair remains deferred.
