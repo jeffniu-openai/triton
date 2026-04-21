@@ -187,6 +187,27 @@ Every structural fuzz case records:
   - all five promoted exact nodeids were run in fresh pytest processes and
     reported `1 xfailed` each.
 
+### Lane Expansion Round 2, Adjacent Structural Fuzzing
+
+- Time: 2026-04-21 08:33 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_expansion_round2.md`
+- Scope: expand around first-round failures with temporary Python/Gluon runtime
+  harnesses under `/tmp`, focused on helper-returned view chains, runtime
+  memdesc values, row/col permutations around A1/A4, resource-valid 2CTA
+  ld/st and ld.red, and ld.red opcode selection under descriptor chains.
+- Result: found adjacent stable variants for existing catalog buckets:
+  runtime `memdesc_index` crashes now reach chain2/chain3, helper-returned
+  chain0 miscompiles include false-branch and `16x64b` rows, ld/st chain2
+  col-reverse `16x64b` miscompiles, and ld.red plain-load fallback reproduces
+  across broader descriptor-chain and 2CTA rows.
+- Validation:
+  - required `make -j8` completed with ninja reporting no work to do;
+  - control-flow/helper sweep ran as four pytest-split groups;
+  - ld/st and ld.red adjacency sweep ran as four pytest-split groups;
+  - representative failures were rerun as fresh single-nodeid pytest
+    processes and remained stable.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -207,6 +228,12 @@ Every structural fuzz case records:
 - Promotion status: checked in as strict xfail runtime nodeids:
   - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-index-chain0]`;
   - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-index-chain1]`.
+- Round 2 expansion:
+  - runtime `memdesc_index` also reaches LLVM conversion as an illegal op
+    through chain2 and chain3 helper-returned descriptor-view chains;
+  - representative repro:
+    `/tmp/tmem_expansion_round2_cf.py::test_cf_helper_returned_views[index-128-64-identity-identity-3-0-32x32b]`;
+  - log: `/tmp/tmem_expansion_round2_confirm_cf_index_chain3.log`.
 
 ### FZ-20260421-0002: helper-returned chain0 TMEM view miscompiles through control flow
 
@@ -229,8 +256,17 @@ Every structural fuzz case records:
   - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-if-chain0-true]`;
   - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-mixed-captures-chain0]`;
   - `test_tmem_structural_fuzzer_generic_pass_layout_conversion_pressure[generic-pass-layout-conversion-pressure-chain0]`.
+- Round 2 expansion:
+  - false branch selector `0` also miscompiles for the dynamic `if` helper
+    case;
+  - `16x64b` also miscompiles for the same false-branch chain0 shape;
+  - layout-pressure chain0 repro remained stable in a fresh process;
+  - representative logs:
+    `/tmp/tmem_expansion_round2_confirm_cf_if_false.log`,
+    `/tmp/tmem_expansion_round2_confirm_cf_if_false_16x64.log`, and
+    `/tmp/tmem_expansion_round2_confirm_cf_layout_pressure.log`.
 
-### FZ-20260421-0003: ld/st descriptor-view chain1 miscompiles
+### FZ-20260421-0003: ld/st descriptor-view chains miscompile
 
 - Source: Lane A finding `A1`.
 - Failure class: `miscompile`.
@@ -247,6 +283,13 @@ Every structural fuzz case records:
 - Repro: see `fuzz_ldst_ldred_round1.md` exact inline Python command.
 - Checked-in xfail:
   `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldst_descriptor_view_read[ldst-fz20260421-0003-chain1-64x32-32x32b]`.
+- Round 2 expansion:
+  - chain2 double-transpose/slice descriptor view with row `identity`, col
+    `reverse`, and instruction `16x64b` also miscompiles;
+  - representative repro:
+    `/tmp/tmem_expansion_round2_ldst_ldred.py::test_ldst_adjacent_row_col_permutations[64-32-identity-reverse-2-16x64b]`;
+  - fresh result mismatched `1024 / 2048` elements;
+  - log: `/tmp/tmem_expansion_round2_confirm_ldst_chain2_colrev.log`.
 
 ### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
 
@@ -262,6 +305,21 @@ Every structural fuzz case records:
 - Repro: see `fuzz_ldst_ldred_round1.md` exact command.
 - Checked-in xfail:
   `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-chain1-64x32-min]`.
+- Round 2 expansion:
+  - opcode loss reproduced across chain1/chain2 rows, `N` in
+    `{32, 64, 128}`, min/max reductions, NaN propagation variants, and
+    adjacent row/col permutations when runtime output remained correct;
+  - representative chain1 identity repro emits
+    `tcgen05.ld.sync.aligned.16x32bx2.x16.b32`;
+  - representative chain2 rotate1 repro emits repeated
+    `tcgen05.ld.sync.aligned.32x32b.x1.b32`;
+  - resource-valid 2CTA ld.red direct indexed parent `[2, 256, 32]` also
+    emitted plain `tcgen05.ld.sync.aligned.16x32bx2.x16.b32` instead of
+    `.ld.red.`;
+  - logs:
+    `/tmp/tmem_expansion_round2_confirm_ldred_chain1_opcode.log`,
+    `/tmp/tmem_expansion_round2_confirm_ldred_chain2_rot_opcode.log`, and
+    `/tmp/tmem_expansion_round2_confirm_twocta_ldred.log`.
 
 ### FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation
 
@@ -317,3 +375,12 @@ Every structural fuzz case records:
   `triton-opt --run-reproducer`.
 - FZ-20260421-0006 is now covered by a checked-in Python xfail. Expand around
   adjacent row/col permutations before classifying as a true boundary.
+- Round 2 expansion queue:
+  - promote or minimize runtime `memdesc_index` chain2/chain3 crashes;
+  - decide whether helper false-branch and `16x64b` variants need additional
+    checked-in xfail rows beyond existing FZ-0002 coverage;
+  - promote the chain2 col-reverse ld/st `16x64b` repro or reduce it to the
+    exact broken address-arithmetic layer;
+  - compare the resource-valid 2CTA ld.red temporary row against the checked-in
+    two-CTA direct higher-rank positive before repair, to isolate red-layout
+    contract mismatch from true opcode-selection loss.

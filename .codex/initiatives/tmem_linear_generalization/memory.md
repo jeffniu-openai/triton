@@ -14390,6 +14390,33 @@ rejection, not rescue
   - concurrent `TensorMemoryUtils.cpp` edit is unrelated and must remain out
     of this commit.
 
+## Current: 2026-04-21 08:33 UTC structural fuzzing Lane Expansion report
+
+- Active campaign mode remains discovery-only for TMEM structural fuzzing; no
+  backend/compiler code was changed in this slice.
+- Required build passed before tests:
+  `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`
+  reported no work to do.
+- Temporary harnesses under `/tmp` expanded around first-round failures:
+  - `/tmp/tmem_expansion_round2_cf.py`;
+  - `/tmp/tmem_expansion_round2_ldst_ldred.py`.
+- Stable adjacent findings:
+  - `FZ-20260421-0001`: runtime `memdesc_index` reaches LLVM conversion as
+    illegal through chain2/chain3;
+  - `FZ-20260421-0002`: helper chain0 false-branch, `16x64b`, and
+    layout-pressure variants miscompile;
+  - `FZ-20260421-0003`: ld/st chain2 col-reverse `16x64b` miscompiles with
+    `1024 / 2048` mismatched elements;
+  - `FZ-20260421-0004`: descriptor-chain ld.red still emits plain ld across
+    broader row/col/reduction variants, and a resource-valid 2CTA ld.red row
+    also emits plain `tcgen05.ld`.
+- Report and central catalog:
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_expansion_round2.md`;
+  - `.codex/initiatives/tmem_linear_generalization/tmem_structural_fuzzing_20260421.md`.
+- Dirty-tree boundary:
+  - preexisting uncommitted initiative-doc and structural-fuzzer changes from
+    other active lanes were preserved.
+
 ## Current: 2026-04-21 02:51 UTC max-CTA coverage added
 
 - User asked whether coverage also checks more than 4 CTAs, up to the hardware

@@ -1238,3 +1238,15 @@ signal handling:
   scales copy nodeids; copy adversarial selector `31/31`; descriptor-chain
   ld/st selector `128 passed, 61 skipped`; ld.red selector `52/52`; lit
   `3/3`; `git diff --check`.
+
+- 2026-04-21 08:33 UTC: completed TMEM structural fuzzing round 2, Lane
+  Expansion, in report-only discovery mode. Required `make -j8` was no-op.
+  Temporary `/tmp` Python/Gluon harnesses expanded around first-round failures
+  and found stable adjacent variants in existing buckets: runtime
+  `memdesc_index` chain2/chain3 crashes, helper chain0 false-branch and
+  `16x64b` miscompiles, ld/st chain2 col-reverse `16x64b` miscompile, broader
+  ld.red descriptor-chain plain-load fallback, and resource-valid 2CTA ld.red
+  plain-load fallback. Current next discovery slice: promote/minimize the new
+  adjacent repros as strict xfails where useful, and compare the 2CTA ld.red
+  row against the checked-in two-CTA direct higher-rank positive before any
+  repair work.

@@ -5073,3 +5073,19 @@ When resuming the initiative:
   - four-GPU split sweep over examples 01 and 05 passed all `112` selected
     tests.
 - Next step: resume the requested performance comparison against main.
+
+## Latest: 2026-04-21 08:33 UTC structural fuzzing Lane Expansion report
+
+- Discovery-only TMEM structural fuzzing round 2 expanded around first-round
+  failures using temporary Python/Gluon runtime harnesses under `/tmp`.
+- Required `make -j8` was run first and reported no work to do.
+- Stable adjacent findings were recorded, not repaired:
+  - runtime `memdesc_index` crashes through chain2/chain3;
+  - helper chain0 false-branch and `16x64b` miscompiles;
+  - ld/st chain2 col-reverse `16x64b` miscompile;
+  - broader ld.red descriptor-chain plain-load fallback, including a
+    resource-valid 2CTA row.
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_expansion_round2.md`.
+- Central catalog:
+  `.codex/initiatives/tmem_linear_generalization/tmem_structural_fuzzing_20260421.md`.

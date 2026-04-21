@@ -26380,3 +26380,29 @@ Open after this slice:
   - full structural fuzzer reported `9 passed, 9 xfailed`.
 - Report written:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_ldred_round2.md`.
+
+## 2026-04-21 08:33 UTC: Structural fuzzing Lane Expansion adjacent discovery
+
+- User asked for TMEM structural fuzzing round 2, Lane Expansion, in discovery
+  mode only: expand around first-round failures with temporary Python/Gluon
+  runtime harnesses and do not fix backend code.
+- Built first as required:
+  `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`
+  reported no work to do.
+- Ran temporary harnesses:
+  - `/tmp/tmem_expansion_round2_cf.py`;
+  - `/tmp/tmem_expansion_round2_ldst_ldred.py`.
+- Stable adjacent findings recorded:
+  - runtime `memdesc_index` crash through chain2/chain3 helper chains
+    extends `FZ-20260421-0001`;
+  - helper chain0 false-branch and `16x64b` miscompiles extend
+    `FZ-20260421-0002`;
+  - ld/st chain2 col-reverse `16x64b` miscompile extends
+    `FZ-20260421-0003`;
+  - broader descriptor-chain and 2CTA ld.red plain-load opcode fallback
+    extends `FZ-20260421-0004`.
+- Representative single-nodeid reruns reproduced each selected failure in
+  fresh pytest processes.
+- Backend/compiler code was not changed.
+- Report written:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_expansion_round2.md`.
