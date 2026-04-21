@@ -2,6 +2,22 @@
 
 Last updated: 2026-04-21
 
+Latest repair checkpoint: 2026-04-21 19:39 UTC checked-in
+`FZ-20260421-0002` generic-pass/control-flow descriptor SSA rows are repaired.
+`OptimizeTMemLayouts` now sinks replayable full-view TMEM loads through
+`scf.if` results when both branches yield replayable full-view descriptors,
+so replay uses each branch's original descriptor-view chain instead of the
+merged transformed memdesc. Promoted positives:
+`generic-pass-dynamic-if-chain0-true`,
+`generic-pass-dynamic-if-chain0-false-16x128b`,
+`generic-pass-dynamic-if-chain0-inline`,
+`generic-pass-mixed-captures-chain0`, and
+`generic-pass-tuple-mixed-captures-chain0`. Validation: required `make -j8`;
+exact generic-pass memdesc-control `7 passed`; full structural fuzzer split-4
+`25 passed, 11 xfailed`; targeted lit `2 passed`; structural fuzzer
+`py_compile` passed. Remaining repair-plan frontier: the non-`FZ-0002`
+checked-in structural xfails and older cataloged runtime/compiler buckets.
+
 Latest repair checkpoint: 2026-04-21 18:56 UTC direct `ld/st` full-view
 descriptor replay repair landed locally for checked-in `FZ-20260421-0003`
 coverage. Code changes preserve TMEM descriptor-view provenance through
@@ -185,11 +201,12 @@ The project is complete when:
   UTC, superseding the Round 62 stop condition and the catalog-only fuzzing
   campaign. Completed slices: dynamic encoded `memdesc_index` lowering
   (`FZ-20260421-0001`), broader dynamic copy/`ld.red` consumer positives, and
-  direct full-view `ld/st` descriptor replay (`FZ-20260421-0003`). Current next
-  unblocked slice after checkpoint: isolate and repair the remaining
-  `FZ-20260421-0002` dynamic/control-flow/capture-carried descriptor SSA
-  wrong-result rows without regressing the newly promoted static/full-view
-  positives.
+  direct full-view `ld/st` descriptor replay (`FZ-20260421-0003`), and
+  generic-pass/control-flow full-view descriptor SSA replay
+  (`FZ-20260421-0002`). Current next unblocked slice after checkpoint: inspect
+  the remaining `11` structural xfails, pick the highest-impact non-`FZ-0002`
+  bucket, and repair the underlying backend gap without regressing the newly
+  promoted full-view positives.
 
 - Phase Z, 24-hour structural fuzzing campaign: active as of 2026-04-21
   08:18 UTC. Build a systematic deterministic Python/Gluon runtime fuzzer plus

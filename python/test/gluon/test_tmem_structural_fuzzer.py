@@ -320,40 +320,12 @@ DYNAMIC_LDRED_CASES = [
 GENERIC_PASS_MEMDESC_CASES = [
     GenericPassMemdescCase("generic-pass-dynamic-index-chain0", 0xE001, 0, 1, "dynamic_index"),
     GenericPassMemdescCase("generic-pass-dynamic-index-chain1", 0xE011, 1, 0, "dynamic_index"),
-    pytest.param(
-        GenericPassMemdescCase("generic-pass-dynamic-if-chain0-true", 0xE001, 0, 1, "dynamic_if"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0002: helper-returned TMEM view miscompiles through dynamic if",
-        ),
-    ),
-    pytest.param(
-        GenericPassMemdescCase("generic-pass-dynamic-if-chain0-false-16x128b", 0xE022, 0, 0, "dynamic_if", "16x128b"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0002: chain0 dynamic if false branch miscompiles with 16x128b",
-        ),
-    ),
-    pytest.param(
-        GenericPassMemdescCase("generic-pass-dynamic-if-chain0-inline", 0xE023, 0, 0, "dynamic_if_inline"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0002: chain0 dynamic if miscompile does not require helper boundary",
-        ),
-    ),
-    pytest.param(
-        GenericPassMemdescCase("generic-pass-mixed-captures-chain0", 0xE001, 0, 1, "mixed_captures"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0002: helper-returned TMEM view miscompiles with mixed tensor/memdesc captures",
-        ),
-    ),
-    pytest.param(
-        GenericPassMemdescCase("generic-pass-tuple-mixed-captures-chain0", 0xE024, 0, 0, "mixed_captures", tuple_capture=True),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0002: tuple-like memdesc/tensor capture miscompiles for chain0",
-        ),
+    GenericPassMemdescCase("generic-pass-dynamic-if-chain0-true", 0xE001, 0, 1, "dynamic_if"),
+    GenericPassMemdescCase("generic-pass-dynamic-if-chain0-false-16x128b", 0xE022, 0, 0, "dynamic_if", "16x128b"),
+    GenericPassMemdescCase("generic-pass-dynamic-if-chain0-inline", 0xE023, 0, 0, "dynamic_if_inline"),
+    GenericPassMemdescCase("generic-pass-mixed-captures-chain0", 0xE001, 0, 1, "mixed_captures"),
+    GenericPassMemdescCase(
+        "generic-pass-tuple-mixed-captures-chain0", 0xE024, 0, 0, "mixed_captures", tuple_capture=True
     ),
 ]
 

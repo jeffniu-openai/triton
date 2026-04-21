@@ -1472,6 +1472,20 @@ remain family-specific and consume a bounded subset of the inventory.
     mixed-capture, and tuple/capture-carried descriptor SSA cases. Treat the
     next repair as a control-flow/provenance problem, not the static
     descriptor-view packet mapping fixed for `FZ-20260421-0003`.
+- 2026-04-21 19:39 UTC repair update:
+  - the checked-in dynamic-if, inline dynamic-if, mixed-capture, and
+    tuple-capture memdesc-control rows are repaired by sinking replayable
+    full-view TMEM loads into `scf.if` branches before the descriptor-view
+    chain is hidden behind the merged result;
+  - promoted positives:
+    `generic-pass-dynamic-if-chain0-true`,
+    `generic-pass-dynamic-if-chain0-false-16x128b`,
+    `generic-pass-dynamic-if-chain0-inline`,
+    `generic-pass-mixed-captures-chain0`, and
+    `generic-pass-tuple-mixed-captures-chain0`;
+  - validation after promotion: exact memdesc-control `7 passed`; full
+    structural fuzzer split-4 `25 passed, 11 xfailed`; targeted lit
+    `2 passed`.
 
 ### FZ-20260421-0003: ld/st descriptor-view chains miscompile
 

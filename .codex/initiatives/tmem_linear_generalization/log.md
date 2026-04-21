@@ -33249,3 +33249,40 @@ Open after this slice:
 - Remaining repair-plan frontier:
   dynamic/control-flow/capture-carried descriptor SSA (`FZ-20260421-0002`),
   not the direct full-view replay mapping fixed in this slice.
+
+## 2026-04-21 19:39 UTC: FZ-0002 scf.if full-view replay repair
+
+- Branch/HEAD before this repair slice:
+  `7f58d2182 Fix TMEM full-view descriptor replay`.
+- Root cause:
+  direct full-view replay was fixed, but an `scf.if` result still hid the
+  per-branch descriptor-view chain from the TMEM load rewrite. The merged
+  memdesc had the transformed full-view type, so the backend emitted a direct
+  load from that merged descriptor and reproduced the old 8064/8192 wrong
+  result pattern.
+- Implementation:
+  `OptimizeTMemLayouts` now matches `ttng.tmem_load` from an `scf.if` result
+  when that result has one use and both branch yields are replayable full-view
+  descriptors. It prevalidates support-layout replay for both branches, clones
+  the `scf.if` with the affected result changed from memdesc to tensor, sinks
+  the replayed branch-local TMEM load into each yield, and rewires other if
+  results unchanged.
+- Test changes:
+  promoted `generic-pass-dynamic-if-chain0-true`,
+  `generic-pass-dynamic-if-chain0-false-16x128b`,
+  `generic-pass-dynamic-if-chain0-inline`,
+  `generic-pass-mixed-captures-chain0`, and
+  `generic-pass-tuple-mixed-captures-chain0` from strict xfail to positives.
+- Validation:
+  required `make -j8`; exact generic-pass memdesc-control `7 passed`; full
+  structural fuzzer split-4 `25 passed, 11 xfailed`; targeted lit
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonGPU/memdesc-subview-split.mlir` `2 passed`; structural fuzzer
+  `py_compile` passed. The broader descriptor runtime selector had remained
+  green immediately before the post-move prevalidation hardening as
+  `56 passed, 32 skipped`, `42 passed, 46 skipped`,
+  `68 passed, 20 skipped`, and `85 passed`.
+- Remaining repair-plan frontier:
+  checked-in structural xfails are now down to `11`, none from the promoted
+  `FZ-0002` memdesc-control rows. Next slice should inspect those remaining
+  xfails and choose the highest-impact backend bucket.

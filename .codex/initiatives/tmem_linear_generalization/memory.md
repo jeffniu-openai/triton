@@ -1,5 +1,25 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 19:39 UTC repair slice 4 fixed the checked-in
+  `FZ-20260421-0002` generic-pass/control-flow descriptor SSA wrong-result
+  rows. Root cause: full-view replay could repair direct descriptor chains, but
+  an `scf.if` result erased the per-branch base/view chain before the TMEM load
+  pattern ran, so the load lowered directly from the merged transformed memdesc
+  with the wrong mapping. Implementation: `OptimizeTMemLayouts` now recognizes
+  TMEM loads whose source is an `scf.if` result; if both branch yields are
+  replayable full-view descriptors and the replay support layout is available,
+  it rewrites the `scf.if` result type from memdesc to tensor and sinks the
+  replayed TMEM load into each branch. Promoted positives:
+  `generic-pass-dynamic-if-chain0-true`,
+  `generic-pass-dynamic-if-chain0-false-16x128b`,
+  `generic-pass-dynamic-if-chain0-inline`,
+  `generic-pass-mixed-captures-chain0`, and
+  `generic-pass-tuple-mixed-captures-chain0`. Validation: required
+  `make -j8`; exact memdesc-control slice `7 passed`; full structural fuzzer
+  split-4 `25 passed, 11 xfailed`; targeted lit `2 passed`; edited structural
+  fuzzer `py_compile` passed. Next: checkpoint this slice, then inspect the
+  remaining non-`FZ-0002` structural xfails and continue the repair plan.
+
 - Latest: 2026-04-21 18:56 UTC repair slice 3 fixed the checked-in
   `FZ-20260421-0003` direct `ld/st` full-view descriptor replay failures and
   promoted their structural sentinels to positives. Root cause:
@@ -21,9 +41,8 @@
   exact rank-5 unit-parent `9 passed`; runtime descriptor selector split
   groups are green as `56 passed, 32 skipped`, `42 passed, 46 skipped`,
   `68 passed, 20 skipped`, and `85 passed`; full structural fuzzer split-4 is
-  `20 passed, 16 xfailed`. Next: checkpoint this slice, then continue with the
-  remaining `FZ-20260421-0002` dynamic/control-flow descriptor SSA wrong
-  results.
+  `20 passed, 16 xfailed`. Superseded next step: `FZ-20260421-0002`
+  memdesc-control rows were repaired in the 19:39 UTC slice.
 
 - Latest: 2026-04-21 17:05 UTC dynamic `FZ-20260421-0001` consumer coverage
   was broadened after commit `b794ab686`. The prior temporary compiler-only

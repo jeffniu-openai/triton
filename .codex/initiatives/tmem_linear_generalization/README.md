@@ -7,7 +7,21 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 18:56 UTC repaired the checked-in
+Latest repair checkpoint: 2026-04-21 19:39 UTC repaired the checked-in
+`FZ-20260421-0002` generic-pass/control-flow descriptor SSA wrong-result
+bucket. The TMEM optimizer now sinks replayable full-view TMEM loads through
+`scf.if` results when both branches yield replayable full-view descriptors,
+lowering the per-branch load from the original descriptor-view chain instead
+of directly loading the merged transformed memdesc. This preserves the branch
+base/provenance that full-view replay needs and fixes dynamic-if, inline
+dynamic-if, mixed-capture, and tuple-capture chain0 rows. Validation:
+required `make -j8`; exact generic-pass memdesc-control slice `7 passed`;
+full structural fuzzer split-4 `25 passed, 11 xfailed`; targeted lit
+`tmem_layouts.mlir` and `memdesc-subview-split.mlir` `2 passed`. The remaining
+structural xfails no longer include the checked-in `FZ-0002` memdesc-control
+rows.
+
+Previous repair checkpoint: 2026-04-21 18:56 UTC repaired the checked-in
 `FZ-20260421-0003` direct `ld/st` full-view descriptor replay bucket and
 promoted its structural sentinels to positives. TMEM `memdesc_trans` folding
 now preserves descriptor-view provenance for the TMEM optimizer; full-view
@@ -21,8 +35,8 @@ rerun `9 passed`; exact rank-5 unit-parent rerun `9 passed`; broad runtime
 descriptor selector split groups were green as group1 `56 passed, 32 skipped`,
 group2 `42 passed, 46 skipped`, group3 `68 passed, 20 skipped`, and group4
 `85 passed`; full structural fuzzer split-4 is now `20 passed, 16 xfailed`.
-Remaining strict structural xfails are now concentrated in dynamic/control-flow
-descriptor SSA (`FZ-20260421-0002`) and other previously cataloged buckets.
+Remaining strict structural xfails are now concentrated in other previously
+cataloged buckets.
 
 Previous repair checkpoint: 2026-04-21 17:05 UTC broadened dynamic
 `FZ-20260421-0001` consumer coverage after the dynamic-index lowering repair.

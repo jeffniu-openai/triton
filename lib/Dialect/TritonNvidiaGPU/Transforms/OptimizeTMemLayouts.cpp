@@ -1,4 +1,5 @@
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -988,21 +989,27 @@ lowerReplayHalfSliceViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
 }
 
 static FailureOr<Value>
-lowerReplayFullViewLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp,
-                        const TMemReplayFullViewMatch &match) {
-  int numWarps = ttg::lookupNumWarps(loadOp);
+lowerReplayFullViewValueLoad(PatternRewriter &rewriter, Location loc,
+                             Value view, RankedTensorType resultTy,
+                             const TMemReplayFullViewMatch &match,
+                             unsigned numWarps, int maxnreg) {
   auto maybeSupportTy = getReplayFullViewSupportTensorType(
-      match.base, loadOp.getSrc(), cast<RankedTensorType>(loadOp.getType()),
-      numWarps, getContextualMaxNReg(loadOp));
+      match.base, view, resultTy, numWarps, maxnreg);
   if (!maybeSupportTy)
     return failure();
 
   RankedTensorType supportTy = *maybeSupportTy;
-  Value support =
-      TMEMLoadOp::create(rewriter, loadOp.getLoc(), supportTy, match.base);
-  return reshapeAndConvertToType(
-      rewriter, loadOp.getLoc(), support,
-      cast<RankedTensorType>(loadOp.getType()));
+  Value support = TMEMLoadOp::create(rewriter, loc, supportTy, match.base);
+  return reshapeAndConvertToType(rewriter, loc, support, resultTy);
+}
+
+static FailureOr<Value>
+lowerReplayFullViewLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp,
+                        const TMemReplayFullViewMatch &match) {
+  return lowerReplayFullViewValueLoad(
+      rewriter, loadOp.getLoc(), loadOp.getSrc(),
+      cast<RankedTensorType>(loadOp.getType()), match,
+      ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp));
 }
 
 static LogicalResult
@@ -1233,6 +1240,81 @@ public:
     if (failed(replacement))
       return failure();
     rewriter.replaceOp(loadOp, *replacement);
+    return success();
+  }
+};
+
+class TMemReplayFullViewIfLoadPattern : public OpRewritePattern<TMEMLoadOp> {
+public:
+  TMemReplayFullViewIfLoadPattern(MLIRContext *context)
+      : OpRewritePattern<TMEMLoadOp>(context, /*benefit=*/2) {}
+
+  LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
+                                PatternRewriter &rewriter) const override {
+    auto resultTy = dyn_cast<RankedTensorType>(loadOp.getType());
+    if (!resultTy)
+      return failure();
+
+    auto srcResult = dyn_cast<OpResult>(loadOp.getSrc());
+    if (!srcResult || !srcResult.hasOneUse())
+      return failure();
+
+    auto ifOp = dyn_cast<scf::IfOp>(srcResult.getOwner());
+    if (!ifOp)
+      return failure();
+
+    unsigned resultIndex = srcResult.getResultNumber();
+    auto getReplayableYieldMatch =
+        [&](scf::YieldOp yieldOp) -> std::optional<TMemReplayFullViewMatch> {
+      if (resultIndex >= yieldOp.getNumOperands())
+        return std::nullopt;
+      Value view = yieldOp.getOperand(resultIndex);
+      auto match = matchReplayableFullView(view);
+      if (!match)
+        return std::nullopt;
+      if (!getReplayFullViewSupportTensorType(
+              match->base, view, resultTy, ttg::lookupNumWarps(loadOp),
+              getContextualMaxNReg(loadOp)))
+        return std::nullopt;
+      return match;
+    };
+    auto thenMatch = getReplayableYieldMatch(ifOp.thenYield());
+    auto elseMatch = getReplayableYieldMatch(ifOp.elseYield());
+    if (!thenMatch || !elseMatch)
+      return failure();
+
+    SmallVector<Type> newResultTypes(ifOp.getResultTypes());
+    newResultTypes[resultIndex] = resultTy;
+
+    rewriter.setInsertionPoint(ifOp);
+    auto newIf =
+        cast<scf::IfOp>(rewriter.cloneWithoutRegions(*ifOp.getOperation()));
+    newIf.getThenRegion().takeBody(ifOp.getThenRegion());
+    newIf.getElseRegion().takeBody(ifOp.getElseRegion());
+    for (auto [result, type] : llvm::zip(newIf.getResults(), newResultTypes))
+      result.setType(type);
+
+    auto rewriteYield = [&](scf::YieldOp yieldOp,
+                            const TMemReplayFullViewMatch &match) {
+      Value view = yieldOp.getOperand(resultIndex);
+      rewriter.setInsertionPoint(yieldOp);
+      FailureOr<Value> replacement = lowerReplayFullViewValueLoad(
+          rewriter, loadOp.getLoc(), view, resultTy, match,
+          ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp));
+      assert(succeeded(replacement) &&
+             "prevalidated replayable full-view if yield failed to lower");
+      yieldOp.setOperand(resultIndex, *replacement);
+    };
+    rewriteYield(newIf.thenYield(), *thenMatch);
+    rewriteYield(newIf.elseYield(), *elseMatch);
+
+    rewriter.replaceOp(loadOp, newIf.getResult(resultIndex));
+    for (unsigned i = 0, e = ifOp.getNumResults(); i < e; ++i) {
+      if (i == resultIndex)
+        continue;
+      ifOp.getResult(i).replaceAllUsesWith(newIf.getResult(i));
+    }
+    rewriter.eraseOp(ifOp);
     return success();
   }
 };
@@ -1661,7 +1743,7 @@ public:
     patterns
         .add<TMemSplitLoadPattern, TMemLeadingSliceLoadPattern,
              TMemReplayHalfSliceLoadPattern, TMemReplayFullViewLoadPattern,
-             TMemStoreJoinPattern,
+             TMemReplayFullViewIfLoadPattern, TMemStoreJoinPattern,
              TMemLeadingSliceStorePattern, TMemReplayHalfSliceStorePattern,
              TMemReplayFullViewStorePattern, TMemLoadReducePattern,
              TMemFromSharedMemPattern, TMemToSharedMemPattern>(context);
