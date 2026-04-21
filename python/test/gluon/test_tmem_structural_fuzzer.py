@@ -115,6 +115,22 @@ class CopyScalesCase:
     two_ctas: bool
 
 
+@dataclass(frozen=True)
+class GenericPassMemdescCase:
+    case_id: str
+    seed: int
+    chain_id: int
+    selector: int
+    kind: str
+
+
+@dataclass(frozen=True)
+class GenericPassLayoutPressureCase:
+    case_id: str
+    seed: int
+    chain_id: int
+
+
 LDST_CASES = [
     LdStCase("ldst-view-identity-32x32b", 0x101, 128, 64, "identity", "identity", "32x32b", 0),
     LdStCase("ldst-view-col-reverse-32x32b", 0x102, 128, 64, "identity", "reverse", "32x32b", 1),
@@ -132,6 +148,169 @@ COPY_CASES = [
     CopyScalesCase("copy-scales-warpx4-1cta", 0x301, False),
     CopyScalesCase("copy-scales-warpx4-2cta", 0x302, True),
 ]
+
+GENERIC_PASS_MEMDESC_CASES = [
+    pytest.param(
+        GenericPassMemdescCase("generic-pass-dynamic-index-chain0", 0xE001, 0, 1, "dynamic_index"),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0001: runtime TMEM memdesc_index reaches LLVM conversion as an illegal op",
+        ),
+    ),
+    pytest.param(
+        GenericPassMemdescCase("generic-pass-dynamic-index-chain1", 0xE011, 1, 0, "dynamic_index"),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0001: runtime TMEM memdesc_index reaches LLVM conversion as an illegal op",
+        ),
+    ),
+    pytest.param(
+        GenericPassMemdescCase("generic-pass-dynamic-if-chain0-true", 0xE001, 0, 1, "dynamic_if"),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0002: helper-returned TMEM view miscompiles through dynamic if",
+        ),
+    ),
+    pytest.param(
+        GenericPassMemdescCase("generic-pass-mixed-captures-chain0", 0xE001, 0, 1, "mixed_captures"),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0002: helper-returned TMEM view miscompiles with mixed tensor/memdesc captures",
+        ),
+    ),
+]
+
+GENERIC_PASS_LAYOUT_PRESSURE_CASES = [
+    pytest.param(
+        GenericPassLayoutPressureCase("generic-pass-layout-conversion-pressure-chain0", 0xE100, 0),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0002: helper-returned TMEM view miscompiles under layout-conversion pressure",
+        ),
+    ),
+]
+
+
+@gluon.jit
+def _generic_pass_identity_view0(desc, M: ttgl.constexpr, N: ttgl.constexpr):
+    return desc.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+
+
+@gluon.jit
+def _generic_pass_identity_view1(desc, M: ttgl.constexpr, N: ttgl.constexpr):
+    view = desc.reshape((M // 2, 2, N // 2, 2))
+    return view.permute([1, 0, 3, 2]).permute([1, 0, 3, 2]).reshape((M, N))
+
+
+@gluon.jit
+def _generic_pass_view(desc, M: ttgl.constexpr, N: ttgl.constexpr, chain_id: ttgl.constexpr):
+    if chain_id == 0:
+        return _generic_pass_identity_view0(desc, M, N)
+    elif chain_id == 1:
+        return _generic_pass_identity_view1(desc, M, N)
+    else:
+        return desc.slice(0, M, dim=0).slice(0, N, dim=1)
+
+
+@gluon.jit
+def _fuzz_generic_pass_dynamic_index_kernel(
+    in_ptr,
+    out_ptr,
+    selector_ptr,
+    parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    chain_id: ttgl.constexpr,
+):
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    layout: ttgl.constexpr = parent.index(0).get_reg_layout(instr_variant="32x32b")
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+    parent.index(0).store(ttgl.convert_layout(value + 10.0, layout))
+    parent.index(1).store(ttgl.convert_layout(value + 20.0, layout))
+
+    index = ttgl.load(selector_ptr)
+    view = _generic_pass_view(parent.index(index), M, N, chain_id)
+    view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant="32x32b")
+    out = view.load(view_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, view_layout))
+
+
+@gluon.jit
+def _fuzz_generic_pass_dynamic_if_kernel(
+    in_ptr,
+    out_ptr,
+    selector_ptr,
+    parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    chain_id: ttgl.constexpr,
+):
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    layout: ttgl.constexpr = parent.index(0).get_reg_layout(instr_variant="32x32b")
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+    parent.index(0).store(ttgl.convert_layout(value + 30.0, layout))
+    parent.index(1).store(ttgl.convert_layout(value + 40.0, layout))
+
+    if ttgl.load(selector_ptr) != 0:
+        view = _generic_pass_view(parent.index(0), M, N, chain_id)
+    else:
+        view = _generic_pass_view(parent.index(1), M, N, chain_id)
+    view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant="32x32b")
+    out = view.load(view_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, view_layout))
+
+
+@gluon.jit
+def _fuzz_generic_pass_mixed_captures_kernel(
+    in_ptr,
+    out_ptr,
+    selector_ptr,
+    parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    chain_id: ttgl.constexpr,
+):
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    layout: ttgl.constexpr = parent.index(0).get_reg_layout(instr_variant="32x32b")
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+    parent.index(0).store(ttgl.convert_layout(value, layout))
+    parent.index(1).store(ttgl.convert_layout(value * 2.0, layout))
+
+    if ttgl.load(selector_ptr) != 0:
+        view = _generic_pass_view(parent.index(0), M, N, chain_id)
+        bias = value + 3.0
+    else:
+        view = _generic_pass_view(parent.index(1), M, N, chain_id)
+        bias = value + 5.0
+    view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant="32x32b")
+    out = view.load(view_layout) + ttgl.convert_layout(bias, view_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, view_layout))
+
+
+@gluon.jit
+def _fuzz_generic_pass_layout_pressure_kernel(
+    in_ptr,
+    out_ptr,
+    parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    chain_id: ttgl.constexpr,
+):
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    base = parent.index(1)
+    view = _generic_pass_view(base, M, N, chain_id)
+    layout_a: ttgl.constexpr = base.get_reg_layout(instr_variant="32x32b")
+    layout_b: ttgl.constexpr = view.get_reg_layout(instr_variant="16x64b")
+    layout_c: ttgl.constexpr = view.get_reg_layout(instr_variant="32x32b")
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+    base.store(ttgl.convert_layout(value, layout_a))
+    loaded = view.load(layout_b)
+    out = ttgl.convert_layout(ttgl.convert_layout(loaded, layout_c), layout_b)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, layout_b))
 
 
 @gluon.jit
@@ -333,3 +512,62 @@ def test_tmem_structural_fuzzer_copy_scales(case):
     expected_group = "cta_group::1"
     assert ptx_ops
     assert all(expected_group in op for op in ptx_ops), ptx_ops
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", GENERIC_PASS_MEMDESC_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow(case):
+    m = 128
+    n = 64
+    torch.manual_seed(case.seed)
+    base_layout = _make_linear_layout(m, n)
+    parent_layout = _lift_layout(base_layout, [2])
+    inp = torch.randn((m, n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    selector = torch.tensor([case.selector], dtype=torch.int32, device="cuda")
+
+    if case.kind == "dynamic_index":
+        compiled = _fuzz_generic_pass_dynamic_index_kernel[(1, )](
+            inp, out, selector, parent_layout, m, n, case.chain_id, num_warps=4
+        )
+        expected = inp + (20.0 if case.selector else 10.0)
+    elif case.kind == "dynamic_if":
+        compiled = _fuzz_generic_pass_dynamic_if_kernel[(1, )](
+            inp, out, selector, parent_layout, m, n, case.chain_id, num_warps=4
+        )
+        expected = inp + (30.0 if case.selector else 40.0)
+    elif case.kind == "mixed_captures":
+        compiled = _fuzz_generic_pass_mixed_captures_kernel[(1, )](
+            inp, out, selector, parent_layout, m, n, case.chain_id, num_warps=4
+        )
+        expected = inp + inp + 3.0 if case.selector else inp * 2.0 + inp + 5.0
+    else:
+        raise AssertionError(f"unknown generic-pass memdesc case kind: {case.kind}")
+
+    torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
+    assert ptx_ops == llir_ops
+    assert any(".ld." in op for op in ptx_ops)
+    assert any(".st." in op for op in ptx_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", GENERIC_PASS_LAYOUT_PRESSURE_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_generic_pass_layout_conversion_pressure(case):
+    m = 128
+    n = 64
+    torch.manual_seed(case.seed)
+    base_layout = _make_linear_layout(m, n)
+    parent_layout = _lift_layout(base_layout, [2])
+    inp = torch.randn((m, n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    compiled = _fuzz_generic_pass_layout_pressure_kernel[(1, )](
+        inp, out, parent_layout, m, n, case.chain_id, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
+    assert ptx_ops == llir_ops
+    assert any(".ld." in op for op in ptx_ops)
+    assert any(".st." in op for op in ptx_ops)

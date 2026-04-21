@@ -1,5 +1,30 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 09:10 UTC completed structural fuzzing round 2 lane A2
+  promotion for ld/st and ld.red findings. `FZ-20260421-0003` through
+  `FZ-20260421-0006` now have strict checked-in xfail coverage in
+  `python/test/gluon/test_tmem_structural_fuzzer.py`: a direct descriptor-view
+  read repro for the chain1 ld/st miscompile, an ld.red descriptor-chain
+  opcode assertion that currently sees plain `tcgen05.ld`, a subprocess xfail
+  that isolates the 256-row lifted-parent allocator assertion, and a
+  transpose/slice ld.red row-anchor false-unsupported candidate. No backend
+  code was changed. Validation: required `make -j8` no-op, py-compile passed,
+  exact promoted nodeids reported `4 xfailed`, and the full structural fuzzer
+  reported `9 passed, 9 xfailed`. Report:
+  `agents/fuzz_ldst_ldred_round2.md`.
+
+- Latest: 2026-04-21 08:30 UTC completed TMEM structural fuzzing round 2,
+  Lane E2 promotion for generic-pass findings FZ-20260421-0001 and
+  FZ-20260421-0002. Added self-contained strict xfail runtime coverage in
+  `python/test/gluon/test_tmem_structural_fuzzer.py` for two dynamic TMEM
+  `memdesc_index` compiler-crash variants and three helper/control-flow/layout
+  pressure miscompile variants. Wrote
+  `agents/fuzz_generic_pass_round2.md` and updated the central structural
+  fuzzing catalog. No backend/compiler code was changed. Validation: required
+  `make` (`ninja: no work to do`), py-compile, generic-pass collect-only
+  `5/18`, and five exact promoted nodeids in fresh pytest processes, each
+  reporting `1 xfailed`.
+
 - Latest: 2026-04-21 08:18 UTC started a 24-hour structural TMEM backend
   fuzzing campaign. Active rule for this phase: do not end execution while
   unblocked fuzzing remains unless the user interrupts or a concrete external

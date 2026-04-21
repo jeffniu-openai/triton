@@ -26325,3 +26325,58 @@ Open after this slice:
     `42 passed, 10 skipped` / `52 passed`;
   - Python byte-compile for `test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-21 08:30 UTC: Structural fuzzing Lane E2 generic-pass promotion
+
+- User asked for TMEM structural fuzzing round 2, Lane E2, discovery mode
+  only: promote/minimize FZ-20260421-0001 and FZ-20260421-0002 from the Lane E
+  generic-pass report into checked-in Python runtime xfail tests or write a
+  report if editing conflicted.
+- Promoted the generic-pass temporary harness into
+  `python/test/gluon/test_tmem_structural_fuzzer.py` as self-contained cases:
+  - dynamic TMEM `memdesc_index` chain0 and chain1 compiler-crash repros;
+  - helper-returned chain0 dynamic `if` miscompile;
+  - helper-returned chain0 mixed tensor+memdesc capture miscompile;
+  - helper-returned chain0 layout-conversion pressure miscompile.
+- All five promoted cases use strict xfail markers tied to
+  FZ-20260421-0001 or FZ-20260421-0002 and assert the desired positive
+  runtime/output/opcode behavior underneath the marker.
+- No backend/compiler code was changed.
+- Validation:
+  - required `make`: `ninja: no work to do`;
+  - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
+  - `PYTHONPATH=.:./python pytest -q --collect-only python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`
+    collected `5/18`;
+  - five exact promoted nodeids were run in fresh pytest processes across
+    GPUs 0-3 and each reported `1 xfailed`.
+- Report written:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round2.md`.
+
+## 2026-04-21 09:10 UTC: Structural fuzzing Lane A2 ld/st and ld.red promotion
+
+- User asked for TMEM structural fuzzing round 2, Lane A2, discovery mode
+  only: promote/minimize lane A ld/st and ld.red findings
+  `FZ-20260421-0003`, `FZ-20260421-0004`, `FZ-20260421-0005`, and
+  `FZ-20260421-0006` into checked-in Python runtime xfail tests or a report
+  if editing conflicted.
+- Promoted all four requested findings into
+  `python/test/gluon/test_tmem_structural_fuzzer.py`:
+  - a strict xfail descriptor-view read repro for the chain1 ld/st
+    miscompile;
+  - a strict xfail ld.red descriptor-chain opcode check that currently emits
+    plain `tcgen05.ld` plus software reduction;
+  - a strict xfail subprocess repro for the 256-row lifted-parent allocator
+    assertion, so the parent pytest process survives the current C++ abort;
+  - a strict xfail transpose/slice `load_max` row-anchor false-unsupported
+    candidate.
+- Preserved the concurrent Lane E2 generic-pass edits already present in the
+  structural fuzzer file. No backend/compiler code was changed.
+- Validation:
+  - required
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`
+    reported no work to do;
+  - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
+  - exact promoted Lane A2 nodeids reported `4 xfailed`;
+  - full structural fuzzer reported `9 passed, 9 xfailed`.
+- Report written:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_ldred_round2.md`.

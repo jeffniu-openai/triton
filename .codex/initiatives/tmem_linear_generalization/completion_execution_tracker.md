@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 08:18 UTC
+Last updated: 2026-04-21 09:10 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -60,6 +60,18 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 08:30 UTC Lane E2 promoted FZ-20260421-0001 and
+  FZ-20260421-0002 into checked-in strict xfail runtime coverage in
+  `python/test/gluon/test_tmem_structural_fuzzer.py`, with exact fresh-process
+  validation recorded in `agents/fuzz_generic_pass_round2.md`. Backend repair
+  remains deferred.
+  2026-04-21 09:10 UTC Lane A2 promoted FZ-20260421-0003 through
+  FZ-20260421-0006 into checked-in strict xfail coverage in the same
+  structural fuzzer: ld/st descriptor-chain miscompile, ld.red plain-load
+  opcode fallback, 256-row lifted-parent allocator assertion via subprocess,
+  and transpose/slice ld.red false-unsupported candidate. Exact nodeids
+  reported `4 xfailed`; the full structural fuzzer reported
+  `9 passed, 9 xfailed`. Backend repair remains deferred.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

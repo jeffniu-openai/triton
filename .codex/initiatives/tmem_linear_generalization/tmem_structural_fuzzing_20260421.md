@@ -152,6 +152,41 @@ Every structural fuzz case records:
   fresh-process reruns passed.
 - Exact repro commands and minimization notes are recorded in the lane report.
 
+### Lane A2 Round 2, ld/st and ld.red Promotion
+
+- Time: 2026-04-21 09:10 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_ldred_round2.md`
+- Scope: promote/minimize lane A findings `FZ-20260421-0003` through
+  `FZ-20260421-0006` into checked-in Python runtime xfail coverage without
+  backend repairs.
+- Result: added strict xfail coverage in
+  `python/test/gluon/test_tmem_structural_fuzzer.py` for the ld/st chain1
+  miscompile, ld.red plain-load opcode mismatch, 256-row allocator assertion,
+  and transpose/slice ld.red false-unsupported candidate.
+- Validation:
+  - required `make -j8` completed with ninja reporting no work to do;
+  - exact promoted nodeids passed as `4 xfailed`;
+  - full structural fuzzer passed as `9 passed, 9 xfailed`;
+  - Python byte-compile passed.
+
+### Lane E2 Round 2, Generic Pass Promotion
+
+- Time: 2026-04-21 08:30 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round2.md`
+- Scope: promote/minimize FZ-20260421-0001 and FZ-20260421-0002 from the
+  temporary Lane E probe into checked-in Python runtime xfail tests.
+- Result: added five strict xfail nodeids to
+  `python/test/gluon/test_tmem_structural_fuzzer.py` covering the dynamic
+  TMEM `memdesc_index` compiler crash and the helper/control-flow/layout
+  pressure miscompiles. No backend/compiler code was changed.
+- Validation summary:
+  - required `make`: `ninja: no work to do`;
+  - generic-pass collect-only selected `5/18` structural-fuzzer nodeids;
+  - all five promoted exact nodeids were run in fresh pytest processes and
+    reported `1 xfailed` each.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -169,6 +204,9 @@ Every structural fuzz case records:
   runtime TMEM indexing is intentionally unsupported.
 - Repro: see `fuzz_generic_pass_round1.md` exact commands and
   `/tmp/lane_e_dynamic_index_chain{0,1}.log`.
+- Promotion status: checked in as strict xfail runtime nodeids:
+  - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-index-chain0]`;
+  - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-index-chain1]`.
 
 ### FZ-20260421-0002: helper-returned chain0 TMEM view miscompiles through control flow
 
@@ -187,6 +225,10 @@ Every structural fuzz case records:
 - Control: inline structural fuzzer chain0 baseline passes, so the current
   evidence points at helper/control-flow/layout-pass interaction.
 - Repro: see `fuzz_generic_pass_round1.md` exact commands and logs.
+- Promotion status: checked in as strict xfail runtime nodeids:
+  - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-if-chain0-true]`;
+  - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-mixed-captures-chain0]`;
+  - `test_tmem_structural_fuzzer_generic_pass_layout_conversion_pressure[generic-pass-layout-conversion-pressure-chain0]`.
 
 ### FZ-20260421-0003: ld/st descriptor-view chain1 miscompiles
 
@@ -203,6 +245,8 @@ Every structural fuzz case records:
   compile.
 - Controls: direct chain and other view chains pass for neighbor cases.
 - Repro: see `fuzz_ldst_ldred_round1.md` exact inline Python command.
+- Checked-in xfail:
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldst_descriptor_view_read[ldst-fz20260421-0003-chain1-64x32-32x32b]`.
 
 ### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
 
@@ -216,6 +260,8 @@ Every structural fuzz case records:
   `tcgen05.ld.sync.aligned...`, not `.ld.red.`, so hardware reduction
   selection is lost after descriptor-view chains.
 - Repro: see `fuzz_ldst_ldred_round1.md` exact command.
+- Checked-in xfail:
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-chain1-64x32-min]`.
 
 ### FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation
 
@@ -228,6 +274,10 @@ Every structural fuzz case records:
   `MemoryBitMap::findFirstFit(...): Assertion 'kNumRows - numRows >= 0' failed.`
 - Expected: clean resource diagnostic or supported lowering, not assertion.
 - Repro: see `fuzz_ldst_ldred_round1.md` exact command.
+- Checked-in xfail:
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldst_256row_lifted_parent_allocator_crash`.
+  This case runs the crashing compile in a subprocess so the parent pytest
+  process survives the current C++ assertion.
 
 ### FZ-20260421-0006: ld.red transpose/slice view may be false unsupported
 
@@ -241,6 +291,8 @@ Every structural fuzz case records:
 - Observed: `view.get_reg_layout()` rejects with row-anchor diagnostic:
   required row anchors `32,64` are not directly representable.
 - Status: keep as candidate until planner proves ISA-impossible.
+- Checked-in xfail:
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0006-rotate1-transpose-slice-max]`.
 
 ### Retired Non-Bug: direct two-CTA scales copy cta_group expectation
 
@@ -252,12 +304,16 @@ Every structural fuzz case records:
 
 ## Repro Queue
 
-- Minimize FZ-20260421-0001 to lit or checked-in Python runtime repro.
-- Promote FZ-20260421-0002 helper/control-flow miscompile into deterministic
-  fuzzer xfail cases once reduced enough to avoid overlap between variants.
-- Promote FZ-20260421-0003 and FZ-20260421-0004 into deterministic Python
-  fuzzer xfail cases.
-- Capture FZ-20260421-0005 MLIR reproducer and rerun with
+- FZ-20260421-0001 is now covered by checked-in Python runtime xfail repros;
+  optional next minimization is a lit `ttg.memdesc_index` crash/clean-error
+  contract if repair work needs a compiler-only reproducer.
+- FZ-20260421-0002 is now covered by checked-in Python runtime xfail repros
+  for dynamic `if`, mixed tensor+memdesc capture, and layout-conversion
+  pressure variants.
+- FZ-20260421-0003 and FZ-20260421-0004 are now covered by checked-in Python
+  runtime xfail repros.
+- FZ-20260421-0005 is now covered by a checked-in subprocess xfail. Optional
+  next minimization remains capturing the MLIR reproducer and rerunning with
   `triton-opt --run-reproducer`.
-- Expand FZ-20260421-0006 around adjacent row/col permutations before
-  classifying as true boundary.
+- FZ-20260421-0006 is now covered by a checked-in Python xfail. Expand around
+  adjacent row/col permutations before classifying as a true boundary.

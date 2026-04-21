@@ -73,6 +73,23 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 09:10 UTC: completed structural fuzzing round 2 Lane A2
+  promotion for ld/st and ld.red findings. FZ-20260421-0003 through
+  FZ-20260421-0006 now have checked-in strict xfail coverage in
+  `python/test/gluon/test_tmem_structural_fuzzer.py` for the descriptor-chain
+  ld/st miscompile, ld.red plain-load opcode fallback, 256-row lifted-parent
+  allocator assertion, and transpose/slice ld.red false-unsupported
+  candidate. Backend fixes remain deferred during discovery mode. See
+  `agents/fuzz_ldst_ldred_round2.md`.
+
+- 2026-04-21 08:30 UTC: completed structural fuzzing round 2 Lane E2
+  promotion for generic-pass findings. FZ-20260421-0001 and
+  FZ-20260421-0002 now have checked-in strict xfail runtime coverage in
+  `python/test/gluon/test_tmem_structural_fuzzer.py`, and the exact
+  fresh-process validation plus residual notes are recorded in
+  `agents/fuzz_generic_pass_round2.md`. Backend fixes remain deferred during
+  discovery mode.
+
 - 2026-04-21 08:18 UTC: started the 24-hour structural TMEM fuzzing campaign
   requested by the user. During this campaign, do not end execution while
   unblocked fuzzing work remains unless interrupted. The focus is continuous
