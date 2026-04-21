@@ -30691,8 +30691,10 @@ Open after this slice:
   `8 compiler_crash_or_abort`.
 - Actual `ld.red` matrix using `view.load_max(...)`:
   `32 pass`, `12 clean_or_false_unsupported`, `4 exception`.
+- Existing bucket expansion:
+  `FZ-20260421-0019` now also covers rank-4 unit-prefix descriptor-view
+  dimension aborts.
 - New candidate buckets:
-  `FZ-20260421-0019` rank-4 unit-prefix descriptor-view dimension abort,
   `FZ-20260421-0020` valid half-row `ld/st` chain optimizer signal,
   `FZ-20260421-0021` valid half-column `ld/st` chain process abort, and
   `FZ-20260421-0022` row-reversed half-row `ld.red` parse failure.
@@ -30716,8 +30718,9 @@ Open after this slice:
 - Temporary probe classification over `9` rows: `2` pass, `1` clean TMEM OOR,
   `1` existing `FZ-20260421-0002`/`FZ-20260421-0003` descriptor-view
   wrong-result row, `1` clean unsupported row-half `.ld.red` descriptor view,
-  and `4` new candidate `FZ-20260421-0019` rank-5 `ld/st` unit-dimension
-  `get_reg_layout` aborts.
+  and `4` existing-candidate `FZ-20260421-0019` rank-5 `ld/st`
+  unit-dimension `get_reg_layout` aborts. No additional independent `FZ-*` id
+  was proposed by this lane.
 - `FZ-20260421-0019` seed command:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -q -s --tb=short '/tmp/tmem_high_rank_views_round34_probe.py::test_high_rank_views[ldst-rank5-unit-chain0-128x128]'`.
 - Failure mode: hard abort with

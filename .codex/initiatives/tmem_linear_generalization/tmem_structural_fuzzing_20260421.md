@@ -3966,9 +3966,10 @@ remain family-specific and consume a bounded subset of the inventory.
   exceptions, 18 process aborts`; unit-prefix rank-4 matrix `8/8` process
   aborts; actual `ld.red` matrix `32 pass, 12 clean unsupported, 4 parse
   failures`.
-- New candidate buckets:
-  `FZ-20260421-0019` unit-prefix dimension abort, `FZ-20260421-0020`
-  half-row optimizer signal, `FZ-20260421-0021` half-column dimension abort,
-  and `FZ-20260421-0022` row-reversed half-row `ld.red` parse failure.
+- Existing bucket expansion: `FZ-20260421-0019` now also covers rank-4
+  unit-prefix dimension aborts.
+- New candidate buckets: `FZ-20260421-0020` half-row optimizer signal,
+  `FZ-20260421-0021` half-column dimension abort, and `FZ-20260421-0022`
+  row-reversed half-row `ld.red` parse failure.
 - No runtime wrong-result miscompile was confirmed; an earlier software-reduce
   oracle mismatch was excluded as a harness issue.

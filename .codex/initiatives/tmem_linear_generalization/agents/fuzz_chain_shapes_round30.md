@@ -29,10 +29,11 @@ Artifacts:
 - `/tmp/tmem_chain_shapes_round30/summary_ldst_unit.json`
 - `/tmp/tmem_chain_shapes_round30/summary_ldred.json`
 
-New candidates:
+New or expanded buckets:
 
-- `FZ-20260421-0019`: rank-4 unit-prefix descriptor views crash in
-  `get_reg_layout` with an LLVM dimension-name mismatch before TTGIR lowering.
+- `FZ-20260421-0019`: expanded from the Round 34 rank-5 unit-dimension
+  finding; rank-4 unit-prefix descriptor views also crash in `get_reg_layout`
+  with an LLVM dimension-name mismatch before TTGIR lowering.
 - `FZ-20260421-0020`: valid half-row `ld/st` descriptor-view chains can fail
   `TritonNvidiaGPUOptimizeTMemLayoutsPass` with a signal-generated MLIR
   reproducer instead of compiling or giving a clean diagnostic.

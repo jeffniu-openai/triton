@@ -127,13 +127,14 @@ Exact fresh-process classification:
 | Clean TMEM OOR | 1 | `copy-rank4-index1-128x256`, `Required: 1024, Hardware limit: 512` |
 | Existing `FZ-20260421-0002`/`FZ-20260421-0003` wrong-result surface | 1 | `ldred-rank4-chain0-128x128`, `16128/16384` output mismatches |
 | Clean unsupported row-half descriptor view | 1 | `ldred-rank4-dim0-halfrows-128x128`, clean diagnostic says row-half views need row-origin decomposition |
-| New candidate `FZ-20260421-0019` | 4 | all four rank-5 `ld/st` rows abort during `get_reg_layout` |
+| Existing candidate `FZ-20260421-0019` expansion | 4 | all four rank-5 `ld/st` rows abort during `get_reg_layout` |
 
-## New Candidate Bucket
+## Candidate Bucket Expansion
 
-`FZ-20260421-0019`: rank-5 `ld/st` descriptor views with unit dimensions around
-a non-unit prefix dimension abort during Gluon `get_reg_layout` with an LLVM
-dimension-set mismatch.
+`FZ-20260421-0019` already covers descriptor-view dimension mismatch aborts
+from the concurrent chain-shape lane. This lane expands it to rank-5 `ld/st`
+descriptor views with unit dimensions around a non-unit prefix dimension:
+Gluon `get_reg_layout` aborts with an LLVM dimension-set mismatch.
 
 Seed rows:
 
@@ -175,5 +176,6 @@ Known bucket coverage:
 - Clean boundaries: rank-4 copy at `128x256` cleanly hit the TMEM hardware
   allocation limit, and row-half `.ld.red` descriptor view produced the
   existing clean unsupported row-origin diagnostic.
-- New candidate: `FZ-20260421-0019` for the rank-5 unit-dimension `ld/st`
-  `get_reg_layout` abort.
+- Existing candidate expansion: `FZ-20260421-0019` for the rank-5
+  unit-dimension `ld/st` `get_reg_layout` abort. No additional independent
+  `FZ-*` id is proposed by this lane.

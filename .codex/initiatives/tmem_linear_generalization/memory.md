@@ -12,9 +12,10 @@
   `1` `ld.red` chain0 row reproduced existing `FZ-0002`/`FZ-0003`
   descriptor-view wrong results, `1` row-half `ld.red` view produced a clean
   unsupported row-origin diagnostic, and `4` rank-5 `ld/st` unit-dimension
-  rows established new candidate `FZ-20260421-0019`: `get_reg_layout` aborts
-  with LLVM dimension mismatch `["dim0", "dim1"]` versus `["dim1", "dim2"]`.
-  Backend repair remains deferred.
+  rows expanded existing candidate `FZ-20260421-0019`: `get_reg_layout`
+  aborts with LLVM dimension mismatch `["dim0", "dim1"]` versus
+  `["dim1", "dim2"]`. No additional independent `FZ-*` id was proposed;
+  backend repair remains deferred.
 
 - Latest: 2026-04-21 Round 34 copy `warpx2` compiler-probe attempt
   completed. Report: `agents/fuzz_copy_compiler_probe_round34.md`. A two-CTA
@@ -16530,8 +16531,9 @@ rejection, not rescue
   row-reversed, and column-reversed layouts. Results: `ld/st` `132 pass, 48
   clean unsupported, 42 clean OOR, 36 optimizer exceptions, 18 process
   aborts`; unit-prefix rank-4 `8/8` process aborts; actual `ld.red` `32 pass,
-  12 clean unsupported, 4 parse failures`. New candidates are
-  `FZ-20260421-0019` unit-prefix dimension abort, `FZ-20260421-0020` half-row
+  12 clean unsupported, 4 parse failures`. Existing `FZ-20260421-0019` now
+  also covers rank-4 unit-prefix dimension aborts; new candidates are
+  `FZ-20260421-0020` half-row
   optimizer signal, `FZ-20260421-0021` half-column dimension abort, and
   `FZ-20260421-0022` row-reversed half-row `ld.red` parse failure. No runtime
   wrong-result miscompile was confirmed; an initial software-reduce oracle
