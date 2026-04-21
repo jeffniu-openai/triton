@@ -725,6 +725,48 @@ remain family-specific and consume a bounded subset of the inventory.
   - fresh exact confirmations reproduced the FZ-0003 and FZ-0001 overlaps
     and the green chain1/chain2 controls.
 
+### Lane A Round 8, ld.red Allocator/Opcode Structural Fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_allocator_opcode_round8.md`
+- Scope: 55 subprocess-isolated Python/Gluon rows around `ld.red` and
+  `ld/st` allocation/opcode boundaries, covering direct indexed parents,
+  row/column descriptor chains, 1CTA/2CTA parent shapes `[2,M,N]`,
+  `M in {128,256,512}`, `N in {1,2,16,32,64,128}`, row/column permutations,
+  `min`/`max`/`min(abs=True)`/NaN-propagating reductions, and `ld/st`
+  read-only `f16`/`i32` variants.
+- Result: no new non-overlapping `FZ-*` id.
+- Key classification:
+  - 18 rows extend `FZ-20260421-0004`: two-CTA indexed reductions produce
+    correct values but emit plain `tcgen05.ld` instead of `.ld.red.` across
+    direct shapes and reduction modifiers;
+  - four rows extend `FZ-20260421-0008`: two-CTA row-chain
+    `256x{2,16,32,64}` abort in `TritonNvidiaGPUOptimizeTMemLayoutsPass` with
+    row/col versus row/col/block dimensions;
+  - 14 rows extend the allocator family `FZ-20260421-0005/0009`: 1CTA direct
+    indexed `ld.red` for `256x{16,32,64,128}` and `512x{16,32,64,128}`, plus
+    direct indexed read-only `ld/st` `f16`/`i32` for `256x{16,32,64}`, fail
+    in `TritonTensorMemoryAllocationPass` or reproduce the
+    `MemoryBitMap::findFirstFit` assertion;
+  - 18 rows passed, including 1CTA indexed `ld.red` for
+    `128x{16,32,64,128}`, row-permuted 128-row indexed `ld.red`,
+    128-row column-chain `load_max`, and 128-row `ld/st` read-only `f16`/`i32`
+    descriptor-chain controls;
+  - `256x1` two-CTA row-chain reports a clean `.x1` `ld.red` minimum-message
+    diagnostic.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_ldred_allocator_opcode_round8_probe.py` py-compiled;
+  - case inventory was `55`;
+  - full subprocess-isolated sweep classified `18` passes, `18` opcode
+    fallbacks, `14` allocator failures/asserts, `4` optimizer aborts, and
+    `1` clean diagnostic;
+  - exact confirmations on distinct GPUs/caches reproduced a positive
+    `.ld.red.`, a 2CTA opcode fallback, a row/col optimizer abort, and an
+    allocator assertion;
+  - `git diff --check` passed.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -957,10 +999,14 @@ remain family-specific and consume a bounded subset of the inventory.
   `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash`.
   The subprocess isolation is required because the current failure aborts in
   `TritonNvidiaGPUOptimizeTMemLayoutsPass`.
-- Promotion status: report-only for Round 6. A checked-in strict xfail is
-  safe only as a subprocess-isolated test, not as an in-process kernel xfail.
-  If promoted, use exactly one sentinel for the `256x2` chain1 `even_odd`
-  `min` row and keep it separate from `FZ-20260421-0004`.
+- Round 8 Lane A expansion:
+  - row-chain `256x{2,16,32,64}` variants with row `even_odd` reproduce the
+    same `TritonNvidiaGPUOptimizeTMemLayoutsPass` row/col versus
+    row/col/block optimizer abort;
+  - `256x1` reports a clean `.x1` `ld.red` minimum-message diagnostic and is
+    not part of the crash bucket;
+  - report:
+    `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_allocator_opcode_round8.md`.
 
 ### FZ-20260421-0009: 1CTA indexed ld.red 256-row parent allocator assertion
 
@@ -1002,6 +1048,15 @@ remain family-specific and consume a bounded subset of the inventory.
   `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash`.
   The subprocess isolation is required because the current failure aborts in
   `TritonTensorMemoryAllocationPass`.
+- Main-session Round 8 adjacency probe:
+  - `M=128,N=32` and `M=128,N=64` direct indexed 1CTA `ld.red` rows passed
+    and emitted `tcgen05.ld.red.sync.aligned.32x32b.x32.min.f32` and
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32`;
+  - `M=256,N=16`, `M=256,N=32`, `M=256,N=64`, and `M=512,N=32` all
+    reproduced the same allocator assertion in subprocess children;
+  - current classification: the crash family is not isolated to `N=32`, and
+    the observed boundary is tied to indexed child reductions at `M >= 256`
+    in this probe.
 
 ### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
 
@@ -1061,6 +1116,14 @@ remain family-specific and consume a bounded subset of the inventory.
     `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max]`,
     `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs]`, and
     `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan]`.
+- Round 8 Lane A expansion:
+  - 18 additional two-CTA indexed rows produce correct runtime values but
+    emit plain `tcgen05.ld` instead of `.ld.red.`;
+  - representative rows include `128x{2,32,64}` and `256x{2,32,64}` direct
+    indexed `min`, plus `256x{2,16,32,64}` `max`, `min(abs=True)`, and
+    NaN-propagating `min`;
+  - modifiers are therefore not the root; the owner remains the 2CTA indexed
+    opcode-selection path.
 
 ### FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation
 
@@ -1077,6 +1140,14 @@ remain family-specific and consume a bounded subset of the inventory.
   `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldst_256row_lifted_parent_allocator_crash`.
   This case runs the crashing compile in a subprocess so the parent pytest
   process survives the current C++ assertion.
+- Round 8 Lane A expansion:
+  - direct indexed read-only `ld/st` `f16` and `i32` for `256x{16,32,64}`
+    reproduce allocator failures/assertions;
+  - larger `512x{16,32,64,128}` direct indexed `ld.red` rows also fail in the
+    allocator family and should become clean resource diagnostics if they are
+    beyond physical TMEM capacity;
+  - report:
+    `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_allocator_opcode_round8.md`.
 
 ### FZ-20260421-0006: ld.red transpose/slice view may be false unsupported
 
@@ -1187,3 +1258,8 @@ remain family-specific and consume a bounded subset of the inventory.
 - Round 8 Lane D found no new generic-pass failure to add to the repro queue.
   Keep its chain0 helper/tuple/sibling/static-loop/same-base dynamic-if rows
   as `FZ-20260421-0003` repair-validation inventory.
+- Main-session Round 8 adjacency around `FZ-20260421-0009` broadened the
+  allocator-crash evidence to direct indexed 1CTA `ld.red` rows at
+  `M=256,N={16,32,64}` and `M=512,N=32`, with `M=128,N={32,64}` as positive
+  `.ld.red.` controls. Use this as repair-boundary inventory; the checked-in
+  sentinel remains the compact `256x32` subprocess xfail.

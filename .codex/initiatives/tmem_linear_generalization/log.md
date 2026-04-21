@@ -26747,3 +26747,51 @@ Open after this slice:
   - split-4 sweep classified as `7 failed, 7 passed`;
   - fresh exact confirmations reproduced the FZ-0003 and FZ-0001 overlaps
     and the green controls.
+
+## 2026-04-21: local FZ-20260421-0009 adjacency probe
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Ran a subprocess-isolated local probe through the checked-in structural
+  fuzzer `_fuzz_ldred_kernel` to vary direct indexed 1CTA `ld.red` parent
+  shapes `[2,M,N]`.
+- Result:
+  - `M=128,N=32` passed with
+    `tcgen05.ld.red.sync.aligned.32x32b.x32.min.f32`;
+  - `M=128,N=64` passed with
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32`;
+  - `M=256,N=16`, `M=256,N=32`, `M=256,N=64`, and `M=512,N=32` all
+    reproduced the `TensorMemoryAllocation.cpp:65` allocator assertion.
+- Classification: expands `FZ-20260421-0009`; no new independent `FZ-*` id.
+- Validation context:
+  - required `make -j8` reported no work to do;
+  - first driver attempt failed due to missing `python/test/gluon` in
+    `PYTHONPATH` and was classified as harness setup only;
+  - corrected driver used
+    `CUDA_VISIBLE_DEVICES=3`,
+    `TRITON_CACHE_DIR=/tmp/triton-cache-local-r8-fz9-adj2`, and
+    `PYTHONPATH=.:./python:./python/test/gluon`.
+
+## 2026-04-21: Round 8 Lane A ld.red allocator/opcode fuzzing
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_allocator_opcode_round8.md`.
+- Classification: no new non-overlapping `FZ-*` id. The 55-row
+  subprocess-isolated sweep broadened existing buckets:
+  - `FZ-20260421-0004`: 18 additional 2CTA indexed opcode fallback rows;
+  - `FZ-20260421-0008`: 4 row-chain optimizer abort rows across
+    `N={2,16,32,64}`;
+  - `FZ-20260421-0005/0009`: 14 allocator failures, including `f16`/`i32`
+    read-only `ld/st` direct indexed 256-row parents;
+  - positives: 18 rows, including 128-row indexed/chained `ld.red` and
+    `ld/st` controls.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_ldred_allocator_opcode_round8_probe.py` py-compiled;
+  - case inventory was `55`;
+  - exact confirmations on distinct GPUs/caches reproduced a positive
+    `.ld.red.`, an opcode fallback, an optimizer abort, and an allocator
+    assertion;
+  - `git diff --check` passed in the lane.

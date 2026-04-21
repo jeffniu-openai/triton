@@ -175,6 +175,16 @@ The project is complete when:
   passed. Validation: required `make -j8`, py-compile, `14` collected
   nodeids, split-4 classified sweep `7 failed, 7 passed`, and fresh exact
   confirmations. Report: `agents/fuzz_generic_pass_round8.md`.
+  2026-04-21 Round 8 Lane A completed `ld.red` allocator/opcode discovery
+  without backend repairs. No new independent `FZ-*` id. The lane broadened
+  `FZ-20260421-0004` with 18 two-CTA indexed opcode fallback rows,
+  `FZ-20260421-0008` with row-chain optimizer aborts across
+  `N={2,16,32,64}`, and `FZ-20260421-0005/0009` with direct indexed
+  256-row allocator failures for both `ld.red` and `ld/st` dtype variants.
+  Positive 128-row indexed/chained controls stayed green. Validation:
+  required `make -j8`, py-compile, 55 subprocess-isolated rows, exact fresh
+  confirmations, and `git diff --check`. Report:
+  `agents/fuzz_ldred_allocator_opcode_round8.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -1,5 +1,29 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 completed Round 8 Lane A `ld.red` allocator/opcode
+  structural fuzzing. Wrote
+  `agents/fuzz_ldred_allocator_opcode_round8.md`. No new independent `FZ-*`
+  id was assigned. The sweep ran 55 subprocess-isolated rows and broadened
+  existing buckets: `FZ-20260421-0004` now has 18 more 2CTA indexed opcode
+  fallback rows across shapes and reduction modifiers; `FZ-20260421-0008`
+  now spans row-chain `N={2,16,32,64}` optimizer aborts; and the allocator
+  family `FZ-20260421-0005/0009` now includes direct indexed 256-row
+  read-only `ld/st` failures for `f16` and `i32`, plus `ld.red`
+  `256x{16,32,64,128}` and `512x{16,32,64,128}` failures. Positive
+  128-row indexed/chained `ld.red` and `ld/st` controls stayed green.
+  Backend repair remains deferred.
+
+- Latest: 2026-04-21 main-session local adjacency probe expanded
+  `FZ-20260421-0009`. Using subprocess-isolated calls through the checked-in
+  structural-fuzzer `_fuzz_ldred_kernel`, direct indexed 1CTA `ld.red` over
+  parent `[2,M,N]` passes for `M=128,N=32` and `M=128,N=64` with hardware
+  `.ld.red.`, but asserts in `TritonTensorMemoryAllocationPass` for
+  `M=256,N=16`, `M=256,N=32`, `M=256,N=64`, and `M=512,N=32`. This makes the
+  current owner surface broader than the promoted `256x32` sentinel: indexed
+  child reductions with `M >= 256` hit the allocator assertion instead of a
+  clean resource diagnostic or supported lowering. Backend repair remains
+  deferred while discovery continues.
+
 - Latest: 2026-04-21 completed Round 8 Lane D generic compiler-pass /
   analysis interaction fuzzing. Wrote
   `agents/fuzz_generic_pass_round8.md` from

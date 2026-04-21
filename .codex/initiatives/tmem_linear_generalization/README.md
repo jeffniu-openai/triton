@@ -73,6 +73,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21: completed Round 8 Lane A `ld.red` allocator/opcode structural
+  fuzzing. Wrote `agents/fuzz_ldred_allocator_opcode_round8.md` from
+  `/tmp/tmem_ldred_allocator_opcode_round8_probe.py`. No new independent
+  `FZ-*` id was assigned. The 55 subprocess-isolated rows broadened
+  `FZ-20260421-0004` with 18 two-CTA indexed opcode fallback rows,
+  `FZ-20260421-0008` with four row-chain optimizer abort rows across
+  `N={2,16,32,64}`, and the allocator family `FZ-20260421-0005/0009` with
+  14 failures including `f16`/`i32` read-only `ld/st` direct indexed
+  256-row parents. Positive 128-row indexed/chained `ld.red` and `ld/st`
+  controls stayed green. Validation: required `make -j8`, probe py-compile,
+  55 subprocess rows, exact confirmations on distinct GPUs/caches, and
+  `git diff --check`.
+
 - 2026-04-21: completed Round 8 Lane D generic-pass / analysis fuzzing. Wrote
   `agents/fuzz_generic_pass_round8.md` from
   `/tmp/tmem_generic_pass_round8.py`. No new independent `FZ-*` id was
