@@ -60,6 +60,15 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 15:30 UTC Round 39 descriptor/high-rank positive guardrail
+  completed. Artifact: `agents/fuzz_descriptor_high_rank_guardrail_round39.md`.
+  Selector
+  `(descriptor_compositions or higher_rank or rank5 or multidim_slice or half_rows) and not reports and not resource and not clean`
+  collected `140/1615` and passed/stably skipped split-4 as
+  `120 passed, 20 skipped`. No compiler crash, false unsupported diagnostic,
+  runtime miscompile, clean-boundary drift, unexpected xfail/pass transition,
+  opcode absence signal, or new independent `FZ-*`; backend repair remains
+  deferred.
   2026-04-21 15:24 UTC Round 39 scale-layout guardrail completed. Artifact:
   `agents/fuzz_scales_layout_guardrail_round39.md`. Selector
   `(scales_variant or scales_layout or cp_scales_layout_probe or scales_ldst) and not reports and not resource`
