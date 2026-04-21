@@ -692,6 +692,32 @@ Every structural fuzz case records:
   `tcgen05.cp.cta_group::1.warpx4.32x128b` for this direct scales-copy shape.
 - Classification: stale fuzzer expectation, corrected in the fuzzer.
 
+### Lane R5-A Round 5, ld.red row/col chain1 optimizer crash
+
+- Time: 2026-04-21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_optimizer_crash_round5.md`
+- Scope: minimize the R4-D report-only 2CTA indexed `ld.red` row/col chain1
+  optimizer crash and keep it separate from opcode fallback and clean
+  diagnostics.
+- Result: minimized the crash to a crash-safe subprocess candidate:
+  `ldred-fz20260421-crash-twocta-indexed-256x2-chain1-even_odd-min`.
+- Smallest stable repro:
+  parent `[2,256,2]`, selected `[256,2]`,
+  `parent.index(1).reshape((128,2,2)).permute([1,0,2]).reshape((256,2))`,
+  row `even_odd`, col `identity`, `load_min`.
+- Classification: compiler crash/optimizer abort in
+  `TritonNvidiaGPUOptimizeTMemLayoutsPass`, printing the dimensions mismatch
+  `["row","col"]` vs `["row","col","block"]`.
+- Boundary separation:
+  smaller `M=128/64` variants stop at clean unsupported descriptor-view
+  diagnostics; `N=1` stops at the clean `.x1` `ld.red` minimum-message
+  diagnostic; identity chain1 remains a plain-`ld` opcode fallback, not this
+  crash.
+- Recommendation: keep report-only unless checked-in coverage can use a
+  subprocess-isolated strict xfail. Do not add an in-process strict xfail for
+  this row.
+
 ## Repro Queue
 
 - FZ-20260421-0001 is now covered by checked-in Python runtime xfail repros;
@@ -712,8 +738,8 @@ Every structural fuzz case records:
 - Round 5 discovery queue:
   - continue structural fuzzing without backend repairs until new findings
     stop or the user pivots;
-  - investigate the report-only 2CTA indexed ld.red row/col chain1 optimizer
-    crash with a crash-safe checked-in repro if it remains stable;
+  - keep the R5-A minimized 2CTA indexed ld.red row/col chain1 optimizer crash
+    report-only unless a subprocess-isolated checked-in xfail is desired;
   - keep dynamic `memdesc_index` lit candidate report-only until the intended
     contract is decided;
   - continue probing clean-negative boundaries separately from opcode fallback
