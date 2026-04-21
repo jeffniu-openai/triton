@@ -31752,3 +31752,59 @@ Open after this slice:
 - Result: `156 passed, 1459 deselected`.
 - Classification: no compiler crash, false unsupported diagnostic, runtime
   miscompile, opcode absence, or new independent `FZ-*`.
+
+## 2026-04-21 14:41 UTC: Round 47 copy descriptor layout fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_descriptor_layout_variants_round47.md`.
+- Required `make -j8` was a no-op.
+- Runtime-matrix positive copy variants:
+  `246/1615` collected, split-4 result `242 passed, 4 skipped`.
+- Runtime-matrix clean copy boundaries:
+  `67/1615` collected, split-4 result `67 passed`.
+- Structural copy scales:
+  `2 passed`.
+- Older `test_core.py` copy controls:
+  `50/18114` collected, split-4 result `45 passed, 5 skipped`.
+- Classification: static copy descriptor views, `warpx2` variants, two-CTA
+  copy, dense shared rematerialization, scales copy, and clean unsupported
+  boundaries stayed stable. No new copy-specific `FZ-*`; dynamic
+  control-flow-yielded linear copy remains existing `FZ-20260421-0001`.
+
+## 2026-04-21 14:41 UTC: Round 47 lit/IR structural fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_lit_ir_structural_round47.md`.
+- Required `make -j8` was a no-op; `ninja triton-opt` was up to date.
+- Direct TMEM lit set:
+  `7/7 passed`.
+- Broader NVIDIA GPU lit guardrail:
+  `16/16 passed`.
+- Adjacent TMEM-bearing lit expansion:
+  `9 passed, 1 failed`; the failure was
+  `Conversion/relayout_tritongpu.mlir` and matched existing
+  `FZ-20260421-0016`.
+- Structural fuzzer:
+  `33` collected and `9 passed, 24 xfailed`.
+- Classification: no FileCheck drift, XPASS drift, new verifier failure, false
+  unsupported diagnostic, or independent `FZ-*`.
+
+## 2026-04-21: Round 47 proxy/mbarrier ordering fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_mbarrier_ordering_round47.md`.
+- Required `make -j8` was a no-op.
+- Core proxy/TMA/MMAv5/mbarrier selector:
+  `232/18114` collected, split-4 result `184 passed, 48 skipped`.
+- Runtime-matrix proxy-adjacent selector:
+  `213/1615` collected, split-4 result `213 passed`.
+- Core scaled-copy linear-accumulator controls:
+  `9 passed`.
+- Checked-in proxy-fence lit guardrail:
+  `1 passed`.
+- Disposable Round 14 and saved sequential-mbarrier reproducers reproduced
+  existing `FZ-20260421-0014`: proxy-fence insertion cannot find an insertion
+  point for sequential independent cross-CTA mbarrier intervals in the full
+  lowering pipeline.
+- Classification: no new proxy/TMA/MMAv5/TMEM-copy ordering bucket; ordinary
+  checked-in proxy-adjacent coverage stayed green.

@@ -3311,3 +3311,34 @@ discovery.
   produced `156 passed, 1459 deselected`. No compiler crash, false
   unsupported diagnostic, runtime miscompile, opcode absence, or new
   independent `FZ-*`.
+
+- 2026-04-21 14:41 UTC: Round 47 copy descriptor layout fuzzing completed.
+  Report: `agents/fuzz_copy_descriptor_layout_variants_round47.md`.
+  Required `make -j8` was a no-op. Runtime-matrix positive copy variants
+  collected `246/1615` and completed split-4 as `242 passed, 4 skipped`;
+  clean copy boundaries collected `67/1615` and passed as `67 passed`;
+  structural copy scales passed as `2 passed`; older `test_core.py` copy
+  controls collected `50/18114` and completed as `45 passed, 5 skipped`.
+  Static copy descriptor views, `warpx2`, two-CTA copy, dense shared
+  rematerialization, scales copy, and clean unsupported boundaries stayed
+  stable. No new independent `FZ-*`.
+
+- 2026-04-21 14:41 UTC: Round 47 lit/IR structural compiler-only fuzzing
+  completed. Report: `agents/fuzz_lit_ir_structural_round47.md`. Required
+  `make -j8` was a no-op and `ninja triton-opt` was up to date. Direct TMEM
+  lit set passed `7/7`; broader NVIDIA GPU lit guardrail passed `16/16`;
+  adjacent TMEM-bearing lit expansion passed `9/10`, with the sole failure
+  `Conversion/relayout_tritongpu.mlir` matching existing `FZ-20260421-0016`
+  unencoded/non-distributed TMEM operand verifier assertion. Structural fuzzer
+  collected `33` and ran as `9 passed, 24 xfailed`. No new independent
+  `FZ-*`.
+
+- 2026-04-21: Round 47 proxy/mbarrier ordering fuzzing completed. Report:
+  `agents/fuzz_proxy_mbarrier_ordering_round47.md`. Required `make -j8` was
+  a no-op. Core proxy/TMA/MMAv5/mbarrier selector collected `232/18114` and
+  completed split-4 as `184 passed, 48 skipped`; runtime-matrix
+  proxy-adjacent selector collected `213/1615` and passed as `213 passed`;
+  core scaled-copy linear-accumulator controls passed as `9 passed`; checked-in
+  proxy-fence lit guardrail passed `1/1`. Disposable Round 14 and saved
+  sequential-mbarrier reproducers reproduced only existing
+  `FZ-20260421-0014`. No new independent `FZ-*`.
