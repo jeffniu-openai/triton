@@ -26662,3 +26662,31 @@ Open after this slice:
   - `/tmp` launcher passed six deterministic launch cases;
   - four-GPU selector sweep passed `28 passed, 1587 deselected` on each
     group.
+
+## 2026-04-21 Round 7 Lane A: scaled-MMAv5 accumulator control-flow expansion
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_mma_controlflow_round7.md`.
+- Temporary harness:
+  `/tmp/tmem_scaled_mma_controlflow_round7_probe.py`.
+- Classification:
+  - expanded `FZ-20260421-0007` across scaled-MMAv5 `use_acc` accumulator
+    subslices selected through dynamic `if`, loop, helper-returned subslices,
+    and indexed contrasts;
+  - direct low/high controls pass, and high-selector `subslice_if`,
+    `subslice_helper`, and `indexed_if` rows pass;
+  - low-selector dynamic rows miscompile across all probed `N`, `K`, and
+    feasible scaled-format cells that reached runtime;
+  - `indexed_helper` compiler failures overlap existing
+    `FZ-20260421-0001` dynamic `ttg.memdesc_index` illegal lowering, so no
+    new independent `FZ-*` id was assigned.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - probe py-compile passed;
+  - collect-only found `410` nodeids;
+  - four-GPU split sweep completed as `103/103/103/101` classified tests;
+  - fresh exact reruns confirmed the low-selector miscompile versus high/direct
+    green contrasts for `subslice_if`, `indexed_if`, `subslice_helper`, and
+    `subslice_loop`.

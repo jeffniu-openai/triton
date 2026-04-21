@@ -527,6 +527,35 @@ remain family-specific and consume a bounded subset of the inventory.
   - temporary control-flow harness reproduced the exact new failure in a fresh
     process and passed the adjacent controls.
 
+### Lane A Round 7, scaled-MMAv5 accumulator control-flow expansion
+
+- Time: 2026-04-21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_mma_controlflow_round7.md`
+- Scope: expanded `FZ-20260421-0007` across scaled-MMAv5 `use_acc`
+  accumulator subslices selected through dynamic `if`, loop, and
+  helper-returned paths; compared low vs high subslices, direct vs indexed vs
+  subslice selection, `N in {32,64,128}`, `K in {128,256}`, selector values,
+  and feasible `mxfp8`/`mxfp4`/`nvfp4` format mixes.
+- Result: no new independent `FZ-*` id. The stable runtime miscompiles all
+  extend the existing `FZ-20260421-0007` owner surface. Dynamic
+  helper-returned indexed-view compiler failures overlap
+  `FZ-20260421-0001`.
+- Key finding:
+  - direct low/high accumulator subslices pass;
+  - high-selector dynamic `if`, helper, and indexed rows pass;
+  - low-selector dynamic `if`, helper, loop, and indexed rows miscompile
+    across the probed `N`, `K`, and scaled-format cells that reach runtime;
+  - `indexed_helper` rows fail earlier in lowering through the existing
+    dynamic `ttg.memdesc_index` illegal-lowering bucket.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_scaled_mma_controlflow_round7_probe.py` py-compiled;
+  - collect-only found `410` nodeids;
+  - four-GPU split sweep completed as `103/103/103/101` classified tests;
+  - fresh exact reruns confirmed selector-sensitive miscompile/pass contrasts
+    for `subslice_if`, `indexed_if`, `subslice_helper`, and `subslice_loop`.
+
 ### Lane D Round 6, Deterministic Structural Generator Prototype
 
 - Time: 2026-04-21 UTC
@@ -794,6 +823,25 @@ remain family-specific and consume a bounded subset of the inventory.
   - high-subslice `if`, direct, and loop rows passed;
   - existing direct scaled-MMAv5 accumulator-subslice `use_acc` matrix rows
     remained green.
+- Round 7 Lane A expansion:
+  - broad corrected harness
+    `/tmp/tmem_scaled_mma_controlflow_round7_probe.py` collected `410`
+    nodeids and classified `140` passes, `210` runtime miscompiles, and
+    `60` overlapping compiler exceptions;
+  - direct low/high controls still pass, and high-selector `subslice_if`,
+    `subslice_helper`, and `indexed_if` rows pass;
+  - low-selector `subslice_if`, `subslice_helper`, `subslice_loop`,
+    `indexed_if`, and `indexed_loop` rows miscompile across the probed
+    `N in {32,64,128}`, `K in {128,256}`, and feasible
+    `mxfp8`/`mxfp4`/`nvfp4` format cells that reach runtime;
+  - fresh confirmations include `subslice_if` `mxfp8xmxfp8`
+    `N=32,K=128,selector=0` with `1520 / 4096` mismatches versus selector
+    `1` and direct controls green; `subslice_if` `N=128,K=256,selector=0`
+    with `11669 / 16384` mismatches; and `indexed_if`
+    `N=64,K=128,selector=0` with `2441 / 8192` mismatches while selector
+    `1` is green;
+  - `indexed_helper` exceptions are dynamic `ttg.memdesc_index`
+    illegal-lowering overlap with `FZ-20260421-0001`, not a new id.
 - Exact repro:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short '/tmp/tmem_mma_scaled_controlflow_round6_probe.py::test_round6_scaled_mma_acc_controlflow[r6-scaled-subslice-if-n64-subslice-if-64-0-2]'`.
 - Promotion status: checked-in strict xfail as of 2026-04-21 09:08 UTC:

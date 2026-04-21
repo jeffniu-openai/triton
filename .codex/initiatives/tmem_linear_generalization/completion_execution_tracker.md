@@ -141,6 +141,15 @@ The project is complete when:
   `agents/fuzz_copy_readback_round7.md`. Validation: required `make -j8`
   no-op, probe py-compile, `/tmp` launcher six cases passed, and four-GPU
   selector sweep passed `28` selected tests per group.
+  2026-04-21 Round 7 Lane A completed scaled-MMAv5 accumulator control-flow
+  expansion without backend repairs. The temporary harness
+  `/tmp/tmem_scaled_mma_controlflow_round7_probe.py` collected `410` nodeids
+  and classified a broad `FZ-20260421-0007` expansion: direct low/high and
+  high-selector dynamic rows pass, while low-selector dynamic `if`, helper,
+  loop, and indexed rows miscompile across the probed `N`, `K`, and feasible
+  scaled-format cells. `indexed_helper` exceptions overlap
+  `FZ-20260421-0001`; no new independent `FZ-*` id was assigned. Report:
+  `agents/fuzz_scaled_mma_controlflow_round7.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

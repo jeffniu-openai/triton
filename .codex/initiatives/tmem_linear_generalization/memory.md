@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 completed Round 7 Lane A scaled-MMAv5 accumulator
+  control-flow expansion. Wrote
+  `agents/fuzz_scaled_mma_controlflow_round7.md` from
+  `/tmp/tmem_scaled_mma_controlflow_round7_probe.py`. The lane expanded
+  `FZ-20260421-0007` across dynamic `if`, loop, helper-returned subslice, and
+  indexed accumulator-view contrasts for `N in {32,64,128}`,
+  `K in {128,256}`, selectors, and feasible `mxfp8`/`mxfp4`/`nvfp4` mixes.
+  Direct low/high controls and high-selector dynamic rows pass; low-selector
+  dynamic rows miscompile across the probed runtime cells. `indexed_helper`
+  exceptions overlap `FZ-20260421-0001`; no new independent `FZ-*` id was
+  assigned. Validation: required `make -j8` no-op, probe py-compile,
+  collect-only `410` nodeids, four-GPU split sweep `103/103/103/101`
+  classified tests, and fresh exact selector contrasts.
+
 - Latest: 2026-04-21 09:13 UTC completed Round 7 Lane C copy/readback
   discovery. Wrote `/tmp/tmem_copy_readback_round7_probe.py` and
   `agents/fuzz_copy_readback_round7.md`. The lane covered no-scales
