@@ -7,7 +7,15 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 35 `ld.red`/descriptor positive
+Latest fuzzing checkpoint: 2026-04-21 Round 35 two-CTA proxy/commit and
+subword guardrails completed. Report:
+`agents/fuzz_twocta_subword_guardrails_round35.md`. Scale/proxy selector
+passed `34` rows; two-CTA commit/proxy-heavy selector collected `325/1615`
+and completed as `288 passed, 37 skipped`; subword and non-f32 `ld.red`
+selector collected `100/1615` and passed as `100 passed`. No new independent
+`FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 35 `ld.red`/descriptor positive
 runtime sweep completed. Reports:
 `agents/fuzz_ldred_ldst_positive_round35.md` and
 `agents/fuzz_audit_priorities_round35.md`. Selector

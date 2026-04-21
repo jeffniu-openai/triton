@@ -2750,3 +2750,12 @@ discovery.
   failures for `row_reverse_n32` and `row_rotate_col_even_odd_n128`, in both
   default and explicit `32x32b` split-N paths. No runtime wrong-result
   miscompile or hard process abort in this lane.
+
+- 2026-04-21: Round 35 two-CTA proxy/commit and subword guardrails completed.
+  Report: `agents/fuzz_twocta_subword_guardrails_round35.md`. Scale/proxy
+  selector collected `34/1615` and passed as `34 passed`; two-CTA
+  commit/proxy-heavy selector collected `325/1615` and completed as
+  `288 passed, 37 skipped`; subword and non-f32 `ld.red` selector collected
+  `100/1615` and passed as `100 passed`. No compiler crash, false unsupported
+  diagnostic, opcode mismatch, runtime miscompile, clean-boundary drift,
+  unexpected xfail/pass transition, or new independent `FZ-*`.

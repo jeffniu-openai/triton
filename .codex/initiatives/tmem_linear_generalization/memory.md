@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 35 two-CTA proxy/commit and subword guardrails
+  completed. Report: `agents/fuzz_twocta_subword_guardrails_round35.md`.
+  Required `make -j8` was a no-op. Scale/proxy selector collected `34/1615`
+  and passed split-4 as `34 passed`. Two-CTA commit/proxy-heavy selector
+  `(twocta or two_cta) and (indexed_view or subslice_view or dense_shared or codegen or tma or plain_kinds) and not reports and not resource`
+  collected `325/1615` and completed as `288 passed, 37 skipped`. Subword and
+  non-f32 `ld.red` selector `ld_red_non_f32 or subword` collected `100/1615`
+  and passed split-4 as `100 passed`. No new independent `FZ-*`.
+
 - Latest: 2026-04-21 Round 35 `ld.red`/descriptor positive runtime sweep
   completed. Reports: `agents/fuzz_ldred_ldst_positive_round35.md` and
   `agents/fuzz_audit_priorities_round35.md`. Required `make -j8` was a no-op.

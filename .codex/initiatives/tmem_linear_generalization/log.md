@@ -30620,6 +30620,23 @@ Open after this slice:
   harness limitation until a faithful JIT-equivalent `triton-opt` pipeline
   proves otherwise.
 
+## 2026-04-21: Round 35 two-CTA proxy and subword guardrails
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_twocta_subword_guardrails_round35.md`.
+- Required `make -j8` was a no-op.
+- Scale/proxy selector
+  `(mbarrier or proxy or cp_scales) and not resource` collected `34/1615` and
+  passed split-4 as `34 passed`.
+- Two-CTA commit/proxy-heavy selector
+  `(twocta or two_cta) and (indexed_view or subslice_view or dense_shared or codegen or tma or plain_kinds) and not reports and not resource`
+  collected `325/1615` and completed split-4 as `288 passed, 37 skipped`.
+- Subword and non-f32 `ld.red` selector `ld_red_non_f32 or subword` collected
+  `100/1615` and passed split-4 as `100 passed`.
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`.
+
 ## 2026-04-21: Round 35 ld.red/descriptor positive sweep
 
 - Wrote
