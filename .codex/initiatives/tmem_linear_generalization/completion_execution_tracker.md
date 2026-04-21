@@ -3543,3 +3543,10 @@ discovery.
   dense shared rematerialization, two-CTA indexed-accumulator MMAv5, and
   two-CTA scales copy passed as `4 passed`. No clean-diagnostic drift,
   compiler crash, runtime miscompile, or new independent `FZ-*`.
+
+- 2026-04-21 15:01 UTC: Round 51 local proxy pair check completed. Report:
+  `agents/fuzz_proxy_pair_round51.md`. `ninja triton-opt` was a no-op.
+  Checked-in `proxy_fence_insertion.mlir` passed `1/1`; minimized
+  `FZ-20260421-0014` repro exited `1` with the expected proxy-fence insertion
+  diagnostic. No checked-in proxy-fence lit drift, `FZ-0014` signature drift,
+  or new independent `FZ-*`.

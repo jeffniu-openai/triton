@@ -32144,3 +32144,15 @@ Open after this slice:
   copy.
 - Classification: no clean-diagnostic drift, compiler crash, runtime
   miscompile, or new independent `FZ-*`.
+
+## 2026-04-21 15:01 UTC: Round 51 local proxy pair check
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_pair_round51.md`.
+- `ninja triton-opt` was a no-op.
+- Checked-in `proxy_fence_insertion.mlir`:
+  `1 passed`.
+- Minimized `FZ-20260421-0014` repro:
+  exit code `1`, expected proxy-fence insertion diagnostic.
+- Classification: no checked-in proxy-fence lit drift, no `FZ-0014` signature
+  drift, and no new independent `FZ-*`.
