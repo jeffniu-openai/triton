@@ -341,6 +341,16 @@ The project is complete when:
   74 deselected`. This points at an over-strict layout CTA-count gate that
   conflates kernel CGA shape with instruction-local `cta_group`. Report:
   `agents/fuzz_multicta_cga_round11.md`.
+  2026-04-21 local post-report structural-fuzzer smoke gate stayed green:
+  required `make -j8` no-op, and
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+  reported `9 passed, 24 xfailed in 8.70s`.
+  2026-04-21 local Round 12 non-f32 `ld.red` descriptor-chain slice stayed
+  green. Collect-only selected `20/1615` for
+  `ld_red and descriptor and not propagate_nan and not reports`; split-4
+  across GPUs 0-3 selected `5/5/5/5` tests and reported aggregate
+  `20 passed`. Durations were stored at
+  `/tmp/tmem_local_r12_ldred_nonf32_descriptor_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -27322,3 +27322,30 @@ Open after this slice:
   1CTA and 2CTA scales copy, and 2CTA indexed `ld.red` in larger CGA launch
   contexts. This appears to conflate kernel CGA size with instruction-local
   `cta_group`.
+
+## 2026-04-21: post-report structural-fuzzer smoke gate
+
+- After integrating and pushing the Lane N/P/Q report checkpoint, reran the
+  checked-in structural fuzzer while Round 12 subagent lanes were active.
+- Required `make -j8` reported no work to do.
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+- Result: `9 passed, 24 xfailed in 8.70s`.
+- No backend repairs were attempted.
+
+## 2026-04-21: Round 12 local non-f32 ld.red descriptor slice
+
+- Ran a compact checked-in runtime-matrix slice around non-f32 `ld.red`
+  descriptor-chain software-reduce behavior while Round 12 subagent lanes were
+  active. No backend or compiler repairs were attempted.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and descriptor and not propagate_nan and not reports'`
+  selected `20 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r12_ldred_nonf32_descriptor_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and descriptor and not propagate_nan and not reports'`
+- Result:
+  - group 1/GPU 0: `5 passed, 1610 deselected in 8.42s`;
+  - group 2/GPU 1: `5 passed, 1610 deselected in 7.99s`;
+  - group 3/GPU 2: `5 passed, 1610 deselected in 7.98s`;
+  - group 4/GPU 3: `5 passed, 1610 deselected in 4.40s`.
+- Aggregate: `20 passed`. No new bucket was found.

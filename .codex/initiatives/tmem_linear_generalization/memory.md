@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local post-report structural-fuzzer smoke gate stayed
+  green. Required `make -j8` reported no work to do. Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
+  Result: `9 passed, 24 xfailed in 8.70s`.
+
+- Latest: 2026-04-21 local Round 12 non-f32 `ld.red` descriptor-chain slice
+  stayed green. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and descriptor and not propagate_nan and not reports'`
+  selected `20/1615` tests. Split-4 execution across GPUs 0-3 with stable
+  caches selected `5` tests per group; aggregate result `20 passed`.
+  Durations were stored at
+  `/tmp/tmem_local_r12_ldred_nonf32_descriptor_durations.json`.
+
 - Latest: 2026-04-21 completed Round 10 Lane N MMAv5/scaled-MMAv5 dynamic
   descriptor-selection fuzzing. Report: `agents/fuzz_mma_dynamic_round10.md`.
   New report-only bucket candidate `FZ-20260421-0011`: plain MMAv5
