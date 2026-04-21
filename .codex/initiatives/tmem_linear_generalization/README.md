@@ -5901,3 +5901,33 @@ When resuming the initiative:
 - Round 28 broad `ld.red` rerun wrote `agents/fuzz_ldred_round28.md`. No new
   bucket; exact failing-node rerun reconfirmed the same six existing
   `FZ-20260421-0012` M64 row-permuted `unsupported dst layout` failures.
+
+## Latest: 2026-04-21 Round 29-31 fuzzing campaign
+
+- Round 29 clean-boundary verifier fuzzing found new `FZ-20260421-0017`:
+  encoded `i64`/`f64` TMEM load/store reaches `lowerTMemLdSt` and aborts on
+  `bitwidth == 32`. Round 30 and Round 31 expanded this bucket to legacy and
+  linear layouts, 1CTA and valid 2CTA rows, initialized alloc, store-only,
+  load-only, roundtrip, descriptor-view load/store at LLVM conversion, and
+  Python/Gluon frontend descriptor-view kernels. Clean contrasts: 64-bit
+  `ld.red` rejects with the f32-only diagnostic, 64-bit `ttng.tmem_copy`
+  passes generated allocation+LLVM probes, and matching 1CTA `float32`/`int32`
+  Python descriptor-view controls pass with roundtrip correctness.
+- Round 29-31 dynamic descriptor and copy probes sharpened existing
+  `FZ-20260421-0001` and `FZ-20260421-0002`: runtime-index memdescs and
+  same-parent branch-selected distinct indices feeding `ttng.tmem_copy` leave
+  illegal `ttg.memdesc_index`, while descriptor-view `ld/st` and `ld.red`
+  wrong-output rows point at descriptor-view layout materialization across SSA
+  and control-flow, not plain branch-carried memdesc values.
+- Round 31 scaled-MMAv5 descriptor operand fuzzing found no new bucket. It
+  revalidated existing `FZ-20260421-0013` scale descriptor-view operand
+  miscompiles, `FZ-20260421-0015` runtime-selected distinct B-scale operand
+  miscompiles, and `FZ-20260421-0010` high-CGA local-layout CTA-count
+  diagnostics. Direct selected scale rows, accumulator subslice controls,
+  multi-MMA scale reuse, checked-in scaled descriptor-view controls, and
+  high-CGA scaled-only controls stayed green.
+- Round 30-31 local guardrails stayed green: descriptor `ld/st` `53 passed`,
+  clean-boundary runtime matrix `184 passed`, TMEM lit baselines passed,
+  descriptor-heavy `ld.red`/scaled rows `54 passed`, view-chain/copy `warpx2`
+  rows `123 passed, 74 skipped`, and the checked-in structural fuzzer stayed
+  stable as `9 passed, 24 xfailed`.
