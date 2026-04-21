@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 13:35 UTC Round 35 `ld.red` descriptor-view chain
+  fuzzing completed. Report:
+  `agents/fuzz_ldred_descriptor_views_round35.md`. Required `make -j8` was a
+  no-op. Temporary subprocess probe
+  `/root/tmp/tmem_ldred_descriptor_views_round35_probe.py` covered direct,
+  rank-4 identity, rank-5 identity, half-row, and half-column
+  `view.load_min/load_max` consumers across identity, row-reversed,
+  column-reversed, and row+column-reversed layouts for `N=64/128`.
+  Direct/rank-identity rows passed as `40 pass`; corrected half-view rerun
+  classified `8 pass`, `8` clean unsupported descriptor-view diagnostics, `4`
+  clean scalar `.x1` reduction diagnostics, `8` existing
+  `FZ-20260421-0022`, and `4` existing `FZ-20260421-0020`. Checked-in
+  selector `ld_red and descriptor_chain and not non_f32` collected `30/1615`
+  and passed split-4 as `30 passed` (`8/8/8/6`). No runtime wrong-result
+  miscompile, opcode mismatch, process abort, false unsupported diagnostic, or
+  new independent `FZ-*`.
+
 - Latest: 2026-04-21 Round 36 B-scale dynamic descriptor-view runtime lane
   completed. Report: `agents/fuzz_bscale_dynamic_views_round36.md`. Required
   `make -j8` was a no-op. Checked-in selector

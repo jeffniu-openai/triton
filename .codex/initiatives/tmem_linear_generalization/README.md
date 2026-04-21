@@ -23,6 +23,18 @@ independent `FZ-*` bucket was found. Excluded harness drafts hit clean
 frontend/API boundaries for scales multibuffering and repeated N=32
 tile-permuted scaled MMAv5.
 
+Latest fuzzing checkpoint: 2026-04-21 Round 35 `ld.red` descriptor-view chain
+lane completed. Report: `agents/fuzz_ldred_descriptor_views_round35.md`.
+Temporary subprocess probe covered direct, rank-4 identity, rank-5 identity,
+half-row, and half-column `view.load_min/load_max` consumers over identity,
+row-reversed, column-reversed, and row+column-reversed layouts for `N=64/128`.
+Direct/rank-identity rows passed as `40 pass`; corrected half-view rerun
+classified `8 pass`, `8` clean unsupported descriptor-view diagnostics, `4`
+clean scalar `.x1` diagnostics, `8` existing `FZ-20260421-0022`, and `4`
+existing `FZ-20260421-0020`. Checked-in selector
+`ld_red and descriptor_chain and not non_f32` passed split-4 as `30 passed`.
+No new independent `FZ-*` bucket was found.
+
 Previous fuzzing checkpoint: 2026-04-21 Round 35 structural descriptor/`ld.red`
 fuzzer slice completed. Report:
 `agents/fuzz_structural_descriptor_ldred_round35.md`. Selector

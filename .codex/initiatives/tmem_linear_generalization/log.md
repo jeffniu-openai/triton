@@ -30842,3 +30842,30 @@ Open after this slice:
 - Failure mode: hard abort with
   `LLVM ERROR: Dimensions must match, ignoring order, but they don't. Got dims: ["dim0", "dim1"] and ["dim1", "dim2"]`.
 - Backend repair remains deferred.
+
+## 2026-04-21 13:35 UTC: Round 35 ld.red descriptor-view chain fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_descriptor_views_round35.md`.
+- Required `make -j8` was a no-op.
+- Temporary subprocess probe:
+  `/root/tmp/tmem_ldred_descriptor_views_round35_probe.py`.
+- Artifacts:
+  `/tmp/tmem_ldred_descriptor_views_round35/summary.json` and
+  `/tmp/tmem_ldred_descriptor_views_round35_half/summary.json`.
+- Probe surface: direct, rank-4 identity, rank-5 identity, half-row, and
+  half-column `tcgen05.ld.red` descriptor-view chains; identity, row-reversed,
+  column-reversed, and row+column-reversed layouts; `N=64/128`; `min` and
+  `max` reductions where selected.
+- Direct/rank-identity matrix: `40 pass`, with one `tcgen05.ld.red` PTX opcode
+  per row and `ttg.memdesc_subslice`/`ttg.memdesc_reshape` preserved in the
+  rank-4/rank-5 TTGIR rows.
+- Corrected half-view rerun: `8 pass`, `8` clean unsupported descriptor-view
+  diagnostics, `4` clean scalar `.x1` reduction diagnostics, `8` existing
+  `FZ-20260421-0022`, and `4` existing `FZ-20260421-0020`.
+- Checked-in guardrail selector:
+  `ld_red and descriptor_chain and not non_f32`; collection `30/1615`;
+  split-4 result `30 passed` (`8/8/8/6` by group).
+- Classification: no runtime wrong-result miscompile, opcode mismatch, process
+  abort, false unsupported diagnostic, or new independent `FZ-*` bucket.
+  Backend repair remains deferred.

@@ -69,6 +69,21 @@ The project is complete when:
   `tcgen05_mma_scaled` and passed split-4 as `5 passed`. No new independent
   `FZ-*`; excluded drafts are clean frontend/API boundaries for scale
   multibuffering and repeated N=32 public-scale MMAv5 rematerialization.
+  2026-04-21 13:35 UTC Round 35 `ld.red` descriptor-view chain lane
+  completed. Artifact: `agents/fuzz_ldred_descriptor_views_round35.md`.
+  Required `make -j8` was a no-op. Temporary subprocess probe
+  `/root/tmp/tmem_ldred_descriptor_views_round35_probe.py` covered direct,
+  rank-4 identity, rank-5 identity, half-row, and half-column
+  `view.load_min/load_max` consumers across identity, row-reversed,
+  column-reversed, and row+column-reversed layouts for `N=64/128`.
+  Direct/rank-identity rows passed as `40 pass`; corrected half-view rerun
+  classified `8 pass`, `8` clean unsupported descriptor-view diagnostics, `4`
+  clean scalar `.x1` diagnostics, `8` existing `FZ-20260421-0022`, and `4`
+  existing `FZ-20260421-0020`. Checked-in selector
+  `ld_red and descriptor_chain and not non_f32` collected `30/1615` and
+  passed split-4 as `30 passed` (`8/8/8/6`). No runtime wrong-result
+  miscompile, opcode mismatch, process abort, false unsupported diagnostic, or
+  new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 13:10 UTC Round 32 FZ-0018 `ld.red` minimization completed.
   Artifact: `agents/fuzz_ldred_fz0018_min_round32.md`. Required `make -j8`
   was a no-op. Temporary subprocess-isolated runtime probe
