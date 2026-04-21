@@ -30600,3 +30600,17 @@ Open after this slice:
   descriptor roundtrip cases; no compiler crash, false unsupported diagnostic,
   opcode mismatch, runtime miscompile, clean-boundary drift, unexpected
   skip/pass transition, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 34 local test_core.py TMEM/multicast guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_test_core_tmem_round34.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(tcgen05 or tmem) and (multicast or shared_inputs or twocta or mma)`.
+- Collection: `122/18114`.
+- Split-4 result: `119 passed, 3 skipped`
+  (`28 passed/3 skipped`, `31 passed`, `31 passed`, `29 passed` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, unexpected skip/pass
+  transition, or new independent `FZ-*` bucket.

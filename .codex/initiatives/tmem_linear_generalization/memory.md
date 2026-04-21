@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 34 local `test_core.py` TMEM/multicast guardrail
+  completed. Report: `agents/fuzz_local_test_core_tmem_round34.md`. Required
+  `make -j8` was a no-op. Selector
+  `(tcgen05 or tmem) and (multicast or shared_inputs or twocta or mma)`
+  collected `122/18114` rows and completed split-4 as `119 passed, 3 skipped`.
+  No compiler crash, false unsupported diagnostic, opcode mismatch, runtime
+  miscompile, clean-boundary drift, unexpected skip/pass transition, or new
+  independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 Round 34 copy `warpx2`/`warpx4` runtime guardrail
   completed. Report: `agents/fuzz_local_copy_warpx2_round34.md`. Required
   `make -j8` was a no-op. Selector

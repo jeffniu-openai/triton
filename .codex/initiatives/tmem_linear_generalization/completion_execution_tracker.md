@@ -176,6 +176,13 @@ The project is complete when:
   false unsupported diagnostic, opcode mismatch, runtime miscompile,
   clean-boundary drift, unexpected xfail/pass transition, or new independent
   `FZ-*`.
+  2026-04-21 Round 34 local `test_core.py` TMEM/multicast guardrail completed.
+  Artifact: `agents/fuzz_local_test_core_tmem_round34.md`. Selector
+  `(tcgen05 or tmem) and (multicast or shared_inputs or twocta or mma)`
+  collected `122/18114` and completed split-4 as `119 passed, 3 skipped`; no
+  compiler crash, false unsupported diagnostic, opcode mismatch, runtime
+  miscompile, clean-boundary drift, unexpected skip/pass transition, or new
+  independent `FZ-*`.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline

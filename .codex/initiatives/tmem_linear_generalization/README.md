@@ -7,7 +7,16 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 34 copy `warpx2`/`warpx4`
+Latest fuzzing checkpoint: 2026-04-21 Round 34 `test_core.py`
+TMEM/multicast guardrail completed. Report:
+`agents/fuzz_local_test_core_tmem_round34.md`. Selector
+`(tcgen05 or tmem) and (multicast or shared_inputs or twocta or mma)`
+collected `122/18114` rows and completed split-4 as `119 passed, 3 skipped`.
+No compiler crash, false unsupported diagnostic, opcode mismatch, runtime
+miscompile, clean-boundary drift, unexpected skip/pass transition, or new
+independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 34 copy `warpx2`/`warpx4`
 runtime guardrail completed. Report:
 `agents/fuzz_local_copy_warpx2_round34.md`. Selector
 `(cp_no_scales and (warpx2 or warpx4 or dense_shared or twocta_128x128b) and not resource)`
@@ -16,7 +25,7 @@ collected `83/1615` checked-in runtime rows and passed split-4 as `83 passed`
 mismatch, runtime miscompile, clean-boundary drift, unexpected xfail/pass
 transition, or new independent `FZ-*` bucket was found.
 
-Previous fuzzing checkpoint: 2026-04-21 Round 34 high-rank descriptor `ld/st`
+Earlier fuzzing checkpoint: 2026-04-21 Round 34 high-rank descriptor `ld/st`
 guardrail completed. Report:
 `agents/fuzz_local_high_rank_ldst_round34.md`. Selector
 `(ldst_descriptor and not reports and not resource and (rank5 or higher_rank or multidim or roundtrip))`
