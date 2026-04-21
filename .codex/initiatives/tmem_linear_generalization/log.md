@@ -30483,6 +30483,38 @@ Open after this slice:
 - Classification: no compiler crash, false unsupported diagnostic, opcode
   mismatch, runtime miscompile, or new independent `FZ-*` bucket.
 
+## 2026-04-21 13:11 UTC: Round 33 dynamic descriptor SSA/control-flow lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_descriptor_round33.md`.
+- Required `make -j8` was a no-op.
+- Temporary probe:
+  `/tmp/tmem_dynamic_descriptor_round33_probe.py`; logs:
+  `/tmp/tmem_dynamic_descriptor_round33_g1.log`,
+  `/tmp/tmem_dynamic_descriptor_round33_g2.log`,
+  `/tmp/tmem_dynamic_descriptor_round33_g3.log`,
+  `/tmp/tmem_dynamic_descriptor_round33_g4.log`,
+  `/tmp/tmem_dynamic_descriptor_round33_plain_mma.log`, and
+  `/tmp/tmem_dynamic_descriptor_round33_scaled_mma.log`.
+- Collection: `100` temporary Python/Gluon rows across runtime
+  `parent.index(ttgl.load(selector))`, same-parent distinct-index branch
+  selection, loop-carried descriptors, direct versus chain0 descriptor views,
+  and load, store, `tcgen05.copy`, hardware `.ld.red`, and mixed
+  load/store/`.ld.red` consumers.
+- Split-4 result by shard: `12 failed, 13 passed`; `8 failed, 17 passed`;
+  `17 failed, 8 passed`; `17 failed, 8 passed`.
+- Manual classification: `46` pass, `20` existing `FZ-20260421-0001`,
+  `24` existing `FZ-20260421-0002`/`FZ-20260421-0003`, and `10` clean
+  unsupported chain0 copy planner diagnostics.
+- Practical MMAv5 controls: plain indexed accumulator rows passed as
+  `2 passed`; scaled-MMAv5 dynamic low-subslice accumulator sentinel remained
+  `1 xfailed` under existing `FZ-20260421-0007`.
+- Classification: no new independent `FZ-*` bucket. Direct loop-carried load,
+  store, copy, `ld.red`, and mixed consumers passed; same-parent
+  distinct-index branch selection remains copy-specific for late illegal
+  `ttg.memdesc_index`; chain0 read/reduction rows remain wrong-result
+  descriptor-view evidence.
+
 ## 2026-04-21 13:18 UTC: Round 33 compiler-boundary fuzz lane
 
 - Wrote
