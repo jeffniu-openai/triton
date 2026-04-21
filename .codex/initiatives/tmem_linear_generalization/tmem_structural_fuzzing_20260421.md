@@ -2558,6 +2558,36 @@ remain family-specific and consume a bounded subset of the inventory.
   unsupported diagnostic, or new independent `FZ-*`; green controls adjacent to
   `FZ-20260421-0015`.
 
+### Round 19 Lane AU plain proxy-fence reproducer
+
+- Time: 2026-04-21 12:18 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_fence_plain_reproducer_round19.md`
+- Saved reproducer:
+  `/tmp/tmem_fz0014_plain_seq_round19_repro.mlir.make_llir.repro.mlir`.
+- Result: branch, upstream main
+  `dea2e9d7324309fdc9198144669621f57f3704a2`, and merge-base
+  `2c7ce4925d37802dd84dfde1f6458cae19485617` all fail
+  `triton-opt --run-reproducer` with the same proxy-fence insertion
+  diagnostic.
+- Classification: `FZ-20260421-0014` plain-only sequential mbarrier failure is
+  preexisting upstream, not branch-specific. The minimized reproducer has
+  `ttg.tensor_memory_size = 0` and no TMEM/tcgen05 ops.
+
+### Round 19 local ld.red selector
+
+- Time: 2026-04-21 12:20 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldred_round19.md`
+- Selector:
+  `ld_red and not reports and not resource` collected `243/1615`.
+- Runtime:
+  `237 passed, 6 failed`.
+- Classification: existing `FZ-20260421-0012`; no new independent `FZ-*`.
+  The red rows are checked-in M64 row/col-permuted split-N `ld.red` runtime
+  tests that reject effective non-identity row bases with `unsupported dst
+  layout`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

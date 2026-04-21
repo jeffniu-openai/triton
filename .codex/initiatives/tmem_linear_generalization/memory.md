@@ -1,5 +1,26 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 12:18 UTC Lane AU completed the plain-only proxy-fence
+  reproducer comparison. Report:
+  `agents/fuzz_proxy_fence_plain_reproducer_round19.md`. Saved MLIR:
+  `/tmp/tmem_fz0014_plain_seq_round19_repro.mlir.make_llir.repro.mlir`.
+  Branch, upstream main
+  `dea2e9d7324309fdc9198144669621f57f3704a2`, and merge-base
+  `2c7ce4925d37802dd84dfde1f6458cae19485617` all fail
+  `triton-opt --run-reproducer` with the same proxy-fence insertion diagnostic.
+  The repro has `ttg.tensor_memory_size = 0` and no TMEM/tcgen05 ops.
+  Classification: `FZ-20260421-0014` is a preexisting upstream proxy-fence
+  insertion limitation newly exposed by TMEM copy/mbarrier structural fuzzing,
+  not a branch-specific TMEM regression.
+
+- Latest: 2026-04-21 12:20 UTC local `ld.red` selector reproduced existing
+  `FZ-20260421-0012`. Report: `agents/fuzz_local_ldred_round19.md`. Selector
+  `ld_red and not reports and not resource` collected `243/1615` and finished
+  as `237 passed, 6 failed`. The six failures are checked-in M64 row/col
+  permuted split-N `ld.red` rows rejecting destination layouts with
+  `unsupported dst layout`; no new bucket, but these are live red runtime tests
+  in the post-fuzz repair backlog.
+
 - Latest: 2026-04-21 12:09 UTC Round 19 dynamic subslice/mixed-consumer and
   structural xfail sentinel evidence landed. Reports:
   `agents/fuzz_dynamic_subslice_mixed_consumers_round19.md` and

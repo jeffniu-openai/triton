@@ -70,6 +70,20 @@ which is a negative contrast for `FZ-20260421-0015`. Local structural xfail
 selector collected `11/1648` and stayed `11 xfailed`; checked-in B-scale
 positive controls passed `3/3`.
 
+Newest proxy-fence classification: Lane AU report
+`agents/fuzz_proxy_fence_plain_reproducer_round19.md` saved a plain-only MLIR
+reproducer for `FZ-20260421-0014` and verified it with
+`triton-opt --run-reproducer`. The failure is preexisting on upstream main
+`dea2e9d7324309fdc9198144669621f57f3704a2` and merge-base
+`2c7ce4925d37802dd84dfde1f6458cae19485617`, not branch-specific. The
+reproducer has `ttg.tensor_memory_size = 0` and no TMEM/tcgen05 ops.
+
+Newest local red selector: `agents/fuzz_local_ldred_round19.md`. Selector
+`ld_red and not reports and not resource` collected `243/1615` and completed as
+`237 passed, 6 failed`. The failures reproduce existing `FZ-20260421-0012`:
+M64 row/col-permuted split-N `ld.red` destination-layout lowering rejects
+effective non-identity row bases with `unsupported dst layout`.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and

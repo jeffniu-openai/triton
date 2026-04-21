@@ -2023,3 +2023,19 @@ signal handling:
   `agents/fuzz_local_bscale_controls_round19.md`. Selector
   `mma_scaled and bscale and not reports` collected `3/1615` rows and passed
   as `3 passed`; no new bucket.
+
+- 2026-04-21 12:18 UTC: integrated Lane AU plain-only proxy-fence reproducer
+  report: `agents/fuzz_proxy_fence_plain_reproducer_round19.md`. Saved
+  reproducer
+  `/tmp/tmem_fz0014_plain_seq_round19_repro.mlir.make_llir.repro.mlir`.
+  Branch, upstream main `dea2e9d7324309fdc9198144669621f57f3704a2`, and
+  merge-base `2c7ce4925d37802dd84dfde1f6458cae19485617` all fail with the same
+  proxy-fence insertion diagnostic. Classification: `FZ-0014` is preexisting
+  upstream and not branch-specific; TMEM copy/mbarrier tests newly expose it.
+
+- 2026-04-21 12:20 UTC: local `ld.red` selector started. Report:
+  `agents/fuzz_local_ldred_round19.md`. Selector
+  `ld_red and not reports and not resource` collected `243/1615`; split-4
+  runtime completed as `237 passed, 6 failed`. Failures reproduce existing
+  `FZ-20260421-0012` M64 row/col-permuted split-N destination-layout coverage
+  gap; no new bucket.

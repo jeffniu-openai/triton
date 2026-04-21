@@ -28687,6 +28687,49 @@ Open after this slice:
   unsupported diagnostic, or new independent `FZ-*`. These are green controls
   adjacent to but not clearing report-only `FZ-20260421-0015`.
 
+## 2026-04-21 12:18 UTC: Round 19 Lane AU plain proxy-fence reproducer
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_fence_plain_reproducer_round19.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Saved branch reproducer:
+  `/tmp/tmem_fz0014_plain_seq_round19_repro.mlir.make_llir.repro.mlir`.
+- Verified branch failure with:
+  `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --run-reproducer`.
+- Compared in isolated worktree `/tmp/triton-upstream-main-check`:
+  - upstream main `dea2e9d7324309fdc9198144669621f57f3704a2`;
+  - merge-base `2c7ce4925d37802dd84dfde1f6458cae19485617`.
+- Both comparison points fail the same saved reproducer with the same
+  proxy-fence insertion diagnostic. The standalone Python probe generated
+  identical branch and upstream-main reproducer hashes.
+- Classification: `FZ-20260421-0014` plain-only sequential mbarrier failure is
+  preexisting on upstream main and merge-base, not branch-specific. TMEM copy
+  tests legitimately expose the same proxy-fence interval limitation, but the
+  minimized root surface has no TMEM allocation, no `tcgen05`, and
+  `ttg.tensor_memory_size = 0`.
+
+## 2026-04-21 12:20 UTC: Round 19 local ld.red selector started
+
+- Wrote initial pending report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldred_round19.md`.
+- Selector `ld_red and not reports and not resource` collected `243/1615`.
+- Split-4 runtime completed as `237 passed, 6 failed`.
+- Failures:
+  - `test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_default_layout[row_reverse_n32-min]`;
+  - `test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_default_layout[row_reverse_n32-max]`;
+  - `test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_default_layout[row_rotate_col_even_odd_n128-min]`;
+  - `test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_default_layout[row_rotate_col_even_odd_n128-max]`;
+  - `test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn[row_reverse_n32]`;
+  - `test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn[row_rotate_col_even_odd_n128]`.
+- Classification: no new independent `FZ-*`. The failures reproduce existing
+  `FZ-20260421-0012`: M64 `ld.red` destination-layout lowering rejects
+  effective non-identity/permuted row bases in split-N shapes with
+  `unsupported dst layout` diagnostics. These are checked-in runtime tests red
+  on current HEAD and should remain in the repair backlog after the
+  discovery-only fuzzing phase.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote
