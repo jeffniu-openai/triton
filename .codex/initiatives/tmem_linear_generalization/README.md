@@ -5673,3 +5673,50 @@ When resuming the initiative:
   `393 passed, 37 skipped` over `430` collected 2CTA/multicast/CGA runtime
   rows.
 - No new buckets from those green slices.
+
+## Latest: 2026-04-21 Round 24 FZ-0016 minimization
+
+- Lane BG completed `agents/fuzz_fz0016_min_round24.md`. No backend/compiler
+  repair was attempted.
+- `FZ-20260421-0016` is now minimized to parse-time verification of a single
+  `ttng.tmem_alloc` with an unencoded tensor operand. The minimal representative
+  is `/tmp/tmem_fz0016_round24/minimal_unencoded_scales_i8.mlir`.
+- The crash does not require `-relayout-tritongpu` or
+  `-convert-triton-to-tritongpu`; parse-only `triton-opt -split-input-file`
+  aborts with `dyn_cast on a non-existent value` through
+  `TMEMAllocOp::verify -> verifyTMEMOperand -> computeTMemLdStEncodingInfo ->
+  toLinearEncoding`.
+- Neighboring fuzzing shows unencoded `i8` operands abort for standard,
+  linear, and scales TMEM results; unencoded `f16`/`f32` operands abort for
+  standard and linear results; invalid `f16`/`f32` scales rows produce the clean
+  `bitwidth must be 8` diagnostic; encoded operand rows produce ordinary
+  operand-compatibility diagnostics. This is a verifier robustness gap, not a
+  relayout pass crash.
+
+## Latest: 2026-04-21 Round 24 mixed scaled-MMAv5 operands
+
+- Lane BH completed `agents/fuzz_scaled_mixed_operands_round24.md`. No
+  backend/compiler repair was attempted.
+- Mixed kernels combined dynamic selected accumulator views, reshape/permute/
+  reshape scale descriptor views, selected direct B-scale descriptors,
+  allocation-order variants, and side-channel `tmem_load` probes.
+- No new independent `FZ-*` bucket was found. Direct selected B-scale plus
+  runtime-selected accumulator-parent rows passed with zero side-channel
+  mismatches. Every scale descriptor-view row miscompiled while side-channel
+  selected scale loads stayed correct, so those rows classify as existing
+  `FZ-20260421-0013`.
+- The exact previous `FZ-20260421-0015` side-channel reproducer still fails on
+  this HEAD; nearby direct mixed kernels are negative contrasts showing that
+  `FZ-0015` is more structurally sensitive than "any direct runtime selected
+  B-scale".
+- Lane BH completed `agents/fuzz_scaled_mixed_operands_round24.md`. No new
+  independent `FZ-*` bucket: mixed scaled-MMAv5 probes keep direct selected
+  B-scale rows green in nearby compositions, descriptor-view scale operands
+  still miscompile with correct side-channel loads under existing `FZ-0013`,
+  and the exact previous `FZ-0015` side-channel reproducer remains live. Keep
+  `FZ-0007`, `FZ-0013`, and `FZ-0015` separate until repair work proves they
+  share a root cause.
+- Local structural crash repro guardrail
+  `agents/fuzz_local_structural_crash_round24.md` reran the three checked-in
+  child-process crash rows and stayed `3 xfailed`, preserving existing
+  `FZ-0005`, `FZ-0008`, and `FZ-0009` classifications.

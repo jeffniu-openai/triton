@@ -2615,6 +2615,96 @@ remain family-specific and consume a bounded subset of the inventory.
   memdesc subview split.
 - Classification: no compiler-only regression or new `FZ-*` bucket.
 
+### Round 24 local clean-boundary sweep
+
+- Time: 2026-04-21 13:40 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundary_round24.md`
+- Selector:
+  `reports_clean or reports_tmem_oor or clean_unsupported or clean_error`
+  collected `184/1615`.
+- Split-4 result:
+  `184 passed` (`46/46/46/46`).
+- Classification: no unexpected failure, unexpected pass, compiler crash, or
+  new independent `FZ-*` bucket.
+
+### Round 24 Lane BI structural generator prototype
+
+- Time: 2026-04-21 13:35 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_generator_round24.md`
+- Prototype:
+  `/tmp/tmem_structural_generator_round24.py`.
+- Rerun result:
+  `12` generated cases: `7` green, `3` clean unsupported, `2` existing
+  `FZ-20260421-0012`.
+- Classification: no new independent `FZ-*`; generated M64 row-basis
+  `ld.red` rows stayed in `FZ-0012`, lifted rank-4 descriptor roundtrips stayed
+  clean unsupported, and the report records a promotion plan for deterministic
+  checked-in generator seeds.
+
+### Round 24 Lane BG FZ-0016 minimization
+
+- Time: 2026-04-21 13:40 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0016_min_round24.md`
+- Minimal reproducer:
+  `/tmp/tmem_fz0016_round24/minimal_unencoded_scales_i8.mlir`.
+- Result:
+  parse-only `triton-opt` aborts in `TMEMAllocOp::verify` via
+  `toLinearEncoding` on an unencoded operand tensor. The crash is not specific
+  to relayout or conversion pipelines.
+- Classification: sharpens `FZ-20260421-0016`; no new independent `FZ-*`.
+
+### Round 24 local selector-permuted copy rows
+
+- Time: 2026-04-21 13:50 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_selector_copy_round24.md`
+- Selector:
+  `dynamic or generic or branch or selector` collected `4/1615` current
+  selector-permuted no-scales copy rows.
+- Runtime result:
+  `4 passed`.
+- Classification: no new independent `FZ-*`; narrow green guardrail only.
+
+### Round 24 local structural guardrail
+
+- Time: 2026-04-21 13:55 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_round24.md`
+- Selector:
+  `not allocator_crash and not optimizer_crash` collected `30/33`.
+- Split-4 result:
+  `9 passed, 21 xfailed`.
+- Classification: no unexpected pass/fail, additional compiler crash, runtime
+  miscompile outside known sentinels, or new independent `FZ-*`.
+
+### Round 24 Lane BH mixed scaled-MMAv5 operands
+
+- Time: 2026-04-21 13:45 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_mixed_operands_round24.md`
+- Result:
+  no new independent `FZ-*`. Direct selected B-scale plus runtime-selected
+  accumulator-parent mixed rows passed. Any mixed row consuming scale
+  reshape/permute/reshape descriptor views miscompiled with clean side-channel
+  loads and matching opcode counts, staying in `FZ-0013`. Exact `FZ-0015`
+  old reproducer still fails.
+- Classification: keeps `FZ-0007`, `FZ-0013`, and `FZ-0015` separate.
+
+### Round 24 local structural crash guardrail
+
+- Time: 2026-04-21 14:00 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_crash_round24.md`
+- Selector:
+  `allocator_crash or optimizer_crash`.
+- Result:
+  `3 xfailed`.
+- Classification: no changed crash mode; rows remain existing `FZ-0005`,
+  `FZ-0008`, and `FZ-0009`.
+
 ### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
 
 - Time: 2026-04-21 12:58 UTC
@@ -2986,3 +3076,65 @@ remain family-specific and consume a bounded subset of the inventory.
   `393 passed, 37 skipped`.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
+
+### Round 24 Lane BG FZ-0016 verifier minimization
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0016_min_round24.md`
+- Minimal representative:
+  `/tmp/tmem_fz0016_round24/minimal_unencoded_scales_i8.mlir`
+- Classification: existing candidate `FZ-20260421-0016`, sharpened. This is a
+  parse/verifier-time `ttng.tmem_alloc` operand-layout crash. The minimal
+  repro aborts with `dyn_cast on a non-existent value` even under parse-only
+  `triton-opt -split-input-file --mlir-disable-threading`; relayout passes are
+  not required.
+- Neighboring fuzzing:
+  unencoded `i8` operands abort for standard, linear, and scales TMEM results;
+  unencoded `f16`/`f32` operands abort for standard and linear TMEM results;
+  invalid `f16`/`f32` scales rows keep the clean `bitwidth must be 8`
+  diagnostic; encoded operand rows produce ordinary compatibility diagnostics.
+- No backend/compiler repair was attempted. The eventual repair target is the
+  TMEM operand verifier / encoding-info path before calling
+  `toLinearEncoding` on unencoded tensor types.
+
+### Round 24 Lane BH mixed scaled-MMAv5 operands
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_mixed_operands_round24.md`
+- Classification: no new independent `FZ-*` bucket.
+- Direct selected B-scale descriptors plus runtime-selected accumulator-parent
+  views passed in mixed kernels with correct side-channel loads.
+- Mixed kernels that feed scaled-MMAv5 through scale descriptor views still
+  miscompile with correct side-channel loads and remain in
+  `FZ-20260421-0013`.
+- The exact previous `FZ-20260421-0015` side-channel reproducer still fails,
+  so `FZ-0015` remains live but structurally narrower than broad direct
+  selected-B-scale use.
+- Keep `FZ-20260421-0007`, `FZ-20260421-0013`, and
+  `FZ-20260421-0015` separate until backend repairs prove a shared root cause.
+
+### Round 24 local structural crash repro guardrail
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_crash_round24.md`
+- Selector:
+  `allocator_crash or optimizer_crash`
+- Result:
+  `30 deselected, 3 xfailed`
+- Classification: no unexpected pass/failure and no changed crash mode. The
+  checked-in child-process crash sentinels continue to cover existing
+  `FZ-20260421-0005`, `FZ-20260421-0008`, and `FZ-20260421-0009`.
+
+### Round 24 local selector and structural guardrails
+
+- Reports:
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_selector_copy_round24.md`
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_round24.md`
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_crash_round24.md`
+- Selector-permuted no-scales copy rows collected `4/1615` and passed as
+  `4 passed`.
+- Checked-in structural fuzzer non-crash rows collected `30/33` and completed
+  split-4 as `9 passed, 21 xfailed`.
+- Structural crash repro wrappers completed as `3 xfailed`.
+- Classification: no unexpected pass/fail, changed crash mode, or new
+  independent `FZ-*` bucket.

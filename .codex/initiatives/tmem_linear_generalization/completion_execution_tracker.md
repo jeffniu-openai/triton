@@ -2160,3 +2160,70 @@ signal handling:
 - 2026-04-21 13:30 UTC: local compiler lit baseline completed. Report:
   `agents/fuzz_local_lit_baseline_round24.md`. Four TMEM lit tests passed; no
   new bucket.
+
+- 2026-04-21 13:40 UTC: local clean-boundary sweep completed. Report:
+  `agents/fuzz_local_clean_boundary_round24.md`. Selector collected `184/1615`
+  and passed split-4 as `184 passed`; no new bucket.
+
+- 2026-04-21 13:35 UTC: Lane BI structural generator prototype completed.
+  Report: `agents/fuzz_structural_generator_round24.md`. Temporary generator
+  ran 12 cases: `7` green, `3` clean unsupported, `2` existing `FZ-0012`; no
+  new bucket.
+- 2026-04-21 Round 24 Lane BG `FZ-0016` minimization completed. Report:
+  `agents/fuzz_fz0016_min_round24.md`. No backend/compiler repair was
+  attempted. The crash is parse/verifier-time, not relayout-pass-time:
+  `/tmp/tmem_fz0016_round24/minimal_unencoded_scales_i8.mlir` aborts under
+  parse-only `triton-opt -split-input-file --mlir-disable-threading` through
+  `TMEMAllocOp::verify -> verifyTMEMOperand -> computeTMemLdStEncodingInfo ->
+  toLinearEncoding`. Neighboring matrix: unencoded `i8` operands abort for
+  standard/linear/scales TMEM results; unencoded `f16`/`f32` abort for
+  standard/linear; invalid `f16`/`f32` scales rows keep the clean bitwidth
+  diagnostic; encoded operands produce ordinary compatibility diagnostics.
+  Continue discovery-only fuzzing and defer the verifier fix until the fuzzing
+  campaign stops finding new failures or the user pivots.
+- 2026-04-21 Round 24 Lane BH mixed scaled-MMAv5 operand fuzzing completed.
+  Report: `agents/fuzz_scaled_mixed_operands_round24.md`. No new independent
+  bucket. Mixed direct selected B-scale plus runtime-selected accumulator-parent
+  rows passed; mixed scale descriptor-view rows miscompiled with clean
+  side-channel loads and stay under `FZ-0013`; the exact previous `FZ-0015`
+  side-channel reproducer still fails. Keep `FZ-0007`, `FZ-0013`, and
+  `FZ-0015` separate for repair planning.
+- 2026-04-21 local structural crash guardrail completed. Report:
+  `agents/fuzz_local_structural_crash_round24.md`. Selector
+  `allocator_crash or optimizer_crash` remained `3 xfailed`; existing
+  `FZ-0005`, `FZ-0008`, and `FZ-0009` crash sentinels did not unexpectedly
+  pass or change mode.
+
+- 2026-04-21 13:40 UTC: Lane BG `FZ-0016` minimization completed. Report:
+  `agents/fuzz_fz0016_min_round24.md`. Minimal parse-only reproducer saved at
+  `/tmp/tmem_fz0016_round24/minimal_unencoded_scales_i8.mlir`; no new bucket
+  beyond sharpened `FZ-0016`.
+
+- 2026-04-21 13:50 UTC: local selector-permuted copy guardrail completed.
+  Report: `agents/fuzz_local_selector_copy_round24.md`. Selector collected
+  `4/1615` and passed as `4 passed`; no new bucket.
+
+- 2026-04-21 13:55 UTC: Lane BH mixed scaled-MMAv5 operands completed.
+  Report: `agents/fuzz_scaled_mixed_operands_round24.md`. No new bucket:
+  direct selected-B/runtime-selected-accumulator-parent rows passed; all
+  scale descriptor-view rows miscompiled with clean side-channel loads and
+  classify as existing `FZ-0013`; exact `FZ-0015` side-channel reproducer
+  remains live and distinct.
+
+- 2026-04-21 13:55 UTC: local structural guardrail completed. Report:
+  `agents/fuzz_local_structural_round24.md`. Selector collected `30/33` and
+  completed as `9 passed, 21 xfailed`; no new bucket.
+
+- 2026-04-21 13:45 UTC: Lane BH mixed scaled-MMAv5 operand fuzzing completed.
+  Report: `agents/fuzz_scaled_mixed_operands_round24.md`. No new bucket;
+  scale-view rows stayed `FZ-0013`, exact `FZ-0015` still fails, and nearby
+  direct mixed selected-B-scale/accumulator rows passed.
+
+- 2026-04-21 14:00 UTC: local structural crash guardrail completed. Report:
+  `agents/fuzz_local_structural_crash_round24.md`. Selector completed as
+  `3 xfailed`; no changed crash mode.
+
+- 2026-04-21 14:00 UTC: local structural crash repro guardrail completed.
+  Report: `agents/fuzz_local_structural_crash_round24.md`. Selector
+  `allocator_crash or optimizer_crash` completed as `3 xfailed`; no changed
+  failure mode and no new bucket.
