@@ -27089,3 +27089,35 @@ Open after this slice:
   - group 3/GPU 2: `21 passed, 20 skipped, 1574 deselected in 27.36s`;
   - group 4/GPU 3: `39 passed, 1576 deselected in 41.53s`.
 - Aggregate: `108 passed, 54 skipped`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 Lane K allocator/resource fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_allocator_resource_round10.md`.
+- Classification: no new independent `FZ-*` bucket. The temporary
+  subprocess-isolated probes re-confirmed:
+  - `FZ-20260421-0005/0009`: `ld/st` `256x32`/`512x32` compilation failures
+    and `ld.red` `256x32`/`512x32` assertion crashes;
+  - `FZ-20260421-0003`: f16 `ld/st` descriptor chain2 miscompile;
+  - `FZ-20260421-0004`: 2CTA indexed `ld.red` plain-load fallback.
+- Clean boundaries also reproduced:
+  - 2CTA copy `256x256` clean tensor-memory OOR;
+  - scaled-MMA tile-permuted accumulator `N=16` clean unsupported diagnostic.
+
+## 2026-04-21: Round 10 cp_scales runtime slice
+
+- Collected and ran the checked-in `cp_scales` selector across all four GPUs
+  with stable per-GPU caches.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k cp_scales`
+  selected `34 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_cp_scales_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales'`
+- Result:
+  - group 1/GPU 0: `9 passed, 1606 deselected in 4.17s`;
+  - group 2/GPU 1: `9 passed, 1606 deselected in 4.77s`;
+  - group 3/GPU 2: `9 passed, 1606 deselected in 4.62s`;
+  - group 4/GPU 3: `7 passed, 1608 deselected in 4.66s`.
+- Aggregate: `34 passed`. No backend repairs were attempted.

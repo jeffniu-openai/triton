@@ -138,6 +138,20 @@ When resuming the initiative:
   `/tmp/tmem_local_r10_ldst_descriptor_broad_durations.json`. Aggregate
   result: `108 passed, 54 skipped`.
 
+- 2026-04-21: completed Round 10 Lane K allocator/resource-boundary
+  adversarial fuzzing. Wrote `agents/fuzz_allocator_resource_round10.md`.
+  No new independent `FZ-*` bucket was found. Fresh probes re-confirmed
+  allocator/compiler-crash behavior for the `FZ-20260421-0005/0009` 256-row
+  and larger `ld/st`/`ld.red` parents, an `FZ-20260421-0003` f16 descriptor
+  chain miscompile, an `FZ-20260421-0004` 2CTA indexed `ld.red` opcode
+  fallback, a clean 2CTA copy `256x256` OOR boundary, and a clean scaled-MMA
+  tile-permuted `N=16` unsupported diagnostic.
+
+- 2026-04-21: local Round 10 `cp_scales` runtime slice stayed green. The
+  selector collected `34/1615` tests and ran split-4 across GPUs 0-3 with
+  stable caches and durations at `/tmp/tmem_local_r10_cp_scales_durations.json`.
+  Aggregate result: `34 passed`.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

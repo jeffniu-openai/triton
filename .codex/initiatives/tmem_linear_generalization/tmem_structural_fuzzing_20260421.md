@@ -194,6 +194,23 @@ remain family-specific and consume a bounded subset of the inventory.
 - Follow-up: keep `FZ-20260421-0004` and `FZ-20260421-0008` as the owners for
   these modifier/NaN variants; no backend repairs during discovery mode.
 
+### Lane K Round 10, Allocator and Resource Boundaries
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_allocator_resource_round10.md`
+- Scope: subprocess-isolated probes around live parent vs selected child size,
+  direct index/slice/subslice chains, `M` around `64/128/256/512`, `N` around
+  `32/64/128/256`, `ld/st`, `ld.red`, copy, and scaled-MMAv5 accumulator
+  descriptor paths.
+- Result: no new independent `FZ-*` bucket. Fresh probes map to existing
+  buckets: allocator/compiler failures for `ld/st` and `ld.red` 256-row and
+  larger parents under `FZ-20260421-0005/0009`, f16 chain2 `ld/st` descriptor
+  miscompile under `FZ-20260421-0003`, and 2CTA indexed `ld.red` opcode
+  fallback under `FZ-20260421-0004`.
+- Clean boundaries: 2CTA copy `256x256` OOR and scaled-MMA tile-permuted
+  `N=16` unsupported diagnostic.
+
 ### Lane A2 Round 2, ld/st and ld.red Promotion
 
 - Time: 2026-04-21 09:10 UTC

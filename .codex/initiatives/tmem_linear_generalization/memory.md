@@ -75,6 +75,22 @@
   Durations were stored at
   `/tmp/tmem_local_r10_ldst_descriptor_broad_durations.json`.
 
+- Latest: 2026-04-21 completed Round 10 Lane K allocator/resource-boundary
+  fuzzing. Report: `agents/fuzz_allocator_resource_round10.md`. No new
+  independent `FZ-*`. Fresh probes classify as existing owners: `ld/st`
+  `256x32`/`512x32` compilation failures and `ld.red` `256x32`/`512x32`
+  assertion crashes under `FZ-20260421-0005/0009`, f16 chain2 `ld/st`
+  descriptor miscompile under `FZ-20260421-0003`, and 2CTA indexed `ld.red`
+  plain-load fallback under `FZ-20260421-0004`. Clean boundaries also
+  reproduced: 2CTA copy `256x256` OOR and scaled-MMA tile-permuted `N=16`
+  unsupported diagnostic.
+
+- Latest: 2026-04-21 local Round 10 `cp_scales` runtime slice stayed green.
+  Collect-only for `python/test/gluon/test_tmem_runtime_matrix.py -k cp_scales`
+  selected `34/1615` tests. Split-4 execution across GPUs 0-3 selected
+  `9`, `9`, `9`, and `7` tests; aggregate result `34 passed`. Durations were
+  stored at `/tmp/tmem_local_r10_cp_scales_durations.json`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

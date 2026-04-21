@@ -259,6 +259,16 @@ The project is complete when:
   `41/41/41/39` tests, and the aggregate result was `108 passed, 54 skipped`.
   Durations were stored at
   `/tmp/tmem_local_r10_ldst_descriptor_broad_durations.json`.
+  2026-04-21 Round 10 Lane K completed allocator/resource-boundary fuzzing
+  without backend repairs. No new independent `FZ-*` id. Fresh probes mapped
+  to existing allocator/compiler-crash buckets `FZ-20260421-0005/0009`, f16
+  descriptor-chain miscompile `FZ-20260421-0003`, 2CTA indexed `ld.red`
+  fallback `FZ-20260421-0004`, and clean copy/scaled-MMA boundaries. Report:
+  `agents/fuzz_allocator_resource_round10.md`.
+  2026-04-21 local Round 10 `cp_scales` runtime slice stayed green:
+  collect-only selected `34/1615`, split-4 across GPUs 0-3 selected
+  `9/9/9/7` tests, and all `34` passed. Durations were stored at
+  `/tmp/tmem_local_r10_cp_scales_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive
