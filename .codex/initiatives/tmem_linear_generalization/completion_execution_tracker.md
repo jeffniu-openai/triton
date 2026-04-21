@@ -2549,3 +2549,9 @@ signal handling:
   `(ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip)`
   collected `141/1615` and passed split-4 as `141 passed`; group 3 was slow
   (`104.45s`) but completed. No new independent `FZ-*` bucket.
+
+- 2026-04-21: Round 32 local plain-MMAv5 accumulator/view guardrail completed.
+  Report: `agents/fuzz_local_mma_accumulator_round32.md`. Selector
+  `tmem_runtime_matrix_mma and not ldst and not mma_scaled and not reports and not resource and (m64 or twocta or indexed_acc_view or acc_subslice_view)`
+  collected `185/1615` and passed split-4 as `185 passed`. No new independent
+  `FZ-*` bucket.

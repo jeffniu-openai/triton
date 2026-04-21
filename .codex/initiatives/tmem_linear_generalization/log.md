@@ -30363,6 +30363,17 @@ Open after this slice:
 - Classification: no compiler crash, false unsupported diagnostic, opcode
   mismatch, runtime miscompile, or new independent `FZ-*` bucket.
 
+## 2026-04-21: Round 32 local plain-MMAv5 accumulator/view guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_accumulator_round32.md`.
+- Selector:
+  `tmem_runtime_matrix_mma and not ldst and not mma_scaled and not reports and not resource and (m64 or twocta or indexed_acc_view or acc_subslice_view)`.
+- Collection: `185/1615`.
+- Split-4 result: `185 passed` (`47/47/47/44` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*` bucket.
+
 ## 2026-04-21: Round 32 local ld/st narrow and half-row guardrail
 
 - Wrote

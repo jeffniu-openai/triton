@@ -86,6 +86,16 @@ remain family-specific and consume a bounded subset of the inventory.
   `ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip`
   collected `141/1615` rows and passed split-4 as `141 passed`.
 
+### Round 32 Local, plain-MMAv5 accumulator/view guardrail
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_accumulator_round32.md`.
+- Scope: checked-in runtime rows selected by
+  `tmem_runtime_matrix_mma and not ldst and not mma_scaled and not reports and not resource and (m64 or twocta or indexed_acc_view or acc_subslice_view)`.
+- Result: no new independent `FZ-*` bucket. Selector collected `185/1615`
+  rows and passed split-4 as `185 passed`.
+
 ### Round 31 Lane, ld.red descriptor/layout extremes
 
 - Time: 2026-04-21 12:54 UTC

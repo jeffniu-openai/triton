@@ -22,6 +22,7 @@ fuzzing. Reports:
 `agents/fuzz_sub32_python_round32.md`,
 `agents/fuzz_subword_narrow_round32.md`,
 `agents/fuzz_local_ldst_narrow_round32.md`, and
+`agents/fuzz_local_mma_accumulator_round32.md`, and
 `agents/fuzz_ldred_extremes_round31.md`. The scaled operand lane found no
 new bucket and revalidated existing `FZ-0013`, `FZ-0015`, and `FZ-0010`
 boundaries; the 2CTA scaled-MMAv5 guardrail passed as `28 passed`;
@@ -37,7 +38,8 @@ compiler-boundary lanes sharpened existing `FZ-0001`, `FZ-0016`, and
 subword/narrow-shape lane ran `219` Python/Gluon runtime rows across sub-32-bit
 and 32-bit `ld/st`/copy paths, descriptor views, 1CTA/2CTA rows, and clean
 diagnostics, all passing or diagnosing as expected; local `ld/st` narrow and
-half-row guardrails added `141 passed`. The `ld.red` extremes lane ran `23`
+half-row guardrails added `141 passed`; plain-MMAv5 M64/two-CTA/indexed
+accumulator/subslice guardrails added `185 passed`. The `ld.red` extremes lane ran `23`
 f32 runtime rows with torch reference and opcode checks; `15` passed,
 `3` reproduced existing `FZ-0012`, `1` reproduced existing `FZ-0010`, `2` were
 clean resource boundaries, and `2` established new candidate
