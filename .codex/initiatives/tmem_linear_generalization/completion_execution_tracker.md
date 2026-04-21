@@ -2119,3 +2119,7 @@ signal handling:
   and `FZ-0002` multi-consumer branch-selected ld/st descriptors. Checked-in
   selector ran as `254 passed, 61 skipped, 14 xfailed`; scale-copy/high-CGA
   selector passed as `36 passed`.
+
+- 2026-04-21 13:05 UTC: local plain MMAv5 baseline completed. Report:
+  `agents/fuzz_local_plain_mma_round23.md`. Selector collected `255/1615` and
+  passed split-4 as `255 passed`; no new bucket.

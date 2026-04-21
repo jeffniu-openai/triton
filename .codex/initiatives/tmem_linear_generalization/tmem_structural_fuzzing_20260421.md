@@ -2508,6 +2508,19 @@ remain family-specific and consume a bounded subset of the inventory.
   branch-selected ld/st descriptor miscompiles. Loop-carried copy descriptors
   and `warpx2::01_23` branch-selected copy descriptors passed as contrasts.
 
+### Round 23 local plain MMAv5 baseline
+
+- Time: 2026-04-21 13:05 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_plain_mma_round23.md`
+- Selector:
+  `(mma_twocta or plain_kinds or tma_tf32 or indexed_acc_view) and not mma_scaled and not reports and not clean and not i8`
+  collected `255/1615`.
+- Split-4 result:
+  `255 passed` (`64/64/64/63`).
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 ### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
 
 - Time: 2026-04-21 12:58 UTC

@@ -15696,6 +15696,14 @@ rejection, not rescue
   ran as `254 passed, 61 skipped, 14 xfailed`; scale-copy/high-CGA diagnostic
   selector passed as `36 passed`.
 
+- Local Round 23 plain MMAv5 baseline wrote
+  `agents/fuzz_local_plain_mma_round23.md`. Required `make -j8` was a no-op.
+  Selector
+  `(mma_twocta or plain_kinds or tma_tf32 or indexed_acc_view) and not mma_scaled and not reports and not clean and not i8`
+  collected `255/1615` rows and passed split-4 as `255 passed`
+  (`64/64/64/63`). No new bucket. This is a green contrast against the active
+  scaled-MMAv5-specific findings.
+
 - Round 22 Lane BA wrote
   `agents/fuzz_scaled_dynamic_scales_round22.md`. No new independent `FZ-*`.
   Temporary probe `/tmp/tmem_scaled_dynamic_scales_round22_probe.py` ran

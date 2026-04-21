@@ -28625,6 +28625,25 @@ Open after this slice:
 - Classification: no unexpected pass/fail, compiler crash, new miscompile, or
   new independent `FZ-*` bucket.
 
+## 2026-04-21 13:05 UTC: Round 23 local plain MMAv5 baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_plain_mma_round23.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector
+  `(mma_twocta or plain_kinds or tma_tf32 or indexed_acc_view) and not mma_scaled and not reports and not clean and not i8`
+  collected `255/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `255 passed`:
+  - GPU 0 / group 1: `64 passed`;
+  - GPU 1 / group 2: `64 passed`;
+  - GPU 2 / group 3: `64 passed`;
+  - GPU 3 / group 4: `63 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:54 UTC: Round 18 local MMAv5 and scaled-MMAv5 selector
 
 - Wrote
