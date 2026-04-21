@@ -187,6 +187,12 @@ When resuming the initiative:
   guardrail, left unpromoted. A temporary-wrapper `warpx2` two-CTA `01_23`
   false lead was ruled out by exact runtime-matrix rerun (`2/2` passed).
 
+- 2026-04-21: local Round 10 clean-unsupported selector stayed green with
+  duration-aware splitting. The selector `reports_clean_unsupported` collected
+  `92/1615` tests and ran split-4 across GPUs 0-3 using
+  `/tmp/tmem_local_r10_clean_diagnostics_durations.json`; shards reported
+  `19`, `25`, `24`, and `24` passed tests, for `92 passed` total.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

@@ -126,6 +126,13 @@
   guardrail, not a backend bug. Exact rerun of the temporary-wrapper
   `warpx2` two-CTA `01_23` false lead passed `2/2`.
 
+- Latest: 2026-04-21 local Round 10 clean-unsupported selector stayed green
+  with duration-aware splitting. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k reports_clean_unsupported`
+  selected `92/1615` tests. Split-4 least-duration execution across GPUs 0-3
+  selected `19`, `25`, `24`, and `24` tests; aggregate result `92 passed`.
+  Durations file reused: `/tmp/tmem_local_r10_clean_diagnostics_durations.json`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

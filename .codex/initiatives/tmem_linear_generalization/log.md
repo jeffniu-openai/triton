@@ -27198,3 +27198,19 @@ Open after this slice:
   guardrail rather than a backend bug. A temporary-wrapper false lead on
   two-CTA `warpx2::01_23` was ruled out by exact runtime-matrix rerun
   (`2/2` passed).
+
+## 2026-04-21: Round 10 clean-unsupported selector rerun
+
+- Reran the checked-in clean-unsupported selector with least-duration splitting
+  while Lane P probed adjacent clean-boundary perturbations.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k reports_clean_unsupported`
+  selected `92 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --splitting-algorithm=least_duration --durations-path /tmp/tmem_local_r10_clean_diagnostics_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'reports_clean_unsupported'`
+- Result:
+  - group 1/GPU 0: `19 passed, 1596 deselected in 7.60s`;
+  - group 2/GPU 1: `25 passed, 1590 deselected in 7.46s`;
+  - group 3/GPU 2: `24 passed, 1591 deselected in 7.72s`;
+  - group 4/GPU 3: `24 passed, 1591 deselected in 7.41s`.
+- Aggregate: `92 passed`. No backend repairs were attempted.

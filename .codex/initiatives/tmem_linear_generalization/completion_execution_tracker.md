@@ -293,6 +293,10 @@ The project is complete when:
   two-CTA `warpx2::02_13`, subword, and larger-CGA rows stayed clean
   boundaries. The `num_ctas > 2` scaled-MMA shape assertion is an early
   guardrail. Report: `agents/fuzz_copy_scales_cga_round10.md`.
+  2026-04-21 local Round 10 clean-unsupported selector stayed green with
+  duration-aware splitting: collect-only selected `92/1615`, split-4
+  least-duration across GPUs 0-3 selected `19/25/24/24` tests, and all `92`
+  passed using `/tmp/tmem_local_r10_clean_diagnostics_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive
