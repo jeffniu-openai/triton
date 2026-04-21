@@ -176,6 +176,16 @@ The project is complete when:
   false unsupported diagnostic, opcode mismatch, runtime miscompile,
   clean-boundary drift, unexpected xfail/pass transition, or new independent
   `FZ-*`.
+  2026-04-21 Round 34 copy `warpx2` compiler-probe attempt completed.
+  Artifact: `agents/fuzz_copy_compiler_probe_round34.md`. Positive two-CTA
+  `warpx2::01_23` runtime row passed and dumped TTGIR/LLIR/PTX/cubin/SASS;
+  PTX contains `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b`. The two-CTA
+  `02_13` clean-unsupported row passed its checked-in diagnostic assertion.
+  Hand-built standalone `triton-opt` allocation+LLVM lowering over the dumped
+  positive TTGIR segfaulted in `TensorMemoryAllocOpConversion`, but the JIT
+  path compiles and runs the same row. Classified as a compiler-probe harness
+  limitation, not a new independent `FZ-*`, unless a faithful JIT-equivalent
+  pipeline reproduces it.
   2026-04-21 Round 34 local `test_core.py` TMEM/multicast guardrail completed.
   Artifact: `agents/fuzz_local_test_core_tmem_round34.md`. Selector
   `(tcgen05 or tmem) and (multicast or shared_inputs or twocta or mma)`

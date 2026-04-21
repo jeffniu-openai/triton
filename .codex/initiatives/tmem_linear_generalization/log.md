@@ -30599,6 +30599,27 @@ Open after this slice:
   no-scale copy `warpx2`/dense-shared/two-CTA positive and clean-boundary
   runtime surface stable before deeper compiler-only copy probing.
 
+## 2026-04-21: Round 34 copy warpx2 compiler-probe attempt
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_compiler_probe_round34.md`.
+- Runtime-dumped positive control:
+  `cp_no_scales_warpx2_01_23_twocta_positive and f32` passed and dumped
+  TTGIR/LLIR/PTX/cubin/SASS under `/tmp/tmem_copy_warpx2_dump_round34/...`.
+- Dumped PTX contains
+  `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b`.
+- Clean-unsupported control:
+  `cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported and f32`
+  passed its checked-in clean diagnostic assertion.
+- Standalone `triton-opt` attempt over the positive dumped TTGIR:
+  `--triton-nvidia-optimize-tmem-layouts` passed, but allocation+LLVM lowering
+  crashed with exit `139` in `TensorMemoryAllocOpConversion::matchAndRewrite`
+  for both `compute-capability=100` and `103`.
+- Classification: no new independent `FZ-*`; the JIT path for the same
+  positive row compiles and executes, so this is cataloged as a compiler-probe
+  harness limitation until a faithful JIT-equivalent `triton-opt` pipeline
+  proves otherwise.
+
 ## 2026-04-21: Round 34 local no-scale copy tile/subword/2CTA guardrail
 
 - Wrote
@@ -30654,3 +30675,51 @@ Open after this slice:
 - Classification: no compiler crash, false unsupported diagnostic, opcode
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
+
+## 2026-04-21: Round 30 descriptor-view chain-shape expansion, late integrated
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_chain_shapes_round30.md`.
+- Required `make -j8` was a no-op.
+- Temporary probe:
+  `/tmp/tmem_chain_shapes_round30.py`, with one Python subprocess per case and
+  stable per-GPU caches `/tmp/triton-cache-gpu{0..3}`.
+- `ld/st` descriptor chain matrix:
+  `132 pass`, `48 clean_or_false_unsupported`, `42 clean_oor`, `36 exception`,
+  `18 compiler_crash_or_abort`.
+- Unit-prefix rank-4 matrix:
+  `8 compiler_crash_or_abort`.
+- Actual `ld.red` matrix using `view.load_max(...)`:
+  `32 pass`, `12 clean_or_false_unsupported`, `4 exception`.
+- New candidate buckets:
+  `FZ-20260421-0019` rank-4 unit-prefix descriptor-view dimension abort,
+  `FZ-20260421-0020` valid half-row `ld/st` chain optimizer signal,
+  `FZ-20260421-0021` valid half-column `ld/st` chain process abort, and
+  `FZ-20260421-0022` row-reversed half-row `ld.red` parse failure.
+- No runtime wrong-result miscompile was confirmed. An initial software-reduce
+  probe had an invalid non-row-preserving row-sum oracle and was excluded from
+  classification before the actual `ld.red` rerun.
+
+## 2026-04-21 13:20 UTC: Round 34 high-rank descriptor-view runtime lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_rank_views_round34.md`.
+- Required `make -j8` was a no-op.
+- Checked-in baseline selector:
+  `(higher_rank or multidim_slice or half_rows or rank5) and not reports`.
+- Collection/result: `102/1615`, split-4 as `82 passed, 20 skipped`.
+- Focused checked-in contrast:
+  `rank5_small_roundtrip or rank5_unit_parent_n256_roundtrip` passed as
+  `23 passed`.
+- Temporary probe: `/tmp/tmem_high_rank_views_round34_probe.py`; exact log:
+  `/tmp/tmem_high_rank_views_round34_probe_exact.log`.
+- Temporary probe classification over `9` rows: `2` pass, `1` clean TMEM OOR,
+  `1` existing `FZ-20260421-0002`/`FZ-20260421-0003` descriptor-view
+  wrong-result row, `1` clean unsupported row-half `.ld.red` descriptor view,
+  and `4` new candidate `FZ-20260421-0019` rank-5 `ld/st` unit-dimension
+  `get_reg_layout` aborts.
+- `FZ-20260421-0019` seed command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -q -s --tb=short '/tmp/tmem_high_rank_views_round34_probe.py::test_high_rank_views[ldst-rank5-unit-chain0-128x128]'`.
+- Failure mode: hard abort with
+  `LLVM ERROR: Dimensions must match, ignoring order, but they don't. Got dims: ["dim0", "dim1"] and ["dim1", "dim2"]`.
+- Backend repair remains deferred.

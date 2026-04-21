@@ -3950,3 +3950,25 @@ remain family-specific and consume a bounded subset of the inventory.
   opcode mismatch, runtime miscompile, or new independent `FZ-*`; the
   checked-in structural sentinel catalog remains stable before the next
   discovery lane.
+
+### Round 30 descriptor-view chain-shape expansion (late integrated)
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_chain_shapes_round30.md`
+- Scope:
+  temporary subprocess-isolated Python/Gluon probes for descriptor-view
+  `reshape`/`permute`/`slice`/`index` chains, direct versus slice/index roots,
+  unit-prefix rank-4 roots, `ld/st`, and actual `view.load_max(...)` `ld.red`
+  consumers.
+- Results:
+  `ld/st` matrix `132 pass, 48 clean unsupported, 42 clean OOR, 36 optimizer
+  exceptions, 18 process aborts`; unit-prefix rank-4 matrix `8/8` process
+  aborts; actual `ld.red` matrix `32 pass, 12 clean unsupported, 4 parse
+  failures`.
+- New candidate buckets:
+  `FZ-20260421-0019` unit-prefix dimension abort, `FZ-20260421-0020`
+  half-row optimizer signal, `FZ-20260421-0021` half-column dimension abort,
+  and `FZ-20260421-0022` row-reversed half-row `ld.red` parse failure.
+- No runtime wrong-result miscompile was confirmed; an earlier software-reduce
+  oracle mismatch was excluded as a harness issue.

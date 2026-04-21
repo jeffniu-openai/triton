@@ -1,5 +1,32 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 13:20 UTC Round 34 high-rank descriptor-view
+  runtime lane completed. Report:
+  `agents/fuzz_high_rank_views_round34.md`. Required `make -j8` was a no-op.
+  Checked-in high-rank selector
+  `(higher_rank or multidim_slice or half_rows or rank5) and not reports`
+  collected `102/1615` and passed/stably skipped as `82 passed, 20 skipped`;
+  focused rank-5 small/unit-parent controls passed as `23 passed`. Temporary
+  probe `/tmp/tmem_high_rank_views_round34_probe.py` collected `9` rows:
+  `2` copy rank-4 rows passed, `1` copy rank-4 row hit clean TMEM OOR,
+  `1` `ld.red` chain0 row reproduced existing `FZ-0002`/`FZ-0003`
+  descriptor-view wrong results, `1` row-half `ld.red` view produced a clean
+  unsupported row-origin diagnostic, and `4` rank-5 `ld/st` unit-dimension
+  rows established new candidate `FZ-20260421-0019`: `get_reg_layout` aborts
+  with LLVM dimension mismatch `["dim0", "dim1"]` versus `["dim1", "dim2"]`.
+  Backend repair remains deferred.
+
+- Latest: 2026-04-21 Round 34 copy `warpx2` compiler-probe attempt
+  completed. Report: `agents/fuzz_copy_compiler_probe_round34.md`. A two-CTA
+  `warpx2::01_23` positive runtime row passed and dumped TTGIR/LLIR/PTX/cubin
+  under `/tmp/tmem_copy_warpx2_dump_round34/...`; dumped PTX contains
+  `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b`. The two-CTA `02_13`
+  clean-unsupported row passed its checked-in diagnostic assertion. A
+  standalone `triton-opt` allocation+LLVM pipeline over the dumped positive
+  TTGIR crashes in `TensorMemoryAllocOpConversion::matchAndRewrite`, but the
+  JIT path for the same row compiles and runs, so this is cataloged as a
+  compiler-probe harness limitation rather than a new independent `FZ-*`.
+
 - Latest: 2026-04-21 Round 34 local two-CTA MMAv5/TMA guardrail completed.
   Report: `agents/fuzz_local_mma_twocta_tma_round34.md`. Required `make -j8`
   was a no-op. Selector
@@ -16495,6 +16522,20 @@ rejection, not rescue
   `ttg.memdesc_index` in TTGIR but zero in LLIR; failing distinct-index copy
   reaches make-LLIR input with a dynamic `ttg.memdesc_index` feeding
   `ttng.tmem_copy`.
+
+- Round 30 descriptor-view chain-shape lane wrote
+  `agents/fuzz_chain_shapes_round30.md`. Required `make -j8` was a no-op.
+  Temporary subprocess-isolated probes covered `ld/st`, rank-4 unit-prefix
+  roots, and actual `view.load_max(...)` `ld.red` consumers across identity,
+  row-reversed, and column-reversed layouts. Results: `ld/st` `132 pass, 48
+  clean unsupported, 42 clean OOR, 36 optimizer exceptions, 18 process
+  aborts`; unit-prefix rank-4 `8/8` process aborts; actual `ld.red` `32 pass,
+  12 clean unsupported, 4 parse failures`. New candidates are
+  `FZ-20260421-0019` unit-prefix dimension abort, `FZ-20260421-0020` half-row
+  optimizer signal, `FZ-20260421-0021` half-column dimension abort, and
+  `FZ-20260421-0022` row-reversed half-row `ld.red` parse failure. No runtime
+  wrong-result miscompile was confirmed; an initial software-reduce oracle
+  mismatch was excluded as a harness issue.
 
 - Round 31 Python descriptor-view follow-up wrote
   `agents/fuzz_python_descriptor_views_round31.md`. No new bucket; it expands

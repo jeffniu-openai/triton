@@ -153,7 +153,17 @@ failures. No new independent `FZ-*` bucket was found; the lane revalidated
 result that crashes later in LLVM type conversion, and revalidated `FZ-0017`
 for descriptor-chain `i64` load, descriptor-chain `f64` store, and initialized
 `i64` alloc.
-Round 31 subagents are still running descriptor-chain-shape lanes.
+Round 30 descriptor-view chain-shape lane completed late and wrote
+`agents/fuzz_chain_shapes_round30.md`. Temporary subprocess probes covered
+`ld/st`, unit-prefix rank-4 roots, and actual `view.load_max(...)` `ld.red`
+consumers across identity, row-reversed, and column-reversed layouts. Results:
+`ld/st` `132 pass, 48 clean unsupported, 42 clean OOR, 36 optimizer
+exceptions, 18 process aborts`; unit-prefix rank-4 `8/8` process aborts;
+actual `ld.red` `32 pass, 12 clean unsupported, 4 parse failures`. New
+candidate buckets are `FZ-20260421-0019` unit-prefix dimension abort,
+`FZ-20260421-0020` half-row optimizer signal, `FZ-20260421-0021` half-column
+dimension abort, and `FZ-20260421-0022` row-reversed half-row `ld.red` parse
+failure. No runtime wrong-result miscompile was confirmed.
 
 Previous fuzzing checkpoint: 2026-04-21 Round 26-28 discovery lanes. Reports:
 `agents/fuzz_high_cga_scaled_round26.md`,
