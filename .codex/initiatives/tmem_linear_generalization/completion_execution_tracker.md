@@ -3789,3 +3789,25 @@ discovery.
   corpus replay stayed at `15` existing abort/crash rows and `40` clean
   diagnostics. Minimized repros revalidated existing `FZ-20260421-0016` and
   `FZ-20260421-0017`. No new independent `FZ-*`.
+
+- 2026-04-21: Round 56 scaled dynamic lane B completed. Report:
+  `agents/fuzz_round56_scaled_dynamic_lane.md`. Required `make -j8` was a
+  no-op. Checked-in scaled interaction selector collected `55/1615` and
+  passed split-4 as `55 passed`. Temporary probes revalidated existing
+  `FZ-20260421-0007` (`1 xfailed` accumulator subslice dynamic `use_acc`),
+  `FZ-20260421-0013` (`6` dynamic scale-view plus `3` multi-MMA scale-view
+  wrong-result rows), `FZ-20260421-0015` (`2` selected direct B-scale
+  wrong-result rows), and `FZ-20260421-0010` (`24` high-CGA mixed local TMEM
+  CTA-count diagnostics). Adjacent direct scale, accumulator subslice/index,
+  legacy/linear, 1CTA/2CTA, reused-scale, and high-CGA scaled controls passed.
+  No new independent `FZ-*`; no backend repairs attempted.
+
+- 2026-04-21: Round 56 local `ld.red` mixed hardware/software lane completed.
+  Report: `agents/fuzz_round56_local_ldred_mixed_lane.md`. Required
+  `make -j8` was a no-op. Selector over compatible f32 hardware reductions,
+  descriptor-chain N-sweep variants, non-identity layouts that canonicalize to
+  `32x32b`, explicit N-sharded software-reduce layouts, and non-f32
+  software-reduce contracts collected `60/1615` and passed split-4 as
+  `60 passed`. No compiler crash, verifier drift, false unsupported
+  diagnostic, opcode absence, hardware/software classification drift, runtime
+  miscompile, hang, or new independent `FZ-*`.

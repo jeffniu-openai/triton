@@ -32599,3 +32599,43 @@ Open after this slice:
   `FZ-20260421-0017`; f64 hits the same bitwidth surface and f32 stays on the
   clean indexed-view-chain boundary.
 - Classification: no new independent `FZ-*`.
+
+## 2026-04-21: Round 56 scaled dynamic lane B
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_scaled_dynamic_lane.md`.
+- Required `make -j8` was a no-op.
+- Checked-in scaled interaction selector:
+  `55/1615` collected and passed split-4 as `55 passed`
+  (`14/14/14/13`).
+- Temporary dynamic scale-view probe:
+  `16` cases, `0` unexpected; `10` direct dynamic scale controls passed and
+  `6` scale descriptor-view rows reproduced existing `FZ-20260421-0013`.
+- Direct dynamic scale pytest slice:
+  `2 failed, 7 passed`; both failures were existing
+  `FZ-20260421-0015` selected distinct B-scale wrong-result rows.
+- Scale descriptor-view/multi-MMA slice:
+  `3 failed, 7 passed`; all failures were existing `FZ-20260421-0013`; direct
+  accumulator subslice and reused-scale controls passed.
+- High-CGA scaled probe:
+  `3` high-CGA scaled-MMAv5 controls passed; `24` mixed local TMEM rows
+  reproduced existing `FZ-20260421-0010` CTA-count diagnostics.
+- Checked-in `FZ-20260421-0007` scaled accumulator-selection sentinel:
+  `1 xfailed`.
+- Classification:
+  no new independent `FZ-*`; no backend repairs attempted.
+
+## 2026-04-21: Round 56 local `ld.red` mixed hardware/software lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_local_ldred_mixed_lane.md`.
+- Required `make -j8` was a no-op.
+- Selector over compatible f32 hardware reductions, descriptor-chain N-sweep
+  variants, non-identity layouts that canonicalize to `32x32b`, explicit
+  N-sharded software-reduce layouts, and non-f32 software-reduce contracts:
+  `60/1615` collected.
+- Split-4 runtime result:
+  `60 passed`.
+- Classification: no compiler crash, verifier drift, false unsupported
+  diagnostic, opcode absence, hardware/software classification drift, runtime
+  miscompile, hang, or independent `FZ-*`.

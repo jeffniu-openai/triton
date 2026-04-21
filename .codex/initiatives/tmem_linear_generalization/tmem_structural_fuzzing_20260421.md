@@ -4063,3 +4063,28 @@ remain family-specific and consume a bounded subset of the inventory.
   checked-in two-CTA no-scale copy indexed views, plain-MMAv5 indexed
   accumulator views, two-CTA scales copy, and scaled-MMAv5 two-CTA accumulator
   subslice/copy controls passed as `47 passed`.
+
+### Round 56 scaled-MMAv5 dynamic scale/accumulator lane B
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_scaled_dynamic_lane.md`
+- Scope:
+  dynamic/direct B-scale selection, scale descriptor views, accumulator
+  subslice/index views, `use_acc`, legacy versus linear accumulator layouts,
+  1CTA/2CTA scaled-MMAv5 rows, and high-CGA adjacent controls.
+- Result:
+  checked-in scaled interaction selector collected `55/1615` and passed
+  split-4 as `55 passed`; temporary probes produced `10` direct dynamic scale
+  passes, `6` existing `FZ-20260421-0013` scale descriptor-view wrong-results,
+  `2` existing `FZ-20260421-0015` selected direct B-scale wrong-results,
+  `10` multi-MMA/accumulator-subslice controls with `7` passes plus `3`
+  existing `FZ-20260421-0013`, `3` high-CGA scaled controls passed, and `24`
+  local TMEM mixed-context rows reproduced existing `FZ-20260421-0010`.
+- Existing sentinel:
+  checked-in scaled dynamic accumulator subslice control-flow row stayed
+  `1 xfailed` under existing `FZ-20260421-0007`.
+- Classification:
+  no new independent `FZ-*`; no compiler crash, verifier drift, opcode
+  mismatch, false unsupported diagnostic, hang, or unclassified runtime
+  miscompile.
