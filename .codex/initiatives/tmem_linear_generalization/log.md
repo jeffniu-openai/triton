@@ -1,3 +1,17 @@
+## 2026-04-21 14:05 UTC: Round 39 MMAv5/TMA runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mmav5_tma_guardrail_round39.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Collection selector:
+  `mma_twocta_tma_tf32_b_transposed_descriptor or mma_twocta_indexed_acc_view or mma_twocta_acc_subslice_view_plain_kinds`.
+- Collection/result: `54/1615` rows, split-4 as `54 passed`
+  (`14/14/14/12`).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, unexpected pass/fail transition, or new
+  independent `FZ-*`. The lane keeps two-CTA MMAv5 indexed/subslice
+  accumulator views and TMA-fed TF32 descriptor paths green.
+
 ## 2026-04-21: Round 36 high-rank ld.red compile/execute classifier
 
 - Wrote

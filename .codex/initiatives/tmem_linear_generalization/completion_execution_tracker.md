@@ -60,6 +60,13 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:05 UTC Round 39 MMAv5/TMA runtime guardrail completed.
+  Artifact: `agents/fuzz_mmav5_tma_guardrail_round39.md`. Selector
+  `mma_twocta_tma_tf32_b_transposed_descriptor or mma_twocta_indexed_acc_view or
+  mma_twocta_acc_subslice_view_plain_kinds` collected `54/1615` rows and passed
+  split-4 as `54 passed` (`14/14/14/12`). No compiler crash, false unsupported
+  diagnostic, opcode absence, runtime miscompile, unexpected pass/fail
+  transition, or new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 15:30 UTC Round 39 descriptor/high-rank positive guardrail
   completed. Artifact: `agents/fuzz_descriptor_high_rank_guardrail_round39.md`.
   Selector
