@@ -19,6 +19,20 @@
 - After each commit for ongoing TMEM work, push the current `HEAD` to `jeffniu-openai/codex/tmem` so the remote branch is always recoverable if the node dies mid-session.
 - Always push checkpoint commits to the `github.com/jeffniu-openai/triton` remote using the `jeffniu-openai` GitHub credentials. For long checkpoints or changesets, make occasional recoverability commits with the subject `WIP checkpoint: <very brief tag>` and push them promptly so interrupted work is not lost.
 - Keep commits scoped so they can be understood and reverted independently.
+- During the 2026-04-21 TMEM structural fuzzing campaign, keep executing
+  until explicitly interrupted by the user or by a concrete external blocker.
+  Do not end the turn just because one fuzzing round completed. Continuously
+  launch new subagent audit/fuzz lanes, run deterministic Python runtime
+  fuzzers, catalog crashes/false negatives/miscompiles, minimize repros, and
+  update the initiative state. The active objective is discovery and
+  classification, not repair: do not begin backend fixes while new fuzzing
+  failures are still being found unless the user explicitly pivots from
+  fuzzing to fixing.
+- For this fuzzing campaign, prefer Python/Gluon runtime tests that execute on
+  GPU and compare results, then use lit/IR probes only to minimize compiler
+  crashes or verifier false negatives. Any discovered failure must be recorded
+  with seed/case id, exact command, failure mode, likely owner surface, and
+  whether it is a crash, too-strict unsupported diagnostic, or miscompile.
 - Before resuming the TMEM linear-layout generalization initiative, start with `.codex/initiatives/tmem_linear_generalization/README.md`, then re-read `.codex/initiatives/tmem_linear_generalization/memory.md` as the initiative's durable memory/source of truth, and then read the latest tail of `.codex/initiatives/tmem_linear_generalization/handoff_2026-04-09.md`. Do not optimize only for the current red tests; keep the work aligned with the full mission:
   - support arbitrary linear TMEM layouts and descriptor-view chains whenever the ISA can realize them correctly;
   - keep clean negatives only for true ISA-impossible cases;

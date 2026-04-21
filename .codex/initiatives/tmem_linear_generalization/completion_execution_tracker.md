@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 07:10 UTC
+Last updated: 2026-04-21 08:18 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -27,6 +27,14 @@ The project is complete when:
 - Keep this file as the live progress board for the completion plan. Update it
   before and after meaningful implementation slices so the plan remains usable
   after an outage, context rollover, or branch handoff.
+- 2026-04-21 structural fuzzing campaign override: the active workstream is
+  continuous TMEM backend fuzzing for crashes, false unsupported diagnostics,
+  verifier over-strictness, and runtime miscompiles. Do not end the turn while
+  unblocked fuzzing work remains unless the user interrupts or a concrete
+  external blocker is reached. Keep launching subagent rounds and local
+  deterministic runtime fuzz sweeps. Catalog and minimize bugs, but do not
+  begin backend fixes until fuzzing stops finding new failures or the user
+  explicitly pivots to repair.
 - Execute the highest-priority unblocked support-bearing slice first. Use
   cleanup-only slices when they remove family-specific policy or sharpen a true
   ISA boundary for the next support slice.
@@ -39,6 +47,19 @@ The project is complete when:
 
 ## Active Phase Board
 
+- Phase Z, 24-hour structural fuzzing campaign: active as of 2026-04-21
+  08:18 UTC. Build a systematic deterministic Python/Gluon runtime fuzzer plus
+  parallel subagent audit lanes. Primary outputs are:
+  - `python/test/gluon/test_tmem_structural_fuzzer.py` for checked-in
+    deterministic runtime fuzz cases and future regression promotion;
+  - `.codex/initiatives/tmem_linear_generalization/tmem_structural_fuzzing_20260421.md`
+    for the active case schema, round log, failure catalog, and repro queue;
+  - subagent round reports split by TMEM family (`ld/st/ld.red`, `copy`,
+    `MMAv5/scaled-MMAv5`, warp-specialization/membar, and generic pass
+    interactions);
+  - periodic checkpoint commits pushed to `origin/codex/tmem`.
+  Backend fixes are intentionally deferred during this campaign while new
+  failures are still appearing.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -1,3 +1,18 @@
+## 2026-04-21 08:18 UTC: start 24-hour structural fuzzing campaign
+
+- User requested a continuous 24-hour TMEM backend fuzzing effort using
+  subagents, mostly Python runtime tests, with systematic structural fuzzing to
+  expose compiler crashes, compiler failures that should be supported, verifier
+  over-strictness, and miscompiles.
+- Operating rule recorded in `AGENTS.md`, `fuzz_plan.md`, and the active
+  tracker: do not end the turn while unblocked fuzzing remains unless
+  interrupted; catalog and diagnose bugs first; do not begin backend fixes
+  until fuzzing stops finding new bugs or the user pivots to repair.
+- New active catalog:
+  `tmem_structural_fuzzing_20260421.md`.
+- Next actions: add deterministic Python structural fuzzer, launch subagent
+  lanes, run first four-GPU fuzz sweep, and checkpoint the infrastructure.
+
 ## 2026-04-17 18:10 UTC: typed two-CTA warpx2::02_13 source-column boundary
 
 - Change:

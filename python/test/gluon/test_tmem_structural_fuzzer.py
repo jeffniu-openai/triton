@@ -1,0 +1,342 @@
+import math
+import re
+from dataclasses import dataclass
+
+import pytest
+import torch
+
+from triton._internal_testing import is_blackwell
+from triton.experimental import gluon
+from triton.experimental.gluon import language as ttgl
+from triton.experimental.gluon.language.nvidia.blackwell import (
+    TensorMemoryLinearLayout,
+    TensorMemoryScalesLayout,
+    allocate_tensor_memory,
+    fence_async_shared,
+    tcgen05_commit,
+    tcgen05_copy,
+)
+from triton.experimental.gluon.language.nvidia.hopper import mbarrier
+
+
+def _permute_bits(bits, kind):
+    if kind == "identity":
+        return list(bits)
+    if kind == "reverse":
+        return list(reversed(bits))
+    if kind == "even_odd":
+        return list(bits[::2]) + list(bits[1::2])
+    if kind == "rotate1":
+        return list(bits[1:]) + [bits[0]]
+    raise ValueError(f"unknown permutation kind {kind}")
+
+
+def _make_linear_layout(m, n, row_kind="identity", col_kind="identity", two_ctas=False):
+    row_bits = _permute_bits([1 << i for i in range(int(math.log2(m)))], row_kind)
+    col_bits = _permute_bits([1 << i for i in range(int(math.log2(n)))], col_kind)
+    kwargs = {
+        "rows": [[bit, 0] for bit in row_bits],
+        "cols": [[0, bit] for bit in col_bits],
+        "shape": [m, n],
+    }
+    if two_ctas:
+        kwargs["rows"] = [[1 << i, 0] for i in range(1, int(math.log2(m)))]
+        kwargs["block_bases"] = [[1, 0]]
+        kwargs["two_ctas"] = True
+    return TensorMemoryLinearLayout(**kwargs)
+
+
+def _lift_layout(base_layout, prefix_shape):
+    prefix_shape = list(prefix_shape)
+    prefix_rank = len(prefix_shape)
+    total_rank = prefix_rank + len(base_layout.shape)
+
+    def extend(bases):
+        return [[0] * prefix_rank + list(basis) for basis in bases]
+
+    rows = extend(base_layout.rows)
+    cols = extend(base_layout.cols)
+    block_bases = extend(base_layout.block_bases)
+    for dim in range(prefix_rank - 1, -1, -1):
+        for bit in range(int(math.log2(prefix_shape[dim]))):
+            basis = [0] * total_rank
+            basis[dim] = 1 << bit
+            cols.append(basis)
+    return TensorMemoryLinearLayout(
+        rows=rows,
+        cols=cols,
+        block_bases=block_bases,
+        shape=prefix_shape + list(base_layout.shape),
+        two_ctas=base_layout.two_ctas,
+    )
+
+
+def _extract_tcgen05_ops(asm, opcodes):
+    pattern = re.compile(
+        rf"(tcgen05\.(?:{'|'.join(opcodes)})(?:\.red)?\.sync\.aligned\.[^\s;\"]+)"
+    )
+    return pattern.findall(asm)
+
+
+def _extract_tcgen05_copy_ops(asm):
+    pattern = re.compile(
+        r"(tcgen05\.cp(?:\.cta_group::\d+)?(?:\.warpx[24](?:::[^\s.;]+)*)?"
+        r"\.\d+x\d+b(?:\.b8x16\.(?:b6x16_p32|b4x16_p64))?)"
+    )
+    return pattern.findall(asm)
+
+
+@dataclass(frozen=True)
+class LdStCase:
+    case_id: str
+    seed: int
+    m: int
+    n: int
+    row_kind: str
+    col_kind: str
+    instr_variant: str
+    chain_id: int
+
+
+@dataclass(frozen=True)
+class LdRedCase:
+    case_id: str
+    seed: int
+    m: int
+    n: int
+    two_ctas: bool
+    chain_id: int
+
+
+@dataclass(frozen=True)
+class CopyScalesCase:
+    case_id: str
+    seed: int
+    two_ctas: bool
+
+
+LDST_CASES = [
+    LdStCase("ldst-view-identity-32x32b", 0x101, 128, 64, "identity", "identity", "32x32b", 0),
+    LdStCase("ldst-view-col-reverse-32x32b", 0x102, 128, 64, "identity", "reverse", "32x32b", 1),
+    LdStCase("ldst-view-row-even-16x64b", 0x103, 128, 64, "even_odd", "identity", "16x64b", 2),
+    LdStCase("ldst-view-col-rotate-16x128b", 0x104, 128, 128, "identity", "rotate1", "16x128b", 1),
+]
+
+LDRED_CASES = [
+    LdRedCase("ldred-direct-128x64", 0x201, 128, 64, False, 0),
+    LdRedCase("ldred-view-128x64", 0x202, 128, 64, False, 1),
+    LdRedCase("ldred-twocta-lifted-256x64", 0x203, 256, 64, True, 0),
+]
+
+COPY_CASES = [
+    CopyScalesCase("copy-scales-warpx4-1cta", 0x301, False),
+    pytest.param(
+        CopyScalesCase("copy-scales-warpx4-2cta", 0x302, True),
+        marks=pytest.mark.xfail(
+            reason=(
+                "Structural constexpr-branch two-CTA scales copy currently "
+                "executes correctly but emits cta_group::1 instead of cta_group::2"
+            ),
+            strict=True,
+        ),
+    ),
+]
+
+
+@gluon.jit
+def _fuzz_ldst_view_kernel(
+    in_ptr,
+    out_ptr,
+    parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    instr_variant: ttgl.constexpr,
+    chain_id: ttgl.constexpr,
+):
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    base = tmem.index(1)
+    base_layout: ttgl.constexpr = base.get_reg_layout(instr_variant=instr_variant)
+    value = ttgl.load(in_ptr + offs)
+    base.store(ttgl.convert_layout(value, base_layout))
+
+    view = base
+    if chain_id == 0:
+        view = view.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    elif chain_id == 1:
+        view = view.reshape((M // 2, 2, N // 2, 2))
+        view = view.permute([1, 0, 3, 2]).permute([1, 0, 3, 2]).reshape((M, N))
+    else:
+        view = view.permute([1, 0]).permute([1, 0]).slice(0, M, dim=0).slice(0, N, dim=1)
+
+    view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    out = view.load(view_layout)
+    view.store(out)
+    result = base.load(base_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(result, base_layout))
+
+
+@gluon.jit
+def _fuzz_ldred_kernel(
+    in_ptr,
+    out_ptr,
+    red_ptr,
+    layout: ttgl.constexpr,
+    parent_layout: ttgl.constexpr,
+    red_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    chain_id: ttgl.constexpr,
+):
+    if chain_id == 0:
+        tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
+        view = tmem
+    else:
+        parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+        view = parent.index(1)
+
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))[None, :]
+    offs = offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    view.store(ttgl.convert_layout(value, reg_layout))
+
+    out, reduced = view.load_min()
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
+    red_m = ttgl.arange(0, M, red_layout)
+    ttgl.store(red_ptr + red_m, ttgl.convert_layout(reduced, red_layout))
+
+
+@gluon.jit
+def _fuzz_ldred_twocta_kernel(in_ptr, out_ptr, red_ptr, parent_layout: ttgl.constexpr, red_layout: ttgl.constexpr):
+    M: ttgl.constexpr = 256
+    N: ttgl.constexpr = 64
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    b_layout: ttgl.constexpr = ttgl.SliceLayout(1, ttgl.SliceLayout(2, reg_layout))
+    m_layout: ttgl.constexpr = ttgl.SliceLayout(0, ttgl.SliceLayout(2, reg_layout))
+    n_layout: ttgl.constexpr = ttgl.SliceLayout(0, ttgl.SliceLayout(1, reg_layout))
+    offs_b = ttgl.arange(0, 2, b_layout)[:, None, None]
+    offs_m = ttgl.arange(0, M, m_layout)[None, :, None]
+    offs_n = ttgl.arange(0, N, n_layout)[None, None, :]
+    offs = offs_b * M * N + offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, reg_layout))
+    out, reduced = tmem.load_min()
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
+    red_b = ttgl.arange(0, 2, ttgl.SliceLayout(1, red_layout))[:, None]
+    red_m = ttgl.arange(0, M, ttgl.SliceLayout(0, red_layout))[None, :]
+    red_offs = red_b * M + red_m
+    ttgl.store(red_ptr + red_offs, ttgl.convert_layout(reduced, red_layout))
+
+
+@gluon.jit
+def _fuzz_copy_scales_kernel(in_ptr, out_ptr, TWO_CTAS: ttgl.constexpr):
+    M: ttgl.constexpr = 128 if TWO_CTAS else 64
+    N: ttgl.constexpr = 16
+    if TWO_CTAS:
+        blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0], cga_layout=[[1, 0]])
+    else:
+        blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, blocked))
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, blocked))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    if TWO_CTAS:
+        smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+            offset_bases=[[0, 1], [0, 2], [32, 0], [0, 4], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]],
+            block_bases=[[64, 0]],
+        )
+        tmem = allocate_tensor_memory(ttgl.int8, (M, N), layout=TensorMemoryScalesLayout(cga_layout=[[1, 0]]))
+    else:
+        smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+            offset_bases=[[0, 1], [0, 2], [32, 0], [0, 4], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]]
+        )
+        tmem = allocate_tensor_memory(ttgl.int8, (M, N), layout=TensorMemoryScalesLayout())
+    smem = ttgl.allocate_shared_memory(ttgl.int8, (M, N), layout=smem_layout)
+    smem.store(value)
+    fence_async_shared(cluster=TWO_CTAS)
+
+    barrier = mbarrier.allocate_mbarrier()
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    output = tmem.load(reg_layout)
+    out_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, reg_layout))
+    out_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, reg_layout))
+    out_offs = out_m[:, None] * N + out_n[None, :]
+    ttgl.store(out_ptr + out_offs, output)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", LDST_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_ldst_view_roundtrip(case):
+    torch.manual_seed(case.seed)
+    layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
+    parent_layout = _lift_layout(layout, [2])
+    inp = torch.randn((case.m, case.n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    compiled = _fuzz_ldst_view_kernel[(1, )](
+        inp, out, parent_layout, case.m, case.n, case.instr_variant, case.chain_id, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
+    assert ptx_ops == llir_ops
+    assert any(".ld." in op for op in ptx_ops)
+    assert any(".st." in op for op in ptx_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", LDRED_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_ldred(case):
+    torch.manual_seed(case.seed)
+    if case.two_ctas:
+        layout = _make_linear_layout(case.m, case.n, two_ctas=True)
+        parent_layout = _lift_layout(layout, [2])
+        red_layout = ttgl.BlockedLayout([1, 1], [1, 32], [1, 8], [1, 0], cga_layout=[[1, 0]])
+        inp = torch.randn((2, case.m, case.n), dtype=torch.float32, device="cuda")
+        out = torch.empty_like(inp)
+        red = torch.empty((2, case.m), dtype=torch.float32, device="cuda")
+        compiled = _fuzz_ldred_twocta_kernel[(1, )](inp, out, red, parent_layout, red_layout, num_warps=8, num_ctas=2)
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
+        torch.testing.assert_close(red, torch.min(inp, dim=2).values, atol=0, rtol=0)
+    else:
+        layout = _make_linear_layout(case.m, case.n, "identity", "identity")
+        parent_layout = _lift_layout(layout, [2])
+        red_layout = ttgl.BlockedLayout([1], [32], [4], [0])
+        inp = torch.randn((case.m, case.n), dtype=torch.float32, device="cuda")
+        out = torch.empty_like(inp)
+        red = torch.empty((case.m, ), dtype=torch.float32, device="cuda")
+        compiled = _fuzz_ldred_kernel[(1, )](
+            inp, out, red, layout, parent_layout, red_layout, case.m, case.n, case.chain_id, num_warps=4
+        )
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
+        torch.testing.assert_close(red, torch.min(inp, dim=1).values, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
+    assert ptx_ops == llir_ops
+    assert any(".ld.red." in op for op in ptx_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", COPY_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_copy_scales(case):
+    torch.manual_seed(case.seed)
+    m = 128 if case.two_ctas else 64
+    n = 16
+    inp = torch.randint(-100, 100, (m, n), dtype=torch.int8, device="cuda")
+    out = torch.empty_like(inp)
+    compiled = _fuzz_copy_scales_kernel[(1, )](inp, out, case.two_ctas, num_warps=4, num_ctas=2 if case.two_ctas else 1)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_copy_ops(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_copy_ops(compiled.asm["llir"])
+    assert ptx_ops == llir_ops
+    expected_group = "cta_group::2" if case.two_ctas else "cta_group::1"
+    assert ptx_ops
+    assert all(expected_group in op for op in ptx_ops), ptx_ops

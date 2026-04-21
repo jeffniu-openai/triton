@@ -1,5 +1,35 @@
 # TMEM Codegen Fuzz Plan
 
+## Active 2026-04-21 Structural Fuzzing Campaign
+
+User direction: spend the next 24 hours, or until explicitly interrupted,
+leveraging subagents and local four-GPU runtime sweeps to fuzz and
+adversarially test the TMEM backend. The campaign must not stop at a single
+green round. Keep generating structural cases, running them, cataloging
+failures, minimizing repros, and updating the project state.
+
+Rules for this campaign:
+- Never end the turn while unblocked fuzzing work remains unless the user
+  interrupts or a concrete external blocker prevents further execution.
+- Prefer Python/Gluon runtime tests that compile and execute kernels, compare
+  numeric results, and inspect PTX/LLIR opcodes. Use lit/IR repros to minimize
+  compiler crashes or verifier false negatives after discovery.
+- Work with subagents in multiple independent lanes. Suggested lanes are
+  `ld/st/ld.red`, `tcgen05.copy`, plain/scaled MMAv5, warp-specialization and
+  membar, and generic analysis/layout passes.
+- During active fuzzing, catalog and diagnose bugs before fixing them. Do not
+  begin backend repairs while new fuzzing failures are still being discovered
+  unless the user explicitly pivots to repair.
+- Record every failure with seed, case id, exact command, emitted case
+  parameters, failure class, suspected backend surface, and current minimization
+  status.
+- Promote stable discoveries into deterministic pytest cases in
+  `python/test/gluon/test_tmem_structural_fuzzer.py` or, once minimized, the
+  permanent runtime matrix.
+
+Active campaign log and failure catalog:
+`tmem_structural_fuzzing_20260421.md`.
+
 ## Objective
 - Prove that every TMEM composition that is theoretically codegenable by the
   current ISA both compiles and executes correctly on Blackwell.

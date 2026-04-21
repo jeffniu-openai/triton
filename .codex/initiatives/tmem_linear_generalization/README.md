@@ -73,6 +73,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 08:18 UTC: started the 24-hour structural TMEM fuzzing campaign
+  requested by the user. During this campaign, do not end execution while
+  unblocked fuzzing work remains unless interrupted. The focus is continuous
+  subagent-assisted discovery using deterministic Python/Gluon runtime fuzz
+  tests, plus lit/IR minimization for compiler crashes. Catalog crashes,
+  verifier false negatives/over-strict unsupported diagnostics, and runtime
+  miscompiles before fixing; backend repairs are deferred until fuzzing stops
+  finding new failures or the user explicitly pivots. Use `fuzz_plan.md` and
+  `tmem_structural_fuzzing_20260421.md` as the active campaign plan and
+  failure catalog.
+
 - 2026-04-21 07:10 UTC: completed Round 5 adversarial runtime-matrix
   probing. No production backend bug was found. A stale clean-negative
   coverage row was corrected: two-CTA higher-rank direct `ld.red` through a

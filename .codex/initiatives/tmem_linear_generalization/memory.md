@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 08:18 UTC started a 24-hour structural TMEM backend
+  fuzzing campaign. Active rule for this phase: do not end execution while
+  unblocked fuzzing remains unless the user interrupts or a concrete external
+  blocker appears. Use subagents continuously across independent TMEM surfaces
+  and prioritize deterministic Python/Gluon runtime fuzz tests that compile,
+  execute, compare results, and inspect opcodes. Catalog compiler crashes,
+  false unsupported diagnostics/verifier over-strictness, and runtime
+  miscompiles in `tmem_structural_fuzzing_20260421.md`. Do not begin backend
+  fixes while new fuzzing failures are still being found unless the user
+  explicitly pivots from discovery to repair.
+
 - Latest: 2026-04-21 07:10 UTC completed Round 5 adversarial
   runtime-matrix probing focused on descriptor-view chains plus `use_acc`,
   indexed views plus two-CTA, rows 64/128/256, N 16/32/64/128/256,
