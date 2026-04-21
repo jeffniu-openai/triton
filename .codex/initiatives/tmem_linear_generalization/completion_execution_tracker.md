@@ -1108,3 +1108,10 @@ signal handling:
   `make -j8`, then focused lit for
   `test/Conversion/tritongpu_to_llvm_blackwell.mlir` and
   `test/TritonNvidiaGPU/membar-cluster.mlir`.
+
+- 2026-04-21 02:51 UTC: extended the multi-CTA coverage to the maximum
+  practical CTA-per-CGA point used by this backend path: 16 CTAs. Conversion
+  lit now covers 4/8/16 CTA `tcgen05.copy.warpx2` canonical outer block bases,
+  and membar lit covers 16-CTA pre-copy cluster-barrier insertion. Validation
+  passed: required `make -j8` no-op and focused lit for the two touched files
+  passed `2/2`.

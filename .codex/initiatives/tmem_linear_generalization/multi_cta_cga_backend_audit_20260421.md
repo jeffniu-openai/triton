@@ -235,9 +235,14 @@ Status: likely hardware boundary for structured families, not a bug.
 - Added conversion coverage for a 4-CTA `ttng.tmem_copy` lowering that checks
   `cluster_id & 1 == 0`, proving the predicate is per-pair leader selection
   rather than whole-CGA CTA 0 selection.
+- Extended conversion coverage to 8-CTA and 16-CTA CGAs. The 16-CTA case
+  covers the maximum CTA-per-CGA shape used by the Blackwell runtime matrix
+  (`4x4`) and the sanitizer CTA bitset limit.
 - Added membar coverage for a 4-CTA distributed shared producer followed by a
   two-CTA-capable `ttng.tmem_copy`, proving the pre-copy cluster barrier is
   still inserted when an outer CTA bit exists.
+- Extended membar coverage to a 16-CTA distributed shared producer followed by
+  a two-CTA-capable `ttng.tmem_copy`.
 - Fixed `tcgen05.copy.warpx2` shared-source validation so the same canonical
   pair-local source layout works in larger CGAs with outer CTA-pair bases.
 

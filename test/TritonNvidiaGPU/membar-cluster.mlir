@@ -890,3 +890,24 @@ module attributes {"ttg.num-ctas" = 4 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
     tt.return
   }
 }
+
+// -----
+
+#blocked_tmem_copy_16cta = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [1, 0], CGALayout = [[1, 0], [2, 0], [4, 0], [8, 0]]}>
+#shared_tmem_copy_16cta = #ttg.shared_linear<{offset = [[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]], block = [[128, 0], [256, 0], [512, 0], [1024, 0]]}, alignment = 16>
+#tmem_tmem_copy_16cta = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]], col = [[0, 1], [0, 2]], block = [[128, 0], [256, 0], [512, 0], [1024, 0]], out = [2048, 4]}, twoCTAs = true>
+#smem = #ttg.shared_memory
+
+module attributes {"ttg.num-ctas" = 16 : i32, "ttg.num-warps" = 4 : i32, "ttng.two-ctas" = true, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  // CHECK-LABEL: @insert_cluster_barrier_before_sixteencta_twocta_tmem_copy
+  // CHECK: ttg.local_store
+  // CHECK-NEXT: ttng.cluster_barrier
+  // CHECK-NEXT: ttng.tmem_copy
+  tt.func @insert_cluster_barrier_before_sixteencta_twocta_tmem_copy(%arg0: tensor<2048x4xf32, #blocked_tmem_copy_16cta>) {
+    %src = ttg.local_alloc : () -> !ttg.memdesc<2048x4xf32, #shared_tmem_copy_16cta, #smem, mutable>
+    %dst = ttng.tmem_alloc : () -> !ttg.memdesc<2048x4xf32, #tmem_tmem_copy_16cta, #ttng.tensor_memory, mutable>
+    ttg.local_store %arg0, %src : tensor<2048x4xf32, #blocked_tmem_copy_16cta> -> !ttg.memdesc<2048x4xf32, #shared_tmem_copy_16cta, #smem, mutable>
+    ttng.tmem_copy %src, %dst : !ttg.memdesc<2048x4xf32, #shared_tmem_copy_16cta, #smem, mutable>, !ttg.memdesc<2048x4xf32, #tmem_tmem_copy_16cta, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+}

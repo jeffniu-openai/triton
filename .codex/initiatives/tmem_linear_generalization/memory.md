@@ -14166,3 +14166,21 @@ rejection, not rescue
 - Validation:
   - required `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8` passed;
   - focused lit rerun of the two touched files passed `2/2`.
+
+## Current: 2026-04-21 02:51 UTC max-CTA coverage added
+
+- User asked whether coverage also checks more than 4 CTAs, up to the hardware
+  maximum CTA-per-CGA shape.
+- Added focused MLIR coverage through 16 CTAs:
+  - conversion lit now includes `tcgen05.copy.warpx2` cases for 4, 8, and 16
+    CTAs with canonical outer CTA-pair block bases;
+  - membar lit now includes a 16-CTA distributed shared producer followed by a
+    two-CTA-capable `ttng.tmem_copy`.
+- Rationale: existing Blackwell runtime matrices use `4x4` CGAs and ConSan CTA
+  bitsets assert at most 16 CTAs, so 16 is the relevant max coverage point for
+  this backend path.
+- Validation:
+  - required `make -j8` was no-op;
+  - focused lit rerun of
+    `test/Conversion/tritongpu_to_llvm_blackwell.mlir` and
+    `test/TritonNvidiaGPU/membar-cluster.mlir` passed `2/2`.

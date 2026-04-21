@@ -25891,3 +25891,18 @@ Open after this slice:
 - Validation:
   - required `make -j8` passed;
   - focused lit rerun of the two touched files passed `2/2`.
+
+## 2026-04-21 02:51 UTC: max-CTA copy coverage
+
+- Added explicit coverage above 4 CTAs for the fixed `tcgen05.copy.warpx2`
+  path. Conversion lit now checks 4-, 8-, and 16-CTA canonical outer block
+  bases, including pair-leader predicate and `cta_group::2` opcode selection.
+- Added a 16-CTA membar case for distributed shared producer to
+  two-CTA-capable `ttng.tmem_copy`.
+- Chose 16 CTAs as the max point because existing Blackwell runtime coverage
+  uses 4x4 CGAs and sanitizer CTA bitsets assert at most 16 CTAs.
+- Validation:
+  - required `make -j8` was a no-op;
+  - focused lit rerun of
+    `test/Conversion/tritongpu_to_llvm_blackwell.mlir` and
+    `test/TritonNvidiaGPU/membar-cluster.mlir` passed `2/2`.
