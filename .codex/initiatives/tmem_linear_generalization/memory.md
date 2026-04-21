@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 12:30 UTC local Round 20 descriptor roundtrip and
+  copy/scales selector completed. Report:
+  `agents/fuzz_local_roundtrip_copy_round20.md`. Selector
+  `(ldst_descriptor_roundtrip or cp_scales or cp_no_scales_warpx2_01_23 or cp_no_scales_warpx4) and not reports and not tmem_oor`
+  collected `102/1615` and completed as `51 passed, 51 skipped`; no runtime
+  miscompile, compiler crash, unexpected unsupported diagnostic, or new
+  `FZ-*` bucket.
+
 - Latest: 2026-04-21 12:18 UTC Lane AU completed the plain-only proxy-fence
   reproducer comparison. Report:
   `agents/fuzz_proxy_fence_plain_reproducer_round19.md`. Saved MLIR:

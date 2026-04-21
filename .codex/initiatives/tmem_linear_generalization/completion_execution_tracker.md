@@ -2050,3 +2050,9 @@ signal handling:
   variant passes all six selected B-scale rows. Current strongest hypothesis is
   allocation-order-sensitive B-scale address/SFB operand encoding or descriptor
   base rematerialization.
+
+- 2026-04-21 12:30 UTC: local Round 20 descriptor roundtrip and copy/scales
+  selector passed/skipped. Report: `agents/fuzz_local_roundtrip_copy_round20.md`.
+  Selector
+  `(ldst_descriptor_roundtrip or cp_scales or cp_no_scales_warpx2_01_23 or cp_no_scales_warpx4) and not reports and not tmem_oor`
+  collected `102/1615` and completed as `51 passed, 51 skipped`; no new bucket.

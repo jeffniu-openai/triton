@@ -28764,6 +28764,25 @@ Open after this slice:
   while accumulator allocated before scale descriptors passes for the same
   selected B-scale SSA forms.
 
+## 2026-04-21 12:30 UTC: Round 20 local roundtrip/copy selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_roundtrip_copy_round20.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector
+  `(ldst_descriptor_roundtrip or cp_scales or cp_no_scales_warpx2_01_23 or cp_no_scales_warpx4) and not reports and not tmem_oor`
+  collected `102/1615`.
+- Split-4 result with stable per-GPU caches:
+  `51 passed, 51 skipped`:
+  - GPU 0 / group 1: `26 skipped`;
+  - GPU 1 / group 2: `1 passed, 25 skipped`;
+  - GPU 2 / group 3: `26 passed`;
+  - GPU 3 / group 4: `24 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote
