@@ -2729,3 +2729,24 @@ discovery.
   dimension aborts; new candidates are `FZ-20260421-0020`,
   `FZ-20260421-0021`, and `FZ-20260421-0022`. No runtime wrong-result
   miscompile was confirmed; repair remains deferred during discovery.
+
+- 2026-04-21: Round 35 copy/scales descriptor-view guardrail completed.
+  Report: `agents/fuzz_copy_scales_descriptor_views_round35.md`. Required
+  `make -j8` was a no-op. Runtime sweeps covered `53` checked-in row
+  executions over `31` scale-copy descriptor-view/layout-probe rows plus `19`
+  adjacent descriptor-view copy rows; all passed. No compiler crash, false
+  unsupported diagnostic, opcode mismatch, runtime miscompile, clean-boundary
+  drift, unexpected xfail/pass transition, or new independent `FZ-*`.
+
+- 2026-04-21: Round 35 `ld.red`/descriptor positive runtime sweep completed.
+  Reports: `agents/fuzz_ldred_ldst_positive_round35.md` and
+  `agents/fuzz_audit_priorities_round35.md`. Required `make -j8` was a no-op.
+  Selector
+  `(ld_red or ldst_descriptor) and not reports and not resource and not clean`
+  collected `380/1615` rows and completed split-4 as `313 passed`,
+  `61 skipped`, `6 failed`. All six failures reproduced by exact nodeid in
+  fresh pytest processes. Classification: existing `FZ-20260421-0012`
+  expands to M64 f32 `tcgen05.ld.red` row-basis destination-layout planner
+  failures for `row_reverse_n32` and `row_rotate_col_even_odd_n128`, in both
+  default and explicit `32x32b` split-N paths. No runtime wrong-result
+  miscompile or hard process abort in this lane.

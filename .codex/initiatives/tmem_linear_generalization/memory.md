@@ -1,5 +1,27 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 35 `ld.red`/descriptor positive runtime sweep
+  completed. Reports: `agents/fuzz_ldred_ldst_positive_round35.md` and
+  `agents/fuzz_audit_priorities_round35.md`. Required `make -j8` was a no-op.
+  Selector
+  `(ld_red or ldst_descriptor) and not reports and not resource and not clean`
+  collected `380/1615` rows and completed split-4 as `313 passed`,
+  `61 skipped`, `6 failed`. All six failures reproduced by exact nodeid in
+  fresh pytest processes. Classification: existing `FZ-20260421-0012`
+  expands to M64 f32 `tcgen05.ld.red` row-basis destination-layout planning
+  failures for `row_reverse_n32` and `row_rotate_col_even_odd_n128`, covering
+  both default layout selection and explicit `32x32b` split-N requests. No
+  runtime wrong-result miscompile or hard process abort in this lane.
+
+- Latest: 2026-04-21 Round 35 `tcgen05.copy` scales + descriptor-view guardrail
+  completed. Report: `agents/fuzz_copy_scales_descriptor_views_round35.md`.
+  Required `make -j8` was a no-op. Runtime sweeps covered `53` checked-in row
+  executions: `31` scale-copy descriptor-view/layout-probe rows plus `19`
+  adjacent descriptor-view copy rows, with the three scale-specific rows also
+  included in the broader scale sweep. All passed; no compiler crash, false
+  unsupported diagnostic, opcode mismatch, runtime miscompile, clean-boundary
+  drift, unexpected xfail/pass transition, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 Round 34 broad scaled-MMAv5 runtime guardrail completed.
   Report: `agents/fuzz_local_mma_scaled_broad_round34.md`. Required
   `make -j8` was a no-op. Selector

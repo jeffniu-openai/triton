@@ -30620,6 +30620,47 @@ Open after this slice:
   harness limitation until a faithful JIT-equivalent `triton-opt` pipeline
   proves otherwise.
 
+## 2026-04-21: Round 35 ld.red/descriptor positive sweep
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_ldst_positive_round35.md`
+  and `.codex/initiatives/tmem_linear_generalization/agents/fuzz_audit_priorities_round35.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(ld_red or ldst_descriptor) and not reports and not resource and not clean`.
+- Collection: `380/1615`.
+- Split-4 result: `313 passed`, `61 skipped`, `6 failed`.
+- Fresh exact reruns reproduced all six failures:
+  `row_reverse_n32` min/max default layout,
+  `row_rotate_col_even_odd_n128` min/max default layout,
+  `row_reverse_n32` explicit `32x32b` split-N, and
+  `row_rotate_col_even_odd_n128` explicit `32x32b` split-N.
+- Classification: existing `FZ-20260421-0012` expands to these M64 f32
+  hardware `tcgen05.ld.red` row-basis destination-layout planner failures. No
+  runtime wrong-result miscompile or hard process abort in this lane. Backend
+  repair remains deferred.
+- Read-only audit priority queue recorded the next high-yield probes:
+  dynamic descriptor views across mbarrier/proxy regions, dynamic multi-user
+  B-scale views, high-rank `ld.red`, co-live allocator pressure, and
+  `FZ-0018` resource-boundary fuzzing.
+
+## 2026-04-21: Round 35 copy/scales descriptor-view guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_scales_descriptor_views_round35.md`.
+- Required `make -j8` was a no-op.
+- `cp_scales and (descriptor_view or tmem_descriptor or layout_probe or warpx2 or warpx4)`:
+  `31/1615` collected and `31 passed` split as `8/8/8/7`.
+- `cp_scales and (descriptor_view or chain or indexed or subslice)`:
+  `3/1615` collected and `3 passed`.
+- `(cp_scales or copy) and (descriptor_view or descriptor_chain or chain or indexed_view or subslice_view)`:
+  `19/1615` collected and `19 passed` split as `5/5/5/4`.
+- Aggregate: `53` row executions passed; unique checked-in surface was `31`
+  scale-copy rows plus `19` adjacent descriptor-view copy rows. No compiler
+  crash, false unsupported diagnostic, opcode mismatch, runtime miscompile,
+  clean-boundary drift, unexpected xfail/pass transition, or new independent
+  `FZ-*`.
+
 ## 2026-04-21: Round 34 broad scaled-MMAv5 runtime guardrail
 
 - Wrote

@@ -7,7 +7,26 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 34 broad scaled-MMAv5 runtime
+Latest fuzzing checkpoint: 2026-04-21 Round 35 `ld.red`/descriptor positive
+runtime sweep completed. Reports:
+`agents/fuzz_ldred_ldst_positive_round35.md` and
+`agents/fuzz_audit_priorities_round35.md`. Selector
+`(ld_red or ldst_descriptor) and not reports and not resource and not clean`
+collected `380/1615` checked-in runtime rows and completed split-4 as
+`313 passed, 61 skipped, 6 failed`. The failures all reproduced by exact
+fresh-process rerun and expand existing `FZ-20260421-0012`: M64 f32
+hardware `tcgen05.ld.red` destination-layout planning still rejects
+non-identity row-basis layouts in both default and explicit `32x32b` split-N
+paths. Backend repair remains deferred during discovery.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 35 `tcgen05.copy` scales +
+descriptor-view guardrail completed. Report:
+`agents/fuzz_copy_scales_descriptor_views_round35.md`. The checked-in
+copy/scales descriptor-view/layout-probe selectors covered `53` row executions
+and unique surface of `31` scale-copy rows plus `19` adjacent descriptor-view
+copy rows; all passed with no new independent `FZ-*`.
+
+Earlier fuzzing checkpoint: 2026-04-21 Round 34 broad scaled-MMAv5 runtime
 guardrail completed. Report:
 `agents/fuzz_local_mma_scaled_broad_round34.md`. Selector
 `mma_scaled and not reports and not resource and not clean` collected
