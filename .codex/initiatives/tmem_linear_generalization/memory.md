@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Lane AD completed high-CGA/copy/scales ownership
+  fuzzing. Report: `agents/fuzz_high_cga_copy_scales_round14.md`. Required
+  `make -j8` was a no-op. Checked-in copy/scales selectors collected `95`
+  runtime-matrix rows and passed split-4 as `95 passed`; high-CGA MMA controls
+  passed `2/2`. Temporary mixed-module probing classified three 4/8/16 CTA
+  rows as existing `FZ-20260421-0010` and found new report-only candidate
+  `FZ-20260421-0014`: a legal `num_ctas=2` mixed module with a 2CTA
+  no-scales descriptor-chain copy followed by a scales copy aborts in
+  proxy-fence insertion (`could not find an insertion point between cross-CTA
+  mbarrier.init ops and tracked mbarrier uses`). Reproducer:
+  `/tmp/tmem_high_cga_copy_scales_round14_mixed_fail.mlir`. One scales
+  descriptor-view mixed row was a harness/setup limitation, not classified.
+  No backend repair was attempted.
+
 - Latest: 2026-04-21 11:02 UTC Round 14 Lane AC completed generic
   runtime-index/control-flow descriptor fuzzing. Report:
   `agents/fuzz_generic_runtime_index_round14.md`. No new independent `FZ-*`

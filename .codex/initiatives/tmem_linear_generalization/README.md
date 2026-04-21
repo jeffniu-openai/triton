@@ -7,14 +7,17 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:02 UTC Round 14 Lane AC completed
-generic runtime-index/control-flow descriptor fuzzing with no new independent
-`FZ-*`. `FZ-20260421-0001` now explicitly covers copy/MMAv5 consumers and
-dynamic branch-selected memdesc values, not only explicit runtime
-`parent.index(load(selector))`; `FZ-20260421-0002` remains the chain0 generic
-wrong-result owner with chain1/chain2 controls green. Local adjacent two-CTA
-copy/scales baseline selected `53/1615` runtime-matrix rows and passed split-4
-as `53 passed`.
+Latest fuzzing checkpoint: 2026-04-21 Lane AD high-CGA copy/scales ownership
+fuzzing completed in discovery-only mode. Required `make -j8` was a no-op.
+Checked-in copy/scales runtime selectors collected `95` rows and passed
+split-4 across GPUs 0-3 with stable caches; high-CGA MMA controls passed
+`2/2`. Temporary mixed-module probing classified three 4/8/16 CTA rows as
+existing `FZ-20260421-0010` and found new report-only candidate
+`FZ-20260421-0014`: a `num_ctas=2` mixed 2CTA no-scales descriptor-chain copy
+plus scales copy aborts in proxy-fence insertion with `could not find an
+insertion point between cross-CTA mbarrier.init ops and tracked mbarrier uses`.
+Reproducer saved at `/tmp/tmem_high_cga_copy_scales_round14_mixed_fail.mlir`.
+No backend repair was attempted.
 
 ## How To Use This Folder
 

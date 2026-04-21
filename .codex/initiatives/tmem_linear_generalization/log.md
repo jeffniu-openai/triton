@@ -27945,3 +27945,30 @@ Open after this slice:
   `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k '(cp_no_scales_twocta or cp_scales_warpx4_twocta or cga_roundtrip or layout_in_4cta_context) and not via_scaled_mma'`.
 - Split-4 runtime execution with stable per-GPU caches reported aggregate
   `53 passed` (`14`, `14`, `14`, `11` by shard).
+
+## 2026-04-21: Round 14 Lane AD high-CGA copy/scales ownership fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_high_cga_copy_scales_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Checked-in copy/scales baseline:
+  - `cp_scales and not reports` collected `33/1615`;
+  - `cp_no_scales_warpx2 and not reports` collected `62/1615`;
+  - combined split-4 runtime execution with stable per-GPU caches passed
+    `95/95` (`24`, `24`, `24`, `23` by shard).
+- High-CGA MMA controls
+  `test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]` and
+  `[True-ctas_per_cga2]` passed `2/2`.
+- Temporary probe `/tmp/tmem_high_cga_copy_scales_round14_probe.py`
+  classified `3` high-CGA mixed-module rows as existing
+  `FZ-20260421-0010`, found one new report-only candidate
+  `FZ-20260421-0014`, and hit one harness/setup limitation.
+- `FZ-20260421-0014`: `num_ctas=2` mixed module with a 2CTA no-scales
+  descriptor-chain copy followed by a scales copy aborts in
+  `triton-nvidia-gpu-proxy-fence-insertion`:
+  `could not find an insertion point between cross-CTA mbarrier.init ops and
+  tracked mbarrier uses`. Reproducer saved at
+  `/tmp/tmem_high_cga_copy_scales_round14_mixed_fail.mlir`; `triton-opt
+  --run-reproducer` reproduces the same diagnostic.
