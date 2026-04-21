@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 09:08 UTC
+Last updated: 2026-04-21 09:11 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -110,6 +110,16 @@ The project is complete when:
   subprocess so the parent pytest process survives. Validation: required
   `make -j8`, py-compile, `32` collected structural-fuzzer nodeids, exact
   sentinels `2 xfailed`, and full fuzzer `9 passed, 23 xfailed`.
+  2026-04-21 09:11 UTC Round 7 Lane D completed generic-pass / analysis
+  interaction discovery without backend repairs. Tuple-like memdesc+tensor
+  returns, nested helper-selected memdesc values, loop-carried memdesc+tensor
+  iter args, chain2 loop-carried slice/slice views, and multi-live sibling
+  views with non-TMEM tensor side inputs all classify under the existing R5-C
+  `GluonResolveAutoEncodingsPass` auto-layout crash. A separate
+  `16x128b` layout-conversion/non-TMEM tensor row extends
+  `FZ-20260421-0002` with a fresh `8063 / 8192` runtime mismatch. No new
+  independent FZ id was assigned. Report:
+  `agents/fuzz_generic_analysis_round7.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

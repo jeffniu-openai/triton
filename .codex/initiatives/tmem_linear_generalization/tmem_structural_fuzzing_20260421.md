@@ -599,6 +599,44 @@ remain family-specific and consume a bounded subset of the inventory.
   - extracted MLIR replay with `triton-opt --run-reproducer` aborted with exit
     `134` in the same optimizer pass.
 
+### Lane D Round 7, Generic-Pass / Analysis Interaction Fuzz
+
+- Time: 2026-04-21 09:11 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_analysis_round7.md`
+- Scope: generic-pass and analysis interactions after the new scaled-MMAv5 and
+  `ld.red` promotions: memdesc values through nested `scf.if`, `scf.for`,
+  tuple-like returns, helper chains, layout conversions, and non-TMEM tensor
+  interactions.
+- Result: no backend/compiler repair attempted. No new independent FZ id was
+  assigned; the stable failures split cleanly into existing buckets:
+  - R5-C auto-layout compiler crash extends to tuple-like `(memdesc, tensor)`
+    results, nested helper-selected memdesc values, loop-carried memdesc plus
+    tensor iter args, chain2 slice/slice loop-carried views, and multiple live
+    sibling views with a non-TMEM tensor side input;
+  - `FZ-20260421-0002` runtime miscompile survives an additional
+    layout-conversion/non-TMEM tensor pressure row, compiling successfully but
+    mismatching `8063 / 8192` elements.
+- Boundary separation:
+  - no `FZ-20260421-0008`-style `TritonNvidiaGPUOptimizeTMemLayoutsPass`
+    dimension mismatch appeared in this generic-pass lane;
+  - no new `FZ-20260421-0001` dynamic `memdesc_index` illegal-lowering row was
+    found;
+  - the direct-control row in the temporary harness was contaminated by a
+    helper returning a non-TMEM tensor with `#gluon.auto_encoding`, so the
+    checked-in `ldst-view-identity-32x32b` pass remains the direct control.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_generic_analysis_round7.py` py-compiled and collected `10`
+    nodeids;
+  - four-GPU split sweep reported `3 failed`, `3 failed`, `3 failed`, and
+    `1 failed`;
+  - fresh exact tuple and loop confirmations reproduced the R5-C
+    `GluonResolveAutoEncodingsPass` / `tt.make_range` diagnostic;
+  - fresh exact layout-conversion/non-TMEM row reproduced the FZ-0002-style
+    runtime mismatch;
+  - checked-in `ldst-view-identity-32x32b` control passed.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -682,6 +720,16 @@ remain family-specific and consume a bounded subset of the inventory.
   - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-if-chain0-inline]`;
   - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-tuple-mixed-captures-chain0]`;
   - `test_tmem_structural_fuzzer_generic_pass_layout_conversion_pressure[generic-pass-layout-conversion-pressure-chain0-16x128b]`.
+- Round 7 Lane D expansion:
+  - layout-conversion pressure with a separate non-TMEM tensor input still
+    compiles and miscompiles for chain0 under `16x128b`;
+  - fresh confirmation reported `8063 / 8192` mismatched elements, matching
+    the existing FZ-0002 failure scale;
+  - tuple-like and loop-carried variants in the same lane were blocked earlier
+    by the R5-C auto-layout compiler crash, so rerun them after the R5-C
+    sentinel is fixed before assigning any new runtime-miscompile bucket.
+  - report:
+    `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_analysis_round7.md`.
 
 ### FZ-20260421-0003: ld/st descriptor-view chains miscompile
 

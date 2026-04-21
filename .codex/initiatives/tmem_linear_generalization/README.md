@@ -73,6 +73,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 09:11 UTC: completed Round 7 Lane D discovery for
+  generic-pass and analysis interactions after the scaled/ld.red promotions.
+  Wrote `agents/fuzz_generic_analysis_round7.md`. The stable results split
+  into existing buckets rather than a new independent FZ id: tuple-like
+  `(memdesc, tensor)` returns, nested helper-selected memdescs, loop-carried
+  memdesc+tensor iter args, chain2 loop-carried slice/slice views, and
+  multi-live sibling views with non-TMEM tensors all reproduce the R5-C
+  `GluonResolveAutoEncodingsPass` / `tt.make_range` auto-layout crash; a
+  `16x128b` layout-conversion plus non-TMEM tensor row compiles and
+  mismatches `8063 / 8192`, extending `FZ-20260421-0002`. No backend repair
+  was attempted.
+
 - 2026-04-21 09:08 UTC: promoted the two new Round 6 findings into
   checked-in structural-fuzzer sentinels. Added a strict xfail for
   `FZ-20260421-0007`, scaled-MMAv5 `use_acc` over a low-column accumulator

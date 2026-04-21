@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 09:11 UTC completed Round 7 Lane D generic-pass /
+  analysis interaction fuzzing after the scaled-MMAv5 and `ld.red`
+  promotions. Temporary harness `/tmp/tmem_generic_analysis_round7.py`
+  collected `10` deterministic nodeids. No backend/compiler repair was
+  attempted, and no new independent FZ id was assigned. Tuple-like
+  `(memdesc, tensor)` branch results, nested helper-selected memdesc values,
+  loop-carried memdesc plus non-TMEM tensor iter args, chain2 loop-carried
+  slice/slice views, and multiple sibling views with a non-TMEM tensor side
+  input all reproduce the existing R5-C `GluonResolveAutoEncodingsPass` /
+  `tt.make_range` auto-layout crash. A separate `16x128b`
+  layout-conversion/non-TMEM tensor row compiles and mismatches `8063 / 8192`,
+  extending `FZ-20260421-0002`. The checked-in `ldst-view-identity-32x32b`
+  control passed. Report:
+  `agents/fuzz_generic_analysis_round7.md`.
+
 - Latest: 2026-04-21 09:08 UTC promoted the two new Round 6 findings into
   `python/test/gluon/test_tmem_structural_fuzzer.py`. Added strict xfail
   `test_tmem_structural_fuzzer_scaled_mma_acc_subslice_control_flow[mma-scaled-fz20260421-0007-subslice-if-n64-selector0]`

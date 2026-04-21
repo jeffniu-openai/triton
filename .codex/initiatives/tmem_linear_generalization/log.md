@@ -26579,3 +26579,30 @@ Open after this slice:
   - collect-only found `32` structural-fuzzer nodeids;
   - exact new sentinels reported `2 xfailed`;
   - full structural fuzzer reported `9 passed, 23 xfailed`.
+
+## 2026-04-21 09:11 UTC: Round 7 Lane D generic-pass / analysis fuzzing
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote `/tmp/tmem_generic_analysis_round7.py` and
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_analysis_round7.md`.
+- Classification:
+  - R5-C auto-layout crash extends to tuple-like `(memdesc, tensor)` results,
+    nested helper-selected memdesc values, loop-carried memdesc plus non-TMEM
+    tensor iter args, chain2 loop-carried slice/slice views, and multiple
+    sibling views with a non-TMEM tensor side input;
+  - `FZ-20260421-0002` extends to a `16x128b` layout-conversion plus
+    non-TMEM tensor row that compiles and mismatches `8063 / 8192`;
+  - no `FZ-20260421-0008`-style optimizer dimension crash and no new
+    `FZ-20260421-0001` dynamic-index illegal-lowering row were found.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - py-compile passed for the `/tmp` harness;
+  - collect-only found `10` nodeids;
+  - four-GPU split sweep reported `3 failed`, `3 failed`, `3 failed`, and
+    `1 failed`;
+  - exact tuple and loop confirmations reproduced the R5-C auto-layout
+    diagnostic;
+  - exact layout-conversion/non-TMEM confirmation reproduced the FZ-0002-style
+    runtime mismatch;
+  - checked-in `ldst-view-identity-32x32b` control passed.
