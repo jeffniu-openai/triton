@@ -60,6 +60,13 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 15:08 UTC Round 39 structural xfail guardrail completed.
+  Artifact: `agents/fuzz_structural_xfail_guardrail_round39.md`. Selector
+  `generic_pass or descriptor_view or ldred or scaled_mma` over
+  `python/test/gluon/test_tmem_structural_fuzzer.py` collected `26/33` and
+  completed split-4 as `3 passed, 23 xfailed`. No XPASS, unexpected failure,
+  changed clean-boundary behavior, new crash outside expected xfails, or new
+  independent `FZ-*`; backend repair remains deferred.
   2026-04-21 15:02 UTC Round 39 TMA/multicast guardrail completed. Artifact:
   `agents/fuzz_tma_multicast_guardrail_round39.md`. Selector
   `tma_multicast or multicast_commit` over `python/test/gluon/test_core.py`

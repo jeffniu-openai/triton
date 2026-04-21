@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 15:08 UTC Round 39 structural xfail guardrail
+  completed. Report: `agents/fuzz_structural_xfail_guardrail_round39.md`.
+  Selector `generic_pass or descriptor_view or ldred or scaled_mma` over
+  `python/test/gluon/test_tmem_structural_fuzzer.py` collected `26/33` and
+  completed split-4 as `3 passed, 23 xfailed` (`3/4 xfailed`, `7 xfailed`,
+  `7 xfailed`, `5 xfailed`). Expected xfail rows reproduced known buckets,
+  including noisy MLIR reproducer output from existing `FZ-20260421-0001`.
+  No XPASS, unexpected failure, changed clean-boundary behavior, new crash
+  outside expected xfails, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 15:02 UTC Round 39 TMA/multicast guardrail completed.
   Report: `agents/fuzz_tma_multicast_guardrail_round39.md`. Selector
   `tma_multicast or multicast_commit` over `python/test/gluon/test_core.py`

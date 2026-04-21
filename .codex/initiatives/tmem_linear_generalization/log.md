@@ -30766,6 +30766,21 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 15:08 UTC: Round 39 structural xfail guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_xfail_guardrail_round39.md`.
+- Selector:
+  `generic_pass or descriptor_view or ldred or scaled_mma` over
+  `python/test/gluon/test_tmem_structural_fuzzer.py`.
+- Collection: `26/33`.
+- Split-4 result: `3 passed, 23 xfailed`
+  (`3 passed/4 xfailed`, `7 xfailed`, `7 xfailed`, `5 xfailed` by group).
+- Classification: no XPASS, unexpected failure, changed clean-boundary
+  behavior, new crash outside expected xfails, or new independent `FZ-*`.
+  Existing xfail rows still reproduce cataloged failures such as
+  `FZ-20260421-0001`.
+
 ## 2026-04-21 15:02 UTC: Round 39 TMA/multicast guardrail
 
 - Wrote

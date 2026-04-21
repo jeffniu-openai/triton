@@ -7,7 +7,14 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 39 TMA/multicast guardrail
+Latest fuzzing checkpoint: 2026-04-21 Round 39 structural xfail guardrail
+completed. Report: `agents/fuzz_structural_xfail_guardrail_round39.md`.
+Selector `generic_pass or descriptor_view or ldred or scaled_mma` over
+`python/test/gluon/test_tmem_structural_fuzzer.py` collected `26/33` and
+completed split-4 as `3 passed, 23 xfailed`. No XPASS, unexpected failure, or
+new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 39 TMA/multicast guardrail
 completed. Report: `agents/fuzz_tma_multicast_guardrail_round39.md`.
 Selector `tma_multicast or multicast_commit` over `python/test/gluon/test_core.py`
 collected `11/18114` and passed as `11 passed`. No new independent `FZ-*`.
