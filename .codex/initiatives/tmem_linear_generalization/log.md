@@ -32220,3 +32220,25 @@ Open after this slice:
   `6 passed`.
 - Classification: harness/documentation invocation issue, not backend; no new
   `FZ-*`.
+
+## 2026-04-21: Round 52 duration-aware runtime grouping
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_duration_grouped_runtime_round52.md`.
+- Required `make -j8` was a no-op.
+- Positive runtime-matrix lane:
+  `195 passed`; least-duration split groups all green.
+- Clean-boundary runtime-matrix lane:
+  `245 passed`; initial count split was imbalanced, and
+  `/tmp/tmem_round52_clean_durations.json` balanced future groups to about
+  `11-12s` wall each, with the worst observed group improving from `35.613s`
+  to `12.071s`.
+- Known-red runtime-matrix lane:
+  `6 failed, 3 passed`; all failures are existing `FZ-20260421-0012` M64 f32
+  `tcgen05.ld.red` destination-layout planner gaps.
+- Stored duration files:
+  `/tmp/tmem_round52_positive_durations.json` and
+  `/tmp/tmem_round52_clean_durations.json`.
+- Classification: no new compiler crash, unexpected unsupported case,
+  verifier drift, clean diagnostic regression, hang, runtime miscompile, or
+  independent `FZ-*`.

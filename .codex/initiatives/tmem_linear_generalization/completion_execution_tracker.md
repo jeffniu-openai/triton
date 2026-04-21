@@ -3585,3 +3585,15 @@ discovery.
   `PYTHONPATH=.:./python:./python/triton_kernels` collected `1043` tests, and
   corrected smoke passed as `6 passed`. Classification:
   harness/documentation invocation issue, not backend; no new `FZ-*`.
+
+- 2026-04-21: Round 52 duration-aware runtime grouping completed. Report:
+  `agents/fuzz_duration_grouped_runtime_round52.md`. Required `make -j8` was
+  a no-op. Positive runtime matrix selector passed as `195 passed`; clean
+  boundary selector passed as `245 passed`; known-red selector produced
+  `6 failed, 3 passed`, with all failures classified as existing
+  `FZ-20260421-0012`. Duration files `/tmp/tmem_round52_positive_durations.json`
+  and `/tmp/tmem_round52_clean_durations.json` were created for future local
+  throughput. Clean-boundary least-duration splitting reduced the worst group
+  from `35.613s` wall to `12.071s` wall. No compiler crash, false unsupported
+  diagnostic, verifier drift, runtime miscompile, hang, or new independent
+  `FZ-*`.
