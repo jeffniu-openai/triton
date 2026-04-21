@@ -28071,3 +28071,27 @@ Open after this slice:
   bucket covering A-scale and B-scale descriptor views across
   padded/unpadded storage, `N=128/256`, `use_acc`, and probed format
   combinations.
+
+## 2026-04-21 11:15 UTC: Round 14 Lane AH lit/verifier fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_lit_verifier_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op; `ninja triton-opt` from the build
+  directory was also a no-op.
+- Anchor lit sweep passed `5/5` for
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+  `test/TritonNvidiaGPU/invalid.mlir`,
+  `test/TritonNvidiaGPU/membar-cluster.mlir`,
+  `test/TritonNvidiaGPU/membar.mlir`, and
+  `test/Conversion/tritongpu_to_llvm_blackwell.mlir`.
+- Temporary compiler-only probes classified as `7` pass/clean expected
+  diagnostics and `4` known-bucket failures: `FZ-20260421-0001` dynamic
+  `ttg.memdesc_index` illegal lowering, `FZ-20260421-0012` M64 row-rotated
+  `ld.red` unsupported destination-layout lowering, and `FZ-20260421-0014`
+  full proxy-fence reproducer. A Python child compile-only confirmation also
+  reproduced `FZ-0012`.
+- 4/8/16 CTA verifier probes stayed clean; matmul two-CTA consistency probes
+  for 4/8/16 CTA contexts passed or produced clean verifier diagnostics.
+- No new independent `FZ-*` bucket was assigned.

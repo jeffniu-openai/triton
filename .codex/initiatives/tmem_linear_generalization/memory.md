@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:15 UTC Round 14 Lane AH completed
+  compiler-only/lit/verifier fuzzing. Report:
+  `agents/fuzz_lit_verifier_round14.md`. Required `make -j8` and
+  `ninja triton-opt` were no-ops. Anchor lit files passed `5/5`.
+  Temporary `triton-opt` probes classified as `7` pass/clean expected
+  diagnostics and `4` known-bucket failures: `FZ-20260421-0001` dynamic
+  `ttg.memdesc_index` illegal lowering, `FZ-20260421-0012` M64 row-rotated
+  `ld.red` unsupported destination layout, and `FZ-20260421-0014` full
+  proxy-fence reproducer. 4/8/16 CTA verifier probes stayed clean, and
+  matmul two-CTA consistency probes for 4/8/16 CTA contexts passed or produced
+  clean verifier diagnostics. No new independent `FZ-*` bucket was assigned.
+
 - Latest: 2026-04-21 11:11 UTC Round 14 Lane AG minimized and broadened
   `FZ-20260421-0013`. Report:
   `agents/fuzz_scaled_fz0013_min_round14.md`. Required `make -j8` was a
