@@ -32071,3 +32071,14 @@ Open after this slice:
 - Result: `3 passed`.
 - Classification: no FileCheck drift, verifier drift, proxy-fence lit drift,
   or new independent `FZ-*`.
+
+## 2026-04-21 14:57 UTC: Round 51 local core control smoke
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_core_control_smoke_round51.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(tmem_copy_no_scales_shared_linear_128x128b or tmem_descriptor_chain_matrix or tmem_legacy_m64_subview_default_load_auto_selects_splitn or tcgen05_mma_multicast_commit_twocta_linear_acc)`.
+- Result: `31 passed, 18083 deselected`.
+- Classification: no compiler crash, runtime miscompare, skip drift, or new
+  independent `FZ-*`.

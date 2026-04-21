@@ -3500,3 +3500,10 @@ discovery.
   `memdesc-subview-split.mlir`, and `proxy_fence_insertion.mlir` passed
   `3/3`. No FileCheck drift, verifier drift, proxy-fence lit drift, or new
   independent `FZ-*`.
+
+- 2026-04-21 14:57 UTC: Round 51 local core control smoke completed. Report:
+  `agents/fuzz_core_control_smoke_round51.md`. Required `make -j8` was a
+  no-op. `test_core.py` selector over TMEM copy, descriptor-chain, M64 split-N
+  default-load, and two-CTA MMAv5 multicast commit linear-accumulator controls
+  passed as `31 passed, 18083 deselected`. No compiler crash, runtime
+  miscompare, skip drift, or new independent `FZ-*`.
