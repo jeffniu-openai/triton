@@ -32082,3 +32082,19 @@ Open after this slice:
 - Result: `31 passed, 18083 deselected`.
 - Classification: no compiler crash, runtime miscompare, skip drift, or new
   independent `FZ-*`.
+
+## 2026-04-21 14:57 UTC: Round 51 reproducer minimization
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_reproducer_minimization_round51.md`.
+- Required `make -j8` was a no-op.
+- `FZ-20260421-0014` minimized to `/tmp/tmem_round51_fz0014_no_store.mlir`, a
+  27-line MLIR repro with no function arg or trailing store.
+- `FZ-20260421-0016` minimized to `/tmp/tmem_round51_fz0016_min.mlir`, an
+  8-line compiler-only unencoded TMEM operand repro.
+- `FZ-20260421-0017` minimized to `/tmp/tmem_round51_fz0017_min.mlir`, a
+  10-line encoded i64 TMEM load/store lowering repro.
+- `FZ-20260421-0001` dynamic copy parent-index and `FZ-20260421-0021`
+  half-column descriptor-view signatures were revalidated through existing
+  Python `/tmp` harnesses.
+- No backend fix, checked-in test, or new independent `FZ-*`.

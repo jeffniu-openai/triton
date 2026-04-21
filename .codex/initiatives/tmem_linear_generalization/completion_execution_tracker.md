@@ -3507,3 +3507,12 @@ discovery.
   default-load, and two-CTA MMAv5 multicast commit linear-accumulator controls
   passed as `31 passed, 18083 deselected`. No compiler crash, runtime
   miscompare, skip drift, or new independent `FZ-*`.
+
+- 2026-04-21 14:57 UTC: Round 51 reproducer minimization completed. Report:
+  `agents/fuzz_reproducer_minimization_round51.md`. Required `make -j8` was a
+  no-op. `FZ-20260421-0014` was minimized to a 27-line MLIR repro with no
+  function arg or trailing store; `FZ-20260421-0016` was minimized to an
+  8-line compiler-only MLIR repro; `FZ-20260421-0017` was minimized to a
+  10-line compiler-only MLIR repro. `FZ-20260421-0001` dynamic copy and
+  `FZ-20260421-0021` half-column signatures were revalidated through existing
+  Python `/tmp` harnesses. No new independent `FZ-*`.
