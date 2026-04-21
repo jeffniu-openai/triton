@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 06:44 UTC
+Last updated: 2026-04-21 06:47 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -106,6 +106,12 @@ The project is complete when:
   same-allocation TMEM partition discovery through memdesc view chains and SCF
   value forwarding, with lit coverage for two `ttng.tmem_subslice` views of
   one allocation in a warp-specialized loop.
+  2026-04-21 06:47 UTC copy/ld/st/ld.red audit fixed multicast
+  `tcgen05.copy` ownership classification for 128-row two-CTA scales
+  destinations. The pair-local block selector is now derived from half the
+  destination row extent and capped at `128`, so smaller pair-local scales
+  tiles use row `64` while 4/8/16 CTA `warpx2` outer ownership remains
+  supported.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
@@ -1151,3 +1157,14 @@ signal handling:
   scaled selector passed `22 passed, 1593 deselected`; py-compile and
   `git diff --check` passed. Concurrent `TensorMemoryUtils.cpp` edits were not
   staged.
+
+- 2026-04-21 06:47 UTC: completed the requested copy/ld/st/ld.red-focused
+  adversarial audit slice. Found and fixed a real multicast-copy ownership
+  false negative: 128-row two-CTA `TensorMemoryScalesLayout` destinations
+  expose `block=1 -> (64, 0)`, but the copy support checker required
+  `[[128, 0]]` for every multicast family. The checker now uses
+  `min(row_extent / 2, 128)` for the pair-local selector. Validation passed:
+  required `make -j8`; exact scales two-CTA copy nodeid; paired single/two-CTA
+  scales copy nodeids; copy adversarial selector `31/31`; descriptor-chain
+  ld/st selector `128 passed, 61 skipped`; ld.red selector `52/52`; lit
+  `3/3`; `git diff --check`.

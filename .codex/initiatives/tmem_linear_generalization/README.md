@@ -73,6 +73,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 06:47 UTC: completed the copy/ld/st/ld.red-focused adversarial
+  follow-up audit. Fixed a real multicast `tcgen05.copy` two-CTA ownership
+  false negative for 128-row `TensorMemoryScalesLayout` destinations: their
+  pair-local CTA selector is row `64`, not the usual row `128`. The backend
+  now derives the multicast pair-local block selector from the destination row
+  extent and caps it at `128`, preserving the existing 4/8/16 CTA outer
+  ownership behavior.
+
 - 2026-04-21 06:46 UTC: completed another adversarial scaled-MMAv5 TMEM audit
   focused on `Dialect.cpp`, `Ops.cpp`, B-scale rematerialization in
   `TensorMemoryAllocation.cpp`, and runtime-matrix scaled kernels. Found and

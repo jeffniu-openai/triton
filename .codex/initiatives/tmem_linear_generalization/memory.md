@@ -1,5 +1,25 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 06:47 UTC completed a second adversarial
+  copy/ld/st/ld.red audit focused on descriptor chains, multi-CTA ownership,
+  subword/packed boundaries, and refresh/view behavior. A real backend copy
+  gap was found and fixed in `TensorMemoryUtils.cpp`: multicast
+  `tcgen05.copy` destination ownership had hard-coded the canonical two-CTA
+  block basis to physical row `128`, which incorrectly rejected smaller
+  two-CTA scales destinations such as a 128-row `TensorMemoryScalesLayout`
+  whose pair-local CTA selector is physical row `64`. The fix derives the
+  pair-local expected block row from the destination row extent, capped at
+  `128`, so 128-row two-CTA multicast scales copies are positive while the
+  existing 4/8/16 CTA `warpx2` lit coverage still accepts `128` as the
+  within-pair selector and treats larger block bases as outer CTA-pair
+  ownership. Validation: required `make -j8`; exact
+  `test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy` passed;
+  paired single/two-CTA scales copy nodeids passed `2/2`; broad copy selector
+  `31/31` passed; broad descriptor-chain ld/st selector passed
+  `128 passed, 61 skipped`; ld.red descriptor/twocta/packed/refresh selector
+  passed `52/52`; lit for `tmem_layouts.mlir`, `interleave_tmem.mlir`, and
+  `tritongpu_to_llvm_blackwell.mlir` passed `3/3`; `git diff --check` passed.
+
 - Latest: 2026-04-21 06:23 UTC completed the requested adversarial point-test
   audit after the merge-exposed backend weakness. Subagents found and fixed one
   real backend alias-analysis bug in `InterleaveTMem` for indexed memdesc

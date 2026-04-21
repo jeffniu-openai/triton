@@ -26059,6 +26059,52 @@ Open after this slice:
     deserves a focused scheduling-cost test if future TMEM partition placement
     looks unstable.
 
+## 2026-04-21 06:47 UTC: copy/ld/st/ld.red adversarial audit follow-up
+
+- User asked for another adversarial audit focused specifically on TMEM
+  copy/ld/st/ld.red backend correctness, descriptor chains, multi-CTA up to 16,
+  subword/packed clean errors, and refresh/view boundaries.
+- Found one real copy backend gap:
+  - `getMulticastTMemCopyDestinationLayoutSupport` hard-coded the canonical
+    two-CTA destination block basis to `[[128, 0]]` for every multicast
+    `tcgen05.copy` family.
+  - That is correct for ordinary 256-row two-CTA and larger-CGA pair-local
+    destinations, but too strict for smaller 128-row two-CTA scales copies,
+    whose destination query exposes `block=1 -> (64, 0)`.
+  - The exact failing probe was
+    `test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy`, which
+    rejected an otherwise composable `TensorMemoryScalesLayout(cga_layout=[[1,
+    0]])` destination with the stale `[[128, 0]]` diagnostic.
+- Implemented scoped fix:
+  - derive multicast copy's pair-local expected block row from half of the
+    destination physical row extent, capped at `128`;
+  - this accepts 128-row two-CTA scales destinations with `[[64, 0]]`;
+  - 4/8/16 CTA `warpx2` conversion lit remains positive because larger
+    destination rows still use `[[128, 0]]` as the within-pair selector, with
+    `[[256, 0]]`, `[[512, 0]]`, and `[[1024, 0]]` treated as outer ownership.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`;
+  - exact failing nodeid:
+    `test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy` passed;
+  - paired scales copy nodeids
+    `test_tmem_runtime_matrix_cp_scales_warpx4` and
+    `test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy` passed
+    `2/2`;
+  - copy adversarial selector
+    `-k "copy and (twocta or warpx2 or refresh or packed or subword or descriptor_view)"`
+    passed `31/31`;
+  - descriptor-chain ld/st selector
+    `-k "ldst_descriptor or ld_red_descriptor or x1_subword_twocta or refresh or packed"`
+    passed `128`, skipped `61`;
+  - ld.red adversarial selector
+    `-k "ld_red and (descriptor or twocta or packed or subword or refresh)"`
+    passed `52/52`;
+  - lit
+    `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+    `test/TritonNvidiaGPU/interleave_tmem.mlir`, and
+    `test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed `3/3`;
+  - `git diff --check` passed.
+
 ## 2026-04-21 06:46 UTC: scaled-MMAv5 B-scale rematerialization audit
 
 - User asked for another adversarial audit focused on scaled-MMAv5 TMEM backend

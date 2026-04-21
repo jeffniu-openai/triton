@@ -11247,10 +11247,16 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
     return getDenseTMemCopyColumnPermutationFailure(family, requirement);
   }
 
-  auto blockOwnershipSupport =
-      getTMemCopyDestinationBlockOwnershipSupport(ll, ctx, family, twoCTAs,
-                                                  /*expectedBlockRow=*/128,
-                                                  /*allowBroadcastBlockOwnership=*/true);
+  int32_t expectedBlockRow = 128;
+  if (twoCTAs) {
+    auto outDims = llvm::to_vector(ll.getOutDimNames());
+    if (!outDims.empty() && ll.getOutDimSize(outDims.front()) >= 2)
+      expectedBlockRow =
+          std::min<int32_t>(ll.getOutDimSize(outDims.front()) / 2, 128);
+  }
+  auto blockOwnershipSupport = getTMemCopyDestinationBlockOwnershipSupport(
+      ll, ctx, family, twoCTAs, expectedBlockRow,
+      /*allowBroadcastBlockOwnership=*/true);
   if (!blockOwnershipSupport)
     return blockOwnershipSupport;
 
