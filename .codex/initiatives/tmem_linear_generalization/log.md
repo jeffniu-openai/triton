@@ -32348,6 +32348,53 @@ Open after this slice:
 - Classification: no XPASS, compiler crash, verifier drift, false unsupported
   diagnostic, clean-boundary drift, runtime miscompile, or independent `FZ-*`.
 
+## 2026-04-21: Round 54 local TMA/TMEM runtime lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_local_tma_tmem_lane.md`.
+- Required `make -j8` was a no-op.
+- Two-CTA TMA/TF32 MMAv5 selector:
+  `15/1615` collected, `15 passed`.
+- Coverage included shared-transpose clean diagnostics and B-transposed
+  descriptor positives with and without `use_acc` across linear and legacy
+  accumulator layouts.
+- Classification: no compiler crash, verifier drift, false unsupported
+  diagnostic, clean-boundary drift, runtime miscompile, hang, or independent
+  `FZ-*`.
+
+## 2026-04-21: Round 54 local split-N / x1 / subword lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_local_splitn_x1_subword_lane.md`.
+- Required `make -j8` was a no-op.
+- Broad selector:
+  `101/1615` collected.
+- Runtime selector excluded known-red `rowcol_permuted_explicit` M64
+  row/column `ld.red` cases and passed split-4 as `98 passed`.
+- Coverage included split-N immediates, auto `16x32bx2`, explicit
+  `16x32bx2`, row/column-permuted split-N positives, f16/i8 x1 subword
+  rows, 1CTA/2CTA x1 `f32`/`i32` descriptor chains, and clean unsupported x1
+  variants.
+- Classification: no compiler crash, verifier drift, false unsupported
+  diagnostic, clean-boundary drift, runtime miscompile, hang, or independent
+  `FZ-*`.
+
+## 2026-04-21: Round 54 local `test_core.py` TMEM smoke
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_local_test_core_smoke.md`.
+- Required `make -j8` was a no-op.
+- Collection probe over core TMEM families:
+  `64/18114` collected.
+- Exact smoke:
+  `6 passed`.
+- Covered multicast commit, two-CTA linear accumulator MMAv5, no-scale copy,
+  descriptor-view linear runtime, `ld.red`, and scaled copy with linear
+  accumulator layout.
+- Classification: no compiler crash, verifier drift, false unsupported
+  diagnostic, opcode absence, runtime miscompile, hang, or independent
+  `FZ-*`.
+
 ## 2026-04-21 15:21 UTC: Round 54 dynamic 2CTA descriptor SSA lane
 
 - Wrote

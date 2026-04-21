@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 15:21 UTC Round 54 opcode consistency lane C
+  completed. Report: `agents/fuzz_round54_opcode_consistency_lane.md`.
+  Required `make -j8` was a no-op. Focused runtime-matrix opcode selector
+  collected `172/1615` rows and passed split-4 as `172 passed`, covering
+  allocation/wait, `ld/st`, hardware and software `ld.red`, copy,
+  scaled-copy, plain MMAv5, scaled MMAv5, and commit. Focused
+  proxy/mbarrier/multicast selector over runtime matrix plus `test_core.py`
+  collected `39/19729` and passed. Representative forced-compile dump replay
+  passed `9` nodeids and captured `27` TTGIR/LLIR/PTX artifacts under
+  `/tmp/tmem_round54_opcode_dump`; inspected streams showed matching LLIR/PTX
+  opcodes for `32x32b` load/store, hardware `ld.red`, non-f32 software-reduce
+  fallback, `warpx2`, two-CTA `128x256b` copy, plain MMAv5, scaled MMAv5,
+  waits, commit, proxy fence, and cluster barriers. No PTX-vs-LLIR mismatch,
+  missing hardware opcode, unexpected software fallback, verifier
+  over-strictness, crash, miscompile, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 15:30 UTC Round 39 descriptor/high-rank positive
   guardrail completed. Report:
   `agents/fuzz_descriptor_high_rank_guardrail_round39.md`. Selector

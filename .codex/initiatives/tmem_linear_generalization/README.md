@@ -7,7 +7,17 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 39 descriptor/high-rank positive
+Latest fuzzing checkpoint: 2026-04-21 Round 54 opcode consistency lane C
+completed. Report: `agents/fuzz_round54_opcode_consistency_lane.md`.
+Focused runtime-matrix opcode selector collected `172/1615` and passed
+split-4 as `172 passed`; focused proxy/mbarrier/multicast selector collected
+`39/19729` and passed as `39 passed`; representative dump replay passed
+`9` nodeids and captured `27` TTGIR/LLIR/PTX artifacts under
+`/tmp/tmem_round54_opcode_dump`. No PTX-vs-LLIR opcode mismatch, missing
+hardware opcode, unexpected software fallback, verifier over-strictness,
+compiler crash, runtime miscompile, or new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 39 descriptor/high-rank positive
 guardrail completed. Report:
 `agents/fuzz_descriptor_high_rank_guardrail_round39.md`. Selector
 `(descriptor_compositions or higher_rank or rank5 or multidim_slice or half_rows) and not reports and not resource and not clean`

@@ -3660,6 +3660,29 @@ discovery.
   crash, verifier drift, false unsupported diagnostic, runtime miscompile, or
   new independent `FZ-*`.
 
+- 2026-04-21: Round 54 local TMA/TMEM runtime lane completed. Report:
+  `agents/fuzz_round54_local_tma_tmem_lane.md`. Required `make -j8` was a
+  no-op. Two-CTA TMA/TF32 MMAv5 selector collected `15` rows and passed as
+  `15 passed`, covering shared-transpose clean diagnostics and B-transposed
+  descriptor positives with and without `use_acc`. No compiler crash,
+  verifier drift, clean-boundary drift, runtime miscompile, or new `FZ-*`.
+
+- 2026-04-21: Round 54 local split-N/x1/subword lane completed. Report:
+  `agents/fuzz_round54_local_splitn_x1_subword_lane.md`. Required `make -j8`
+  was a no-op. Broad selector collected `101` rows; filtered positive lane
+  excluded known-red M64 row/column `ld.red` rows and completed split-4 as
+  `98 passed, 0 failed`. Coverage included split-N immediates, auto
+  `16x32bx2`, x1 `f32`/`i32`, f16/i8 subword, 1CTA/2CTA descriptor chains,
+  and clean unsupported x1 variants. No new independent `FZ-*`.
+
+- 2026-04-21: Round 54 local `test_core.py` TMEM smoke completed. Report:
+  `agents/fuzz_round54_local_test_core_smoke.md`. Required `make -j8` was a
+  no-op. A collection probe over core TMEM families found `64` relevant rows;
+  exact smoke over multicast commit, two-CTA linear accumulator MMAv5,
+  no-scale copy, descriptor-view runtime, `ld.red`, and scaled copy passed as
+  `6 passed`. No compiler crash, verifier drift, opcode absence, runtime
+  miscompile, or new independent `FZ-*`.
+
 - 2026-04-21 15:21 UTC: Round 54 dynamic 2CTA descriptor SSA lane completed.
   Report: `agents/fuzz_round54_dynamic_2cta_lane.md`. Required `make -j8`
   was a no-op. Temporary `/tmp/tmem_round54_dynamic_2cta_probe.py` crossed
