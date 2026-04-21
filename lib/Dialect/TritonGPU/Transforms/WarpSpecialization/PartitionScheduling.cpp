@@ -710,22 +710,61 @@ SmallVector<std::pair<std::string, std::function<bool(Edge)>>> constraints = {
      }},
 };
 
+void collectTMEMAllocs(Value value, DenseSet<Value> &seen,
+                       DenseSet<Operation *> &result) {
+  if (!seen.insert(value).second)
+    return;
+
+  if (auto blockArg = dyn_cast<BlockArgument>(value)) {
+    Operation *parentOp = blockArg.getOwner()->getParentOp();
+    if (auto forOp = dyn_cast<scf::ForOp>(parentOp)) {
+      if (blockArg.getArgNumber() == 0)
+        return;
+      unsigned idx = blockArg.getArgNumber() - 1;
+      collectTMEMAllocs(forOp.getInitArgs()[idx], seen, result);
+      collectTMEMAllocs(forOp.getYieldedValues()[idx], seen, result);
+    } else if (auto wsOp = dyn_cast<ttg::WarpSpecializePartitionsOp>(parentOp)) {
+      collectTMEMAllocs(wsOp.getExplicitCaptures()[blockArg.getArgNumber()],
+                        seen, result);
+    }
+    return;
+  }
+
+  auto resultValue = dyn_cast<OpResult>(value);
+  if (!resultValue)
+    return;
+
+  Operation *defOp = resultValue.getOwner();
+  if (isa<ttng::TMEMAllocOp>(defOp)) {
+    result.insert(defOp);
+  } else if (defOp->hasTrait<OpTrait::MemDescViewTrait>()) {
+    collectTMEMAllocs(defOp->getOperand(0), seen, result);
+  } else if (auto selectOp = dyn_cast<arith::SelectOp>(defOp)) {
+    collectTMEMAllocs(selectOp.getTrueValue(), seen, result);
+    collectTMEMAllocs(selectOp.getFalseValue(), seen, result);
+  } else if (auto ifOp = dyn_cast<scf::IfOp>(defOp)) {
+    unsigned idx = resultValue.getResultNumber();
+    collectTMEMAllocs(ifOp.thenYield().getOperand(idx), seen, result);
+    collectTMEMAllocs(ifOp.elseYield().getOperand(idx), seen, result);
+  } else if (auto forOp = dyn_cast<scf::ForOp>(defOp)) {
+    unsigned idx = resultValue.getResultNumber();
+    collectTMEMAllocs(forOp.getInitArgs()[idx], seen, result);
+    collectTMEMAllocs(forOp.getYieldedValues()[idx], seen, result);
+  }
+}
+
 DenseSet<Operation *> getTMEMAllocs(Partition *partition) {
   // look for all tmem allocs used by the partition
   DenseSet<Operation *> result;
+  DenseSet<Value> seen;
   for (auto node : partition->getNodes()) {
     if (!node->isOp())
       continue;
-    Operation *alloc = nullptr;
     if (auto load = dyn_cast<ttng::TMEMLoadOp>(node->getOp())) {
-      alloc = load.getOperand(0).getDefiningOp();
+      collectTMEMAllocs(load.getSrc(), seen, result);
     }
     if (auto store = dyn_cast<ttng::TMEMStoreOp>(node->getOp())) {
-      alloc = store.getOperand(0).getDefiningOp();
-    }
-    if (alloc) {
-      assert(isa<ttng::TMEMAllocOp>(alloc));
-      result.insert(alloc);
+      collectTMEMAllocs(store.getDst(), seen, result);
     }
   }
   return result;

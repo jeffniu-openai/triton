@@ -73,6 +73,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 06:44 UTC: completed another adversarial audit focused on
+  generic warp-specialization / partitioning interactions with TMEM memdesc
+  views. Fixed `PartitionScheduling` same-allocation discovery so TMEM
+  partitions reached through `ttng.tmem_subslice`, `ttg.memdesc_index`, SCF
+  block arguments, selects, and if/for results are traced back to their root
+  `ttng.tmem_alloc` instead of assuming the load/store operand is the alloc
+  directly. Added lit coverage in `test/TritonGPU/partition-scheduling.mlir`
+  for two TMEM slices from one allocation inside a warp-specialized loop.
+  Adjacent warp-specialization lit tests pass. Unrelated dirty edits in
+  `TensorMemoryUtils.cpp`, `TensorMemoryAllocation.cpp`, and
+  `test_tmem_runtime_matrix.py` were left untouched.
+
 - 2026-04-21 06:23 UTC: completed the adversarial point-test audit requested
   after the merge-exposed TMEM backend weakness. New coverage now probes
   scaled-MMAv5 `N=16` `use_acc`, indexed accumulator views, B-scale

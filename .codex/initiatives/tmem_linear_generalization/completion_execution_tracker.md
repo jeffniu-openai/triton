@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 06:23 UTC
+Last updated: 2026-04-21 06:44 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -102,6 +102,10 @@ The project is complete when:
   TMEM partition relayout behavior. It also fixed `InterleaveTMem` indexed
   view alias ranges and made `OptimizePartitionWarps` preserve TMEM partition
   warp counts until TMEM-aware relayout is implemented.
+  2026-04-21 06:44 UTC warp-specialization partition audit fixed
+  same-allocation TMEM partition discovery through memdesc view chains and SCF
+  value forwarding, with lit coverage for two `ttng.tmem_subslice` views of
+  one allocation in a warp-specialized loop.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.

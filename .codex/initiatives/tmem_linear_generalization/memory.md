@@ -14201,6 +14201,35 @@ rejection, not rescue
   - required `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8` passed;
   - focused lit rerun of the two touched files passed `2/2`.
 
+## Current: 2026-04-21 06:44 UTC warp-specialization TMEM view audit
+
+- User asked for another adversarial audit of generic warp-specialization /
+  partitioning / analysis interactions with TMEM memdescs, while preserving
+  unrelated edits by other workers.
+- Found and fixed a real partition-scheduling gap:
+  - `getTMEMAllocs` in `PartitionScheduling.cpp` assumed a `ttng.tmem_load` or
+    `ttng.tmem_store` descriptor operand was defined directly by
+    `ttng.tmem_alloc`;
+  - legal memdesc views such as `ttng.tmem_subslice` or `ttg.memdesc_index`
+    break that assumption and can prevent same-allocation TMEM partitions from
+    being merged, or hit the old direct-alloc assertion.
+- The fix follows root TMEM allocations through `MemDescViewTrait`, SCF
+  `for` iter args/results, `scf.if` results, `arith.select`, and
+  warp-specialize partition captures. Unknown roots are treated conservatively
+  as "no proven shared allocation" instead of crashing.
+- Added lit coverage in `test/TritonGPU/partition-scheduling.mlir`:
+  a warp-specialized loop loads from one `ttng.tmem_subslice` and stores to
+  another slice of the same root allocation; both TMEM ops are scheduled into
+  the same partition while a descriptor load remains separate.
+- Validation:
+  - required `make -j8` passed;
+  - `lit -v test/TritonGPU/partition-scheduling.mlir` passed;
+  - adjacent lit checks `optimize-partition-warps.mlir` and
+    `partition-verifier-locality.mlir` passed.
+- Dirty-tree boundary:
+  - unrelated dirty files in NVIDIA TMEM utilities/allocation and the runtime
+    matrix were left untouched and should not be included in this checkpoint.
+
 ## Current: 2026-04-21 02:51 UTC max-CTA coverage added
 
 - User asked whether coverage also checks more than 4 CTAs, up to the hardware

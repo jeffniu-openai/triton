@@ -497,6 +497,35 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
 // -----
 
+#blocked = #ttg.blocked<{sizePerThread = [1, 64], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
+#shared = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0]}>
+#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  // CHECK-LABEL: @tmem_view_partitions_same_alloc
+  tt.func @tmem_view_partitions_same_alloc(%ub: i32, %desc: !tt.tensordesc<128x64xf32, #shared>) {
+    %c0_i32 = arith.constant 0 : i32
+    %c1_i32 = arith.constant 1 : i32
+    %true = arith.constant true
+    %zero = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked>
+    %alloc, %token = ttng.tmem_alloc : () -> (!ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>, !ttg.async.token)
+    %init = ttng.tmem_store %zero, %alloc[%token], %true : tensor<128x128xf32, #blocked> -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+    scf.for %i = %c0_i32 to %ub step %c1_i32 iter_args(%tok = %init) -> (!ttg.async.token) : i32 {
+      %lhs = ttng.tmem_subslice %alloc {N = 0 : i32} : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+      %rhs = ttng.tmem_subslice %alloc {N = 64 : i32} : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+      %global = tt.descriptor_load %desc[%c0_i32, %c0_i32] : !tt.tensordesc<128x64xf32, #shared> -> tensor<128x64xf32, #blocked>
+      // CHECK: ttng.tmem_load {{.*}} {ttg.partition = array<i32: 0>}
+      %lhs_val, %lhs_tok = ttng.tmem_load %lhs[%tok] : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128> -> tensor<128x64xf32, #blocked>
+      // CHECK: ttng.tmem_store {{.*}} {ttg.partition = array<i32: 0>}
+      %rhs_tok = ttng.tmem_store %lhs_val, %rhs[%lhs_tok], %true : tensor<128x64xf32, #blocked> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+      "use_global"(%global) {data} : (tensor<128x64xf32, #blocked>) -> ()
+      scf.yield %rhs_tok : !ttg.async.token
+    } {tt.warp_specialize}
+    tt.return
+  }
+}
+
+// -----
+
 // CHECK-LABEL: attention_persistent_inner_loop_kernel
 #blocked = #ttg.blocked<{sizePerThread = [1, 128], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
 #blocked1 = #ttg.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [4], order = [0]}>

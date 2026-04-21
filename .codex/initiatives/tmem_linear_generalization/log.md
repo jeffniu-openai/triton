@@ -25975,6 +25975,40 @@ Open after this slice:
     `python/examples/gluon/05-tmem-moe-router.py` passed all groups:
     `20 passed, 60 deselected` per group.
 
+## 2026-04-21 06:44 UTC: warp-specialization TMEM view audit
+
+- User requested another adversarial audit focused on generic
+  warp-specialization / partitioning / analysis interactions with TMEM
+  memdescs, with special attention to partition edge sizing, partition merge
+  rules, AxisInfo absence, and memdesc view mutation.
+- Found a real partition-merge gap:
+  - `PartitionScheduling::getTMEMAllocs` only recognized a direct
+    `ttng.tmem_alloc` as the operand of `ttng.tmem_load` / `ttng.tmem_store`;
+  - legal descriptor-view chains such as `ttng.tmem_subslice` can sit between
+    the load/store and root allocation, so same-allocation TMEM partitions
+    could fail to merge or trip the old direct-alloc assertion.
+- Implemented a view-aware root-allocation tracer:
+  - follows `MemDescViewTrait` ops, SCF `for` iter args/results, `scf.if`
+    results, `arith.select`, and warp-specialize partition captures;
+  - treats unknown roots conservatively by returning no proven allocation
+    instead of crashing.
+- Added `test/TritonGPU/partition-scheduling.mlir` coverage for a
+  warp-specialized loop that loads from one `ttng.tmem_subslice` and stores to
+  another slice of the same root allocation while an unrelated descriptor load
+  stays in a separate partition.
+- Validation:
+  - required `make -j8` passed;
+  - `lit -v test/TritonGPU/partition-scheduling.mlir` passed;
+  - adjacent lit checks
+    `test/TritonGPU/optimize-partition-warps.mlir` and
+    `test/TritonGPU/partition-verifier-locality.mlir` passed `2/2`.
+- Working-tree note:
+  - unrelated dirty files already existed or appeared outside this slice:
+    `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+    `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`, and
+    `python/test/gluon/test_tmem_runtime_matrix.py`; they were not modified by
+    this fix and must not be swept into this commit.
+
 ## 2026-04-21 06:23 UTC: adversarial backend point-test audit
 
 - User asked for a broader set of adversarial point tests and explicitly asked
