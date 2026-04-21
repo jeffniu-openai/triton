@@ -25974,3 +25974,53 @@ Open after this slice:
     `python/examples/gluon/01-attention-forward.py` and
     `python/examples/gluon/05-tmem-moe-router.py` passed all groups:
     `20 passed, 60 deselected` per group.
+
+## 2026-04-21 06:23 UTC: adversarial backend point-test audit
+
+- User asked for a broader set of adversarial point tests and explicitly asked
+  to use subagents to review backend code for gaps.
+- Subagent findings integrated:
+  - Scaled-MMAv5 audit found no new C++ false-positive in the storage
+    predicates, but found missing point coverage for `N=16` `use_acc` and
+    indexed accumulator descriptor views. It also exposed stale opcode-count
+    expectations for tile-permuted scaled accumulators; the kernels were
+    correct and emit four physical instruction-tile groups.
+  - Copy/ldst audit added two-CTA direct higher-rank load/store replay
+    positives, a two-CTA direct higher-rank `ld.red` clean-unsupported test,
+    and a clean layout-contract error for using a two-CTA layout in a four-CTA
+    kernel context.
+  - Generic pass audit found and fixed `InterleaveTMem` indexed-view alias
+    range construction in pushed commit `7a618f308`. It also identified the
+    `OptimizePartitionWarps` TMEM relayout crash reproduced locally.
+- Follow-up fix in this slice:
+  - `OptimizePartitionWarps` now treats partitions containing TMEM load/store/
+    alloc ops as not shrinkable by the generic relayout path. TMEM partition
+    relayout currently strips tensor encodings and does not rebuild
+    TMEM-compatible load/store layouts, so preserving the original warp count
+    is the conservative correct behavior until a TMEM-aware relayout path is
+    implemented.
+  - `test/TritonGPU/optimize-partition-warps.mlir` now records the conservative
+    TMEM behavior and no longer crashes.
+  - Runtime-matrix coverage additionally records the `N=16` B-scale
+    descriptor-view frontend clean-error boundary: Gluon cannot get an `auto`
+    register layout for that descriptor view before the backend scaled-MMA
+    storage predicate is reached.
+- Validation:
+  - required
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`
+    passed;
+  - `lit -v test/TritonGPU/optimize-partition-warps.mlir
+    test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`;
+  - focused runtime-matrix selector over the new point tests passed
+    `10 passed, 1604 deselected`;
+  - broader scaled selector passed `67 passed, 1547 deselected`;
+  - copy/ldst selector passed `4 passed, 1610 deselected`;
+  - `python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    passed;
+  - `git diff --check` passed.
+- Remaining follow-up:
+  - `PartitionSchedulingUtility::Edge::getSize` still treats memdesc captures
+    as product-of-shape payload size. That did not produce a direct failure in
+    this pass, but it remains a heuristic risk for partition scheduling and
+    deserves a focused scheduling-cost test if future TMEM partition placement
+    looks unstable.

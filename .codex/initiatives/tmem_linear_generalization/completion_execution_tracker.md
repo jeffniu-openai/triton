@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 05:29 UTC
+Last updated: 2026-04-21 06:23 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -96,6 +96,12 @@ The project is complete when:
   hardware-focused, removed compiler-text assertions, added numeric runtime
   examples, and added a skinny MXFP8 block-scaled projection benchmark using
   narrow TMEM accumulator fragments.
+  2026-04-21 06:23 UTC adversarial point-test audit added coverage for
+  scaled-MMAv5 narrow view/use-acc paths, two-CTA direct higher-rank
+  load/store/reduction boundaries, CTA-count layout contracts, and generic
+  TMEM partition relayout behavior. It also fixed `InterleaveTMem` indexed
+  view alias ranges and made `OptimizePartitionWarps` preserve TMEM partition
+  warp counts until TMEM-aware relayout is implemented.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.

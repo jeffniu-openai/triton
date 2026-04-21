@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 06:23 UTC completed the requested adversarial point-test
+  audit after the merge-exposed backend weakness. Subagents found and fixed one
+  real backend alias-analysis bug in `InterleaveTMem` for indexed memdesc
+  views at pushed commit `7a618f308`, with lit coverage in
+  `test/TritonNvidiaGPU/interleave_tmem.mlir`. A second generic-pass gap was
+  reproduced in `test/TritonGPU/optimize-partition-warps.mlir`: generic
+  partition relayout stripped tensor encodings from TMEM load/store tensors and
+  crashed during verification. The follow-up fix keeps TMEM partitions at their
+  original warp count until a TMEM-aware relayout path exists. Runtime-matrix
+  adversarial coverage now includes two-CTA higher-rank direct `ld/st`
+  positives, two-CTA higher-rank `ld.red` clean unsupported, two-CTA layout in
+  a four-CTA context clean error, scaled-MMAv5 `N=16` `use_acc` and indexed
+  descriptor-view positives, `N=16` B-scale descriptor-view clean errors, and
+  corrected tile-permuted scaled-MMA opcode counts. Validation: required
+  `make -j8`; lit `optimize-partition-warps.mlir` plus `interleave_tmem.mlir`
+  passed `2/2`; focused runtime matrix passed `10/10`; broader scaled selector
+  passed `67/67`; copy/ldst selector passed `4/4`; py-compile and
+  `git diff --check` passed.
+
 - Latest: 2026-04-21 05:29 UTC broadened the scaled-MMAv5 narrow-N gap
   analysis after the example-5 investigation. The previous handoff note saying
   `mma_scaled_acc_tile_permuted_narrow` still failed was stale at pushed

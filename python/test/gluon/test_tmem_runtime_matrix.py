@@ -5077,6 +5077,11 @@ SCALED_MMA_ACC_IDENTITY_NARROW_CASES = [
     for k in (128, 256)
 ]
 
+SCALED_MMA_ACC_IDENTITY_NARROW_VIEW_CASES = [
+    ("mxfp8", "mxfp8", 16, 128, "linear"),
+    ("mxfp8", "mxfp8", 16, 128, "linear_unit_parent"),
+]
+
 SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES = list(
     dict.fromkeys(
         [
@@ -7191,6 +7196,29 @@ def test_tmem_runtime_matrix_ldst_direct_higher_rank_load_store_replay_positive(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name", ("block_two_ctas", "mmav5_twocta"))
+def test_tmem_runtime_matrix_ldst_twocta_direct_higher_rank_load_store_replay_positive(layout_name):
+    m = 256
+    n = 64
+    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
+    inp = torch.arange(2 * m * n, dtype=torch.float32, device="cuda").reshape(2, m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_direct_higher_rank_replay_kernel[(1, )](
+        inp, out, layout, m, n, num_warps=4, num_ctas=2
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert "tcgen05.st.sync.aligned.32x32b.x128.b32" in observed_opcodes
+    assert "tcgen05.ld.sync.aligned.32x32b.x128.b32" in observed_opcodes
+    ttgir = compiled.asm["ttgir"]
+    assert "twoCTAs = true" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tmem_runtime_matrix_ldst_direct_higher_rank_load_red_replay_positive():
     m = 128
     n = 128
@@ -7220,6 +7248,28 @@ def test_tmem_runtime_matrix_ldst_direct_higher_rank_load_red_replay_positive():
     assert all(op.startswith("tcgen05.ld.red.sync.aligned.32x32b") for op in ptx_red_ops)
     assert all(".min" in op for op in ptx_red_ops)
     assert "ttg.memdesc_reshape" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_ldst_twocta_direct_higher_rank_load_red_replay_reports_clean_unsupported(capfd):
+    m = 256
+    n = 64
+    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS["block_two_ctas"](n), [2])
+    inp = torch.arange(2 * m * n, dtype=torch.float32, device="cuda").reshape(2, m, n)
+    out = torch.empty_like(inp)
+    red = torch.empty((2, m), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        tmem_ldst_direct_higher_rank_load_red_kernel[(1, )](
+            inp, out, red, layout, m, n, num_warps=8, num_ctas=2
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
+    assert "use tmem.load(...)+tt.reduce(...) explicitly for software reduction" in text
+    assert "Assertion" not in text
+    assert "PassManager::run failed" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -9955,6 +10005,35 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen(
     assert "llvm.nvvm.barrier.cluster.arrive.relaxed.aligned" not in llir
     if layout_kind == "linear":
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_twocta_layout_in_4cta_context_reports_clean_error():
+    M = 256
+    N = 64
+    swizzle = 32
+    cga_layout = _make_2cta_cga_layout((4, 1), (4, 1), (1, 0), 0)
+    layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_copy_no_scales_twocta_kernel[(1, )](
+            inp,
+            out,
+            layout,
+            tuple(tuple(basis) for basis in cga_layout),
+            M,
+            N,
+            swizzle,
+            num_ctas=4,
+            num_warps=4,
+        )
+
+    text = str(excinfo.value)
+    assert "Layout has 2 CTAs per CGA, but the context requires 4 CTAs per CGA." in text
+    assert "Assertion" not in text
+    assert "PassManager::run failed" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -12981,7 +13060,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix(a_for
 
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
 
-    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert len(mma_ops) == expected_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
@@ -13024,7 +13103,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_descriptor_v
 
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
 
-    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert len(mma_ops) == expected_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
@@ -13073,6 +13152,51 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_padded_bscale_descr
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     assert "ttg.memdesc_reshape" in compiled.asm["ttgir"]
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("pad_b_scale_storage", [False, True])
+def test_tmem_runtime_matrix_mma_scaled_acc_n16_bscale_descriptor_view_reports_clean_error(
+    pad_b_scale_storage, capfd
+):
+    m, n, k = 128, 16, 128
+    a_format = b_format = "mxfp8"
+    layout = _make_tmem_linear_layout(m, n)
+    vec_size = 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
+    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_mma_scaled_bscale_descriptor_view_format_kernel[(1, )](
+            out,
+            m,
+            n,
+            k,
+            a,
+            b,
+            a_scale,
+            b_scale,
+            layout,
+            vec_size,
+            a_elem_per_byte,
+            b_elem_per_byte,
+            a_tcgen_format,
+            b_tcgen_format,
+            pad_b_scale_storage,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM layout 'auto' unsupported for descriptor view" in text
+    assert "tensor_memory_descriptor<uint8" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -13209,6 +13333,111 @@ def test_tmem_runtime_matrix_mma_scaled_acc_identity_narrow_format_matrix(a_form
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_mma_scaled_acc_identity_narrow_format_use_acc():
+    m, n, k = 128, 16, 128
+    a_format = b_format = "mxfp8"
+    acc_init = 1.0
+    layout = _make_tmem_linear_layout(m, n)
+    vec_size = 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_layout_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        acc_init,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T + acc_init, atol=1e-3, rtol=1e-3)
+
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,n,k,parent_layout_kind", SCALED_MMA_ACC_IDENTITY_NARROW_VIEW_CASES)
+def test_tmem_runtime_matrix_mma_scaled_indexed_acc_identity_narrow_view_format_use_acc(
+    a_format, b_format, n, k, parent_layout_kind
+):
+    m = 128
+    acc_init = 1.0
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+    if parent_layout_kind == "linear":
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
+        parent_depth = 2
+        parent_index = 1
+    else:
+        assert parent_layout_kind == "linear_unit_parent"
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout(m, n), [1])
+        parent_depth = 1
+        parent_index = 0
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_indexed_acc_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        parent_layout,
+        parent_depth,
+        parent_index,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        acc_init,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T + acc_init, atol=1e-3, rtol=1e-3)
+
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_index" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "tensor_memory_encoding" not in ttgir
+    assert "ttng.tc_gen5_mma_scaled" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -73,6 +73,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 06:23 UTC: completed the adversarial point-test audit requested
+  after the merge-exposed TMEM backend weakness. New coverage now probes
+  scaled-MMAv5 `N=16` `use_acc`, indexed accumulator views, B-scale
+  descriptor-view clean errors, two-CTA higher-rank direct `ld/st`, two-CTA
+  direct `ld.red` clean unsupported, and two-CTA layout/four-CTA context
+  contracts. A subagent also fixed `InterleaveTMem` indexed-view alias ranges
+  at `7a618f308`, and this follow-up fixes the reproduced
+  `OptimizePartitionWarps` TMEM relayout crash by preserving TMEM partition
+  warp counts until a TMEM-aware relayout exists.
+
 - 2026-04-21 05:29 UTC: broadened and hardened the scaled-MMAv5 narrow-N
   coverage after the example-5 investigation. The stale handoff claim that
   `mma_scaled_acc_tile_permuted_narrow` still failed was corrected: current

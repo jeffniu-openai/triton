@@ -203,19 +203,29 @@ static LogicalResult optimizePartitionNumWarps(ModuleAxisInfoAnalysis &axisInfo,
 
   // Determine if a partition has a lower limit on the number of warps.
   SmallVector<int32_t> minWarpsForPartition(partitionNumWarps.size(), 1);
-  for (auto [minWarps, region] :
-       llvm::zip(minWarpsForPartition, wsOp.getPartitionRegions())) {
-    region->walk([minWarps = &minWarps](Operation *op) {
+  for (auto [minWarps, numWarps, region] :
+       llvm::zip(minWarpsForPartition, partitionNumWarps,
+                 wsOp.getPartitionRegions())) {
+    bool hasTMemOp = false;
+    region->walk([&](Operation *op) {
       // Some instructions have critical throughput if have low register usage.
       // Make sure there are enough warps for these ops to execute quickly.
       // TMAStoreLikeOps stay in the main partition, so they should not appear
       // in partition regions here.
       if (isa<ttng::TMALoadLikeOpInterface>(op))
-        *minWarps = 2;
+        minWarps = 2;
       // TMEM ops require at least 4 warps to be able to read all lanes.
-      else if (isa<ttng::TMEMLoadOp, ttng::TMEMStoreOp, ttng::TMEMAllocOp>(op))
-        *minWarps = 4;
+      else if (isa<ttng::TMEMLoadOp, ttng::TMEMStoreOp, ttng::TMEMAllocOp>(
+                   op)) {
+        minWarps = 4;
+        hasTMemOp = true;
+      }
     });
+    // The generic partition relayout pipeline clears tensor encodings and does
+    // not yet rebuild TMEM-compatible layouts. Keep TMEM partitions at their
+    // original warp count until there is a TMEM-aware relayout path.
+    if (hasTMemOp)
+      minWarps = numWarps;
   }
 
   bool changed;
