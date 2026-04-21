@@ -1663,6 +1663,24 @@ module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
 
 // -----
 
+#blocked_64_ld_red_sub = #ttg.blocked<{sizePerThread = [1, 64], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
+#blocked_red_ld_red_sub = #ttg.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [4], order = [0]}>
+#tmem_linear_256_ld_red_sub = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+  // CHECK-LABEL: @tensor_memory_ld_red_subslice_linear_256
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(64 : i32) : i32
+  // CHECK-NEXT: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
+  // CHECK-NEXT: [[PTRINT:%.*]] = llvm.add [[BASE]], [[OFFSET]] : i32
+  // CHECK: tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32
+  tt.func private @tensor_memory_ld_red_subslice_linear_256(%arg0: !ttg.memdesc<128x256xf32, #tmem_linear_256_ld_red_sub, #ttng.tensor_memory, mutable>) {
+    %sub = ttng.tmem_subslice %arg0 {N = 64 : i32} : !ttg.memdesc<128x256xf32, #tmem_linear_256_ld_red_sub, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_256_ld_red_sub, #ttng.tensor_memory, mutable, 128x256>
+    %result, %red = ttng.tmem_load %sub {redOp = #ttng.redOp<min>} : !ttg.memdesc<128x64xf32, #tmem_linear_256_ld_red_sub, #ttng.tensor_memory, mutable, 128x256> -> tensor<128x64xf32, #blocked_64_ld_red_sub>, tensor<128xf32, #blocked_red_ld_red_sub>
+    tt.return
+  }
+}
+
+// -----
+
 #blocked_tmem_dynamic_subslice = #ttg.blocked<{sizePerThread = [1, 128], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
 #tmem_linear_multibuffer = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]]}>
 #tmem_linear_half = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>

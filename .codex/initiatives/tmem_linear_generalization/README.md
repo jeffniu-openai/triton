@@ -73,6 +73,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 07:03 UTC: completed Round 2 copy/ld/st/ld.red follow-up
+  audit slice. Found and fixed a real `ttng.tmem_load`/`ld.red` false
+  negative for `ttng.tmem_subslice` views: the verifier and Gluon layout
+  inference required the raw subview memdesc type itself to be canonical
+  reduction source layout, so a 128x64 ld.red over a 128x256 backing TMEM
+  layout was rejected before the query planner could use the standalone
+  subview layout. `TMEMSubSliceOp` now participates in ld.red view-query
+  inference, and reduction verification checks source compatibility on the
+  selected query type. Added conversion lit coverage for the subview-base
+  offset plus `tcgen05.ld.red.sync.aligned.32x32b.x64`.
+
 - 2026-04-21 07:00 UTC: completed Round 4 of the TMEM backend audit focused
   on generic compiler analyses and layout-conversion interactions with TMEM
   memdescs. Audited `AxisInfo`, `Coalesce`, `RemoveLayoutConversions`,

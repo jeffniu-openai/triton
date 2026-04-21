@@ -3511,14 +3511,15 @@ RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
 std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
   auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
-  if (!memDescTy || numWarps < 4 || !llvm::isPowerOf2_32(numWarps) ||
-      !isReductionFriendlyTmemSourceLayout(memDescTy))
+  if (!memDescTy || numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
     return std::nullopt;
 
   bool isViewLikeMemDesc =
-      isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp,
+      isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp, TMEMSubSliceOp,
                       gpu::MemDescReshapeOp, gpu::MemDescTransOp,
                       gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
+  if (!isReductionFriendlyTmemSourceLayout(memDescTy) && !isViewLikeMemDesc)
+    return std::nullopt;
 
   auto shape = llvm::to_vector(memDescTy.getShape());
   auto elementType = memDescTy.getElementType();

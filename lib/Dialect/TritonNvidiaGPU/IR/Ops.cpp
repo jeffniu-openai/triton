@@ -1641,28 +1641,28 @@ LogicalResult TMEMLoadOp::verify() {
     if (isa<TensorMemoryScalesEncodingAttr>(getSrc().getType().getEncoding()))
       return emitOpError(
           "tmem_load reduction is not supported for tensor memory scales.");
-    if (!isReductionFriendlyTmemSourceLayout(getSrc().getType()))
-      return emitOpError(
-          "tmem_load reduction source layout is not directly "
-          "tcgen05.ld.red-compatible; use tmem.load(...)+tt.reduce(...) "
-          "explicitly for software reduction");
     auto regTy = getType();
     auto maxnreg = getContextualMaxNReg(*this);
     auto srcMemTy = cast<MemDescType>(getSrc().getType());
+    bool directSourceFriendly = isReductionFriendlyTmemSourceLayout(srcMemTy);
     std::string encodingDetails;
     auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
       llvm::raw_string_ostream os(encodingDetails);
       ScopedDiagnosticHandler handler(getContext(),
                                       [&](Diagnostic &diag) { diag.print(os); });
       auto directRowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
-      if (auto maybeInfo = computeTMemLdStEncodingInfo(
-              regTy, srcMemTy, maxnreg, /*emitError=*/{}, directRowPlan);
-          succeeded(maybeInfo) && isTMemLdStReductionCompatible(*maybeInfo)) {
-        return maybeInfo;
+      if (directSourceFriendly) {
+        if (auto maybeInfo = computeTMemLdStEncodingInfo(
+                regTy, srcMemTy, maxnreg, /*emitError=*/{}, directRowPlan);
+            succeeded(maybeInfo) && isTMemLdStReductionCompatible(*maybeInfo)) {
+          return maybeInfo;
+        }
       }
 
       auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(getSrc());
       for (MemDescType queryTy : queryTypes) {
+        if (!isReductionFriendlyTmemSourceLayout(queryTy))
+          continue;
         auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), queryTy);
         if (auto maybeInfo = computeTMemLdStEncodingInfo(
                 regTy, queryTy, maxnreg,
@@ -1707,6 +1707,8 @@ LogicalResult TMEMLoadOp::verify() {
         }
       }
       for (MemDescType queryTy : queryTypes) {
+        if (!isReductionFriendlyTmemSourceLayout(queryTy))
+          continue;
         auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), queryTy);
         if (auto maybeInfo = computeTMemLdStEncodingInfo(
                 regTy, queryTy, maxnreg,

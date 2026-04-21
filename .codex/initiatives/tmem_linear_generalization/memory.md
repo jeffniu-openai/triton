@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 07:03 UTC completed Round 2 copy/ld/st/ld.red
+  follow-up audit slice. Found a real `ttng.tmem_load`/`ld.red` false
+  negative for `ttng.tmem_subslice` descriptor views: a valid 128x64 f32
+  reduction load from a 128x256 backing TMEM layout was rejected because the
+  raw subview memdesc encoding still described the backing column basis. The
+  fix lets ld.red layout inference treat `TMEMSubSliceOp` as an explicit view
+  and makes reduction verification check the selected canonical query type
+  instead of requiring the raw subview type to be reduction-source-friendly.
+  Added `test/Conversion/tritongpu_to_llvm_blackwell.mlir` coverage for the
+  subview base offset and emitted `tcgen05.ld.red.sync.aligned.32x32b.x64`.
+  Validation: required `make -j8`; conversion lit passed; TMEM
+  `tmem_layouts`, `invalid`, and `interleave_tmem` lit passed `3/3`; focused
+  4-GPU pytest slice covering ld.red descriptor chains plus the recent two-CTA
+  scales copy path passed `31/31`.
+
 - Latest: 2026-04-21 07:00 UTC completed Round 4 of the requested TMEM backend
   audit on generic compiler analyses and layout-conversion interactions with
   TMEM memdescs. Audited `lib/Analysis/AxisInfo.cpp`,

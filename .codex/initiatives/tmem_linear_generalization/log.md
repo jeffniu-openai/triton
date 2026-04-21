@@ -26174,3 +26174,42 @@ Open after this slice:
     `test/TritonNvidiaGPU/invalid.mlir`, and
     `test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed `3/3`;
   - lit `test/Analysis/test-alignment.mlir` passed.
+
+## 2026-04-21 07:03 UTC: Round 2 copy/ld/st/ld.red subview audit
+
+- User asked for Round 2 of 5 focused on `tcgen05.copy`, `ttng.tmem_load`,
+  `ttng.tmem_store`, and `ttng.tmem_load_reduce` support for descriptor-view
+  chains, subword/packed shapes, and multi-CTA CGA up to 16.
+- Audited the TMEM ld/st/copy/reduction planner and lowering paths:
+  - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`;
+  - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`;
+  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`;
+  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp`;
+  - focused runtime-matrix copy/ld/st/ld.red tests and conversion/TMEM lit
+    coverage.
+- Found and fixed a real `ld.red` false negative for `ttng.tmem_subslice`:
+  - a valid 128x64 f32 reduction load from a 128x256 backing TMEM layout was
+    rejected before lowering because the raw subview memdesc type still exposed
+    the backing 256-column basis;
+  - the same 128x64 root layout lowered correctly to
+    `tcgen05.ld.red.sync.aligned.32x32b.x64`, so the rejection was a view-query
+    inference/verification bug rather than an ISA boundary;
+  - `TMEMSubSliceOp` now participates in view-like ld.red layout inference, and
+    the verifier checks reduction-source compatibility on the selected query
+    type instead of requiring the raw view type to be canonical.
+- Added conversion lit coverage for the repaired path:
+  - `tensor_memory_ld_red_subslice_linear_256` advances the TMEM base by 64 and
+    emits `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` at the subview base.
+- Validation:
+  - required
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`;
+  - `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed;
+  - `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/interleave_tmem.mlir`
+    passed `3/3`;
+  - focused 4-GPU pytest-split selector for ld.red descriptor chains plus the
+    recent two-CTA scales copy path passed `31/31`;
+  - `git diff --check` passed.
+- Dirty-tree boundary:
+  - existing concurrent edits in `test/TritonNvidiaGPU/membar-cluster.mlir` and
+    initiative docs were preserved; only this slice's code/test/doc additions
+    should be staged for the checkpoint.

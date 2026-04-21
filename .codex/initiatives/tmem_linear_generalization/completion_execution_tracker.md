@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 07:00 UTC
+Last updated: 2026-04-21 07:03 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -119,6 +119,14 @@ The project is complete when:
   memdesc SSA values out of AxisInfo/layout-conversion tensor rewrites, or
   restrict themselves to ranked pointer/tensor payloads. Validation covered
   the generic pass lit files plus TMEM layout/verifier/conversion lit.
+  2026-04-21 07:03 UTC Round 2 copy/ld/st/ld.red follow-up fixed an
+  additional ld.red descriptor-view false negative: `ttng.tmem_subslice`
+  views can now use the canonical standalone query type for reduction
+  verification/layout inference instead of being rejected because the raw
+  subview type still carries the backing column basis. Added conversion lit
+  coverage for a 128x64 ld.red from a 128x256 backing TMEM subview; focused
+  ld.red descriptor-chain plus recent copy runtime slice passed `31/31`
+  across four pytest-split GPU groups.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
