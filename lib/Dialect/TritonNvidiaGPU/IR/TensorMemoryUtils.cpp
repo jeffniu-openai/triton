@@ -9858,7 +9858,8 @@ getTMemCopyWarpx2SharedSourceRequirement(MemDescType srcTy,
   };
 
   if (srcTy.getRank() != 2 || srcTy.getShape()[1] != 4 ||
-      (srcTy.getShape()[0] != 128 && srcTy.getShape()[0] != 256)) {
+      srcTy.getShape()[0] < 128 || srcTy.getShape()[0] % 128 != 0 ||
+      !llvm::isPowerOf2_64(srcTy.getShape()[0] / 128)) {
     return makeRequirement(
         TMemCopyWarpx2SharedSourceRequirementKind::RankAndShape);
   }
@@ -9902,10 +9903,17 @@ getTMemCopyWarpx2SharedSourceRequirement(MemDescType srcTy,
     return std::nullopt;
   }
 
-  if (blockBases.size() != 1 ||
-      !llvm::equal(blockBases.front(), ArrayRef<int32_t>{128, 0})) {
+  unsigned expectedBlockBases = llvm::Log2_64(srcTy.getShape()[0] / 128);
+  if (blockBases.size() != expectedBlockBases) {
     return makeRequirement(
         TMemCopyWarpx2SharedSourceRequirementKind::TwoCtaBlockBasis);
+  }
+  for (auto [idx, basis] : llvm::enumerate(blockBases)) {
+    int32_t expectedRow = 128 << idx;
+    if (!llvm::equal(basis, ArrayRef<int32_t>{expectedRow, 0})) {
+      return makeRequirement(
+          TMemCopyWarpx2SharedSourceRequirementKind::TwoCtaBlockBasis);
+    }
   }
   return std::nullopt;
 }
@@ -9926,7 +9934,8 @@ static std::string getTMemCopyWarpx2SharedSourceRequirementError(
     return "";
   case TMemCopyWarpx2SharedSourceRequirementKind::RankAndShape:
     return "warpx2 tcgen05.copy currently requires a 128x4 shared tile, or a "
-           "256x4 two-CTA shared tile with the canonical CTA block basis.";
+           "128*num_ctas by 4 multi-CTA shared tile with canonical CTA block "
+           "bases.";
   case TMemCopyWarpx2SharedSourceRequirementKind::Encoding:
     return "warpx2 tcgen05.copy currently requires the canonical "
            "shared-linear source layout.";
@@ -9975,8 +9984,8 @@ static std::string getTMemCopyWarpx2SharedSourceRequirementError(
     return "single-CTA warpx2 tcgen05.copy does not support a non-zero shared "
            "block basis.";
   case TMemCopyWarpx2SharedSourceRequirementKind::TwoCtaBlockBasis:
-    return "two-CTA warpx2 tcgen05.copy requires the canonical shared block "
-           "basis [[128, 0]].";
+    return "multi-CTA warpx2 tcgen05.copy requires canonical shared block "
+           "bases [[128, 0], [256, 0], ...].";
   }
   llvm_unreachable("unknown warpx2 shared-source requirement kind");
 }

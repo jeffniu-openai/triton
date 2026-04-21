@@ -1097,3 +1097,14 @@ signal handling:
   5. Keep module-wide mixed single-CTA/two-CTA TMEM as an explicit design
      restriction until all consumers derive instruction group from per-op or
      per-type state.
+
+- 2026-04-21 02:35 UTC: user clarified module-wide two-CTA mode is a hardware
+  restriction for all two-CTA-capable instructions, so TMA load/gather
+  `getModuleTwoCTAs` use is not a gap. Implemented the real gap exposed by the
+  follow-up 4-CTA probe: `tcgen05.copy.warpx2` shared-source validation now
+  accepts canonical outer CTA-pair block bases for `128 * num_ctas` by 4
+  source tiles. Added conversion and membar lit coverage for 4-CTA pair-leader
+  lowering and pre-copy cluster-barrier insertion. Validation passed: required
+  `make -j8`, then focused lit for
+  `test/Conversion/tritongpu_to_llvm_blackwell.mlir` and
+  `test/TritonNvidiaGPU/membar-cluster.mlir`.

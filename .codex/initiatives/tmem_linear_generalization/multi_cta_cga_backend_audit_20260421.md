@@ -32,26 +32,21 @@ with one two-CTA TMEM operation changes all TMA load/gather instruction forms,
 even if the TMA op's own multicast and barrier layout are not two-CTA-pair
 operations.
 
-Risk:
+Resolution:
 
-- A mixed kernel can contain a two-CTA MMAv5/TMEM path and an unrelated TMA
-  load/gather path. Today the unrelated TMA path inherits `cta_group::2` from
-  module state instead of deriving it from the TMA operation's own barrier or
-  destination ownership.
-- For `num_ctas > 2`, this can be the same class of bug as the fixed TMEM
-  load gap: pair-local instruction form selected from global module state,
-  while actual ownership is encoded elsewhere.
+- This is not a backend gap. The hardware restriction is module-wide: if any
+  two-CTA-capable instruction in a kernel uses two-CTA mode, every
+  two-CTA-capable instruction in that kernel must use two-CTA mode.
+- TMA load/gather `cta_group::2` selection from `getModuleTwoCTAs` is therefore
+  the correct source of truth for instruction form. Ownership and multicast
+  recipients still come from the TMA result/barrier layouts.
 
 Recommended next step:
 
-- Add lit coverage with a module containing both a two-CTA TMEM op and a TMA
-  load/gather whose barrier and destination are per-CTA or full-CGA in a
-  different way.
-- If PTX differs from main for the unrelated TMA op, change TMA lowering to
-  derive `cta_group::2` from TMA-specific semantics instead of
-  `getModuleTwoCTAs`.
+- Keep module-wide selection. Do not refactor this to per-op TMA mode unless
+  the hardware restriction changes.
 
-Status: likely backend gap until proven otherwise.
+Status: hardware restriction, not a bug.
 
 ### B. End-of-kernel cluster barrier suppression is module-wide
 
@@ -85,7 +80,9 @@ Recommended next step:
   split the decision into "TMEM dealloc provides return sync" versus
   "module has two_ctas".
 
-Status: coverage gap with plausible backend risk.
+Status: coverage gap. The follow-up test added in this slice pins the
+pre-copy cluster barrier for a 4-CTA CGA with an outer CTA bit; return-side
+mixed-control-flow coverage remains a separate broad validation item.
 
 ### C. TMEM copy and commit predicate is pair-leader only
 
@@ -114,8 +111,17 @@ Recommended next step:
   `tcgen05.commit` pattern for a 4-CTA CGA scale-copy case with an outer
   row-only block basis.
 
-Status: current implementation appears conceptually correct, but coverage
-should pin it down.
+Status: current implementation is correct under the module-wide two-CTA
+hardware rule. The follow-up test added in this slice pins the pair-leader
+predicate for a 4-CTA CGA.
+
+Follow-up fix:
+
+- The 4-CTA lit probe exposed a real source-layout gap for
+  `tcgen05.copy.warpx2`: source validation accepted only a 128x4 single-CTA
+  tile or a 256x4 two-CTA tile. It now accepts `128 * num_ctas` by 4 tiles
+  when the shared-linear block bases are the canonical row-only sequence
+  `[[128, 0], [256, 0], ...]`.
 
 ### D. Barrier recipient masks default to the pair bit when descriptors are absent
 
@@ -150,7 +156,10 @@ Recommended next step:
 - Decide whether TMEM copy should grow completion-desc-like metadata or derive
   recipient masks from the barrier/destination memdesc.
 
-Status: likely future gap for richer TMEM copy/barrier ownership.
+Status: no current bug found. Descriptor-less TMEM copy completion is pairwise
+under `cta_group::2`; future copy forms with additional outer-CGA completion
+semantics should add explicit recipient metadata rather than overloading the
+module-wide mode bit.
 
 ### E. The module-level consistency pass forbids mixed single-CTA and two-CTA TMEM
 
@@ -164,23 +173,21 @@ The pass records the first explicit two-CTA user and requires every MMAv5 op
 and TMEM type in the module to match. MMAv5 verification also requires the LHS
 and accumulator TMEM encodings to match the op's `two_ctas` attribute.
 
-Risk:
+Resolution:
 
-- This is not the same bug as the fixed ownership gap, but it is a larger-CGA
-  expressiveness limit. Hardware can plausibly support independent single-CTA
-  TMEM operations in the same kernel as pairwise `cta_group::2` operations,
-  provided allocation and lowering can keep the ownership domains separate.
-- The current module-wide bit also feeds unrelated paths such as TMA lowering,
-  making mixed-mode support hard to reason about.
+- This is the compiler representation of the hardware restriction: if any
+  two-CTA-capable instruction is two-CTA, all two-CTA-capable instructions in
+  the kernel must be two-CTA.
+- The consistency pass is therefore required, not an expressiveness limitation
+  to remove.
 
 Recommended next step:
 
-- Keep this as a tracked design limitation. Do not remove the check until
-  allocation, lowering, barriers, TMA, and instrumentation derive instruction
-  group from per-op/per-type state.
+- Keep the pass and keep `getModuleTwoCTAs` consumers module-wide for
+  instruction-form selection. Continue to derive ownership, offsets, and
+  recipient masks from layouts.
 
-Status: intentional restriction today, but architecturally coupled to the
-larger-CGA risks above.
+Status: hardware restriction, not a bug.
 
 ### F. Structured TMEM verifier requires the first CGA block basis to be the pair bit
 
@@ -214,22 +221,27 @@ Status: likely hardware boundary for structured families, not a bug.
 
 ## Priority Checklist
 
-1. TMA mixed-kernel lit coverage and, if needed, make TMA `cta_group` selection
-   per-op rather than module-wide.
-2. Return-side cluster-barrier tests for mixed two-CTA TMEM plus other
+1. Return-side cluster-barrier tests for mixed two-CTA TMEM plus other
    distributed dependencies in `num_ctas > 2`.
-3. TMEM copy commit/predicate PTX tests for 4-CTA CGAs with outer CTA-pair
-   bases.
-4. Concurrency-sanitizer and barrier-recipient coverage for TMEM copy with
+2. Concurrency-sanitizer and barrier-recipient coverage for TMEM copy with
    outer-CGA barrier ownership.
-5. Longer-term design: replace module-wide `ttng.two-ctas` consumers with
-   per-operation/per-type instruction-group queries where the ISA allows mixed
-   modes.
+3. Keep adding regression tests that distinguish module-wide two-CTA
+   instruction form from per-layout CGA ownership.
 
 ## Validation Evidence
 
-This was a static backend audit. No new code was changed and no tests were run
-for this audit artifact.
+2026-04-21 follow-up:
+
+- Added conversion coverage for a 4-CTA `ttng.tmem_copy` lowering that checks
+  `cluster_id & 1 == 0`, proving the predicate is per-pair leader selection
+  rather than whole-CGA CTA 0 selection.
+- Added membar coverage for a 4-CTA distributed shared producer followed by a
+  two-CTA-capable `ttng.tmem_copy`, proving the pre-copy cluster barrier is
+  still inserted when an outer CTA bit exists.
+- Fixed `tcgen05.copy.warpx2` shared-source validation so the same canonical
+  pair-local source layout works in larger CGAs with outer CTA-pair bases.
+
+The original audit was static and did not change compiler behavior.
 
 Relevant prior validation at current HEAD `22222eb38`:
 

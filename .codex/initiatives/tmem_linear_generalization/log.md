@@ -25869,3 +25869,25 @@ Open after this slice:
     module-wide consistency pass.
 - No tests were run because this slice only records the static audit and does
   not change compiler behavior.
+
+## 2026-04-21 02:35 UTC: multi-CTA copy audit follow-up
+
+- User clarified that module-wide `getModuleTwoCTAs` is a hardware
+  restriction for all two-CTA-capable instructions in a kernel. Reclassified
+  TMA load/gather module-wide `cta_group::2` selection as correct.
+- Added a 4-CTA `tcgen05.copy.warpx2` probe, which exposed a real source
+  validation gap: the planner accepted canonical 256x4 two-CTA shared sources
+  but rejected the same canonical pair-local source layout when an outer CTA
+  basis was present.
+- Fixed `getTMemCopyWarpx2SharedSourceRequirement` to accept
+  `128 * num_ctas` by 4 shared-linear sources with canonical row-only block
+  bases `[[128, 0], [256, 0], ...]`.
+- Added focused lit coverage:
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir` checks the 4-CTA copy
+    predicate is pair-leader `cluster_id & 1 == 0` and emits
+    `tcgen05.cp.cta_group::2.warpx2::01_23`;
+  - `test/TritonNvidiaGPU/membar-cluster.mlir` checks cluster-barrier
+    insertion before a 4-CTA two-CTA-capable TMEM copy.
+- Validation:
+  - required `make -j8` passed;
+  - focused lit rerun of the two touched files passed `2/2`.

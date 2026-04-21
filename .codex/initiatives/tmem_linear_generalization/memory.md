@@ -14143,3 +14143,26 @@ rejection, not rescue
     are per-op/per-type.
 - No code was changed for this audit beyond documentation. No tests were run
   in this audit slice.
+
+## Current: 2026-04-21 02:35 UTC multi-CTA audit follow-up fix
+
+- User clarified that `getModuleTwoCTAs` is a hardware restriction: if any
+  two-CTA-capable instruction in a kernel is in two-CTA mode, all such
+  instructions must be in two-CTA mode.
+- Reclassified TMA load/gather use of module-wide `getModuleTwoCTAs` as
+  correct instruction-form selection, not a backend gap.
+- The 4-CTA lit probe found a real copy-planner gap:
+  `tcgen05.copy.warpx2` shared-source validation accepted only 128x4
+  single-CTA or 256x4 two-CTA source tiles. It now accepts larger
+  `128 * num_ctas` by 4 shared-linear source tiles when the CTA block bases are
+  the canonical row-only sequence `[[128, 0], [256, 0], ...]`.
+- Added lit coverage:
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir` checks 4-CTA
+    `ttng.tmem_copy` lowering uses pair-leader predicate `cluster_id & 1 == 0`
+    and emits `tcgen05.cp.cta_group::2.warpx2::01_23`;
+  - `test/TritonNvidiaGPU/membar-cluster.mlir` checks a 4-CTA distributed
+    shared producer still gets a cluster barrier before the two-CTA-capable
+    `ttng.tmem_copy`.
+- Validation:
+  - required `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8` passed;
+  - focused lit rerun of the two touched files passed `2/2`.
