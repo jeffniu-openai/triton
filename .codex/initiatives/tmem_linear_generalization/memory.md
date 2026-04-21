@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 15:24 UTC Round 54 resource/shape extremes lane B
+  completed. Report:
+  `agents/fuzz_round54_resource_shape_extremes_lane.md`. Required `make -j8`
+  was a no-op. Combined resource/shape runtime-matrix selector collected
+  `515/1615` and ran split-4 as `439 passed, 70 skipped, 6 failed`; all six
+  failures are existing `FZ-20260421-0012` M64 f32 `ld.red` unsupported
+  destination-layout rows. Clean/resource selector collected `66/1648` across
+  runtime matrix plus structural fuzzer and passed as `66 passed`. High-CGA
+  `test_core.py` controls collected `16/18114` and passed split-4 as
+  `16 passed`, including the 16-CTA multicast case. Large `ld.red` ptxas probe
+  revalidated `60` rows: `16` existing `FZ-20260421-0018`, `12` pass, and
+  `32` clean shape/shared-memory/tensor-memory boundaries. `i64`/`f64`
+  compiler-only contrast reproduced existing `FZ-20260421-0017`; non-f32
+  `ld.red` stayed a clean f32-only diagnostic and 64-bit copy lowered to
+  `tcgen05.cp.cta_group::1.128x256b`. No new independent `FZ-*`; no backend
+  repair attempted.
+
 - Latest: 2026-04-21 15:21 UTC Round 54 opcode consistency lane C
   completed. Report: `agents/fuzz_round54_opcode_consistency_lane.md`.
   Required `make -j8` was a no-op. Focused runtime-matrix opcode selector

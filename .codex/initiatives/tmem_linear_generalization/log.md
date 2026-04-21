@@ -32362,6 +32362,36 @@ Open after this slice:
   diagnostic, clean-boundary drift, runtime miscompile, hang, or independent
   `FZ-*`.
 
+## 2026-04-21 15:24 UTC: Round 54 resource/shape extremes lane B
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_resource_shape_extremes_lane.md`.
+- Required `make -j8` was a no-op.
+- Combined runtime-matrix selector:
+  `(resource or m64 or n512 or n384 or high_cga or x1 or subword or i64 or f64 or non_f32 or ld_red_m64 or 4x256b or warpx2 or n16 or n32) and not reports`.
+- Collection/result:
+  `515/1615`, split-4 as `439 passed, 70 skipped, 6 failed`
+  (`102/27 skipped`, `88/41 skipped`, `121/2 skipped/6 failed`, `128`).
+- Failed rows:
+  the six existing `FZ-20260421-0012` M64 f32 `ld.red` row-basis
+  unsupported-destination-layout nodeids.
+- Clean/resource selector:
+  `66/1648` collected and passed split-4 as `66 passed`.
+- High-CGA `test_core.py` controls:
+  `16/18114` collected and passed split-4 as `16 passed`, including the
+  16-CTA multicast case.
+- Large `ld.red` ptxas/resource subprocess probe:
+  `/tmp/tmem_ldred_fz0018_min_round32.py` revalidated `60` rows as `16`
+  existing `FZ-20260421-0018`, `12` pass, `20` clean shape-power-of-two
+  boundaries, `6` clean shared-memory boundaries, and `6` clean tensor-memory
+  boundaries.
+- `i64`/`f64` compiler-only contrast:
+  encoded descriptor-view load/store rows reproduced existing
+  `FZ-20260421-0017`; non-f32 `ld.red` produced clean f32-only diagnostics;
+  `i64`/`f64` copy lowered to `tcgen05.cp.cta_group::1.128x256b`.
+- Classification:
+  no new independent `FZ-*`; no backend fixes attempted.
+
 ## 2026-04-21: Round 54 local split-N / x1 / subword lane
 
 - Wrote

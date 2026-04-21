@@ -2,7 +2,21 @@
 
 Last updated: 2026-04-21
 
-Latest fuzzing checkpoint: 2026-04-21 15:21 UTC Round 54 opcode consistency
+Latest fuzzing checkpoint: 2026-04-21 15:24 UTC Round 54 resource/shape
+extremes lane B completed. Report:
+`agents/fuzz_round54_resource_shape_extremes_lane.md`. Required `make -j8`
+was a no-op. Combined checked-in selector over resource, M64/N extremes,
+high-CGA, `.x1`, subword, non-f32, 4x256b, `warpx2`, and N16/N32 rows
+collected `515/1615` and ran split-4 as `439 passed, 70 skipped, 6 failed`;
+the failures are exactly the existing `FZ-20260421-0012` M64 f32 `ld.red`
+unsupported-destination rows. Clean/resource selector collected `66/1648` and
+passed as `66 passed`; high-CGA core controls collected `16/18114` and passed
+as `16 passed`; large `ld.red` ptxas probe classified `60` rows as `16`
+existing `FZ-20260421-0018`, `12` pass, and `32` clean boundaries. `i64`/`f64`
+compiler contrast reproduced existing `FZ-20260421-0017`; non-f32 `ld.red`
+and 64-bit copy controls stayed clean/green. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 15:21 UTC Round 54 opcode consistency
 lane C completed. Report: `agents/fuzz_round54_opcode_consistency_lane.md`.
 Required `make -j8` was a no-op. Focused runtime-matrix opcode selector
 collected `172/1615` rows and passed split-4 as `172 passed`; focused

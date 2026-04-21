@@ -55,6 +55,24 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ## Round Log
 
+### Round 54 Lane B, resource and shape extremes
+
+- Time: 2026-04-21 15:24 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_resource_shape_extremes_lane.md`
+- Scope: runtime and compiler-only cataloging for M/N extremes, high-CGA
+  4/8/16 CTA controls, 4x256b/warpx2/large-copy boundaries, subword and
+  64-bit contrasts, and ptxas/resource behavior.
+- Result: no backend or checked-in test edits. Combined runtime selector
+  collected `515/1615` and ran as `439 passed, 70 skipped, 6 failed`, with
+  all failures classified as existing `FZ-20260421-0012`. Clean/resource
+  selector passed `66/1648`; high-CGA core controls passed `16/18114`.
+  Large `ld.red` ptxas probe revalidated `16` existing `FZ-20260421-0018`
+  rows, `12` pass controls, and `32` clean boundaries. `i64`/`f64`
+  compiler-only contrast reproduced existing `FZ-20260421-0017`, while
+  non-f32 `ld.red` and 64-bit copy stayed clean/green. No new independent
+  `FZ-*`.
+
 ### Round 32 Local, FZ-0018 ld.red minimization
 
 - Time: 2026-04-21 13:10 UTC
