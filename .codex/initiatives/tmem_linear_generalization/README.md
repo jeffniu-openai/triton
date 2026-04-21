@@ -7,17 +7,31 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:26 UTC local Round 15 higher-rank
-descriptor runtime sweep. Report:
-`agents/fuzz_local_higher_rank_descriptor_round15.md`. Required `make -j8` was
-a no-op from the preceding local slice. Runtime-matrix selector
-`(higher_rank or multidim_slice or half_rows or rank5) and not reports`
-collected `102/1615` rows and passed split-4 as `82 passed, 20 skipped`. No
-runtime miscompile, compiler crash, false unsupported diagnostic, or new
-independent `FZ-*` bucket was found.
+Latest fuzzing checkpoint: 2026-04-21 11:48 UTC Round 15 generic/scaled and
+twoCTA/high-CGA checkpoint. Reports:
+`agents/fuzz_generic_memdesc_control_round15.md`,
+`agents/fuzz_scaled_multi_mma_round15.md`, and
+`agents/fuzz_local_twocta_highcga_round15.md`. Lane AK found no new bucket but
+broadened `FZ-20260421-0001`, `FZ-20260421-0002`, and
+`FZ-20260421-0013` around runtime branch/helper-selected memdesc values. Lane
+AM found new report-only candidate `FZ-20260421-0015`: direct B-scale TMEM
+descriptors selected by runtime branch feed scaled-MMAv5, compile and execute
+with matching PTX/LLIR opcodes, but produce NaN-heavy wrong results. The local
+twoCTA/high-CGA selector passed as `294 passed, 37 skipped`. Active next slice:
+minimize `FZ-0015` in discovery mode before backend repair.
 
-Previous fuzzing checkpoint: 2026-04-21 11:24 UTC local Round 14
-twoCTA/high-CGA runtime sweep. Report:
+Previous fuzzing checkpoint: 2026-04-21 11:28 UTC Round 15 descriptor/control
+and `ld.red` semantics checkpoint. Reports:
+`agents/fuzz_local_descriptor_control_round15.md` and
+`agents/fuzz_ldred_semantics_round15.md`. The local descriptor/control selector
+collected `329/1615` rows and passed split-4 as `251 passed, 78 skipped`.
+Lane AL's temporary `ld.red` semantic probe passed `16/16`; checked-in
+`ld.red` matrix failures remained the known `FZ-20260421-0012` M64 permuted
+row-base bucket, and structural sentinels stayed under existing
+`FZ-20260421-0004/0006/0008/0009`. No new independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 11:26 UTC local Round 15 higher-rank
+descriptor runtime sweep. Report:
 
 Previous fuzzing checkpoint: 2026-04-21 11:23 UTC Round 14 Lane AJ completed
 high-CGA mixed ownership fuzzing. Report:

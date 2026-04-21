@@ -28188,6 +28188,112 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, false unsupported
   diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 11:28 UTC: Round 15 local descriptor/control runtime sweep
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_descriptor_control_round15.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op from the preceding local slice.
+- Runtime-matrix selector
+  `(runtime_selector or descriptor_roundtrip or descriptor_compositions or scale_descriptor or acc_subslice_view or indexed_acc) and not reports`
+  collected `329/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `251 passed, 78 skipped`:
+  - GPU 0 / group 1: `38 passed, 45 skipped`;
+  - GPU 1 / group 2: `50 passed, 33 skipped`;
+  - GPU 2 / group 3: `83 passed`;
+  - GPU 3 / group 4: `80 passed`.
+- Classification: no runtime miscompile, compiler crash, false unsupported
+  diagnostic, or new independent `FZ-*` bucket was found.
+
+## 2026-04-21 11:28 UTC: Round 15 Lane AL ld.red semantics fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_semantics_round15.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Checked-in `ld_red and not reports` runtime matrix collected `243/1615`
+  rows and ran split-4 as `237 passed, 6 failed`; the six failures are the
+  known `FZ-20260421-0012` M64 permuted row-base unsupported destination
+  layout rows.
+- Temporary semantic probe `/tmp/tmem_ldred_semantics_round15_probe.py`
+  collected `16` rows and passed split-4 as `16 passed`. Coverage included f32
+  descriptor-chain full modifiers, integer abs software-reduce boundaries,
+  M256 descriptor-chain identity, and M64 identity controls.
+- Checked-in structural `ld.red` sentinels reported `3 passed, 6 xfailed`, and
+  isolated allocator/optimizer sentinels each xfailed as expected. These stayed
+  under existing `FZ-20260421-0004`, `FZ-20260421-0006`,
+  `FZ-20260421-0008`, and `FZ-20260421-0009`.
+- Classification: no new independent compiler crash, runtime wrong-result, or
+  false unsupported/verifier-too-strict candidate was found.
+
+## 2026-04-21 11:45 UTC: Round 15 Lane AK generic memdesc/control fuzzing
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_memdesc_control_round15.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe
+  `/tmp/tmem_generic_memdesc_control_round15_probe.py` covered branch-selected
+  helper-returned views, loop-carried helper-returned views, runtime
+  `parent.index(load(selector))`, and copy/plain-MMAv5 consumer variants.
+- Classification after raw diagnostic reruns:
+  - `16` rows mapped to existing `FZ-20260421-0001`;
+  - `2` loop-carried chain0 `ld/st` rows mapped to existing
+    `FZ-20260421-0002`;
+  - `4` loop-carried chain1/chain2 `ld/st` rows passed;
+  - `2` copy/MMAv5 chain0 consumer rows reported clean unsupported
+    diagnostics;
+  - corrected scaled-MMAv5 branch-selected scale probe
+    `/tmp/tmem_r15_scaled_probe.py` produced `4` rows in existing
+    `FZ-20260421-0013`.
+- Checked-in generic-pass selector remained stable as `11 xfailed`.
+- No new independent `FZ-*` bucket was assigned.
+
+## 2026-04-21 11:47 UTC: Round 15 Lane AM scaled multi-MMA fuzzing
+
+- Integrated report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_multi_mma_round15.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe `/tmp/tmem_scaled_multi_mma_round15_probe.py` collected
+  `12` rows and final single-GPU run reported `7 passed, 5 failed`.
+- Green controls covered multiple scaled MMA ops in one kernel, scale
+  descriptor reuse, static accumulator subslices, and `mxfp8`, `mxfp4`, and
+  `nvfp4` format variations.
+- Three scale descriptor-view rows mapped to existing
+  `FZ-20260421-0013` with `16107/16384`, `16116/16384`, and
+  `16373/16384` mismatches.
+- New report-only candidate `FZ-20260421-0015`: runtime branch selection
+  between two direct B-scale TMEM descriptors compiles and executes with
+  matching PTX/LLIR scaled-MMAv5 opcodes, but produces NaN-heavy wrong
+  results:
+  - selector `0`: `16381/16384` mismatches and `96` output NaNs;
+  - selector `1`: `16380/16384` mismatches and `96` output NaNs.
+- Next discovery slice should minimize `FZ-0015` before any backend repair.
+
+## 2026-04-21 11:48 UTC: Round 15 local twoCTA/high-CGA runtime sweep
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_twocta_highcga_round15.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Runtime-matrix selector
+  `(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
+  collected `331/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `294 passed, 37 skipped`:
+  - GPU 0 / group 1: `56 passed, 27 skipped`;
+  - GPU 1 / group 2: `73 passed, 10 skipped`;
+  - GPU 2 / group 3: `83 passed`;
+  - GPU 3 / group 4: `82 passed`.
+- Classification: no runtime miscompile, compiler crash, false unsupported
+  diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

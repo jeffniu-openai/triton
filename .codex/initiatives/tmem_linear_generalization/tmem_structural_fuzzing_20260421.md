@@ -2213,6 +2213,64 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no new bucket. The checked-in structural-fuzzer sentinels
   remain stable.
 
+### Round 15 Lane AK generic memdesc/control-flow fuzzing
+
+- Time: 2026-04-21 11:45 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_memdesc_control_round15.md`
+- Required build: `make -j8` no-op.
+- Temporary probes:
+  `/tmp/tmem_generic_memdesc_control_round15_probe.py` and
+  `/tmp/tmem_r15_scaled_probe.py`.
+- Checked-in control:
+  `python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`
+  passed as `11 xfailed`.
+- Result: no new independent `FZ-*` bucket.
+- Classification:
+  - `FZ-20260421-0001` broadened to branch/helper-selected memdesc values
+    feeding `ld/st`, `tcgen05.copy`, and plain MMAv5;
+  - `FZ-20260421-0002` broadened to loop-carried helper-returned chain0
+    `ld/st` views with `8064/8192` mismatches;
+  - `FZ-20260421-0013` broadened to scaled-MMAv5 scale descriptor-view rows
+    selected through runtime branch control flow.
+
+### Round 15 Lane AM scaled-MMAv5 multi-op and dynamic scale fuzzing
+
+- Time: 2026-04-21 11:47 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_multi_mma_round15.md`
+- Required build: `make -j8` no-op.
+- Temporary probe:
+  `/tmp/tmem_scaled_multi_mma_round15_probe.py`.
+- Result: `7 passed, 5 failed`.
+- Green controls: multiple scaled MMA operations in one kernel, reused scale
+  descriptors, static accumulator subslices, `use_acc` sequencing, and
+  `mxfp8`/`mxfp4`/`nvfp4` format variation.
+- Existing bucket broadening:
+  - three A/B scale descriptor-view rows stayed under `FZ-20260421-0013`
+    with `16107/16384`, `16116/16384`, and `16373/16384` mismatches.
+- New report-only candidate:
+  - `FZ-20260421-0015`: direct B-scale TMEM descriptors selected by runtime
+    branch feed `tcgen05_mma_scaled`, compile and execute, and emit matching
+    PTX/LLIR scaled-MMA opcodes, but produce NaN-heavy wrong results
+    (`16380-16381/16384` mismatches and `96` NaNs). Minimize this before
+    repair; do not fold it into `FZ-0013` unless a smaller repro shows the
+    same scale-fragment/view rematerialization trigger.
+
+### Round 15 local twoCTA/high-CGA selector
+
+- Time: 2026-04-21 11:48 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_twocta_highcga_round15.md`
+- Selector:
+  `(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
+  collected `331/1615`.
+- Split-4 result:
+  `294 passed, 37 skipped`.
+- Classification: no new bucket; checked-in twoCTA/high-CGA runtime surface
+  stayed green next to existing report-only `FZ-20260421-0010` and
+  `FZ-20260421-0014`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

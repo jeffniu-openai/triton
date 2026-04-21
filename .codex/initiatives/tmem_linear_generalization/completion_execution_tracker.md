@@ -95,6 +95,15 @@ The project is complete when:
   collected `102/1615` rows and passed split-4 as `82 passed, 20 skipped`. No
   runtime miscompile, compiler crash, false unsupported diagnostic, or new
   independent `FZ-*` bucket was found.
+  2026-04-21 11:28 UTC Round 15 descriptor/control and `ld.red` semantics
+  checkpoint stayed green or mapped to existing buckets. Reports:
+  `agents/fuzz_local_descriptor_control_round15.md` and
+  `agents/fuzz_ldred_semantics_round15.md`. The descriptor/control selector
+  collected `329/1615` rows and passed split-4 as `251 passed, 78 skipped`.
+  Lane AL's temporary `ld.red` semantic probe passed `16/16`; checked-in
+  `ld.red` matrix failures remained known `FZ-20260421-0012`, and structural
+  sentinels stayed under existing `FZ-20260421-0004/0006/0008/0009`. No new
+  independent `FZ-*` bucket was found.
   2026-04-21 08:30 UTC Lane E2 promoted FZ-20260421-0001 and
   FZ-20260421-0002 into checked-in strict xfail runtime coverage in
   `python/test/gluon/test_tmem_structural_fuzzer.py`, with exact fresh-process
@@ -1849,3 +1858,39 @@ signal handling:
   `agents/fuzz_local_structural_smoke_round14b.md`. Full
   `python/test/gluon/test_tmem_structural_fuzzer.py` reported
   `9 passed, 24 xfailed`; no new bucket.
+
+- 2026-04-21 11:48 UTC: integrated Round 15 Lane AK generic
+  memdesc/control-flow fuzzing in discovery-only mode. Report:
+  `agents/fuzz_generic_memdesc_control_round15.md`. Required `make -j8` was a
+  no-op. Temporary probes classified branch/helper-selected memdesc values
+  feeding `ld/st`, copy, and plain-MMAv5 as existing
+  `FZ-20260421-0001`, loop-carried helper-returned chain0 `ld/st` views as
+  existing `FZ-20260421-0002`, and branch-selected scaled-MMAv5
+  descriptor-view scale rows as existing `FZ-20260421-0013`. Chain1/chain2
+  loop-carried `ld/st` controls passed and chain0 copy/MMAv5 controls produced
+  clean unsupported diagnostics. No new independent bucket was assigned.
+
+- 2026-04-21 11:48 UTC: integrated Round 15 Lane AM scaled multi-MMA
+  composition fuzzing. Report:
+  `agents/fuzz_scaled_multi_mma_round15.md`. Temporary probe collected `12`
+  rows and final run reported `7 passed, 5 failed`. Green controls covered
+  multiple scaled MMA ops, scale descriptor reuse, static accumulator
+  subslices, and format variation. Three scale descriptor-view rows stayed
+  under existing `FZ-20260421-0013`. New report-only candidate
+  `FZ-20260421-0015` covers runtime branch selection between two direct
+  B-scale TMEM descriptors feeding scaled-MMAv5: compilation succeeds,
+  PTX/LLIR scaled-MMA opcodes match, but selector `0/1` produce
+  `16381/16384` and `16380/16384` mismatches with `96` NaNs.
+
+- 2026-04-21 11:48 UTC: local twoCTA/high-CGA runtime selector wrote
+  `agents/fuzz_local_twocta_highcga_round15.md`. Selector
+  `(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
+  collected `331/1615` and passed split-4 as `294 passed, 37 skipped`; no new
+  `FZ-20260421-0010` or `FZ-20260421-0014` exposure.
+
+- Active next concrete slice: minimize `FZ-20260421-0015` in discovery mode
+  across same-object versus distinct-object scale descriptors, A-scale versus
+  B-scale runtime selection, branch versus loop/pass forms, selector
+  constant-folding, and single-use versus multi-use scale descriptors. Do not
+  start backend repair until this candidate is minimized and the active fuzzing
+  lanes stop finding new bugs or the user pivots.

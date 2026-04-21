@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:28 UTC Round 15 descriptor/control and `ld.red`
+  semantics checkpoint stayed green or mapped to existing buckets. Reports:
+  `agents/fuzz_local_descriptor_control_round15.md` and
+  `agents/fuzz_ldred_semantics_round15.md`. The local descriptor/control
+  selector collected `329/1615` rows and passed split-4 as
+  `251 passed, 78 skipped`. Lane AL's temporary `ld.red` semantic probe
+  passed `16/16`; checked-in `ld.red` matrix failures remained the known
+  `FZ-20260421-0012` M64 permuted row-base bucket, and structural sentinels
+  stayed under existing `FZ-20260421-0004/0006/0008/0009`. No new independent
+  `FZ-*` bucket was found.
+
 - Latest: 2026-04-21 11:26 UTC local Round 15 higher-rank descriptor runtime
   sweep stayed green. Report:
   `agents/fuzz_local_higher_rank_descriptor_round15.md`. Required `make -j8`
@@ -15235,6 +15246,42 @@ rejection, not rescue
   pass, `3` miscompile candidates, and `3` clean boundaries.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
+
+## Current: 2026-04-21 11:45 UTC Round 15 generic/scaled fuzzing
+
+- Active campaign mode remains discovery-only. Do not start backend/compiler
+  repairs while the Round 15 lanes are still finding or sharpening failures
+  unless the user explicitly pivots.
+- New report-only lane:
+  `agents/fuzz_generic_memdesc_control_round15.md`. It found no new
+  independent bucket, but broadened:
+  - `FZ-20260421-0001` to runtime branch/helper-selected memdesc values feeding
+    `ld/st`, `tcgen05.copy`, and plain MMAv5 when the selected descriptor
+    value survives as illegal `ttg.memdesc_index` in
+    `ConvertTritonGPUToLLVM`;
+  - `FZ-20260421-0002` to loop-carried helper-returned chain0 `ld/st` views
+    with `8064/8192` mismatches while chain1/chain2 variants pass; and
+  - `FZ-20260421-0013` to scaled-MMAv5 scale descriptors selected through
+    runtime branch control flow when descriptor-view scale chains are present.
+- New Lane AM report:
+  `agents/fuzz_scaled_multi_mma_round15.md`. It found candidate
+  `FZ-20260421-0015`: direct B-scale TMEM descriptors selected by runtime
+  branch feed `tcgen05_mma_scaled`, compile and execute, PTX/LLIR opcodes
+  match, but runtime output is NaN-heavy wrong (`16380-16381/16384`
+  mismatches). This is provisionally distinct from `FZ-0001`,
+  `FZ-0007`, and `FZ-0013` because no descriptor-view chain is used on the
+  selected B-scale descriptors.
+- Lane AL `ld.red` semantics report stayed within known buckets: checked-in
+  `ld_red and not reports` ran as `237 passed, 6 failed`, with the six
+  failures classified as existing `FZ-20260421-0012`; temporary semantic probe
+  passed `16/16`.
+- Local twoCTA/high-CGA selector rerun wrote
+  `agents/fuzz_local_twocta_highcga_round15.md` and passed as
+  `294 passed, 37 skipped`; no new `FZ-0010` or `FZ-0014` surface.
+- Next action: minimize `FZ-20260421-0015` across same-object versus
+  distinct-object scale descriptors, A-scale versus B-scale selection,
+  selector constant-folding, and single-use versus multi-use scale descriptors
+  before any backend repair work.
 
 ## Current: 2026-04-21 08:50 UTC structural fuzzing Round 4 promoted sentinels
 
