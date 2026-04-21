@@ -542,6 +542,12 @@ The project is complete when:
   rows (`2` pass, `8` `FZ-0001`, `2` clean diagnostics). Local adjacent
   two-CTA copy/scales selector collected `53/1615` and passed split-4 as
   `53 passed`.
+  2026-04-21 local descriptor and `ld.red` selector sweep wrote
+  `agents/fuzz_local_descriptor_ldred_round14.md`. The descriptor algebra
+  selector collected `116/1615` and passed split-4 as `38 passed, 78 skipped`.
+  The `ld_red and (m64 or descriptor or rowcol_permuted) and not reports`
+  selector collected `100/1615` and ran as `94 passed, 6 failed`; the six
+  failures remain known `FZ-20260421-0012`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

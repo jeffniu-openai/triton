@@ -2093,6 +2093,22 @@ remain family-specific and consume a bounded subset of the inventory.
   `python/test/gluon/test_tmem_runtime_matrix.py -k '(cp_no_scales_twocta or cp_scales_warpx4_twocta or cga_roundtrip or layout_in_4cta_context) and not via_scaled_mma'`
   collected `53/1615` rows and passed split-4 as `53 passed`.
 
+### Round 14 local descriptor and ld.red selectors
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_descriptor_ldred_round14.md`
+- Required build: `make -j8` no-op.
+- ld/st descriptor algebra selector:
+  `runtime_selector or descriptor_roundtrip or descriptor_compositions`
+  collected `116/1615` rows and passed split-4 as `38 passed, 78 skipped`.
+- `ld.red` M64/descriptor/rowcol selector:
+  `ld_red and (m64 or descriptor or rowcol_permuted) and not reports`
+  collected `100/1615` rows and ran split-4 as `94 passed, 6 failed`.
+- Classification: no new bucket. The six failures are exactly the known
+  `FZ-20260421-0012` M64 destination-layout lowering failures for effective
+  non-identity row bases.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

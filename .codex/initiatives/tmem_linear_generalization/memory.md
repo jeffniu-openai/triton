@@ -1,5 +1,27 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:03 UTC Round 14 Lane AE completed direct `ld/st`
+  descriptor-algebra fuzzing. Report:
+  `agents/fuzz_ldst_descriptor_algebra_round14.md`. Required `make -j8` was a
+  no-op. A subprocess-isolated temporary probe
+  `/tmp/tmem_ldst_descriptor_algebra_round14_probe.py` classified `12` rows as
+  `1` pass, `2` `FZ-20260421-0001`, `2` `FZ-20260421-0003`, `5` clean
+  direct-`ld/st` row-anchor diagnostics, and `2` clean rank-view diagnostics.
+  The checked-in `ld/st` descriptor/rank/subword selector collected `232/1615`
+  and passed split-4 as `134 passed, 98 skipped`; adjacent copy/MMAv5 controls
+  collected `243/1615` and passed split-4 as `243 passed`. No new independent
+  `FZ-*` bucket was assigned.
+
+- Latest: 2026-04-21 local Round 14 descriptor and `ld.red` selector sweep
+  completed while Lane AE continued. Report:
+  `agents/fuzz_local_descriptor_ldred_round14.md`. Required `make -j8` was a
+  no-op. The ld/st descriptor algebra selector collected `116/1615` rows and
+  passed split-4 as `38 passed, 78 skipped`, with no new bucket. The
+  `ld_red and (m64 or descriptor or rowcol_permuted) and not reports`
+  selector collected `100/1615` and ran as `94 passed, 6 failed`; the failures
+  are the known `FZ-20260421-0012` M64 non-identity row-basis unsupported
+  destination-layout rows, not a new independent issue.
+
 - Latest: 2026-04-21 Lane AD completed high-CGA/copy/scales ownership
   fuzzing. Report: `agents/fuzz_high_cga_copy_scales_round14.md`. Required
   `make -j8` was a no-op. Checked-in copy/scales selectors collected `95`

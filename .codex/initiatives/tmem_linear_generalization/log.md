@@ -27946,6 +27946,26 @@ Open after this slice:
 - Split-4 runtime execution with stable per-GPU caches reported aggregate
   `53 passed` (`14`, `14`, `14`, `11` by shard).
 
+## 2026-04-21: Round 14 local descriptor and ld.red selectors
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_descriptor_ldred_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- ld/st descriptor selector:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'runtime_selector or descriptor_roundtrip or descriptor_compositions'`
+  collected `116/1615`.
+- Split-4 runtime result for that selector: `38 passed, 78 skipped`. No new
+  descriptor algebra bucket was found.
+- `ld.red` selector:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and (m64 or descriptor or rowcol_permuted) and not reports'`
+  collected `100/1615`.
+- Split-4 runtime result for that selector: `94 passed, 6 failed`.
+- Classification: no new bucket. The failures are the existing
+  `FZ-20260421-0012` M64 non-identity row-basis destination-layout lowering
+  rows.
+
 ## 2026-04-21: Round 14 Lane AD high-CGA copy/scales ownership fuzzing
 
 - Integrated
