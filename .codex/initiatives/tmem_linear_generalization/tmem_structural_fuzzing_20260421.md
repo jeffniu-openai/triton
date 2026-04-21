@@ -3591,3 +3591,27 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification:
   no new independent `FZ-*`; committed descriptor `ld/st` positive surface
   remains green outside report-only and roundtrip resource-boundary rows.
+
+### Round 30 local clean-boundary runtime guardrail
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundary_round30.md`
+- Selector:
+  `reports_clean or clean_unsupported or clean_error or tmem_oor`
+- Split-4 result:
+  `184 passed`
+- Classification:
+  no new independent `FZ-*`; committed clean-boundary runtime surface remains
+  green.
+
+### Round 30 direct branch copy minimization
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_branch_round30.md`
+- Scope:
+  same-parent/same-index/distinct-object branch-selected descriptors feeding
+  `ttng.tmem_copy`, selector `0/1`, readback on/off, and 1CTA/2CTA.
+- Result:
+  no new independent `FZ-*`; same-parent branch-selected distinct indices are
+  the failing `FZ-0001` shape. Same-index branch, distinct unindexed objects,
+  and same-index different-parent controls pass at `N=32`.

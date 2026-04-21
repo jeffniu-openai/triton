@@ -19,8 +19,11 @@ scaled-MMAv5 selector as `243 passed`; `agents/fuzz_local_copy_round29.md`
 passed the no-scale copy selector as `197 passed, 4 skipped`; and
 `agents/fuzz_local_structural_round29.md` kept the checked-in structural fuzzer
 stable as `9 passed, 24 xfailed`. No new independent `FZ-*` bucket was found.
-Latest local Round 30 guardrail `agents/fuzz_local_ldst_descriptor_round30.md`
-passed the descriptor `ld/st` non-roundtrip selector as `53 passed`.
+Latest local Round 30 guardrails:
+`agents/fuzz_local_ldst_descriptor_round30.md` passed the descriptor `ld/st`
+non-roundtrip selector as `53 passed`, and
+`agents/fuzz_local_clean_boundary_round30.md` passed the runtime clean-boundary
+selector as `184 passed`.
 The repaired high-CGA scaled-MMAv5 mixed-ownership harness proved scaled-MMAv5
 controls pass for `num_ctas=4/8/16`, then local 1CTA/2CTA descriptor-view
 `st`, `ld`, `ld.red`, and `tcgen05.copy` rows all classify as existing
@@ -57,6 +60,10 @@ Round 29 memdesc-index fuzzing broadened `FZ-20260421-0001`: runtime
 direct load, store, copy, `ld.red`, and mixed consumers, and direct
 distinct-branch `tcgen05.copy` fails late even though direct branch load/store/
 `ld.red` controls pass.
+Round 30 copy-branch minimization shows the `tcgen05.copy` branch failure is
+specific to same-parent, branch-selected distinct indices; it reproduces for
+selector `0/1`, readback on/off, and 1CTA/2CTA, while same-index branch,
+distinct unindexed objects, and same-index different-object controls pass.
 
 Previous Round 25 fuzzing checkpoint: 2026-04-21 14:30 UTC. Reports:
 `agents/fuzz_fz0016_code_audit_round25.md`,

@@ -30065,3 +30065,33 @@ Open after this slice:
   `53 passed`.
 - Classification: no compiler crash, verifier failure, runtime miscompile,
   opcode mismatch, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 30 local clean-boundary runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundary_round30.md`.
+- Selector:
+  `reports_clean or clean_unsupported or clean_error or tmem_oor`.
+- Collection:
+  `184/1615`.
+- Split-4 result:
+  `184 passed`.
+- Classification: no compiler crash, verifier failure, runtime miscompile,
+  opcode mismatch, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 30 direct branch copy minimization
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_branch_round30.md`.
+- Temporary probe artifacts under `/tmp/tmem_copy_branch_round30/`, including
+  `probe.py`, `probe_n32.py`, and
+  `repro_n32.make_llir.repro.mlir`.
+- Classification: no new independent `FZ-*`; this sharpens
+  `FZ-20260421-0001`. Same-parent, branch-selected distinct indices feeding
+  `ttng.tmem_copy` leave illegal `ttg.memdesc_index`; this reproduces for
+  selector `0/1`, readback on/off, and 1CTA/2CTA. Same-index branch selection,
+  distinct unindexed TMEM objects, and same-index different-parent controls
+  pass at `N=32`.
+- TTGIR/LLIR contrast: passing same-index branch rows have `ttg.memdesc_index`
+  in TTGIR but not LLIR, while the failing distinct-index copy reaches
+  make-LLIR input with a dynamic `ttg.memdesc_index` feeding `ttng.tmem_copy`.

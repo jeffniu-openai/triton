@@ -16194,6 +16194,23 @@ rejection, not rescue
   `ldst_descriptor and not reports and not roundtrip` collected `53/1615` and
   completed split-4 as `53 passed`. No new bucket or changed failure mode.
 
+- Round 30 local clean-boundary runtime guardrail wrote
+  `agents/fuzz_local_clean_boundary_round30.md`. Selector
+  `reports_clean or clean_unsupported or clean_error or tmem_oor` collected
+  `184/1615` and completed split-4 as `184 passed`. No new bucket or changed
+  failure mode.
+
+- Round 30 copy-branch minimization lane wrote
+  `agents/fuzz_copy_branch_round30.md`. No new bucket; it sharpens
+  `FZ-20260421-0001`. The failing minimum is same-parent, branch-selected
+  distinct indices feeding `ttng.tmem_copy`; it reproduces for selector `0/1`,
+  copy readback on/off, and 1CTA/2CTA layouts. Controls pass for same-parent
+  same-index branch selection, distinct unindexed TMEM objects, and same-index
+  different-parent objects at `N=32`. Passing same-index rows can have
+  `ttg.memdesc_index` in TTGIR but zero in LLIR; failing distinct-index copy
+  reaches make-LLIR input with a dynamic `ttg.memdesc_index` feeding
+  `ttng.tmem_copy`.
+
 - Round 29 memdesc-index lane wrote
   `agents/fuzz_memdesc_index_round29.md`. No new bucket, but it broadens
   `FZ-20260421-0001`: runtime `parent.index(ttgl.load(selector))` leaves

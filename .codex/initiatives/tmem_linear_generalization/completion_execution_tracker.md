@@ -2407,6 +2407,18 @@ signal handling:
   `ldst_descriptor and not reports and not roundtrip` collected `53/1615` and
   passed split-4 as `53 passed`. No new bucket was found.
 
+- 2026-04-21: Round 30 local clean-boundary runtime guardrail completed.
+  Report: `agents/fuzz_local_clean_boundary_round30.md`. Selector
+  `reports_clean or clean_unsupported or clean_error or tmem_oor` collected
+  `184/1615` and passed split-4 as `184 passed`. No new bucket was found.
+
+- 2026-04-21: Round 30 direct branch copy minimization completed. Report:
+  `agents/fuzz_copy_branch_round30.md`. No new bucket; sharpens
+  `FZ-20260421-0001`. Same-parent, branch-selected distinct indices feeding
+  `ttng.tmem_copy` fail for selector `0/1`, readback on/off, and 1CTA/2CTA.
+  Same-parent same-index branch selection, distinct unindexed TMEM objects,
+  and same-index different-parent controls pass at `N=32`.
+
 - 2026-04-21: Round 26 dynamic descriptor SSA lane completed. Report:
   `agents/fuzz_dynamic_ssa_round26.md`. No new bucket. Runtime-index `ld.red`
   and branch-yielded copy descriptors sharpen existing `FZ-20260421-0001`;
