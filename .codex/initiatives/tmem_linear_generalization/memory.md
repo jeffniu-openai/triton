@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 33 local scale-bearing runtime guardrail
+  completed. Report: `agents/fuzz_local_scales_round33.md`. Required
+  `make -j8` was a no-op. Selector
+  `((cp_scales or ldst_scales or ld_red_scales) and not cp_no_scales and not reports and not clean and not resource)`
+  collected `66/1615` rows and passed split-4 as `66 passed`
+  (`17/17/17/15`). No compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 Round 32 checked-in structural fuzzer rerun completed.
   Report: `agents/fuzz_structural_rerun_round32.md`. Required `make -j8` was
   a no-op. Command:

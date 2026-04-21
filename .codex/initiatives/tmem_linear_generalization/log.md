@@ -30426,3 +30426,15 @@ Open after this slice:
 - Classification: no XPASS, unexpected failure, compiler crash, false
   unsupported diagnostic, opcode mismatch, runtime miscompile, or new
   independent `FZ-*` bucket.
+
+## 2026-04-21: Round 33 local scale-bearing runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scales_round33.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `((cp_scales or ldst_scales or ld_red_scales) and not cp_no_scales and not reports and not clean and not resource)`.
+- Collection: `66/1615`.
+- Split-4 result: `66 passed` (`17/17/17/15` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*` bucket.

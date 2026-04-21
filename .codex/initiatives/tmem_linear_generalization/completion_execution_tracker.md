@@ -2574,3 +2574,9 @@ signal handling:
   Result: `9 passed, 24 xfailed in 9.42s`. No XPASS, unexpected failure,
   compiler crash, false unsupported diagnostic, opcode mismatch, runtime
   miscompile, or new independent `FZ-*`.
+
+- 2026-04-21: Round 33 local scale-bearing runtime guardrail completed.
+  Report: `agents/fuzz_local_scales_round33.md`. Selector
+  `((cp_scales or ldst_scales or ld_red_scales) and not cp_no_scales and not reports and not clean and not resource)`
+  collected `66/1615` and passed split-4 as `66 passed`. No new independent
+  `FZ-*` bucket.
