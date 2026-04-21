@@ -32019,3 +32019,43 @@ Open after this slice:
   destination-layout planner rows.
 - Classification: no compiler crash, verifier drift, wrong result, diagnostic
   drift, resource-boundary drift, or new independent `FZ-*`.
+
+## 2026-04-21 14:55 UTC: Round 50 dynamic copy exact probe
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_copy_exact_round50.md`.
+- Required `make -j8` was a no-op.
+- Exact `/tmp` dynamic copy probe result:
+  `1 failed, 2 passed`.
+- Failed row is existing `FZ-20260421-0001`: minimized branch-selected linear
+  `ttng.tmem_copy` leaves illegal `ttg.memdesc_index` live into
+  `ConvertTritonGPUToLLVM`.
+- Dynamic branch-selected `warpx2` positives passed before and after the
+  failing linear row in the same pytest process.
+- Classification: no new independent `FZ-*`.
+
+## 2026-04-21: Round 50 dynamic descriptor/control-flow adversary
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_descriptor_controlflow_round50.md`.
+- Required `make -j8` was a no-op.
+- Broad dynamic descriptor rerun classification:
+  `46` pass, `20` existing `FZ-20260421-0001`, `24` existing
+  `FZ-20260421-0002`/`FZ-20260421-0003`, and `10` clean unsupported copy
+  boundaries.
+- New disposable distinct-object probe:
+  `24/24 passed` for branch/helper/loop selection between separate concrete
+  TMEM objects, covering load, hardware `ld.red`, and `ttng.tmem_copy`.
+- Linear dynamic-copy sentinel:
+  `2 failed`, both existing `FZ-20260421-0001`.
+- Dynamic `warpx2` copy controls:
+  `4 passed`.
+- Structural dynamic rows:
+  `3 xfailed`, expected existing buckets.
+- Plain MMAv5 controls:
+  `2 passed`; scaled-MMAv5 dynamic accumulator subslice stayed existing
+  `FZ-20260421-0007`.
+- Classification: no new independent `FZ-*`. The narrowed hypothesis is that
+  generic memdesc SSA itself is not the problem; the gap is unresolved
+  parent-index/view-chain lowering when consumers require a concrete TMEM
+  address/layout.

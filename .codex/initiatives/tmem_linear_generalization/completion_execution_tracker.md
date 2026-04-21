@@ -3472,3 +3472,24 @@ discovery.
   `19 passed, 6 failed`, with all six failures matching existing
   `FZ-20260421-0012`. No compiler crash, verifier drift, wrong result,
   diagnostic drift, or new independent `FZ-*`.
+
+- 2026-04-21 14:55 UTC: Round 50 dynamic copy exact probe completed. Report:
+  `agents/fuzz_dynamic_copy_exact_round50.md`. Required `make -j8` was a
+  no-op. Exact `/tmp` dynamic copy probe completed as `1 failed, 2 passed`;
+  the failed row is existing `FZ-20260421-0001` minimized branch-selected
+  linear `ttng.tmem_copy` with live illegal `ttg.memdesc_index`, while
+  branch-selected `warpx2` positives passed before and after it in the same
+  pytest process. No new independent `FZ-*`.
+
+- 2026-04-21: Round 50 dynamic descriptor/control-flow adversary completed.
+  Report: `agents/fuzz_dynamic_descriptor_controlflow_round50.md`. Required
+  `make -j8` was a no-op. Broad dynamic descriptor rerun classified `46`
+  passes, `20` existing `FZ-20260421-0001`, `24` existing
+  `FZ-20260421-0002`/`FZ-20260421-0003`, and `10` clean unsupported copy
+  boundaries. New disposable distinct-object probe passed `24/24` across
+  branch/helper/loop selection between separate concrete TMEM objects for
+  load, hardware `ld.red`, and `ttng.tmem_copy`. Linear dynamic-copy sentinel
+  stayed `2 failed` as existing `FZ-20260421-0001`; dynamic `warpx2` copy
+  controls passed `4 passed`; structural dynamic rows stayed `3 xfailed`;
+  MMAv5 controls passed `2 passed, 1 xfailed` with the xfail existing
+  `FZ-20260421-0007`. No new independent `FZ-*`.
