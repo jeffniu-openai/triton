@@ -33422,3 +33422,36 @@ Open after this slice:
   checked-in structural xfails are now down to `2`: `FZ-20260421-0006`
   rotate/transpose/slice `ld.red` frontend layout inference and
   `FZ-20260421-0007` scaled-MMAv5 dynamic-if low-subslice wrong result.
+
+## 2026-04-21 21:39 UTC: FZ-0006 no-op full-slice descriptor repair
+
+- Branch/HEAD before this repair slice:
+  `01614c950 Fix loop-carried TMEM full-view replay`.
+- Dirty files at checkpoint:
+  `python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`,
+  `python/test/gluon/test_tmem_structural_fuzzer.py`, plus initiative
+  documentation.
+- Root cause:
+  the structural row's descriptor chain ended with two semantic no-op full
+  slices after a transpose/transpose pair. Those full-shape slices were still
+  materialized as descriptor subviews, so Gluon layout inference saw a
+  transformed descriptor instead of the replayable full image and rejected the
+  request with the row-anchor diagnostic.
+- Completed implementation:
+  `tensor_memory_descriptor.slice` now returns the original descriptor for
+  static `slice(0, shape[dim], dim)` requests. The `LdRedCase` schema records
+  whether a row expects hardware `.ld.red.` or a software-reduce fallback, and
+  the `FZ-0006` structural row is promoted as a correct `.ld.` plus
+  `tt.reduce` positive. This does not claim the M64 non-identity-row hardware
+  reduction is fixed; that remains the broader `FZ-20260421-0012` planner
+  bucket.
+- Validation evidence:
+  required `make -j8`; exact promoted row `1 passed`; full structural fuzzer
+  split-4 ran as group1 `9 passed`, group2 `9 passed`, group3 `9 passed`, and
+  group4 `8 passed, 1 xfailed`; targeted lit
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`; structural fuzzer
+  and Blackwell API `py_compile` passed; `git diff --check` passed.
+- Remaining repair-plan frontier:
+  checked-in structural xfails are now down to `1`: `FZ-20260421-0007`
+  scaled-MMAv5 dynamic-if low-subslice wrong result.

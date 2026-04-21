@@ -1,6 +1,23 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 21:29 UTC repair slice 7 fixed `R5-C`, the
+- Latest: 2026-04-21 21:39 UTC repair slice 8 fixed the checked-in
+  `FZ-20260421-0006` rotate/transpose/full-slice `ld.red` execution blocker.
+  Root cause: no-op full-shape descriptor slices remained in the descriptor
+  chain and prevented Gluon layout inference from seeing the replayable full
+  image, tripping the row-anchor diagnostic before execution. Implementation:
+  `tensor_memory_descriptor.slice` now returns the original descriptor for
+  static full-shape slices, and the structural `LdRedCase` expectations now
+  distinguish hardware `.ld.red.` positives from intentional software-reduce
+  fallbacks. The promoted row executes correctly as `.ld.` plus `tt.reduce`;
+  it is not a hardware opcode positive because the remaining M64
+  non-identity-row hardware reduction problem is the broader
+  `FZ-20260421-0012` planner bucket. Validation: required `make -j8`; exact
+  promoted row `1 passed`; full structural fuzzer split-4 `35 passed,
+  1 xfailed`; targeted lit `tmem_layouts.mlir` and `interleave_tmem.mlir`
+  `2 passed`; `py_compile` and `git diff --check` passed. Next: repair the
+  final checked-in structural xfail, `FZ-0007`.
+
+- Previous: 2026-04-21 21:29 UTC repair slice 7 fixed `R5-C`, the
   `generic-pass-loop-carried-memdesc-view-chain0` wrong-result row. Root
   cause: after a full-view descriptor passed through `scf.for` loop-carried
   state, the final `ttng.tmem_load` saw only the merged transformed memdesc

@@ -1806,16 +1806,21 @@ remain family-specific and consume a bounded subset of the inventory.
 ### FZ-20260421-0006: ld.red transpose/slice view may be false unsupported
 
 - Source: Lane A finding `A4`.
-- Failure class: `false_unsupported` candidate.
+- Failure class: repaired frontend false unsupported; remaining hardware
+  opcode gap is tracked by `FZ-20260421-0012`.
 - Family: `ldred`.
 - Shape: parent `[2, 64, 128]`, indexed view `[64, 128]`.
 - Layout: row `rotate1`, col `identity`.
 - View chain:
   `index(1).permute([1,0]).permute([1,0]).slice(0,M,dim=0).slice(0,N,dim=1)`.
-- Observed: `view.get_reg_layout()` rejects with row-anchor diagnostic:
-  required row anchors `32,64` are not directly representable.
-- Status: keep as candidate until planner proves ISA-impossible.
-- Checked-in xfail:
+- Original observation: `view.get_reg_layout()` rejected with row-anchor
+  diagnostic: required row anchors `32,64` are not directly representable.
+- Repair status: 2026-04-21 21:39 UTC no-op full-shape descriptor slices are
+  canonicalized to the original descriptor, so the row compiles and executes.
+  The checked-in test now expects a correct software reduction (`.ld.` plus
+  `tt.reduce`) rather than hardware `.ld.red.` because this M64
+  non-identity-row hardware reduction still falls under `FZ-20260421-0012`.
+- Checked-in positive:
   `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0006-rotate1-transpose-slice-max]`.
 
 ### Retired Non-Bug: direct two-CTA scales copy cta_group expectation

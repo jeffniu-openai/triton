@@ -145,6 +145,7 @@ class LdRedCase:
     row_kind: str = "identity"
     col_kind: str = "identity"
     op: str = "min"
+    expect_hardware_red: bool = True
 
 
 @dataclass(frozen=True)
@@ -266,22 +267,17 @@ LDRED_CASES = [
     LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs", 0xA025, 256, 32, True, 1, op="min_abs"),
     LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan", 0xA026, 256, 32, True, 1, op="min_nan"),
     LdRedCase("ldred-fz20260421-0004-chain1-64x32-min", 0xA004, 64, 32, False, 2),
-    pytest.param(
-        LdRedCase(
-            "ldred-fz20260421-0006-rotate1-transpose-slice-max",
-            0xA006,
-            64,
-            128,
-            False,
-            3,
-            "rotate1",
-            "identity",
-            "max",
-        ),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0006: ld.red transpose/slice descriptor view is a false-unsupported candidate",
-        ),
+    LdRedCase(
+        "ldred-fz20260421-0006-rotate1-transpose-slice-max",
+        0xA006,
+        64,
+        128,
+        False,
+        3,
+        "rotate1",
+        "identity",
+        op="max",
+        expect_hardware_red=False,
     ),
 ]
 
@@ -1042,7 +1038,12 @@ def test_tmem_structural_fuzzer_ldred(case):
     ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
     llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
     assert ptx_ops == llir_ops
-    assert any(".ld.red." in op for op in ptx_ops)
+    if case.expect_hardware_red:
+        assert any(".ld.red." in op for op in ptx_ops)
+    else:
+        assert any(".ld." in op for op in ptx_ops)
+        assert not any(".ld.red." in op for op in ptx_ops)
+        assert "tt.reduce" in compiled.asm["ttgir"]
 
 
 def _run_ldred_twocta_rowcol_optimizer_crash_case():

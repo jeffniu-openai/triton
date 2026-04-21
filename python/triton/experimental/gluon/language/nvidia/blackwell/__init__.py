@@ -806,6 +806,11 @@ class tensor_memory_descriptor(base_value):
         dim = _unwrap_if_constexpr(dim)
         if dim is None:
             dim = self.rank - 1
+        if (
+            isinstance(start, int) and isinstance(length, int) and isinstance(dim, int) and start == 0
+            and length == self.shape[dim]
+        ):
+            return self
         return _semantic.memdesc_slice(self, start, length, dim)
 
     @builtin

@@ -2,7 +2,20 @@
 
 Last updated: 2026-04-21
 
-Latest repair checkpoint: 2026-04-21 21:29 UTC checked-in `R5-C`
+Latest repair checkpoint: 2026-04-21 21:39 UTC checked-in
+`FZ-20260421-0006` is repaired as an execution blocker. Static no-op
+full-shape descriptor slices are now canonicalized away in Gluon, so the
+rotate/transpose/full-slice chain reaches backend replay instead of failing
+frontend row-anchor inference. The promoted row validates correct runtime
+results as a software-reduce fallback (`.ld.` plus `tt.reduce`) and explicitly
+does not assert hardware `.ld.red.`; the remaining hardware opcode gap belongs
+to existing `FZ-20260421-0012` M64 non-identity-row destination planning.
+Validation: required `make -j8`; exact promoted row `1 passed`; full
+structural fuzzer split-4 `35 passed, 1 xfailed`; targeted lit `2 passed`;
+`py_compile` and `git diff --check` passed. Remaining repair-plan frontier:
+the final checked-in structural xfail is `FZ-0007`.
+
+Previous repair checkpoint: 2026-04-21 21:29 UTC checked-in `R5-C`
 (`generic-pass-loop-carried-memdesc-view-chain0`) is repaired.
 `OptimizeTMemLayouts` now rewrites eligible loop-carried full-view memdesc
 loads by carrying the replayed tensor through `scf.for`: the loop init and
@@ -251,11 +264,11 @@ The project is complete when:
   descriptor-chain/indexed opcode selection (`FZ-20260421-0004`), and
   compact lifted-rank allocation plus full-view replay directionality
   (`FZ-20260421-0005`, `FZ-20260421-0008`, `FZ-20260421-0009`), and
-  loop-carried full-view replay (`R5-C`). Current next unblocked slice after
-  checkpoint: inspect the remaining `2` structural xfails (`FZ-0006`,
-  `FZ-0007`), pick the highest-impact backend
-  bucket, and repair the underlying backend gap without regressing the newly
-  promoted full-view, allocation, or `ld.red` positives.
+  loop-carried full-view replay (`R5-C`), and no-op full-slice descriptor
+  canonicalization for `FZ-20260421-0006` as a correct software-reduce
+  fallback. Current next unblocked slice after checkpoint: repair the final
+  checked-in structural xfail, `FZ-0007`, without regressing the newly promoted
+  full-view, allocation, or `ld.red` positives.
 
 - Phase Z, 24-hour structural fuzzing campaign: active as of 2026-04-21
   08:18 UTC. Build a systematic deterministic Python/Gluon runtime fuzzer plus

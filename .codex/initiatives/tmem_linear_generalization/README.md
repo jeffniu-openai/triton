@@ -7,7 +7,22 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 21:29 UTC repaired the remaining
+Latest repair checkpoint: 2026-04-21 21:39 UTC repaired the checked-in
+`FZ-20260421-0006` execution blocker for rotate/transpose/full-slice
+`ld.red`. Full-shape `tensor_memory_descriptor.slice(0, shape[dim], dim)` now
+canonicalizes to the original descriptor, so identity full-slice view chains no
+longer hide the replayable descriptor image from Gluon layout inference. The
+promoted structural row now compiles and executes correctly as a plain TMEM
+load plus software `tt.reduce`; the missing hardware `.ld.red.` opcode is not
+treated as solved here because this M64 non-identity-row case overlaps the
+separate `FZ-20260421-0012` destination-layout planner bucket. Validation:
+required `make -j8`; exact promoted row `1 passed`; full structural fuzzer
+split-4 `35 passed, 1 xfailed`; targeted lit `tmem_layouts.mlir` and
+`interleave_tmem.mlir` `2 passed`; `py_compile` and `git diff --check`
+passed. Remaining checked-in structural xfail: `FZ-0007` scaled-MMAv5
+dynamic-if low-subslice wrong result.
+
+Previous repair checkpoint: 2026-04-21 21:29 UTC repaired the remaining
 loop-carried descriptor-view structural bucket, `R5-C`
 (`generic-pass-loop-carried-memdesc-view-chain0`). The final `tmem_load` was
 loading from the merged `scf.for` memdesc result, which had lost the
@@ -21,9 +36,7 @@ Validation: required `make -j8`; exact promoted row `1 passed`; nearby
 control-flow replay guard `2 passed`; full structural fuzzer split-4
 `34 passed, 2 xfailed`; targeted lit `tmem_layouts.mlir` and
 `interleave_tmem.mlir` `2 passed`; `py_compile` and `git diff --check`
-passed. Remaining checked-in structural xfails are `FZ-0006` frontend layout
-inference for rotate/transpose/slice `ld.red` and `FZ-0007` scaled-MMAv5
-dynamic-if low-subslice wrong result.
+passed. Superseded remaining frontier: `FZ-0006` and `FZ-0007`.
 
 Previous repair checkpoint: 2026-04-21 21:18 UTC repaired three more
 checked-in structural buckets: `FZ-20260421-0005`, `FZ-20260421-0008`, and
