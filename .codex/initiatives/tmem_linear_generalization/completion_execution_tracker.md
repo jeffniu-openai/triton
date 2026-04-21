@@ -1968,3 +1968,29 @@ signal handling:
   baseline for descriptor `ld/st` composition and scale-copy runtime rows while
   subagents probe proxy-fence intervals and dynamic descriptor clean-boundary
   combinations.
+
+- 2026-04-21 11:54 UTC: local Round 18 selector
+  `(mma_scaled and not reports and not fz0015 and not descriptor_view) or (mma_twocta and not reports_clean and not reports and not i8)`
+  collected `342/1615` rows and passed split-4 as `342 passed`. Report:
+  `agents/fuzz_local_mma_scaled_round18.md`. No new bucket; this is a broad
+  green MMAv5/scaled-MMAv5 runtime baseline excluding report-only
+  `FZ-20260421-0015` selected-B-scale rows.
+
+- 2026-04-21 11:56 UTC: integrated Round 18 Lane AR and Lane AS reports:
+  `agents/fuzz_proxy_fence_intervals_round18.md` and
+  `agents/fuzz_dynamic_clean_boundaries_round18.md`. No new independent
+  `FZ-*`. AR narrowed `FZ-0014`: sequential wait-before-next-init 2CTA copy
+  regions reproduce without readback, while init-all-before-copy/wait shapes
+  pass with two and three regions. AS strengthened `FZ-0001` with a load-only
+  dynamic index illegal-op row, `FZ-0002` with tuple-like dynamic descriptor
+  capture wrong results, `FZ-0010` with a clean high-CGA diagnostic row, and
+  `FZ-0015` with runtime-selected direct B-scale scaled-MMAv5 mismatch. AS
+  checked-in selector passed as `159 passed, 11 xfailed`; AR adjacent
+  checked-in selector passed as `63 passed`.
+
+- 2026-04-21 11:57 UTC: integrated Round 18 proxy-fence plain-mbarrier
+  follow-up report:
+  `agents/fuzz_proxy_fence_plain_mbarrier_round18.md`. No new bucket. This
+  sharpens `FZ-0014`: one legal 2CTA no-scales copy-tracked mbarrier plus one
+  independent plain mbarrier interval reproduces in both copy-then-plain and
+  plain-then-copy orderings, so two copy-tracked regions are not required.

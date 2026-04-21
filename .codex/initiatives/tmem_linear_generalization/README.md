@@ -29,6 +29,26 @@ descriptor `ld/st` plus `cp_scales` selector. Report:
 `(ldst_descriptor_compositions or ldred_descriptor or cp_scales) and not reports`
 collected `62/1615` and passed split-4 as `62 passed`; no new bucket.
 
+Newest broad runtime validation: 2026-04-21 11:54 UTC Round 18 MMAv5 and
+scaled-MMAv5 selector. Report: `agents/fuzz_local_mma_scaled_round18.md`.
+Selector
+`(mma_scaled and not reports and not fz0015 and not descriptor_view) or (mma_twocta and not reports_clean and not reports and not i8)`
+collected `342/1615` and passed split-4 as `342 passed`; no new bucket.
+
+Round 18 subagent reports:
+`agents/fuzz_proxy_fence_intervals_round18.md` and
+`agents/fuzz_dynamic_clean_boundaries_round18.md`, plus follow-up
+`agents/fuzz_proxy_fence_plain_mbarrier_round18.md`. Lane AR found no new
+bucket but narrowed `FZ-20260421-0014`: sequential wait-before-next-mbarrier-init
+reproduces the proxy-fence insertion failure even without TMEM readback, while
+initializing all mbarriers before the copy/wait phase can pass with two or
+three regions. The plain-mbarrier follow-up shows two copy-tracked regions are
+not required: one 2CTA copy mbarrier plus one independent plain mbarrier
+interval reproduces in either order. Lane AS found no new bucket but
+strengthened existing `FZ-20260421-0001`, `FZ-20260421-0002`,
+`FZ-20260421-0010`, and `FZ-20260421-0015`; its checked-in
+dynamic/clean-boundary sweep passed as `159 passed, 11 xfailed`.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and

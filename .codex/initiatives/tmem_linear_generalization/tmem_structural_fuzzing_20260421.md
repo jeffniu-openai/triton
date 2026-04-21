@@ -2425,6 +2425,67 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 18 local MMAv5 and scaled-MMAv5 selector
+
+- Time: 2026-04-21 11:54 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_scaled_round18.md`
+- Selector:
+  `(mma_scaled and not reports and not fz0015 and not descriptor_view) or (mma_twocta and not reports_clean and not reports and not i8)`
+  collected `342/1615`.
+- Split-4 result:
+  `342 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket. Report-only
+  `FZ-20260421-0015` rows were intentionally excluded.
+
+### Round 18 Lane AR proxy-fence intervals
+
+- Time: 2026-04-21 11:56 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_fence_intervals_round18.md`
+- Temporary probe:
+  `/tmp/tmem_proxy_fence_intervals_round18_probe.py`.
+- Result: `13 passed`, with existing proxy-fence compiler failures caught and
+  classified as `FZ-20260421-0014`.
+- Adjacent checked-in selector:
+  `cp_no_scales and twocta and not reports` collected `63/1615` and passed as
+  `63 passed`.
+- Classification: no new independent `FZ-*`. `FZ-0014` now appears tied to
+  sequential cross-CTA mbarrier interval construction: wait region 0 before
+  initializing/starting region 1 reproduces even without TMEM readback, while
+  initializing all mbarriers before the copy/commit/wait phase passes for two
+  and three regions.
+
+### Round 18 Lane AS dynamic clean boundaries
+
+- Time: 2026-04-21 11:56 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_clean_boundaries_round18.md`
+- Temporary probe:
+  `/tmp/tmem_dynamic_clean_boundaries_round18_probe.py`.
+- Checked-in selector across structural fuzzer plus runtime matrix collected
+  `170/1648` and passed split-4 as `159 passed, 11 xfailed`.
+- Classification: no new independent `FZ-*`. The lane strengthened existing
+  `FZ-0001` with a load-only dynamic-index illegal-op row, `FZ-0002` with
+  tuple-like dynamic descriptor capture wrong results, `FZ-0010` with a clean
+  high-CGA diagnostic, and `FZ-0015` with the selected direct B-scale
+  scaled-MMAv5 mismatch.
+
+### Round 18 proxy-fence plain-mbarrier follow-up
+
+- Time: 2026-04-21 11:57 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_fence_plain_mbarrier_round18.md`
+- Temporary probe:
+  `/tmp/tmem_proxy_fence_intervals_round18_probe.py`.
+- Result: follow-up selected `2/15` rows and passed as `2 passed`, with both
+  rows classified as existing `FZ-20260421-0014`.
+- Classification: no new independent `FZ-*`. One legal 2CTA no-scales
+  copy-tracked mbarrier plus one independent plain mbarrier interval is enough
+  to reproduce proxy-fence insertion failure in either order, so the bug does
+  not require two copy-tracked regions.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

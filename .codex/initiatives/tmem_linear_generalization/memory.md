@@ -1,5 +1,28 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:56 UTC Round 18 subagent reports landed. Reports:
+  `agents/fuzz_proxy_fence_intervals_round18.md` and
+  `agents/fuzz_dynamic_clean_boundaries_round18.md`, plus
+  `agents/fuzz_proxy_fence_plain_mbarrier_round18.md`. Lane AR found no new
+  bucket and narrowed `FZ-20260421-0014`: sequential wait-before-next-init
+  2CTA copy regions reproduce proxy-fence insertion failure without readback,
+  while init-all-before-copy/wait shapes pass even with three regions. The
+  plain-mbarrier follow-up shows two copy-tracked regions are not required:
+  one 2CTA copy mbarrier plus one independent plain mbarrier interval
+  reproduces in either order. Lane AS found no new bucket; dynamic-index
+  load-only strengthens `FZ-0001`, tuple-like dynamic descriptor capture
+  strengthens `FZ-0002`, high-CGA clean diagnostics stay under `FZ-0010`, and
+  runtime-selected direct B-scale scaled-MMAv5 still reproduces `FZ-0015`. AS
+  checked-in selector passed as `159 passed, 11 xfailed`.
+
+- Latest: 2026-04-21 11:54 UTC local Round 18 MMAv5 and scaled-MMAv5 selector
+  passed. Report: `agents/fuzz_local_mma_scaled_round18.md`. Selector
+  `(mma_scaled and not reports and not fz0015 and not descriptor_view) or (mma_twocta and not reports_clean and not reports and not i8)`
+  collected `342/1615` and passed split-4 as `342 passed`; no runtime
+  miscompile, compiler crash, unexpected unsupported diagnostic, or new
+  `FZ-*` bucket was observed. This does not clear `FZ-20260421-0015`; those
+  report-only selected-B-scale rows were intentionally excluded.
+
 - Latest: 2026-04-21 11:48 UTC local Round 18 descriptor `ld/st` plus
   `cp_scales` selector passed. Report:
   `agents/fuzz_local_ldst_cpscales_round18.md`. Selector

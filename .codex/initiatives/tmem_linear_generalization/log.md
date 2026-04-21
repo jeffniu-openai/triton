@@ -28512,6 +28512,84 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 11:54 UTC: Round 18 local MMAv5 and scaled-MMAv5 selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_scaled_round18.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op from the immediately preceding checkpoint.
+- Selector
+  `(mma_scaled and not reports and not fz0015 and not descriptor_view) or (mma_twocta and not reports_clean and not reports and not i8)`
+  collected `342/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `342 passed`:
+  - GPU 0 / group 1: `86 passed`;
+  - GPU 1 / group 2: `86 passed`;
+  - GPU 2 / group 3: `86 passed`;
+  - GPU 3 / group 4: `84 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found. This
+  green selector intentionally excluded report-only `FZ-20260421-0015` rows.
+
+## 2026-04-21 11:56 UTC: Round 18 Lane AR proxy-fence intervals
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_fence_intervals_round18.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe `/tmp/tmem_proxy_fence_intervals_round18_probe.py` collected
+  `13` rows and passed as `13 passed`, with known proxy-fence compiler crashes
+  caught and classified as existing `FZ-20260421-0014`.
+- Checked-in adjacent selector `cp_no_scales and twocta and not reports`
+  collected `63/1615` rows and passed split-4 as `63 passed`.
+- Classification: no new independent `FZ-*`, no runtime miscompile, and no
+  unexpected unsupported diagnostic. The lane narrowed `FZ-0014`: waiting the
+  first 2CTA no-scales copy mbarrier before initializing/starting the second
+  region reproduces proxy-fence insertion failure even without TMEM readback;
+  invalidating after wait does not rescue it. Initializing all mbarriers before
+  copy/commit/wait can pass for both two-region and three-region shapes.
+
+## 2026-04-21 11:56 UTC: Round 18 Lane AS dynamic clean boundaries
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_clean_boundaries_round18.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe `/tmp/tmem_dynamic_clean_boundaries_round18_probe.py`
+  strengthened existing buckets:
+  - load-only dynamic `parent.index(index)` reaches LLVM conversion with an
+    illegal `ttg.memdesc_index`, strengthening `FZ-20260421-0001`;
+  - branch-selected descriptor/tensor tuple-like capture still wrong-results,
+    strengthening `FZ-20260421-0002`;
+  - 2CTA layout in 4CTA launch context stays a clean CTA-count diagnostic under
+    `FZ-20260421-0010`;
+  - runtime-selected distinct direct B-scale descriptor consumed by scaled
+    MMAv5 still reproduces `FZ-20260421-0015`.
+- Checked-in selector across structural fuzzer and runtime matrix collected
+  `170/1648` rows and passed split-4 as `159 passed, 11 xfailed`.
+- Classification: no new independent `FZ-*`, false clean-boundary diagnostic,
+  verifier-only regression, or new runtime miscompile beyond existing buckets.
+
+## 2026-04-21 11:57 UTC: Round 18 proxy-fence plain-mbarrier follow-up
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_proxy_fence_plain_mbarrier_round18.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Follow-up added two rows to
+  `/tmp/tmem_proxy_fence_intervals_round18_probe.py`; collection selected
+  `2/15` rows and runtime passed as `2 passed`, with both rows catching and
+  classifying the known proxy-fence insertion diagnostic as existing
+  `FZ-20260421-0014`.
+- Classification: no new independent `FZ-*`. The result sharpens `FZ-0014`:
+  two copy-tracked mbarriers are not required. One legal 2CTA no-scales
+  copy-tracked mbarrier plus one independent plain mbarrier interval is enough
+  to reproduce, and both copy-then-plain and plain-then-copy orderings fail.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote
