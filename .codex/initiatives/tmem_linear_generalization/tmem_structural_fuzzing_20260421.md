@@ -208,6 +208,28 @@ Every structural fuzz case records:
   - representative failures were rerun as fresh single-nodeid pytest
     processes and remained stable.
 
+### Lane R3-B Round 3, ld.red Opcode Loss Expansion
+
+- Time: 2026-04-21 08:39 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_opcode_round3.md`
+- Scope: expand `FZ-20260421-0004` around ld.red descriptor-chain plain-load
+  fallback, including resource-valid 2CTA rows and nearby descriptor-view /
+  layout shapes.
+- Result: no backend repair attempted; found a tighter boundary and one
+  recommended additional strict xfail sentinel.
+- Key findings:
+  - 1CTA `parent.index(1)` chain0 still emits hardware `ld.red`, while chain1,
+    chain2, chain4, abs, NaN-propagating, and adjacent row/col variants over
+    smaller packet families emit plain `tcgen05.ld...` despite correct output;
+  - 1CTA `[128,64]` chain1 remains a positive and emits `ld.red`, so the
+    failure is shape/layout packet-family dependent rather than all descriptor
+    chains;
+  - 2CTA full-parent reduction emits `ld.red`, but resource-valid
+    `parent.index(1)` emits plain `tcgen05.ld...` even at chain0 for
+    `[2,256,32]` and `[2,256,64]`, isolating the 2CTA failure to indexed
+    descriptor-view provenance rather than global 2CTA reduction support.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -320,6 +342,20 @@ Every structural fuzz case records:
     `/tmp/tmem_expansion_round2_confirm_ldred_chain1_opcode.log`,
     `/tmp/tmem_expansion_round2_confirm_ldred_chain2_rot_opcode.log`, and
     `/tmp/tmem_expansion_round2_confirm_twocta_ldred.log`.
+- Round 3 expansion:
+  - confirmed stable 1CTA boundary: direct `parent.index(1)` chain0 emits
+    `tcgen05.ld.red.sync.aligned.16x32bx2.x16.min.f32`, while chain1 emits
+    `tcgen05.ld.sync.aligned.16x32bx2.x16.b32`;
+  - confirmed stable 2CTA boundary: full-parent `[2,256,64]` emits
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32`, but resource-valid
+    `parent.index(1)` `[256,32]` chain0 emits
+    `tcgen05.ld.sync.aligned.16x32bx2.x16.b32`;
+  - recommended additional checked-in strict xfail:
+    `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min`;
+  - logs:
+    `/tmp/tmem_ldred_opcode_round3_confirm_onecta_chain1.log`,
+    `/tmp/tmem_ldred_opcode_round3_confirm_twocta_index_chain0.log`, and
+    `/tmp/tmem_ldred_opcode_round3_confirm_twocta_full_parent_positive.log`.
 
 ### FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation
 
