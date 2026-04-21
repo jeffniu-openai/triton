@@ -304,6 +304,33 @@ Every structural fuzz case records:
   - the three new exact nodeids each reported `1 xfailed`;
   - full structural fuzzer reported `9 passed, 12 xfailed`.
 
+### Lane R4-B Round 4, Dynamic `memdesc_index` Lit Candidate
+
+- Time: 2026-04-21 08:47 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_memdesc_index_lit_round4.md`
+- Scope: produce a compact MLIR/lit minimization candidate for
+  `FZ-20260421-0001` direct runtime TMEM `memdesc_index`, without backend
+  repair.
+- Result: no backend repair attempted; minimized the compiler-only reproducer
+  to a live dynamic scalar index into a `[2,128,32]` TMEM descriptor plus a
+  `tmem_load`/store use. An unused `ttg.memdesc_index` is eliminated and does
+  not reproduce.
+- Boundary:
+  - dynamic scalar-argument and selector-load forms fail under
+    `triton-opt --run-reproducer` with illegal `ttg.memdesc_index`;
+  - static `%c1` lowers successfully through the same reproducer pipeline;
+  - small dynamic `[64,32]` still fails earlier with the clean row-anchor
+    unsupported diagnostic;
+  - `--verify-diagnostics` treats the current illegal-op as an unexpected
+    compiler error.
+- Recommendation: keep the checked-in coverage as Python strict xfail for
+  now. The 26-line `/tmp/tmem_memdesc_index_r4_lit_candidate.mlir` is ready as
+  a GPU-free repair target, but should only be checked in as lit once the
+  intended contract is explicit: clean negative diagnostic if unsupported, or
+  temporary `XFAIL`/future positive lowering if dynamic indexing is meant to
+  be supported.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
