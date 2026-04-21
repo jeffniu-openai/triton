@@ -73,6 +73,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 07:10 UTC: completed Round 5 adversarial runtime-matrix
+  probing. No production backend bug was found. A stale clean-negative
+  coverage row was corrected: two-CTA higher-rank direct `ld.red` through a
+  lifted descriptor-view chain is positive when the reduced output uses a
+  matching two-CTA register layout. The row now checks runtime results and
+  `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32`. The transposed
+  shared-copy diagnostic assertion was also aligned to the stable clean
+  `ttng.tmem_copy` verifier boundary. Validation covered the required
+  `make`, scaled descriptor/indexed/subslice/use-acc/narrow selectors,
+  two-CTA copy/ld/st/ld.red selectors, packed/subword/clean-diagnostic
+  selectors, exact reruns, py-compile, and `git diff --check`.
+
 - 2026-04-21 07:03 UTC: completed Round 2 copy/ld/st/ld.red follow-up
   audit slice. Found and fixed a real `ttng.tmem_load`/`ld.red` false
   negative for `ttng.tmem_subslice` views: the verifier and Gluon layout

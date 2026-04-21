@@ -26259,3 +26259,54 @@ Open after this slice:
   - existing concurrent edits in `test/TritonNvidiaGPU/membar-cluster.mlir` and
     initiative docs were preserved; only this slice's code/test/doc additions
     should be staged for the checkpoint.
+
+## 2026-04-21 07:10 UTC: Round 5 adversarial runtime-matrix audit
+
+- User asked for Round 5 of 5 focused on adversarial runtime-matrix probing in
+  `python/test/gluon/test_tmem_runtime_matrix.py`, prioritizing
+  descriptor-view chains plus `use_acc`, indexed views plus two-CTA, rows
+  64/128/256, N 8/16/32/64/128, K 128/256, packed/subword diagnostics, and
+  >2 CTA contexts.
+- Probing performed:
+  - collect-only confirmed the current file has one >2 CTA runtime-matrix
+    contract row: `test_tmem_runtime_matrix_cp_no_scales_twocta_layout_in_4cta_context_reports_clean_error`;
+  - scaled adversarial selector covered indexed accumulator views, accumulator
+    subslices, B-scale descriptor views, shared-scale descriptor-view copy,
+    narrow identity/tile-permuted accumulator rows, and `use_acc`;
+  - copy/ld/st/ld.red selector covered two-CTA descriptor chains, indexed and
+    subslice copy views, warpx2/warpx4, and the 4-CTA clean contract row;
+  - packed/subword/clean-diagnostic selector covered positive packed/subword
+    load/store/copy rows and clean unsupported/error diagnostics.
+- Finding:
+  - no production backend bug was found;
+  - the diagnostic selector exposed a stale coverage classification:
+    `test_tmem_runtime_matrix_ldst_twocta_direct_higher_rank_load_red_replay_reports_clean_unsupported`
+    was masked by a single-CTA reduced-output register layout, so it never
+    reached the intended backend path;
+  - after giving the reduced output a valid two-CTA register layout, the row is
+    a true positive and emits
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` with correct runtime
+    output.
+- Test updates:
+  - `tmem_ldst_direct_higher_rank_load_red_kernel` now accepts the reduced
+    output register layout explicitly;
+  - the two-CTA higher-rank direct `ld.red` row is renamed to
+    `test_tmem_runtime_matrix_ldst_twocta_direct_higher_rank_load_red_replay_positive`
+    and checks runtime output plus the exact ld.red opcode;
+  - `test_tmem_runtime_matrix_cp_no_scales_transposed_shared_reports_clean_error`
+    now asserts the current stable clean `ttng.tmem_copy` verifier boundary
+    rather than an obsolete exact phrase.
+- Inventory:
+  - `reports_clean_unsupported`: `92/1615`;
+  - `reports_clean_unsupported or reports_clean_error`: `145/1615`.
+- Validation:
+  - required
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`;
+  - scaled adversarial split-4 selector passed as `38/38/38/35`;
+  - exact promoted/diagnostic rerun passed `2/2`;
+  - packed/subword/clean-diagnostic selector passed as `52/52/52/52`;
+  - two-CTA copy/ld/st/ld.red selector passed as
+    `30 passed, 22 skipped` / `47 passed, 5 skipped` /
+    `42 passed, 10 skipped` / `52 passed`;
+  - Python byte-compile for `test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

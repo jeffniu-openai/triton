@@ -1,5 +1,26 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 07:10 UTC completed Round 5 adversarial
+  runtime-matrix probing focused on descriptor-view chains plus `use_acc`,
+  indexed views plus two-CTA, rows 64/128/256, N 16/32/64/128/256,
+  K 128/256, packed/subword diagnostics, and >2 CTA contract coverage.
+  No production backend bug was found. A stale clean-negative row in
+  `python/test/gluon/test_tmem_runtime_matrix.py` was corrected: two-CTA
+  higher-rank direct `ld.red` is positive once the reduced output uses a valid
+  two-CTA register layout, and it emits
+  `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` with correct runtime
+  results. The transposed shared-copy test now asserts the current stable
+  clean `ttng.tmem_copy` verifier boundary instead of an obsolete exact phrase.
+  Current collect-only inventory after this audit is
+  `reports_clean_unsupported` `92/1615` and
+  `reports_clean_unsupported or reports_clean_error` `145/1615`.
+  Validation: required `make -j8`; scaled adversarial split-4 selector
+  `38/38/38/35 passed`; two-CTA copy/ld/st/ld.red split-4 selector
+  `30 passed, 22 skipped` / `47 passed, 5 skipped` / `42 passed, 10 skipped`
+  / `52 passed`; packed/subword/clean-diagnostic split-4 selector
+  `52/52/52/52 passed`; exact promoted/diagnostic rerun `2 passed`;
+  py-compile; `git diff --check`.
+
 - Latest: 2026-04-21 07:03 UTC completed Round 2 copy/ld/st/ld.red
   follow-up audit slice. Found a real `ttng.tmem_load`/`ld.red` false
   negative for `ttng.tmem_subslice` descriptor views: a valid 128x64 f32

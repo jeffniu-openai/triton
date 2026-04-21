@@ -1175,8 +1175,10 @@ def tmem_ldst_direct_higher_rank_replay_kernel(in_ptr, out_ptr, layout: ttgl.con
 
 
 @gluon.jit
-def tmem_ldst_direct_higher_rank_load_red_kernel(in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
-                                                 N: ttgl.constexpr):
+def tmem_ldst_direct_higher_rank_load_red_kernel(
+    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, red_layout: ttgl.constexpr, M: ttgl.constexpr,
+    N: ttgl.constexpr
+):
     tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
     reg_layout: ttgl.constexpr = tmem.get_reg_layout()
     b_layout: ttgl.constexpr = ttgl.SliceLayout(1, ttgl.SliceLayout(2, reg_layout))
@@ -1192,7 +1194,6 @@ def tmem_ldst_direct_higher_rank_load_red_kernel(in_ptr, out_ptr, red_ptr, layou
     out, reduced = tmem.load_min()
     ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
 
-    red_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, 8], [1, 0])
     red_b = ttgl.arange(0, 2, ttgl.SliceLayout(1, red_layout))[:, None]
     red_m = ttgl.arange(0, M, ttgl.SliceLayout(0, red_layout))[None, :]
     red_offs = red_b * M + red_m
@@ -7231,8 +7232,9 @@ def test_tmem_runtime_matrix_ldst_direct_higher_rank_load_red_replay_positive():
     out = torch.empty_like(inp)
     red = torch.empty((2, m), dtype=torch.float32, device="cuda")
 
+    red_layout = ttgl.BlockedLayout([1, 1], [1, 32], [1, 8], [1, 0])
     compiled = tmem_ldst_direct_higher_rank_load_red_kernel[(1, )](
-        inp, out, red, layout, m, n, num_warps=8
+        inp, out, red, layout, red_layout, m, n, num_warps=8
     )
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
     torch.testing.assert_close(red, torch.min(inp, dim=2).values, atol=0, rtol=0)
@@ -7255,25 +7257,28 @@ def test_tmem_runtime_matrix_ldst_direct_higher_rank_load_red_replay_positive():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_ldst_twocta_direct_higher_rank_load_red_replay_reports_clean_unsupported(capfd):
+def test_tmem_runtime_matrix_ldst_twocta_direct_higher_rank_load_red_replay_positive():
     m = 256
     n = 64
     layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS["block_two_ctas"](n), [2])
+    red_layout = ttgl.BlockedLayout([1, 1], [1, 32], [1, 8], [1, 0], cga_layout=[[1, 0]])
     inp = torch.arange(2 * m * n, dtype=torch.float32, device="cuda").reshape(2, m, n)
     out = torch.empty_like(inp)
     red = torch.empty((2, m), dtype=torch.float32, device="cuda")
 
-    with pytest.raises(RuntimeError) as excinfo:
-        tmem_ldst_direct_higher_rank_load_red_kernel[(1, )](
-            inp, out, red, layout, m, n, num_warps=8, num_ctas=2
-        )
+    compiled = tmem_ldst_direct_higher_rank_load_red_kernel[(1, )](
+        inp, out, red, layout, red_layout, m, n, num_warps=8, num_ctas=2
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.min(inp, dim=2).values, atol=0, rtol=0)
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
-    assert "use tmem.load(...)+tt.reduce(...) explicitly for software reduction" in text
-    assert "Assertion" not in text
-    assert "PassManager::run failed" not in text
+    red_ops = [
+        op
+        for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        if ".ld.red." in op
+    ]
+    assert red_ops == ["tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32"]
+    assert "ttg.memdesc_reshape" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -8897,7 +8902,8 @@ def test_tmem_runtime_matrix_cp_no_scales_transposed_shared_reports_clean_error(
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "The source should not be transposed or padded" in text
+    assert "'ttng.tmem_copy' op" in text
+    assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

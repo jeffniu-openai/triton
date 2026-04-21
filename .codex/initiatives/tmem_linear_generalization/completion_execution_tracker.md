@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 07:03 UTC
+Last updated: 2026-04-21 07:10 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -40,8 +40,8 @@ The project is complete when:
 ## Active Phase Board
 
 - Phase A, rebaseline and classify: done for this branch. The current
-  clean-negative/error surface is stable at `141/1594`; unsupported-only
-  collect-only is `91/1594`. Every bucket below is classified as positive
+  clean-negative/error surface is stable at `145/1615`; unsupported-only
+  collect-only is `92/1615`. Every bucket below is classified as positive
   support, typed clean boundary, or frontend/API contract error.
 - Phase B, complete shared physical-query model: done for known TMEM policy
   surfaces in this branch. Remaining frontend/lowering code is orchestration
@@ -134,6 +134,14 @@ The project is complete when:
   coverage for a 128x64 ld.red from a 128x256 backing TMEM subview; focused
   ld.red descriptor-chain plus recent copy runtime slice passed `31/31`
   across four pytest-split GPU groups.
+  2026-04-21 07:10 UTC Round 5 adversarial runtime-matrix probing found no
+  production backend bug, but corrected stale coverage: two-CTA higher-rank
+  direct `ld.red` through a lifted descriptor-view chain is positive when the
+  reduced output uses a matching two-CTA register layout. The runtime matrix
+  now validates the positive result and
+  `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` instead of carrying a
+  masked clean-negative row. The transposed shared-copy diagnostic assertion
+  is aligned to the current clean `ttng.tmem_copy` verifier boundary.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
@@ -210,6 +218,13 @@ in `experiments/results/clean_unsupported_inventory_current.log`.
 Combined clean-negative/clean-error result after the same follow-up:
 `141/1594` tests collected (1453 deselected) in 3.83s. Exact nodeids are stored
 in `experiments/results/clean_unsupported_or_error_inventory_current.log`.
+
+Round 5 adversarial audit rebaseline at 2026-04-21 07:10 UTC:
+`reports_clean_unsupported` collects `92/1615`; combined
+`reports_clean_unsupported or reports_clean_error` collects `145/1615`. The
+two-CTA higher-rank direct `ld.red` row is no longer in the clean-negative
+inventory because the valid two-CTA reduced-output register layout reaches a
+positive `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` runtime path.
 
 Current buckets:
 - `ld/st` scales variant atom-footprint boundaries:
