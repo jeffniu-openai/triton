@@ -25,6 +25,32 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
+Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
+                              Value base, Value offset) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value newBase = b.add(b.ptrtoint(i32_ty, base), offset);
+  return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
+}
+
+Value buildDynamicTensorMemoryIndexOffset(Location loc,
+                                          ConversionPatternRewriter &rewriter,
+                                          Value index, MemDescType srcTy) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value offset = b.i32_val(0);
+  int64_t dimSize = srcTy.getShape().front();
+  for (int64_t bit = 1; bit < dimSize; bit <<= 1) {
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.front() = bit;
+    uint32_t bitOffset = triton::nvidia_gpu::getTMemViewOffset(srcTy, offsets);
+    if (bitOffset == 0)
+      continue;
+    Value bitSet = b.icmp_ne(b.and_(index, b.i32_val(bit)), b.i32_val(0));
+    Value contribution = b.select(bitSet, b.i32_val(bitOffset), b.i32_val(0));
+    offset = b.xor_(offset, contribution);
+  }
+  return offset;
+}
+
 Value bitOrPtrCast(Value val, Type type, TritonLLVMOpBuilder &b) {
   if (isa<LLVM::LLVMPointerType>(val.getType()) &&
       !isa<LLVM::LLVMPointerType>(type)) {
@@ -521,9 +547,11 @@ struct MemDescIndexOpConversion
 
       APInt index;
       if (!matchPattern(op.getIndex(), m_ConstantInt(&index))) {
-        return rewriter.notifyMatchFailure(
-            op, "dynamic tensor memory indexing is only supported for the "
-                "unencoded leading buffer dimension");
+        Value dynamicOffset = buildDynamicTensorMemoryIndexOffset(
+            loc, rewriter, adaptor.getIndex(), srcTy);
+        rewriter.replaceOp(
+            op, advanceTensorMemoryBase(loc, rewriter, tmemBase, dynamicOffset));
+        return success();
       }
 
       SmallVector<int32_t> offsets(srcTy.getRank(), 0);

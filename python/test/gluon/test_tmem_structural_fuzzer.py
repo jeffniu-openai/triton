@@ -316,16 +316,10 @@ GENERIC_PASS_MEMDESC_CASES = [
         GenericPassMemdescCase("generic-pass-dynamic-index-chain0", 0xE001, 0, 1, "dynamic_index"),
         marks=pytest.mark.xfail(
             strict=True,
-            reason="FZ-20260421-0001: runtime TMEM memdesc_index reaches LLVM conversion as an illegal op",
+            reason="FZ-20260421-0003: dynamic TMEM index now lowers; chain0 descriptor-view mapping still miscompiles",
         ),
     ),
-    pytest.param(
-        GenericPassMemdescCase("generic-pass-dynamic-index-chain1", 0xE011, 1, 0, "dynamic_index"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0001: runtime TMEM memdesc_index reaches LLVM conversion as an illegal op",
-        ),
-    ),
+    GenericPassMemdescCase("generic-pass-dynamic-index-chain1", 0xE011, 1, 0, "dynamic_index"),
     pytest.param(
         GenericPassMemdescCase("generic-pass-dynamic-if-chain0-true", 0xE001, 0, 1, "dynamic_if"),
         marks=pytest.mark.xfail(
@@ -401,13 +395,7 @@ SCALED_MMA_CONTROL_FLOW_CASES = [
 ]
 
 DYNAMIC_INDEX_LOAD_ONLY_CASES = [
-    pytest.param(
-        DynamicIndexLoadOnlyCase("generic-pass-dynamic-index-load-only-128x32", 0xE021, 128, 32, 1),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0001: direct runtime TMEM memdesc_index reaches LLVM conversion as illegal op",
-        ),
-    ),
+    DynamicIndexLoadOnlyCase("generic-pass-dynamic-index-load-only-128x32", 0xE021, 128, 32, 1),
 ]
 
 

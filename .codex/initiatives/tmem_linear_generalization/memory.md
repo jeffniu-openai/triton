@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 16:59 UTC repair slice 1 implemented dynamic encoded
+  TMEM `memdesc_index` lowering for `FZ-20260421-0001`. Branch/HEAD before the
+  uncommitted slice was `395f8c10e`. `ViewOpToLLVM.cpp` now decomposes a
+  runtime leading-index value into bit contributions, computes each bit's exact
+  TMEM view offset with `getTMemViewOffset`, XOR-composes the encoded
+  row/column offset, and advances the TMEM base pointer. Checked-in structural
+  expectations were updated so the direct load-only row and chain1 dynamic-index
+  row are ordinary positives; chain0 remains a strict xfail, reclassified to
+  `FZ-20260421-0003` because the illegal dynamic-index op is gone and the
+  remaining failure is descriptor-view packet mapping. Validation: required
+  `make -j8` rebuilt `ViewOpToLLVM.cpp`; exact sentinels ran as `1 passed`,
+  `1 passed`, and `1 xfailed`; full
+  `python/test/gluon/test_tmem_structural_fuzzer.py` split-4 ran as
+  `11 passed, 22 xfailed`. Next: broaden this repair against the other
+  dynamic/control-flow-carried `FZ-0001` consumer families (`copy`, `ld.red`,
+  MMAv5/scales) before declaring the bucket closed; after that, move to the
+  remaining descriptor-view mapping bucket exposed by chain0.
+
 - Latest: 2026-04-21 16:15 UTC Round 60 lit compiler breadth lane B
   completed. Report:
   `agents/fuzz_round60_lit_compiler_breadth_lane.md`. Required `make -j8`

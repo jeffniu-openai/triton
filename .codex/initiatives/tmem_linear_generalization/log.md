@@ -33162,3 +33162,33 @@ Open after this slice:
   scalar `.x1` `ld.red` message shapes.
 - Classification:
   no new independent `FZ-*`; no repair attempted.
+
+## 2026-04-21 16:59 UTC: repair slice 1 dynamic encoded memdesc_index
+
+- Branch/HEAD before the slice:
+  `395f8c10e Integrate Round 62 fuzz evidence`.
+- Implemented first systematic repair-plan item:
+  dynamic encoded TMEM `ttg.memdesc_index` lowering for `FZ-20260421-0001`.
+- Code change:
+  `lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp` now handles non-constant
+  tensor-memory leading indices when the indexed dimension is part of the TMEM
+  linear layout. The lowering decomposes the runtime i32 index into bit
+  contributions, asks `getTMemViewOffset` for each bit's exact encoded
+  row/column offset, XOR-composes those offsets, and advances the TMEM base.
+- Test expectation change:
+  `python/test/gluon/test_tmem_structural_fuzzer.py` removes strict xfails for
+  `generic-pass-dynamic-index-load-only-128x32` and
+  `generic-pass-dynamic-index-chain1`. `generic-pass-dynamic-index-chain0`
+  remains a strict xfail but is reclassified from `FZ-0001` to
+  `FZ-20260421-0003`, because lowering now succeeds and the remaining symptom
+  is wrong descriptor-view packet mapping.
+- Validation:
+  required `make -j8` rebuilt `ViewOpToLLVM.cpp`; exact sentinels ran as
+  direct load-only `1 passed`, chain1 `1 passed`, chain0 `1 xfailed`; full
+  `python/test/gluon/test_tmem_structural_fuzzer.py` split-4 ran as
+  `11 passed, 22 xfailed`.
+- Remaining boundary:
+  this closes the checked-in direct and chain1 structural `FZ-0001` sentinels,
+  but do not declare the whole bucket closed until dynamic/control-flow-carried
+  descriptors feeding copy, `ld.red`, MMAv5/scales, and branch-yielded values
+  are revalidated and their expectations adjusted or repaired.

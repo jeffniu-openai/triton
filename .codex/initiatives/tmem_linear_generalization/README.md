@@ -7,6 +7,20 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
+Latest repair checkpoint: 2026-04-21 16:59 UTC dynamic encoded TMEM
+`memdesc_index` lowering landed as the first systematic repair slice for
+`FZ-20260421-0001`. The LLVM conversion now materializes dynamic encoded
+leading-index offsets by XOR-composing per-bit `getTMemViewOffset` basis
+offsets before advancing the TMEM base. Structural tests now treat
+`generic-pass-dynamic-index-load-only-128x32` and
+`generic-pass-dynamic-index-chain1` as positives; `chain0` remains xfailed as
+`FZ-20260421-0003` because descriptor-view mapping still miscompiles after the
+dynamic index lowers. Validation: required `make -j8`; exact sentinels
+`1 passed`, `1 passed`, `1 xfailed`; full structural fuzzer split-4
+`11 passed, 22 xfailed`. Next repair step is broader `FZ-0001` consumer
+coverage for dynamic/control-flow-carried memdescs, especially copy, `ld.red`,
+and MMAv5/scales.
+
 Latest fuzzing checkpoint: 2026-04-21 16:15 UTC Round 60 lit compiler breadth
 lane B completed. Report:
 `agents/fuzz_round60_lit_compiler_breadth_lane.md`. Required `make -j8` and

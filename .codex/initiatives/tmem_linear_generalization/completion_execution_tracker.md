@@ -4075,3 +4075,19 @@ discovery.
   existing buckets `FZ-0001`, `FZ-0003`, `FZ-0007`, `FZ-0012`, `FZ-0013`,
   `FZ-0015`, `FZ-0020`, and `FZ-0022`; clean unsupported boundaries stayed
   clean. No new independent `FZ-*`.
+
+- 2026-04-21 16:59 UTC: active phase changed from fuzzing/cataloging to
+  systematic repair-plan execution. Slice 1 completed dynamic encoded TMEM
+  `memdesc_index` lowering for the checked-in `FZ-20260421-0001` structural
+  sentinels. Implementation: `ViewOpToLLVM.cpp` now lowers non-constant
+  encoded tensor-memory leading indices by bit-decomposing the runtime index,
+  using `getTMemViewOffset` for each basis bit, XOR-composing the encoded TMEM
+  row/column offset, and advancing the base pointer. Tests: direct
+  `generic-pass-dynamic-index-load-only-128x32` and
+  `generic-pass-dynamic-index-chain1` are now positives; chain0 remains xfailed
+  as `FZ-20260421-0003` descriptor-view mapping. Validation: required
+  `make -j8`; exact rows `1 passed`, `1 passed`, `1 xfailed`; full structural
+  fuzzer split-4 `11 passed, 22 xfailed`. Remaining inventory for this phase:
+  broaden `FZ-0001` over dynamic/control-flow-carried copy, `ld.red`,
+  MMAv5/scales, and branch/helper-yielded descriptor consumers; then repair
+  `FZ-0003` descriptor-view packet/layout mapping exposed by chain0.
