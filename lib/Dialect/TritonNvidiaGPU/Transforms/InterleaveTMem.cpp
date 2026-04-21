@@ -71,7 +71,7 @@ findBufferAccessMemdescSubview(Operation *subview) {
     src = indexOp.getSrc();
     shape = to_vector(indexOp.getType().getShape());
     offsets = {indexOp.getIndex()};
-    for (auto i : llvm::seq(std::max<int>(0, shape.size() - 1)))
+    for (auto i : llvm::seq<int>(shape.size()))
       offsets.push_back(arith::ConstantIntOp::create(builder, loc, 0, 32));
   } else {
     auto subsliceOp = cast<ttg::MemDescSubsliceOp>(subview);
@@ -92,6 +92,10 @@ findBufferAccessMemdescSubview(Operation *subview) {
   // The subview may have a smaller rank, in which case its access size is
   // just 1 for the higher dims.
   childAccess.rankOffset = src.getType().getRank() - shape.size();
+  if (offsets.size() != static_cast<size_t>(src.getType().getRank()) ||
+      parentAccess.ranges.size() <
+          static_cast<size_t>(parentAccess.rankOffset + offsets.size()))
+    return {};
   for (auto [i, offset] : llvm::enumerate(offsets)) {
     auto parentRange = parentAccess.ranges[i + parentAccess.rankOffset];
     if (!parentRange) {

@@ -98,6 +98,24 @@ tt.func @interleave_load_store_ws() {
   tt.return
 }
 
+// CHECK-LABEL: @indexed_subslice_alias_blocks_sink
+tt.func @indexed_subslice_alias_blocks_sink(%arg0: !ttg.memdesc<1x128x128xf32, #tmem, #ttng.tensor_memory, mutable>) {
+  %c0 = arith.constant 0 : i32
+  %true = arith.constant true
+  %alpha = arith.constant dense<0.5> : tensor<128x64xf32, #linear64>
+
+  %view = ttg.memdesc_index %arg0[%c0] : !ttg.memdesc<1x128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+  %slice = ttng.tmem_subslice %view {N = 0 : i32} : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+  // CHECK: ttng.tmem_load
+  // CHECK-NEXT: ttng.tmem_store
+  // CHECK-NEXT: arith.mulf
+  %val = ttng.tmem_load %slice : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128> -> tensor<128x64xf32, #linear64>
+  ttng.tmem_store %alpha, %slice, %true : tensor<128x64xf32, #linear64> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+  %mul = arith.mulf %val, %alpha : tensor<128x64xf32, #linear64>
+  "use"(%mul) : (tensor<128x64xf32, #linear64>) -> ()
+  tt.return
+}
+
 // CHECK-LABEL: @arrive_barrier
 tt.func @arrive_barrier(%arg0: !ttg.memdesc<1xi64, #barrier_shared, #smem, mutable>) {
   %true = arith.constant true
