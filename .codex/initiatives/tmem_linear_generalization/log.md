@@ -1,3 +1,17 @@
+## 2026-04-21 14:14 UTC: Round 41 TMEM lit guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_lit_guardrail_round41.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Build-tree `ninja triton-opt` reported `no work to do`.
+- Lit command passed:
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+  `test/TritonNvidiaGPU/interleave_tmem.mlir`, and
+  `test/TritonGPU/memdesc-subview-split.mlir`.
+- Result: `3 passed`.
+- Classification: no unexpected IR/diagnostic drift or new independent
+  `FZ-*`.
+
 ## 2026-04-21 14:13 UTC: Round 41 ld/st descriptor positive guardrail
 
 - Wrote

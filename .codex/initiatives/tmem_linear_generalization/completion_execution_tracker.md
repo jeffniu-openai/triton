@@ -60,6 +60,12 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:14 UTC Round 41 TMEM lit guardrail completed. Artifact:
+  `agents/fuzz_lit_guardrail_round41.md`. Build-tree `ninja triton-opt`
+  reported `no work to do`. Lit passed `tmem_layouts.mlir`,
+  `interleave_tmem.mlir`, and `memdesc-subview-split.mlir` as `3 passed`. No
+  unexpected IR/diagnostic drift or new independent `FZ-*`; backend repair
+  remains deferred.
   2026-04-21 14:13 UTC Round 41 `ld/st` descriptor positive guardrail
   completed. Artifact: `agents/fuzz_ldst_descriptor_positive_round41.md`.
   Selector
