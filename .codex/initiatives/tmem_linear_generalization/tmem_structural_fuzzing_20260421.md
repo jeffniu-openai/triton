@@ -4147,3 +4147,43 @@ remain family-specific and consume a bounded subset of the inventory.
   no new independent `FZ-*`; no compiler crash, verifier drift, false
   unsupported diagnostic, opcode absence, runtime miscompile, hang, or
   unexpected skip/fail transition. Backend repair remains deferred.
+
+### Round 56 copy dynamic descriptor lane A
+
+- Time: 2026-04-21 15:51 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_copy_dynamic_descriptor_lane.md`
+- Scope:
+  `tcgen05.copy` dynamic/static descriptor selection over direct index,
+  runtime index, branch-selected concrete TMEM views, TMEM column subslices,
+  shared-source subslices, `128x128b`, `128x256b`, `warpx2::01_23`,
+  `warpx2::02_13`, 1CTA, and 2CTA.
+- Result:
+  temporary probe ran `23` generated rows as `15` green, `7` existing
+  `FZ-20260421-0001`, `1` clean unsupported, and `0` new independent `FZ-*`.
+  Checked-in copy selector collected `127/1615` and passed as `127 passed`.
+- Classification:
+  dynamic TMEM destination selection for dense copy broadens existing
+  `FZ-20260421-0001`; branch-selected shared-source subslices and
+  branch-selected `warpx2::01_23` concrete TMEM views are green. Two-CTA
+  `warpx2::02_13` remains clean unsupported. Backend repair remains deferred.
+
+### Round 57 local structural-fuzzer/lit bridge lane
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round57_local_lit_runtime_bridge_lane.md`
+- Scope:
+  checked-in Python structural-fuzzer sentinels for dynamic TMEM
+  `memdesc_index`, 256-row lifted parent allocator crashes, `ld.red`
+  row/column optimizer and direct-index allocator sentinels, scaled-MMAv5
+  accumulator dynamic control-flow, plus lit verifier/conversion coverage in
+  `invalid.mlir`, `ops.mlir`, and `tmem_layouts.mlir`.
+- Result:
+  structural-fuzzer selector collected `15/33` and split-4 ran as
+  `15 xfailed`; lit bridge passed `3/3`.
+- Classification:
+  existing xfail buckets `FZ-20260421-0001`, `FZ-20260421-0002`,
+  `FZ-20260421-0007`, `FZ-20260421-0008`, and `FZ-20260421-0009` were
+  revalidated. No unexpected xfail transition, lit verifier/conversion drift,
+  or new independent `FZ-*`. Backend repair remains deferred.

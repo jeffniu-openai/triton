@@ -3830,3 +3830,23 @@ discovery.
   crash, verifier drift, false unsupported diagnostic, opcode absence, runtime
   miscompile, hang, unexpected skip/fail transition, or new independent
   `FZ-*`.
+
+- 2026-04-21: Round 56 copy dynamic descriptor lane A completed. Report:
+  `agents/fuzz_round56_copy_dynamic_descriptor_lane.md`. Required `make -j8`
+  was a no-op. Temporary copy probe ran `23` generated rows over direct index,
+  runtime index, branch-selected concrete TMEM views, TMEM column subslices,
+  shared-source subslices, `128x128b`, `128x256b`, `warpx2::01_23`,
+  `warpx2::02_13`, 1CTA, and 2CTA: `15` green, `7` existing
+  `FZ-20260421-0001`, `1` clean unsupported, and `0` new independent `FZ-*`.
+  Checked-in copy selector collected `127/1615` and passed as `127 passed`.
+  No backend repairs were attempted.
+
+- 2026-04-21: Round 57 local structural-fuzzer/lit bridge lane completed.
+  Report: `agents/fuzz_round57_local_lit_runtime_bridge_lane.md`. Required
+  `make -j8` was a no-op. Checked-in structural-fuzzer selector collected
+  `15/33` and split-4 ran as `15 xfailed`, revalidating existing
+  `FZ-20260421-0001`, `FZ-20260421-0002`, `FZ-20260421-0007`,
+  `FZ-20260421-0008`, and `FZ-20260421-0009`. Lit bridge after
+  `ninja triton-opt` passed `invalid.mlir`, `ops.mlir`, and
+  `tmem_layouts.mlir` as `3/3`. No unexpected xfail transition, lit
+  verifier/conversion drift, or new independent `FZ-*`.

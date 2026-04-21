@@ -32692,3 +32692,60 @@ Open after this slice:
   no compiler crash, verifier drift, false unsupported diagnostic, opcode
   absence, runtime miscompile, hang, unexpected skip/fail transition, or new
   independent `FZ-*`.
+
+## 2026-04-21: Round 56 copy dynamic descriptor lane A
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_copy_dynamic_descriptor_lane.md`.
+- Required `make -j8` was a no-op.
+- Temporary copy probe ran `23` generated rows over direct index, runtime
+  index, branch-selected concrete TMEM views, TMEM column subslices,
+  shared-source subslices, `128x128b`, `128x256b`, `warpx2::01_23`,
+  `warpx2::02_13`, 1CTA, and 2CTA.
+- Probe result:
+  `15` green, `7` existing `FZ-20260421-0001`, `1` clean unsupported, and
+  `0` new independent `FZ-*`.
+- Checked-in copy selector collected `127/1615` and passed as `127 passed`.
+- Classification:
+  dynamic dense-copy TMEM destination selection broadens existing
+  `FZ-20260421-0001`; shared-source branch subslices and branch-selected
+  `warpx2` concrete views stayed green; 2CTA `warpx2::02_13` remains clean
+  unsupported.
+
+## 2026-04-21: Round 57 local structural-fuzzer/lit bridge lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round57_local_lit_runtime_bridge_lane.md`.
+- Required `make -j8` was a no-op.
+- Checked-in structural-fuzzer selector collected `15/33` and split-4 ran as
+  `15 xfailed`.
+- Xfails revalidated existing `FZ-20260421-0001`, `FZ-20260421-0002`,
+  `FZ-20260421-0007`, `FZ-20260421-0008`, and `FZ-20260421-0009`.
+- Lit bridge:
+  `ninja triton-opt` was a no-op, and
+  `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/tmem_layouts.mlir`
+  passed `3/3`.
+- Classification:
+  no unexpected xfail transition, lit verifier/conversion drift, compiler
+  crash beyond expected xfail diagnostics, or new independent `FZ-*`.
+
+## 2026-04-21: Round 56 copy dynamic descriptor lane A
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round56_copy_dynamic_descriptor_lane.md`.
+- Required `make -j8` was a no-op.
+- Temporary probe:
+  `/tmp/tmem_round56_copy_dynamic_descriptor_lane_probe.py`.
+- Probe result:
+  `23` generated rows across direct index, runtime index, branch-selected
+  concrete TMEM views, TMEM column subslices, shared-source subslices,
+  `128x128b`, `128x256b`, `warpx2::01_23`, `warpx2::02_13`, 1CTA, and 2CTA:
+  `15` green, `7` existing `FZ-20260421-0001`, `1` clean unsupported.
+- Checked-in selector:
+  `cp_no_scales_warpx2 or cp_no_scales_linear_indexed_view or cp_no_scales_twocta_linear_indexed_view or cp_no_scales_linear_subslice_view or cp_no_scales_twocta_linear_subslice_view or cp_no_scales_twocta_128x128b_codegen or cp_128x128`.
+- Checked-in result:
+  `127/1615` collected and passed as `127 passed`.
+- Classification:
+  no new independent `FZ-*`; dynamic dense-copy TMEM destination descriptor
+  selection broadens existing `FZ-20260421-0001`, while shared-source branch
+  subslices and branch-selected `warpx2` concrete views stayed green.

@@ -17031,3 +17031,25 @@ rejection, not rescue
   linear runtime views, descriptor-chain matrix rows, `ld.red`, plain MMAv5,
   scaled copy, and high-CGA scaled-copy rows. No new independent `FZ-*`;
   backend repair remains deferred.
+
+- Round 56 copy dynamic descriptor lane A wrote
+  `agents/fuzz_round56_copy_dynamic_descriptor_lane.md`. Required `make -j8`
+  was a no-op. Temporary copy probe covered direct index, runtime index,
+  branch-selected concrete TMEM views, TMEM column subslices, shared-source
+  subslices, `128x128b`, `128x256b`, `warpx2::01_23`, `warpx2::02_13`,
+  1CTA, and 2CTA. It ran `23` generated rows as `15` green, `7` existing
+  `FZ-20260421-0001`, `1` clean unsupported, and `0` new independent `FZ-*`.
+  Checked-in copy selector collected `127/1615` and passed as `127 passed`.
+  Dynamic dense-copy TMEM destination selection broadens `FZ-0001`, while
+  shared-source branch subslices and branch-selected `warpx2` concrete views
+  stayed green; backend repairs remain deferred.
+
+- Round 57 local structural-fuzzer/lit bridge lane wrote
+  `agents/fuzz_round57_local_lit_runtime_bridge_lane.md`. Required `make -j8`
+  was a no-op. Checked-in structural-fuzzer selector collected `15/33` and
+  split-4 ran as `15 xfailed`, revalidating existing dynamic memdesc,
+  layout-conversion-pressure, scaled accumulator, `ld.red` row/column
+  optimizer, and direct-index allocator sentinels. Lit bridge after
+  `ninja triton-opt` passed `invalid.mlir`, `ops.mlir`, and
+  `tmem_layouts.mlir` as `3/3`. No new independent `FZ-*`; backend repair
+  remains deferred.
