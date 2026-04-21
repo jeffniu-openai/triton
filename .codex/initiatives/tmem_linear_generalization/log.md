@@ -27231,3 +27231,23 @@ Open after this slice:
   - group 3/GPU 2: `44 passed, 1571 deselected in 64.36s`;
   - group 4/GPU 3: `44 passed, 1571 deselected in 58.13s`.
 - Aggregate: `176 passed`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 Lane O opcode consistency fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_opcode_consistency_round10.md`.
+- Classification: no new independent `FZ-*` bucket.
+- The temporary probe compared PTX and LLIR opcode extraction for `tcgen05.ld`,
+  `tcgen05.st`, `tcgen05.ld.red`, `tcgen05.cp`, `tcgen05.mma`, and
+  `tcgen05.mma_scaled`, including descriptor views, CTA groups, explicit
+  variants, reduction modifiers, and `use_acc`.
+- Positive rows had matching PTX and LLIR opcode streams. Representative
+  matches covered direct and descriptor-chain `ld/st`, direct `ld.red`
+  min/max.abs.NaN, no-scales and scaled-copy `cp`, plain MMAv5, and 1CTA/2CTA
+  scaled-MMAv5.
+- The only bug overlap was the known indexed 256x32 `ld.red` row where both
+  streams still show plain `tcgen05.ld` instead of `.ld.red.`
+  (`FZ-20260421-0004`). The exotic permuted copy row remained a clean
+  unsupported boundary.

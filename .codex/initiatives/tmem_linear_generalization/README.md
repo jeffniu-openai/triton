@@ -5408,3 +5408,17 @@ When resuming the initiative:
   `9 passed, 20 xfailed`.
 - Report-only follow-ups: dynamic `memdesc_index` lit policy and the separate
   R4-D row/col chain1 optimizer crash.
+
+## Latest: 2026-04-21 Round 10 Lane O opcode consistency
+
+- Completed opcode/IR consistency fuzzing across `tcgen05.ld`, `st`, `ld.red`,
+  `cp`, plain MMA, and scaled MMA.
+- Report: `agents/fuzz_opcode_consistency_round10.md`.
+- Result: no new independent `FZ-*` bucket and no PTX-vs-LLIR opcode
+  disagreement on sampled positive rows.
+- Known overlap: the indexed 256x32 `ld.red` row still belongs to
+  `FZ-20260421-0004` because it emits plain `tcgen05.ld` rather than
+  `.ld.red.`. The exotic permuted copy case remains a clean unsupported
+  hardware-layout boundary.
+- Active mode remains discovery-only structural fuzzing; backend repair is
+  still deferred while Lane N and Lane P continue.

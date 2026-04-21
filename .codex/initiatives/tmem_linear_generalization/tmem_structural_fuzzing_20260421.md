@@ -1508,3 +1508,26 @@ remain family-specific and consume a bounded subset of the inventory.
   controls documented as passing.
 - Round 9 validation logistics added practical next sweep slices and selector
   guidance; use those before launching broad runtime-matrix sweeps.
+
+### Round 10 Lane O, opcode/IR consistency
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_opcode_consistency_round10.md`
+- Probe command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon python /tmp/tmem_opcode_consistency_round10_probe.py`
+- Scope: PTX-vs-LLIR opcode extraction consistency for `tcgen05.ld`,
+  `tcgen05.st`, `tcgen05.ld.red`, `tcgen05.cp`, `tcgen05.mma`, and
+  `tcgen05.mma_scaled` across descriptor views, 1CTA/2CTA, row/column
+  permutations, explicit variants, reduction modifiers, and `use_acc`.
+- Result: no new independent `FZ-*` bucket and no PTX/LLIR opcode disagreement
+  on sampled positive rows.
+- Positive controls emitted matching expected opcodes for direct and
+  descriptor-chain `ld/st`, direct `ld.red` min and max.abs.NaN, no-scales and
+  scaled-copy `cp`, plain MMAv5, and 1CTA/2CTA scaled-MMAv5.
+- Known-overlap row: the indexed 256x32 `ld.red` case still emitted plain
+  `tcgen05.ld.sync.aligned.32x32b.x64.b32` in both PTX and LLIR rather than
+  `.ld.red.`, so it remains `FZ-20260421-0004` evidence rather than a new
+  bucket.
+- Clean boundary: an exotic permuted copy layout reported the expected clean
+  unsupported `tcgen05.copy.128x256b` planning diagnostic.

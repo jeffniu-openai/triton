@@ -301,6 +301,15 @@ The project is complete when:
   green: collect-only selected `176/1615`, split-4 across GPUs 0-3 selected
   `44/44/44/44` tests, and all `176` passed. Durations were stored at
   `/tmp/tmem_local_r10_ldred_nan_durations.json`.
+  2026-04-21 Round 10 Lane O completed opcode/IR consistency fuzzing without
+  backend repairs. No new independent `FZ-*` id and no PTX-vs-LLIR opcode
+  disagreement were found across sampled positive `ld`, `st`, `ld.red`, `cp`,
+  plain MMA, and scaled-MMA rows. Matching expected opcodes included direct
+  and descriptor-chain `ld/st`, direct `ld.red` min/max.abs.NaN, no-scales
+  and scaled-copy `cp`, plain MMAv5, and 1CTA/2CTA scaled-MMAv5. The only bug
+  overlap was the known indexed 256x32 `ld.red` plain-load fallback under
+  `FZ-20260421-0004`; the exotic copy layout remained a clean unsupported
+  boundary. Report: `agents/fuzz_opcode_consistency_round10.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

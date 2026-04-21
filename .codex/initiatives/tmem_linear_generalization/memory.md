@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 completed Round 10 Lane O opcode/IR consistency
+  fuzzing. Report: `agents/fuzz_opcode_consistency_round10.md`. Temporary
+  probe `/tmp/tmem_opcode_consistency_round10_probe.py` compared PTX and LLIR
+  opcode extraction across `tcgen05.ld`, `tcgen05.st`, `tcgen05.ld.red`,
+  `tcgen05.cp`, `tcgen05.mma`, and `tcgen05.mma_scaled`, including descriptor
+  views, 1CTA/2CTA, row/column permutations, explicit variants, reduction
+  modifiers, and `use_acc`. No new independent `FZ-*` bucket and no PTX/LLIR
+  opcode disagreement were found. Positive rows emitted matching expected
+  opcodes; one indexed 256x32 `ld.red` row remains existing
+  `FZ-20260421-0004` plain-load fallback evidence, and an exotic copy layout
+  remains a clean unsupported boundary.
+
 - Latest: 2026-04-21 local Round 10 structural-fuzzer smoke gate remains
   green while Lane I (`ld.red` modifier/NaN edge fuzzing) and Lane J
   (descriptor-view composition-depth fuzzing) run in subagents. Required
