@@ -60,6 +60,38 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:26 UTC Round 43 mixed MMA sequence subagent lane integrated.
+  Artifact: `agents/fuzz_mma_sequence_mix_round43.md`. Required `make -j8`
+  reported `no work to do`. Checked-in selector over plain/scaled MMAv5,
+  `use_acc`, indexed/subslice accumulators, B-scale, and scale surfaces
+  collected `648/19729` and passed/stably skipped split-4 as
+  `645 passed, 3 skipped`. Replayed Round 24 mixed-scaled probe and Round 15
+  multi-MMA probe; failures were known `FZ-20260421-0013` scale
+  descriptor-view wrong-results and known `FZ-20260421-0015` selected distinct
+  B-scale wrong-results. Exact `FZ-0015` replay remained known. New temporary
+  plain-plus-scaled sequence probe passed all five rows, showing direct-scale
+  plain-MMAv5/scaled-MMAv5 sequencing is green for the tested shapes. No new
+  `FZ-*`; backend repair remains deferred.
+  2026-04-21 14:25 UTC Round 43 copy/ldst lifetime subagent lane integrated.
+  Artifact: `agents/fuzz_copy_ldst_lifetime_round43.md`; subagent commit
+  `8b268af06`. Required `make -j8` reported `no work to do`. Broad checked-in
+  selector collected `516/1648` and ran split-4 as
+  `414 passed, 98 skipped, 4 xfailed`; xfails were expected existing
+  `FZ-20260421-0003` structural `ld/st` descriptor-view rows. Temporary
+  interleaving probe passed 4/4 rows covering copy-then-ldst, ldst-then-copy,
+  descriptor reuse, and lifetime pressure. Report-inclusive copy/ldst clean
+  diagnostic selector collected `85/19729` and passed as `85 passed`. No
+  compiler crash, runtime miscompile, opcode absence, false unsupported
+  diagnostic, clean-boundary drift, unexpected xfail/pass transition, or new
+  independent `FZ-*`; backend repair remains deferred.
+  2026-04-21 14:25 UTC Round 43 copy positive guardrail completed. Artifact:
+  `agents/fuzz_copy_positive_round43.md`. Selector covering no-scales linear,
+  indexed/subslice descriptor-view, `warpx2::{01_23,02_13}` candidate, tile-
+  permuted linear, and scaled-copy geometry positives collected `77/1615` and
+  passed split-4 as `77 passed` (`20/20/20/17`). No compiler crash, false
+  unsupported diagnostic, opcode absence, runtime miscompile, unexpected
+  pass/fail transition, or new independent `FZ-*`; backend repair remains
+  deferred.
   2026-04-21 14:23 UTC Round 43 clean diagnostic drift guardrail completed.
   Artifact: `agents/fuzz_clean_diag_guardrail_round43.md`. Selector
   `(clean_error or clean_unsupported or reports_clean_error or

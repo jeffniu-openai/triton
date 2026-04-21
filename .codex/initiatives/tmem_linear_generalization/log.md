@@ -1,3 +1,54 @@
+## 2026-04-21 14:26 UTC: Round 43 mixed MMA sequence subagent lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_sequence_mix_round43.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Checked-in selector over plain/scaled MMAv5, `use_acc`, indexed/subslice
+  accumulator views, B-scale, and scale surfaces collected `648/19729` and
+  passed/stably skipped split-4 as `645 passed, 3 skipped`.
+- Round 24 mixed-scaled replay produced green direct-scale controls and known
+  `FZ-20260421-0013` scale descriptor-view wrong-results.
+- Exact `FZ-20260421-0015` replay and Round 15 multi-MMA replay reproduced
+  only known `FZ-20260421-0013` and `FZ-20260421-0015` rows.
+- New temporary plain-plus-scaled sequence probe passed all five direct-scale
+  rows: plain-first, scaled-first, scaled-twice, plain-subslice, and
+  plain-indexed.
+- Classification: no new independent `FZ-*`; no new `FZ-20260421-0007`
+  composition found.
+
+## 2026-04-21 14:25 UTC: Round 43 copy/ldst lifetime subagent lane
+
+- Integrated subagent report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_ldst_lifetime_round43.md`
+  from commit `8b268af06`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Broad checked-in selector collected `516/1648` and ran split-4 as
+  `414 passed, 98 skipped, 4 xfailed`; xfails were expected existing
+  `FZ-20260421-0003` structural `ld/st` descriptor-view rows.
+- Temporary interleaving probe passed all four rows: copy-then-ldst,
+  ldst-then-copy, descriptor reuse, and lifetime pressure.
+- Report-inclusive copy/ldst clean diagnostic selector collected `85/19729`
+  and passed as `85 passed`.
+- Classification: no compiler crash, runtime miscompile, opcode absence, false
+  unsupported diagnostic, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`.
+
+## 2026-04-21 14:25 UTC: Round 43 copy positive guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_positive_round43.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Collection selector covered no-scales linear, indexed/subslice
+  descriptor-view, `warpx2::{01_23,02_13}` candidate, tile-permuted linear,
+  and scaled-copy geometry positives.
+- Collection/result: `77/1615` rows, split-4 as `77 passed`
+  (`20/20/20/17`).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, unexpected pass/fail transition, or new
+  independent `FZ-*`.
+
 ## 2026-04-21 14:23 UTC: Round 43 clean diagnostic drift guardrail
 
 - Wrote
