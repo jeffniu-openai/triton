@@ -3454,3 +3454,12 @@ discovery.
   remained existing `FZ-20260421-0016`; saved reproducers revalidated existing
   `FZ-20260421-0014`, `FZ-20260421-0016`, and `FZ-20260421-0017`. No new
   verifier gap, clean-negative gap, FileCheck drift, or independent `FZ-*`.
+
+- 2026-04-21 14:53 UTC: Round 50 `ld/st` descriptor positive sweep completed.
+  Report: `agents/fuzz_ldst_descriptor_positive_round50.md`. Required
+  `make -j8` was a no-op. Selector
+  `(ldst_descriptor or ldst_twocta or ldst_scales) and not reports and not clean and not resource and not m64 and not non_f32`
+  produced `166 passed, 98 skipped, 1351 deselected`; skips matched existing
+  checked-in allocation/resource skips. No compiler crash, false unsupported
+  diagnostic, runtime miscompile, skip drift beyond known skips, or new
+  independent `FZ-*`.

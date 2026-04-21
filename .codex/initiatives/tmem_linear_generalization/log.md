@@ -31991,3 +31991,15 @@ Open after this slice:
   `FZ-20260421-0016`, and `FZ-20260421-0017`.
 - Classification: no new verifier gap, clean-negative gap, FileCheck drift,
   unsupported-case drift, or independent `FZ-*`.
+
+## 2026-04-21 14:53 UTC: Round 50 ld/st descriptor positive sweep
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_descriptor_positive_round50.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(ldst_descriptor or ldst_twocta or ldst_scales) and not reports and not clean and not resource and not m64 and not non_f32`.
+- Result: `166 passed, 98 skipped, 1351 deselected`.
+- Classification: no compiler crash, false unsupported diagnostic, runtime
+  miscompile, skip drift beyond known checked-in skips, or new independent
+  `FZ-*`.
