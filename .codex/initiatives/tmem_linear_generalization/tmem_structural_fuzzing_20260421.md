@@ -3077,6 +3077,23 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 24 Lane BH mixed scaled-MMAv5 operands
+
+- Time: 2026-04-21 13:55 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_mixed_operands_round24.md`
+- Temporary probes:
+  `/root/tmp/tmem_scaled_mixed_operands_round24_probe.py` and
+  `/root/tmp/tmem_scaled_mixed_singleton_acc_round24_probe.py`.
+- Result:
+  direct selected-B plus runtime-selected accumulator-parent rows passed with
+  clean side-channel probes; every reshape/permute/reshape scale descriptor-
+  view row miscompiled with clean selected-scale loads.
+- Classification: no new independent `FZ-*`. Mixed scale-view rows sharpen
+  `FZ-20260421-0013`; dynamic accumulator-view composition did not reveal a
+  new class beyond `FZ-0007`; exact previous `FZ-0015` side-channel rows still
+  fail and remain distinct from the nearby direct mixed negative controls.
+
 ### Round 24 Lane BG FZ-0016 verifier minimization
 
 - Report:
