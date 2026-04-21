@@ -2014,4 +2014,12 @@ signal handling:
   `agents/fuzz_local_structural_xfail_round19.md`. No new bucket. AV
   strengthens `FZ-0007`: selected `memdesc_subslice` load is correct, plain
   MMAv5 is correct, but scaled-MMAv5 low-subslice accumulator use miscompiles.
-  Local structural selector collected `11/1648` and stayed `11 xfailed`.
+  AV's late B-scale mixed-consumer extension passed branch/helper/loop selected
+  direct B-scale descriptors for both selectors, a negative contrast for
+  `FZ-0015`. Local structural selector collected `11/1648` and stayed
+  `11 xfailed`.
+
+- 2026-04-21 12:14 UTC: local B-scale positive controls passed. Report:
+  `agents/fuzz_local_bscale_controls_round19.md`. Selector
+  `mma_scaled and bscale and not reports` collected `3/1615` rows and passed
+  as `3 passed`; no new bucket.

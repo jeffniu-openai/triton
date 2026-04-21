@@ -28647,6 +28647,12 @@ Open after this slice:
   points specifically at scaled-MMAv5 accumulator lowering/address
   materialization for dynamically selected low subslices, not generic
   `memdesc_subslice` SSA selection or all MMA consumers.
+- Late report update: branch/helper/loop selected direct B-scale descriptors
+  with both a selected scale `tmem_load` side channel and scaled-MMAv5 B-scale
+  operand all passed for selectors `0` and `1`. This is a negative contrast for
+  `FZ-20260421-0015`: the minimized `FZ-0015` trigger requires a more specific
+  selected-B-scale shape than simply any selected direct B-scale descriptor
+  with an extra load user.
 
 ## 2026-04-21 12:09 UTC: Round 19 local structural xfail sentinels
 
@@ -28667,6 +28673,19 @@ Open after this slice:
 - Classification: no unexpected pass, unexpected failure, or new independent
   `FZ-*`. Visible diagnostics remained expected illegal `ttg.memdesc_index`
   conversion failures for known report-only rows.
+
+## 2026-04-21 12:14 UTC: Round 19 local B-scale controls
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_bscale_controls_round19.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op from the immediately preceding local work.
+- Selector `mma_scaled and bscale and not reports` collected `3/1615` rows and
+  passed as `3 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*`. These are green controls
+  adjacent to but not clearing report-only `FZ-20260421-0015`.
 
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 

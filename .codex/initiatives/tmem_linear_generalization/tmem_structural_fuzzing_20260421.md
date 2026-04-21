@@ -2526,6 +2526,11 @@ remain family-specific and consume a bounded subset of the inventory.
   same selected descriptor's `tmem_load` was correct and plain MMAv5 passed for
   both selected subslices.
 - Classification: strengthens `FZ-20260421-0007`.
+- Late extension: branch/helper/loop selected direct B-scale descriptors with
+  both a scale-load side channel and scaled-MMAv5 B-scale operand passed for
+  both selectors. This is a negative contrast for `FZ-20260421-0015` and shows
+  that not every selected direct B-scale descriptor plus extra load user
+  reproduces the minimized `FZ-0015` wrong result.
 
 ### Round 19 local structural xfail sentinels
 
@@ -2539,6 +2544,19 @@ remain family-specific and consume a bounded subset of the inventory.
   `11 xfailed`.
 - Classification: no unexpected pass, unexpected failure, runtime miscompile
   outside known xfails, or new independent `FZ-*`.
+
+### Round 19 local B-scale controls
+
+- Time: 2026-04-21 12:14 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_bscale_controls_round19.md`
+- Selector:
+  `mma_scaled and bscale and not reports` collected `3/1615`.
+- Result:
+  `3 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*`; green controls adjacent to
+  `FZ-20260421-0015`.
 
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index

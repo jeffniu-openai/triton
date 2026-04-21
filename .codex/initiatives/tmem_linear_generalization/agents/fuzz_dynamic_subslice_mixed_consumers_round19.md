@@ -51,7 +51,7 @@ FAILED /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py::test_scaled_
 1 failed, 3 passed in 4.61s
 ```
 
-Extended probe after adding helper-returned and loop-carried selected
+Extended probe after adding helper-returned and loop-carried accumulator
 descriptor variants:
 
 ```bash
@@ -72,6 +72,29 @@ FAILED /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py::test_scaled_
 FAILED /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py::test_scaled_selected_subslice_load_and_mma[0-helper]
 FAILED /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py::test_scaled_selected_subslice_load_and_mma[0-loop]
 3 failed, 5 passed in 5.66s
+```
+
+Extended probe after adding selected direct B-scale descriptor mixed load+MMA
+variants:
+
+```bash
+PYTHONPATH=.:./python:./python/test/gluon \
+  python -m py_compile /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py
+
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 \
+  PYTHONPATH=.:./python:./python/test/gluon \
+  pytest -q -s --tb=short \
+  /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py
+```
+
+Result:
+
+```text
+..FFF.........
+FAILED /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py::test_scaled_selected_subslice_load_and_mma[0-branch]
+FAILED /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py::test_scaled_selected_subslice_load_and_mma[0-helper]
+FAILED /tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py::test_scaled_selected_subslice_load_and_mma[0-loop]
+3 failed, 11 passed in 3.22s
 ```
 
 Mismatch summarizer:
@@ -149,6 +172,17 @@ Extended result:
 ('scaled', 'loop', 1, True, 0, False, 4)
 ```
 
+Selected B-scale result:
+
+```text
+('bscale', 'branch', 0, 0, 0, False, 4)
+('bscale', 'branch', 1, 0, 0, False, 4)
+('bscale', 'helper', 0, 0, 0, False, 4)
+('bscale', 'helper', 1, 0, 0, False, 4)
+('bscale', 'loop', 0, 0, 0, False, 4)
+('bscale', 'loop', 1, 0, 0, False, 4)
+```
+
 ## Row Table
 
 | Row | Family | Runtime selector | Pre-MMA selected `tmem_load` | MMA accumulator result | PTX MMA ops | Classification |
@@ -161,6 +195,9 @@ Extended result:
 | AV-006 | Scaled MMAv5 helper-returned descriptor | 1, high subslice | pass, all `7.0` | pass | 4 | Green contrast |
 | AV-007 | Scaled MMAv5 loop-carried descriptor | 0, low subslice | pass, all `3.0` | miscompile, `4413/16384` mismatches, NaNs present | 4 | Existing `FZ-20260421-0007` |
 | AV-008 | Scaled MMAv5 loop-carried descriptor | 1, high subslice | pass, all `7.0` | pass | 4 | Green contrast |
+| AV-009 | Scaled MMAv5 direct B-scale descriptor | 0/1 branch | pass, `0/512` scale byte mismatches | pass | 4 | Green contrast to `FZ-0015` |
+| AV-010 | Scaled MMAv5 direct B-scale descriptor | 0/1 helper | pass, `0/512` scale byte mismatches | pass | 4 | Green contrast to `FZ-0015` |
+| AV-011 | Scaled MMAv5 direct B-scale descriptor | 0/1 loop | pass, `0/512` scale byte mismatches | pass | 4 | Green contrast to `FZ-0015` |
 
 ## Classification
 
@@ -183,10 +220,20 @@ This points more specifically at scaled-MMAv5 accumulator lowering/address
 materialization for dynamically selected low subslices, not at generic
 `memdesc_subslice` SSA selection or all MMA consumers.
 
+The direct B-scale mixed-consumer rows did not reproduce `FZ-20260421-0015`.
+They branch/helper/loop select between two independent direct
+`TensorMemoryScalesLayout` descriptors, use the selected descriptor for both a
+scale `tmem_load` and the scaled-MMA B-scale operand, and pass for both
+selectors. This is a useful negative contrast: the `FZ-0015` trigger likely
+requires the more specific selected B-scale shape already minimized in the
+Round 15 reports, rather than any selected direct B-scale descriptor with an
+extra load user.
+
 ## Next Probes
 
-- Add a B-scale selected-descriptor mixed load+scaled-MMA row to contrast
-  `FZ-0015` against this accumulator-specific `FZ-0007` row.
+- Re-run the exact Round 15 `FZ-0015` selected-B-scale minimal shape with this
+  lane's scale-load side channel to see which shape/detail is missing from
+  `AV-009` through `AV-011`.
 - Dump TTGIR/LLVM for `AV-003` and `AV-004` side by side if repair mode begins,
   focusing on the scaled-MMA accumulator address operand and any low-subslice
   rematerialization before `tcgen05.mma`.

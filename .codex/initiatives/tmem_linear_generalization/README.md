@@ -59,12 +59,16 @@ shard. No new bucket.
 
 Newest Round 19 dynamic-subdescriptor evidence:
 `agents/fuzz_dynamic_subslice_mixed_consumers_round19.md` and
-`agents/fuzz_local_structural_xfail_round19.md`. Lane AV found no new bucket
+`agents/fuzz_local_structural_xfail_round19.md`, plus local B-scale controls
+in `agents/fuzz_local_bscale_controls_round19.md`. Lane AV found no new bucket
 but strengthened `FZ-20260421-0007`: the same runtime-selected
 `memdesc_subslice` feeds both `tmem_load` and scaled-MMAv5 accumulator; the
 load is correct, plain MMAv5 is correct, and only scaled-MMAv5 low-subslice
-accumulator use miscompiles. Local structural xfail selector collected
-`11/1648` and stayed `11 xfailed`.
+accumulator use miscompiles. Its late B-scale mixed-consumer extension passed
+branch/helper/loop selected direct B-scale descriptors for both selectors,
+which is a negative contrast for `FZ-20260421-0015`. Local structural xfail
+selector collected `11/1648` and stayed `11 xfailed`; checked-in B-scale
+positive controls passed `3/3`.
 
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
