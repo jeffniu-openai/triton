@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 34 broad scaled-MMAv5 runtime guardrail completed.
+  Report: `agents/fuzz_local_mma_scaled_broad_round34.md`. Required
+  `make -j8` was a no-op. Selector
+  `mma_scaled and not reports and not resource and not clean` collected
+  `243/1615` rows and passed split-4 as `243 passed` (`61/61/61/60`). No
+  compiler crash, false unsupported diagnostic, opcode mismatch, runtime
+  miscompile, clean-boundary drift, or new independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 13:20 UTC Round 34 high-rank descriptor-view
   runtime lane completed. Report:
   `agents/fuzz_high_rank_views_round34.md`. Required `make -j8` was a no-op.

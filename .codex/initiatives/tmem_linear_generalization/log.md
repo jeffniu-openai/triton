@@ -30620,6 +30620,19 @@ Open after this slice:
   harness limitation until a faithful JIT-equivalent `triton-opt` pipeline
   proves otherwise.
 
+## 2026-04-21: Round 34 broad scaled-MMAv5 runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_scaled_broad_round34.md`.
+- Required `make -j8` was a no-op.
+- Selector: `mma_scaled and not reports and not resource and not clean`.
+- Collection: `243/1615`.
+- Split-4 result: `243 passed` (`61/61/61/60` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, or new independent
+  `FZ-*` bucket. This keeps the broad scaled-MMAv5 positive runtime surface
+  stable next to report-only `FZ-0007`, `FZ-0013`, `FZ-0015`, and `FZ-0010`.
+
 ## 2026-04-21: Round 34 local no-scale copy tile/subword/2CTA guardrail
 
 - Wrote

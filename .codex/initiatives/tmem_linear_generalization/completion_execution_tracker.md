@@ -186,6 +186,12 @@ The project is complete when:
   path compiles and runs the same row. Classified as a compiler-probe harness
   limitation, not a new independent `FZ-*`, unless a faithful JIT-equivalent
   pipeline reproduces it.
+  2026-04-21 Round 34 broad scaled-MMAv5 runtime guardrail completed.
+  Artifact: `agents/fuzz_local_mma_scaled_broad_round34.md`. Selector
+  `mma_scaled and not reports and not resource and not clean` collected
+  `243/1615` and passed split-4 as `243 passed`; no compiler crash, false
+  unsupported diagnostic, opcode mismatch, runtime miscompile,
+  clean-boundary drift, or new independent `FZ-*`.
   2026-04-21 Round 34 local `test_core.py` TMEM/multicast guardrail completed.
   Artifact: `agents/fuzz_local_test_core_tmem_round34.md`. Selector
   `(tcgen05 or tmem) and (multicast or shared_inputs or twocta or mma)`
@@ -2707,6 +2713,19 @@ discovery.
   `/tmp/tmem_high_rank_views_round34_probe.py` classified `9` rows as `2`
   pass, `1` clean TMEM OOR, `1` existing `FZ-20260421-0002`/
   `FZ-20260421-0003` descriptor-view wrong result, `1` clean unsupported
-  row-half `.ld.red` descriptor view, and `4` new candidate
+  row-half `.ld.red` descriptor view, and `4` existing-candidate
   `FZ-20260421-0019` rank-5 `ld/st` unit-dimension `get_reg_layout` aborts.
-  Repair remains deferred under the discovery-only campaign contract.
+  No additional independent `FZ-*` id was proposed; repair remains deferred
+  under the discovery-only campaign contract.
+
+- 2026-04-21: Round 30 descriptor-view chain-shape expansion completed and
+  late-integrated. Report: `agents/fuzz_chain_shapes_round30.md`. Required
+  `make -j8` was a no-op. Temporary subprocess probes covered `ld/st`,
+  rank-4 unit-prefix roots, and actual `view.load_max(...)` `ld.red`
+  consumers. Results: `ld/st` `132 pass, 48 clean unsupported, 42 clean OOR,
+  36 optimizer exceptions, 18 process aborts`; unit-prefix rank-4 `8/8`
+  process aborts; actual `ld.red` `32 pass, 12 clean unsupported, 4 parse
+  failures`. Existing `FZ-20260421-0019` now also covers rank-4 unit-prefix
+  dimension aborts; new candidates are `FZ-20260421-0020`,
+  `FZ-20260421-0021`, and `FZ-20260421-0022`. No runtime wrong-result
+  miscompile was confirmed; repair remains deferred during discovery.
