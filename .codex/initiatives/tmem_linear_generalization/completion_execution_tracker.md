@@ -3349,3 +3349,11 @@ discovery.
   `(reports_clean or clean_unsupported or clean_error or tmem_oor or resource) and not m64`
   produced `176 passed, 1439 deselected`. No diagnostic drift, assertion
   crash, generic pass failure, runtime miscompile, or new independent `FZ-*`.
+
+- 2026-04-21 14:45 UTC: Round 48 TMA/indexed/subslice positive mix
+  completed. Report: `agents/fuzz_tma_indexed_subslice_round48.md`. Required
+  `make -j8` was a no-op. Selector
+  `(tma_b_transposed_descriptor or indexed_acc_view or acc_subslice_view_plain_kinds or indexed_acc_identity_narrow_view_format_use_acc or acc_subslice_view_format_use_acc) and not reports and not clean and not resource and not m64`
+  produced `142 passed, 1473 deselected`. No compiler crash, false
+  unsupported diagnostic, runtime miscompile, opcode drift, or new independent
+  `FZ-*`.

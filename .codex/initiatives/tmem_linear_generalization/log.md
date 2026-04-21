@@ -31820,3 +31820,14 @@ Open after this slice:
 - Classification: no diagnostic drift, assertion crash, generic
   `PassManager::run failed`, runtime miscompile, unexpected failure, or new
   independent `FZ-*`.
+
+## 2026-04-21 14:45 UTC: Round 48 TMA/indexed/subslice positive mix
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_tma_indexed_subslice_round48.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(tma_b_transposed_descriptor or indexed_acc_view or acc_subslice_view_plain_kinds or indexed_acc_identity_narrow_view_format_use_acc or acc_subslice_view_format_use_acc) and not reports and not clean and not resource and not m64`.
+- Result: `142 passed, 1473 deselected`.
+- Classification: no compiler crash, false unsupported diagnostic, runtime
+  miscompile, opcode drift, or new independent `FZ-*`.
