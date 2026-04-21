@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering audit completed.
+  Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. `FZ-0015` remains
+  distinct from `FZ-0013`: the minimized repro uses direct non-view B-scale
+  allocations and selected B-scale loads pass. The saved TTGIR is
+  verifier-clean. LLVM/PTX show the dynamic B-scale memdesc survives into the
+  MMA asm as a scalar `select` / `selp.b32` SFB address operand; the wrong
+  result is not from the selected memdesc being dropped before LLVM. Current
+  likely site: `convertScaledDot` / `createScaledGen5MMA` in
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`, or an
+  unmodeled SFB-address operand constraint.
+
 - Latest: 2026-04-21 11:38 UTC local Round 17 copy/ldst selector stayed
   green. Report: `agents/fuzz_local_copy_ldst_round17.md`. Required `make -j8`
   was a no-op. Runtime-matrix selector

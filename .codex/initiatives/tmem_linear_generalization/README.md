@@ -7,17 +7,22 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:35 UTC Round 16 `FZ-0015`
+Latest fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
+audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
+TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and
+runtime-selected A-scale controls pass; runtime-selected distinct B-scale
+rows fail while preserving matching PTX/LLIR scaled-MMAv5 opcodes. LLVM/PTX
+show the dynamic B-scale memdesc survives as a scalar `select` / `selp.b32`
+used as the SFB address operand. Likely site is `convertScaledDot` /
+`createScaledGen5MMA` in `MMAv5.cpp`, or an unmodeled SFB-address operand
+constraint. Backend repair remains deferred.
+
+Previous fuzzing checkpoint: 2026-04-21 11:35 UTC Round 16 `FZ-0015`
 minimization. Report: `agents/fuzz_fz0015_min_round16.md`. The smallest stable
 trigger is two distinct direct B-scale `TensorMemoryScalesLayout` descriptors
 with identical payloads, selected by runtime control flow, then consumed as
 the B-scale operand of `ttng.tc_gen5_mma_scaled`. Compilation succeeds and
-PTX/LLIR scaled-MMAv5 opcodes match, but runtime results are wrong. The issue
-survives branch, loop, helper, pass-through, extra selected-scale user,
-two-MMA, `use_acc=False`, `N=64`, `K=256`, `mxfp4`, and `nvfp4` variants.
-Selected-descriptor TMEM loads pass `4/4`, narrowing the issue to scaled-MMAv5
-consumption of the merged B-scale memdesc value. Backend repair remains
-deferred.
+PTX/LLIR scaled-MMAv5 opcodes match, but runtime results are wrong.
 
 Previous fuzzing checkpoint: 2026-04-21 11:30 UTC Round 15 generic/scaled and
 twoCTA/high-CGA checkpoint. Reports:

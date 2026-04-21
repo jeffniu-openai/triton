@@ -28395,6 +28395,32 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, false unsupported
   diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 11:39 UTC: Round 17 Lane AO FZ-0015 lowering audit
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_lowering_audit_round17.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Focused audit cases:
+  - direct B-scale control: `0/16384` mismatches;
+  - constexpr distinct B-scale: `0/16384` mismatches;
+  - same-object dynamic B-scale: `0/16384` mismatches;
+  - runtime-selected distinct B-scale: `16379/16384` mismatches and `119`
+    Infs;
+  - loop-carried distinct B-scale: `16384/16384` mismatches, `32` NaNs, and
+    `52` Infs;
+  - runtime-selected A-scale: `0/16384` mismatches.
+- Saved TTGIR for the failing runtime-distinct row is parser/verifier-clean
+  under `triton-opt -verify-diagnostics`.
+- LLVM/PTX evidence: the dynamic B-scale memdesc reaches scaled-MMAv5 lowering
+  as a scalar `select` / `selp.b32`, then feeds the SFB address operand in
+  `tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X`.
+- Classification: `FZ-20260421-0015` remains distinct from `FZ-0001`,
+  `FZ-0007`, and `FZ-0013`. Likely site is scaled MMAv5 LLVM lowering around
+  `convertScaledDot` / `createScaledGen5MMA` in `MMAv5.cpp`, or an unmodeled
+  SFB-address operand constraint.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

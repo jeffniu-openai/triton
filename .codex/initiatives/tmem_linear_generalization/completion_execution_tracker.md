@@ -1934,3 +1934,13 @@ signal handling:
   `(cp_no_scales or cp_scales or ldst_descriptor_compositions or ldst_descriptor_roundtrip) and not reports`
   collected `344/1615` rows and passed split-4 as
   `289 passed, 55 skipped`. Continue active Round 17 subagent lanes.
+
+- 2026-04-21 11:39 UTC: integrated Round 17 Lane AO `FZ-20260421-0015`
+  lowering audit. Report:
+  `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved TTGIR is
+  verifier-clean, selected B-scale loads pass, and LLVM/PTX preserve the
+  runtime-selected B-scale memdesc as a scalar `select` / `selp.b32` feeding
+  the SFB address operand. Likely site is scaled MMAv5 LLVM lowering around
+  `convertScaledDot` / `createScaledGen5MMA` in `MMAv5.cpp`, or an unmodeled
+  SFB-address operand constraint. Keep backend repair deferred until active
+  fuzz lanes stop yielding new evidence or the user pivots.

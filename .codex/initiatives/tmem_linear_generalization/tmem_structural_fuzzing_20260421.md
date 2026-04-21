@@ -2344,6 +2344,26 @@ remain family-specific and consume a bounded subset of the inventory.
   `289 passed, 55 skipped`.
 - Classification: no new independent `FZ-*` bucket and no runtime miscompile.
 
+### Round 17 Lane AO FZ-0015 lowering audit
+
+- Time: 2026-04-21 11:39 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_lowering_audit_round17.md`
+- Artifacts:
+  `/tmp/tmem_fz0015_lowering_audit_round17/`.
+- Result: no new independent bucket; `FZ-20260421-0015` remains distinct.
+- Evidence:
+  - selected B-scale loads pass, so the selected descriptor is readable outside
+    scaled MMAv5;
+  - saved TTGIR for the failing row is verifier-clean;
+  - runtime-selected distinct B-scale fails, but direct, constexpr,
+    same-object B-scale, and runtime-selected A-scale controls pass;
+  - LLVM/PTX preserve the dynamic B-scale memdesc as a scalar
+    `select` / `selp.b32` SFB address operand.
+- Likely owner: scaled MMAv5 LLVM lowering around `convertScaledDot` /
+  `createScaledGen5MMA` in `MMAv5.cpp`, or an unmodeled SFB-address operand
+  constraint.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
