@@ -32203,3 +32203,20 @@ Open after this slice:
   `48 tests collected`.
 - Classification: harness/import-path issue, not a compiler crash, verifier
   issue, runtime miscompile, or backend `FZ-*`.
+
+## 2026-04-21: Round 52 example harness path sharpening
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_example_harness_paths_round52.md`.
+- Required `make -j8` was a no-op.
+- Per-example collection without `./python/triton_kernels`:
+  seven Gluon examples collected; only
+  `05-moe-bmm1-fused-gather.py` failed on missing
+  `triton_kernels.distributed`.
+- Corrected aggregate collection with
+  `PYTHONPATH=.:./python:./python/triton_kernels`:
+  `1043 tests collected`.
+- Corrected smoke:
+  `6 passed`.
+- Classification: harness/documentation invocation issue, not backend; no new
+  `FZ-*`.

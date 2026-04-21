@@ -3575,3 +3575,13 @@ discovery.
   `ModuleNotFoundError: No module named 'triton_kernels.distributed'`;
   adding `./python/triton_kernels` collected `48` tests with exit code `0`.
   Classification: harness/import-path issue, not a TMEM backend `FZ-*`.
+
+- 2026-04-21: Round 52 example harness path sharpening completed. Report:
+  `agents/fuzz_example_harness_paths_round52.md`. Required `make -j8` was a
+  no-op. Per-example collection showed only
+  `python/examples/gluon/05-moe-bmm1-fused-gather.py` needs
+  `./python/triton_kernels` on `PYTHONPATH`; the other seven Gluon examples
+  collect with `PYTHONPATH=.:./python`. Corrected aggregate collection with
+  `PYTHONPATH=.:./python:./python/triton_kernels` collected `1043` tests, and
+  corrected smoke passed as `6 passed`. Classification:
+  harness/documentation invocation issue, not backend; no new `FZ-*`.
