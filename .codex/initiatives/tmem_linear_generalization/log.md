@@ -32923,3 +32923,22 @@ Open after this slice:
   no compiler crash, verifier drift, opcode/codegen assertion drift, false
   unsupported diagnostic, runtime miscompile, hang, or new independent
   `FZ-*`.
+
+## 2026-04-21: Round 60 lit compiler breadth lane B
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round60_lit_compiler_breadth_lane.md`.
+- Required `make -j8` was a no-op.
+- Build-tree `ninja triton-opt` was a no-op.
+- Avoided exact Round 59 clean-negative and TMA/proxy lit files.
+- Sweep 1 covered TMEM allocation, promotion, MMAv5 lowering, Blackwell
+  pipeline lowering, automatic warp specialization, TritonGPU/NVGPU invalid
+  diagnostics, NVWS TMEM store hoisting, and generic NvidiaGPU/
+  warp-specialize conversion: `11 passed`.
+- Sweep 2 covered TMEM-bearing TritonGPU scheduling/partition/pipeline files
+  plus generic conversion files: `12 passed`.
+- Aggregate result:
+  `23 passed, 0 failed`.
+- Classification:
+  no compiler crash, verifier drift, invalid-diagnostic drift, PassManager
+  failure, TMEM allocation/lifetime failure, conversion failure, NVWS hoisting

@@ -7,6 +7,18 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
+Latest fuzzing checkpoint: 2026-04-21 16:15 UTC Round 60 lit compiler breadth
+lane B completed. Report:
+`agents/fuzz_round60_lit_compiler_breadth_lane.md`. Required `make -j8` and
+build-tree `ninja triton-opt` were no-ops. Non-overlapping compiler-only lit
+coverage around TMEM allocation, promotion, MMAv5 lowering, Blackwell pipeline
+lowering, automatic warp specialization, TritonGPU/NVGPU invalid diagnostics,
+NVWS TMEM store hoisting, TritonGPU scheduling, and generic conversion ran as
+`23 passed, 0 failed`. No compiler crash, verifier drift, invalid-diagnostic
+drift, PassManager failure, TMEM allocation/lifetime failure, conversion
+failure, NVWS hoisting failure, reproduced existing `FZ-*`, or new independent
+`FZ-*`.
+
 Latest fuzzing checkpoint: 2026-04-21 16:09 UTC Round 59 clean-negative
 diagnostics lane B completed. Report:
 `agents/fuzz_round59_clean_negative_diagnostics_lane.md`. Required `make -j8`

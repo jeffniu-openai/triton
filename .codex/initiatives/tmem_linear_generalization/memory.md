@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 16:15 UTC Round 60 lit compiler breadth lane B
+  completed. Report:
+  `agents/fuzz_round60_lit_compiler_breadth_lane.md`. Required `make -j8`
+  and build-tree `ninja triton-opt` were no-ops. The lane avoided the exact
+  Round 59 clean-negative and TMA/proxy lit files, then ran two compiler-only
+  lit sweeps over TMEM allocation, promotion, MMAv5 lowering, Blackwell
+  pipeline lowering, automatic warp specialization, TritonGPU/NVGPU invalid
+  diagnostics, NVWS TMEM store hoisting, TritonGPU scheduling, and generic
+  conversion. Aggregate result: `23 passed, 0 failed`. No compiler crash,
+  verifier drift, invalid-diagnostic drift, PassManager failure, TMEM
+  allocation/lifetime failure, conversion failure, NVWS hoisting failure,
+  reproduced existing `FZ-*`, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 16:09 UTC Round 59 clean-negative diagnostics lane B
   completed. Report:
   `agents/fuzz_round59_clean_negative_diagnostics_lane.md`. Required
