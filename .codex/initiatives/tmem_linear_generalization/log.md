@@ -32111,3 +32111,23 @@ Open after this slice:
   exit code `134`, expected `bitwidth == 32` assertion.
 - Classification: minimized reproducers stayed stable; no new independent
   `FZ-*`.
+
+## 2026-04-21: Round 51 example/runtime sanity
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_examples_runtime_sanity_round51.md`.
+- Required `make -j8` was a no-op.
+- Compact TMEM examples:
+  `05-tmem-moe-router.py`, `06-tmem-lora-fusion.py`, and
+  `08-tmem-layout-as-epilogue.py` passed as `37 passed`.
+- Fused-gather sampled runtime:
+  `3 passed` with `PYTHONPATH=.:./python:./python/triton_kernels`.
+- Representative older TMEM-bearing examples:
+  attention, convolution, multi-CTA matmul, and 2CTA scaled matmul passed as
+  `8 passed`.
+- Lightweight benchmark entrypoints executed for router/candidate/ragged,
+  LoRA/side projection, and layout-as-epilogue.
+- Classification: no compiler crash, verifier/unsupported drift, runtime
+  miscompile, or new backend `FZ-*`. Harness note: bare collection of
+  `05-moe-bmm1-fused-gather.py` needs `./python/triton_kernels` on
+  `PYTHONPATH`.

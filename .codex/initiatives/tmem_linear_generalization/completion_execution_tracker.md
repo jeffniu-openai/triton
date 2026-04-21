@@ -3524,3 +3524,15 @@ discovery.
   `/tmp/tmem_round51_fz0017_min.mlir` reproduced existing `FZ-20260421-0014`
   with exit code `1` and `FZ-20260421-0016`/`FZ-20260421-0017` with exit code
   `134` assertion aborts. No new independent `FZ-*`.
+
+- 2026-04-21: Round 51 example/runtime sanity completed. Report:
+  `agents/fuzz_examples_runtime_sanity_round51.md`. Required `make -j8` was a
+  no-op. Compact TMEM examples `05-tmem-moe-router.py`,
+  `06-tmem-lora-fusion.py`, and `08-tmem-layout-as-epilogue.py` passed as
+  `37 passed`; fused-gather sampled runtime passed as `3 passed` after adding
+  `./python/triton_kernels` to `PYTHONPATH`; older TMEM-bearing attention,
+  convolution, multi-CTA matmul, and 2CTA scaled-matmul example nodeids passed
+  as `8 passed`. Lightweight benchmark entrypoints for router/candidate/ragged,
+  LoRA/side projection, and layout-as-epilogue executed. No backend `FZ-*`;
+  only harness issue is bare collection of `05-moe-bmm1-fused-gather.py`
+  needing `./python/triton_kernels` on `PYTHONPATH`.
