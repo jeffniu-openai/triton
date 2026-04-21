@@ -26831,3 +26831,60 @@ Open after this slice:
   - 1CTA indexed accumulator and accumulator-subslice rows passed `3/3`;
   - 2CTA indexed accumulator, accumulator-subslice, and clean
     shared-transpose diagnostic rows passed `3/3`.
+
+## 2026-04-21: Round 9 Lane E generator inventory and ld/st holes
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generator_inventory_round9.md`
+  and
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_inventory_holes_round9.md`.
+- Classification: no new `FZ-*` id. The `/tmp` generator produced `44,043`
+  normalized descriptors and linked all `33` checked-in structural-fuzzer
+  legacy ids. The follow-up `ld/st` hole probe found chain1 rows extending
+  `FZ-20260421-0003`, one small transpose/slice clean row-anchor diagnostic,
+  and positive chain2/larger transpose-slice controls.
+- Validation:
+  - generator py-compiled and emitted JSON inventory;
+  - structural-fuzzer collect-only found `33` nodeids;
+  - generator sample reported `3 passed, 2 xfailed`;
+  - `ld/st` hole probe collected `8` nodeids and classified
+    `4 failed, 4 passed`.
+
+## 2026-04-21: Round 9 Lane F clean-diagnostic fuzzing
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_diagnostics_round9.md`.
+- Classification: no new non-overlapping `FZ-*` id. The lane classified
+  eight generated clean diagnostics, one positive scales-copy control, one
+  `FZ-20260421-0001` late illegal `ttg.memdesc_index` row, and four allocator
+  assertion rows extending `FZ-20260421-0005/0009`. Exact packed/subword and
+  impossible copy schedule runtime-matrix boundaries passed `4/4`.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - temporary probe py-compiled;
+  - generated case inventory was `14`;
+  - subprocess-isolated sweep classified all generated rows;
+  - exact copy-boundary pytest rows passed `4 passed`.
+
+## 2026-04-21: Round 8 Lane B scaled-MMAv5 control-flow fuzzing
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_mma_round8.md`.
+- Classification: no new independent bucket. The lane expands
+  `FZ-20260421-0007` to `nvfp4xnvfp4`, `N=16`, `K=256`, selector-1 dynamic
+  slice/indexed accumulator views, including `use_acc=False`; direct high/low
+  controls pass and PTX/LLIR MMA opcodes agree. Helper-returned indexed
+  accumulator views overlap `FZ-20260421-0001`.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - temporary harness py-compiled;
+  - collect-only found `1120` nodeids;
+  - four split groups classified `280` rows each;
+  - exact `nvfp4` contrasts and 4CTA/16CTA scaled-MMA copy sanity controls
+    passed as classified tests.

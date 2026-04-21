@@ -1,5 +1,36 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 completed Round 8 Lane B scaled-MMAv5 accumulator
+  descriptor-view control-flow fuzzing. Wrote
+  `agents/fuzz_scaled_mma_round8.md`. No new independent bucket was assigned.
+  The lane expands `FZ-20260421-0007`: dynamic slice/indexed accumulator views
+  miscompile for `nvfp4xnvfp4`, `N=16`, `K=256`, selector `1`, with
+  `use_acc=False` and `use_acc=True`, while direct high/low controls pass and
+  PTX/LLIR MMA opcodes agree. This proves the dynamic accumulator view
+  selection bug is not limited to low-column selection or `use_acc=True`.
+  Helper-returned indexed accumulator views overlap `FZ-20260421-0001`.
+
+- Latest: 2026-04-21 completed Round 9 Lane F clean-diagnostic adversarial
+  fuzzing. Wrote `agents/fuzz_clean_diagnostics_round9.md`. No new
+  independent `FZ-*` id was assigned. The generated sweep classified eight
+  clean diagnostics (`.x1 ld.red`, >2-CTA context mismatch, scales
+  multibuffering, and `128x256` TMEM OOR), one positive scales-copy control,
+  one `FZ-20260421-0001` dynamic `memdesc_index` late illegal-op row, and
+  four allocator assertions extending `FZ-20260421-0005/0009` for
+  `ldst/ldred` resource rows at `256x32` and `512x32`. Exact packed/subword
+  and impossible copy schedule runtime-matrix boundaries passed `4/4`.
+
+- Latest: 2026-04-21 completed Round 9 Lane E generator inventory and
+  `ld/st` inventory-hole probing. The normalized `/tmp` generator produced
+  `44,043` descriptors across `ldst`, `ldred`, `copy`, `mma`, and
+  `mma_scaled`; linked all `33` checked-in structural-fuzzer legacy ids; and
+  showed that `18 / 46` generated `(family, view_chain, expected_class)`
+  buckets currently have legacy coverage. The follow-up `ld/st` runnable
+  probe collected `8` rows and classified `4 failed, 4 passed`: chain1
+  mismatches extend `FZ-20260421-0003`, a small transpose/slice row is a
+  clean row-anchor diagnostic, and chain2/larger transpose-slice controls
+  pass. No new `FZ-*` id.
+
 - Latest: 2026-04-21 completed Round 8 Lane A `ld.red` allocator/opcode
   structural fuzzing. Wrote
   `agents/fuzz_ldred_allocator_opcode_round8.md`. No new independent `FZ-*`

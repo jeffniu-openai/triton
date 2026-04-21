@@ -185,6 +185,28 @@ The project is complete when:
   required `make -j8`, py-compile, 55 subprocess-isolated rows, exact fresh
   confirmations, and `git diff --check`. Report:
   `agents/fuzz_ldred_allocator_opcode_round8.md`.
+  2026-04-21 Round 9 Lane E completed normalized generator inventory and
+  follow-up `ld/st` inventory-hole probing without backend repairs. The
+  `/tmp` generator emitted `44,043` descriptors and linked all `33`
+  checked-in structural-fuzzer legacy ids; `18 / 46` generated axis buckets
+  have legacy coverage. The `ld/st` hole probe found no new owner: chain1
+  rows extend `FZ-20260421-0003`, one small transpose/slice row is a clean
+  row-anchor diagnostic, and positive controls pass. Reports:
+  `agents/fuzz_generator_inventory_round9.md` and
+  `agents/fuzz_ldst_inventory_holes_round9.md`.
+  2026-04-21 Round 9 Lane F completed clean-diagnostic adversarial fuzzing
+  without backend repairs. No new independent `FZ-*` id. Generated rows
+  classified as eight clean diagnostics, one positive control, one
+  `FZ-20260421-0001` late illegal-op row, and four allocator assertions
+  extending `FZ-20260421-0005/0009`; exact copy-boundary runtime-matrix rows
+  passed `4/4`. Report: `agents/fuzz_clean_diagnostics_round9.md`.
+  2026-04-21 Round 8 Lane B completed scaled-MMAv5 accumulator
+  descriptor-view control-flow fuzzing without backend repairs. No new
+  independent bucket. `FZ-20260421-0007` expands to `nvfp4xnvfp4`, `N=16`,
+  `K=256`, selector-1 dynamic slice/indexed accumulator views, including
+  `use_acc=False`; direct controls pass and MMA opcodes agree. Helper-indexed
+  rows overlap `FZ-20260421-0001`. Report:
+  `agents/fuzz_scaled_mma_round8.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -767,6 +767,117 @@ remain family-specific and consume a bounded subset of the inventory.
     allocator assertion;
   - `git diff --check` passed.
 
+### Lane E Round 9, Normalized Generator Inventory
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generator_inventory_round9.md`
+- Scope: `/tmp`-only normalized structural case generator inventory. The
+  prototype tracks `normalized_id`, `legacy_case_ids`, `expected_class`,
+  shape, dtype, `two_cta`, `num_ctas`, view chain, row/col kind, and
+  register/instruction variant across `ldst`, `ldred`, `copy`, `mma`, and
+  `mma_scaled`.
+- Result: no new `FZ-*` id; this was discovery-support inventory work.
+- Inventory:
+  - generated descriptors: `44,043`;
+  - checked-in structural-fuzzer legacy ids: `33`;
+  - checked-in legacy ids with Round 9 normalized linkage: `33`;
+  - generated descriptors with legacy links: `460`;
+  - generated `(family, view_chain, expected_class)` buckets with legacy
+    coverage: `18 / 46`.
+- Sample validation:
+  - required `make -j8` reported no work to do;
+  - prototype py-compiled;
+  - structural-fuzzer collect-only found `33` nodeids;
+  - runnable sample reported `3 passed, 2 xfailed`, with the xfails being
+    existing `FZ-20260421-0007` and `FZ-20260421-0009` sentinels.
+
+### Lane E Follow-Up Round 9, ld/st Inventory-Hole Probe
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_inventory_holes_round9.md`
+- Scope: compact runnable `ld/st` descriptor-view rows selected from the
+  Round 9 normalized inventory holes, using the checked-in structural-fuzzer
+  `ld/st` descriptor-view kernel.
+- Result: no new `FZ-*` id.
+- Classification:
+  - chain1 `128x64` f32 identity/evenrow and `128x32` f16 identity rows
+    extend `FZ-20260421-0003`;
+  - `64x32` f32 transpose/slice reports the expected clean row-anchor
+    diagnostic;
+  - direct control, chain2 `128x64` f32 revcol, chain3 `128x64` f32
+    transpose/slice, and chain2 `128x32` f16 revcol pass.
+- Validation:
+  - probe py-compiled;
+  - collect-only found `8` nodeids;
+  - full probe classified `4 failed, 4 passed`.
+
+### Lane F Round 9, Clean-Diagnostic Adversarial Fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_diagnostics_round9.md`
+- Scope: subprocess-isolated generated rows targeting expected clean
+  unsupported/resource/API boundaries: `.x1 ld.red`, dynamic
+  `memdesc_index`, two-CTA layouts in 4/8/16 CTA contexts, scales descriptor
+  views, 128/256/512-row resource boundaries for direct indexed `ld/st` and
+  `ld.red`, plus exact packed/subword and impossible `warpx2` copy schedule
+  runtime-matrix nodeids.
+- Result: no new non-overlapping `FZ-*` id.
+- Classification:
+  - eight generated rows reported clean diagnostics: `.x1 ld.red` minimum
+    message shape, >2-CTA context mismatch, scales multibuffering, and
+    `128x256` tensor-memory OOR;
+  - one direct scales-copy control passed;
+  - dynamic `memdesc_index` reproduced the known
+    `FZ-20260421-0001` late illegal `ttg.memdesc_index`;
+  - four generated `ldst/ldred` `256x32` and `512x32` rows reproduced
+    allocator assertions in the `FZ-20260421-0005/0009` family;
+  - exact packed/subword and impossible copy schedule nodeids passed `4/4`.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_clean_diagnostics_round9_probe.py` py-compiled;
+  - generated case inventory was `14`;
+  - subprocess-isolated sweep summary was `8` clean diagnostics, `1` pass,
+    `1` late illegal op, and `4` allocator assertions;
+  - exact copy-boundary pytest rows passed `4 passed`.
+
+### Lane B Round 8, Scaled-MMAv5 Accumulator Control-Flow Fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_mma_round8.md`
+- Scope: 1CTA temporary scaled-MMAv5 harness over accumulator views
+  `direct_low`, `direct_high`, dynamic slice `if`/loop/helper, dynamic
+  indexed `if`/loop/helper, `use_acc` `False/True`, `N in {16,32,64,128}`,
+  `K in {128,256}`, formats `mxfp8xmxfp8`, `mxfp8xmxfp4`,
+  `mxfp4xmxfp8`, `mxfp4xmxfp4`, and `nvfp4xnvfp4`, and selectors `0/1`.
+- Result: no new independent bucket; expands `FZ-20260421-0007` and adds
+  scaled-MMAv5 evidence for `FZ-20260421-0001`.
+- Counts:
+  - JSONL rows: `1120`;
+  - `628` pass, `332` miscompile, `160` exception;
+  - all pass/miscompile rows had PTX/LLIR opcode agreement and expected
+    scaled-MMAv5 opcode families.
+- Key finding:
+  - direct low/high controls pass across the probed surface;
+  - dynamic slice/indexed paths still reproduce the broad known
+    `FZ-20260421-0007` miscompile;
+  - new important expansion: `nvfp4xnvfp4`, `N=16`, `K=256`, selector `1`
+    dynamic slice/indexed accumulator views miscompile for both
+    `use_acc=False` and `use_acc=True`, while direct high/low controls pass;
+  - helper-returned indexed accumulator rows fail through dynamic
+    `ttg.memdesc_index` illegal lowering and overlap `FZ-20260421-0001`;
+  - existing 4CTA and 16CTA scaled-MMA copy sanity controls passed.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_scaled_mma_round8_probe.py` py-compiled;
+  - collect-only found `1120` nodeids;
+  - four split groups each classified `280` rows;
+  - exact `nvfp4` high-selector contrasts and larger-CGA sanity controls
+    passed as classified tests.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -952,6 +1063,15 @@ remain family-specific and consume a bounded subset of the inventory.
     `1` is green;
   - `indexed_helper` exceptions are dynamic `ttg.memdesc_index`
     illegal-lowering overlap with `FZ-20260421-0001`, not a new id.
+- Round 8 Lane B expansion:
+  - `/tmp/tmem_scaled_mma_round8_probe.py` classified `1120` rows and found
+    the dynamic accumulator view-selection bug is not limited to low-column
+    selection or `use_acc=True`;
+  - `nvfp4xnvfp4`, `N=16`, `K=256`, selector `1` dynamic slice/indexed
+    accumulator views miscompile for both `use_acc=False` and `use_acc=True`;
+  - direct high/low controls pass and PTX/LLIR MMA opcodes agree, so the
+    current evidence still points at descriptor-view/control-flow selection,
+    not opcode selection.
 - Exact repro:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short '/tmp/tmem_mma_scaled_controlflow_round6_probe.py::test_round6_scaled_mma_acc_controlflow[r6-scaled-subslice-if-n64-subslice-if-64-0-2]'`.
 - Promotion status: checked-in strict xfail as of 2026-04-21 09:08 UTC:
@@ -1263,3 +1383,16 @@ remain family-specific and consume a bounded subset of the inventory.
   `M=256,N={16,32,64}` and `M=512,N=32`, with `M=128,N={32,64}` as positive
   `.ld.red.` controls. Use this as repair-boundary inventory; the checked-in
   sentinel remains the compact `256x32` subprocess xfail.
+- Round 9 generator inventory found no new repro to add, but provides the
+  current normalized coverage inventory and migration recommendation.
+- Round 9 `ld/st` inventory-hole probing found no new repro owner; keep its
+  chain1 rows as `FZ-20260421-0003` repair-validation inventory and the small
+  transpose/slice row as clean row-anchor evidence.
+- Round 9 clean-diagnostic fuzzing found no new repro owner; keep the
+  allocator rows as `FZ-20260421-0005/0009`, the dynamic-index row as
+  `FZ-20260421-0001`, and the other generated/copy rows as clean-boundary
+  evidence.
+- Round 8 scaled-MMAv5 fuzzing recommends adding a future strict runtime
+  xfail under `FZ-20260421-0007` for the `nvfp4xnvfp4`, `N=16`, `K=256`,
+  selector-1 dynamic accumulator-view miscompile, with direct high/low
+  controls documented as passing.

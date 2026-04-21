@@ -73,6 +73,38 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21: completed Round 8 Lane B scaled-MMAv5 accumulator
+  descriptor-view control-flow fuzzing. Wrote
+  `agents/fuzz_scaled_mma_round8.md` from
+  `/tmp/tmem_scaled_mma_round8_probe.py`. No new independent bucket was
+  assigned, but `FZ-20260421-0007` expanded: dynamic slice/indexed
+  accumulator views miscompile for `nvfp4xnvfp4`, `N=16`, `K=256`, selector
+  `1`, even though direct high/low controls pass and PTX/LLIR MMA opcodes
+  agree. Helper-returned indexed accumulator views overlap
+  `FZ-20260421-0001`. Validation: required `make -j8`, `1120` classified
+  probe rows, exact `nvfp4` contrasts, and 4CTA/16CTA scaled-MMA copy sanity
+  controls.
+
+- 2026-04-21: completed Round 9 Lane F clean-diagnostic adversarial fuzzing.
+  Wrote `agents/fuzz_clean_diagnostics_round9.md` from
+  `/tmp/tmem_clean_diagnostics_round9_probe.py`. No new independent `FZ-*`
+  id was assigned. The 14 generated rows classified as eight clean
+  diagnostics, one positive scales-copy control, one known
+  `FZ-20260421-0001` late illegal `ttg.memdesc_index`, and four allocator
+  assertions extending `FZ-20260421-0005/0009`. Exact packed/subword and
+  impossible copy schedule runtime-matrix boundaries passed `4/4`.
+
+- 2026-04-21: completed Round 9 Lane E normalized generator inventory and
+  follow-up `ld/st` inventory-hole probing. Wrote
+  `agents/fuzz_generator_inventory_round9.md` and
+  `agents/fuzz_ldst_inventory_holes_round9.md`. The `/tmp` generator emitted
+  `44,043` normalized descriptors, linked all `33` checked-in
+  structural-fuzzer legacy ids, and found `18 / 46` generated axis buckets
+  with legacy coverage. The runnable `ld/st` hole probe found no new owner:
+  chain1 rows extend `FZ-20260421-0003`, one small transpose/slice row is a
+  clean row-anchor diagnostic, and positive chain2/larger transpose-slice
+  controls stayed green.
+
 - 2026-04-21: completed Round 8 Lane A `ld.red` allocator/opcode structural
   fuzzing. Wrote `agents/fuzz_ldred_allocator_opcode_round8.md` from
   `/tmp/tmem_ldred_allocator_opcode_round8_probe.py`. No new independent
