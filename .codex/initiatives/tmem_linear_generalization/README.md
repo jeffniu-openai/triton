@@ -57,6 +57,15 @@ descriptor and multicast selectors. Report:
 `10/10`; `test_core.py` multicast selector passed `9/9` with one empty split
 shard. No new bucket.
 
+Newest Round 19 dynamic-subdescriptor evidence:
+`agents/fuzz_dynamic_subslice_mixed_consumers_round19.md` and
+`agents/fuzz_local_structural_xfail_round19.md`. Lane AV found no new bucket
+but strengthened `FZ-20260421-0007`: the same runtime-selected
+`memdesc_subslice` feeds both `tmem_load` and scaled-MMAv5 accumulator; the
+load is correct, plain MMAv5 is correct, and only scaled-MMAv5 low-subslice
+accumulator use miscompiles. Local structural xfail selector collected
+`11/1648` and stayed `11 xfailed`.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and

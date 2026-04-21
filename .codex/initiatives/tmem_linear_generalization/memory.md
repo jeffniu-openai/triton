@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 12:09 UTC Round 19 dynamic subslice/mixed-consumer and
+  structural xfail sentinel evidence landed. Reports:
+  `agents/fuzz_dynamic_subslice_mixed_consumers_round19.md` and
+  `agents/fuzz_local_structural_xfail_round19.md`. Lane AV found no new
+  bucket; it strengthens `FZ-20260421-0007`: runtime-selected
+  `memdesc_subslice` feeds both `tmem_load` and scaled-MMAv5 accumulator, the
+  `tmem_load` observes the correct selected subslice, plain MMAv5 passes for
+  both selectors, and only the scaled-MMAv5 low-subslice accumulator path
+  miscompiles. Local structural selector collected `11/1648` and stayed
+  `11 xfailed`.
+
 - Latest: 2026-04-21 12:05 UTC local Round 19 2CTA TMA descriptor and
   multicast sanity selectors passed. Report:
   `agents/fuzz_local_multicast_round19.md`. Runtime-matrix selector collected

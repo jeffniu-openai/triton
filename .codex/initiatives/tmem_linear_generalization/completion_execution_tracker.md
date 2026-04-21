@@ -2007,3 +2007,11 @@ signal handling:
   selector collected `10/1615` and passed as `10 passed`; `test_core.py`
   multicast selector collected `9/18114` and passed as `9 passed` with one
   empty split shard. No new bucket.
+
+- 2026-04-21 12:09 UTC: integrated Lane AV dynamic subslice/mixed-consumer
+  report and local structural xfail sentinel report:
+  `agents/fuzz_dynamic_subslice_mixed_consumers_round19.md` and
+  `agents/fuzz_local_structural_xfail_round19.md`. No new bucket. AV
+  strengthens `FZ-0007`: selected `memdesc_subslice` load is correct, plain
+  MMAv5 is correct, but scaled-MMAv5 low-subslice accumulator use miscompiles.
+  Local structural selector collected `11/1648` and stayed `11 xfailed`.

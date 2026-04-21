@@ -2514,6 +2514,32 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 19 Lane AV dynamic subslice mixed consumers
+
+- Time: 2026-04-21 12:09 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_subslice_mixed_consumers_round19.md`
+- Temporary probe:
+  `/tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py`.
+- Result: no new independent `FZ-*`. Scaled-MMAv5 selected low-subslice
+  accumulator use miscompiled with `4413/16384` mismatches and NaNs, while the
+  same selected descriptor's `tmem_load` was correct and plain MMAv5 passed for
+  both selected subslices.
+- Classification: strengthens `FZ-20260421-0007`.
+
+### Round 19 local structural xfail sentinels
+
+- Time: 2026-04-21 12:09 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_xfail_round19.md`
+- Selector:
+  `(fz0015 or generic_pass or dynamic_index or proxy_fence or reports_fz or reports_bug) and not performance`
+  collected `11/1648`.
+- Split-4 result:
+  `11 xfailed`.
+- Classification: no unexpected pass, unexpected failure, runtime miscompile
+  outside known xfails, or new independent `FZ-*`.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

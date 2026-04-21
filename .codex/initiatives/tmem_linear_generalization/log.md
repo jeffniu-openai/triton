@@ -28626,6 +28626,48 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 12:09 UTC: Round 19 Lane AV dynamic subslice mixed consumers
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_subslice_mixed_consumers_round19.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe
+  `/tmp/tmem_dynamic_subslice_mixed_consumers_round19_probe.py` produced
+  `3 passed, 1 failed` before summarization; the failing row was then
+  summarized and classified as existing `FZ-20260421-0007`.
+- Row summary:
+  - plain MMAv5 selected low subslice: load correct, MMA correct;
+  - plain MMAv5 selected high subslice: load correct, MMA correct;
+  - scaled-MMAv5 selected low subslice: load correct, MMA miscompiled with
+    `4413/16384` mismatches and NaNs;
+  - scaled-MMAv5 selected high subslice: load correct, MMA correct.
+- Classification: no new independent `FZ-*`. This strengthens `FZ-0007` and
+  points specifically at scaled-MMAv5 accumulator lowering/address
+  materialization for dynamically selected low subslices, not generic
+  `memdesc_subslice` SSA selection or all MMA consumers.
+
+## 2026-04-21 12:09 UTC: Round 19 local structural xfail sentinels
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_structural_xfail_round19.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector
+  `(fz0015 or generic_pass or dynamic_index or proxy_fence or reports_fz or reports_bug) and not performance`
+  collected `11/1648` rows across structural fuzzer and runtime matrix files.
+- Split-4 result with stable per-GPU caches:
+  `11 xfailed`:
+  - GPU 0 / group 1: `3 xfailed`;
+  - GPU 1 / group 2: `3 xfailed`;
+  - GPU 2 / group 3: `3 xfailed`;
+  - GPU 3 / group 4: `2 xfailed`.
+- Classification: no unexpected pass, unexpected failure, or new independent
+  `FZ-*`. Visible diagnostics remained expected illegal `ttg.memdesc_index`
+  conversion failures for known report-only rows.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote
