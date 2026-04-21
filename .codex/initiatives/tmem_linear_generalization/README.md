@@ -7,18 +7,22 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 12:49-12:51 UTC Round 31 scaled-MMAv5
-operand lane, local guardrails, and compiler-boundary fuzzing. Reports:
+Latest fuzzing checkpoint: 2026-04-21 Round 31-32 scaled-MMAv5 operand lane,
+local guardrails, and compiler-boundary fuzzing. Reports:
 `agents/fuzz_scaled_operand_round31.md`,
+`agents/fuzz_scaled_twocta_round32.md`,
 `agents/fuzz_local_descriptor_mix_round31.md`,
 `agents/fuzz_local_view_copy_round31.md`,
+`agents/fuzz_local_scales_copy_clean_round31.md`,
 `agents/fuzz_python_descriptor_views_round31.md`, and
 `agents/fuzz_structural_rerun_round31.md`, plus
 `agents/fuzz_compiler_boundaries_round31.md`. The scaled operand lane found no
 new bucket and revalidated existing `FZ-0013`, `FZ-0015`, and `FZ-0010`
-boundaries; descriptor-heavy `ld.red` plus scaled-MMAv5 rows passed as
-`54 passed`; high-rank `ld/st` descriptor and `tcgen05.copy` `warpx2`
+boundaries; the 2CTA scaled-MMAv5 guardrail passed as `28 passed`;
+descriptor-heavy `ld.red` plus scaled-MMAv5 rows passed as `54 passed`;
+high-rank `ld/st` descriptor and `tcgen05.copy` `warpx2`
 indexed/subslice/slice-index rows completed as `123 passed, 74 skipped`;
+scales-copy and clean-boundary rows passed as `55 passed`;
 Python descriptor-view frontend probing expanded existing `FZ-0017` with `48`
 64-bit `ASSERT_BITWIDTH_32` rows next to `40` passing 32-bit controls; the
 checked-in structural fuzzer stayed stable as `9 passed, 24 xfailed`; and the

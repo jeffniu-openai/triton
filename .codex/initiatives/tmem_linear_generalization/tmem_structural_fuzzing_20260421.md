@@ -55,6 +55,30 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ## Round Log
 
+### Round 32 Local, scaled-MMAv5 2CTA runtime guardrail
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_twocta_round32.md`
+- Scope: checked-in runtime-matrix selector
+  `mma_scaled and twocta and not reports and not resource`.
+- Result: no new independent `FZ-*` bucket. The selector passed split-4 as
+  `28 passed`, keeping legal 2CTA scaled-MMAv5 rows green next to existing
+  report-only `FZ-20260421-0007`, `FZ-20260421-0013`, and
+  `FZ-20260421-0015`.
+
+### Round 31 Local, scales-copy and clean-boundary guardrail
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scales_copy_clean_round31.md`
+- Scope: selector
+  `(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`.
+- Result: no new independent `FZ-*` bucket. The selector collected `55/1615`
+  and passed split-4 as `55 passed`, covering scales copy rows and clean
+  unsupported/error diagnostics adjacent to Round 31 scaled operand and
+  compiler-boundary fuzzing.
+
 ### Round 31 Lane, scaled-MMAv5 TMEM descriptor operands
 
 - Time: 2026-04-21 12:49 UTC

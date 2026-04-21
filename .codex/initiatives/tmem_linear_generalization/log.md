@@ -30186,6 +30186,30 @@ Open after this slice:
   Wrong-space, static out-of-bounds, rank mismatch, duplicate transpose, and
   bad reshape rows produced clean diagnostics.
 
+## 2026-04-21: Round 32 scaled-MMAv5 2CTA runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_twocta_round32.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `mma_scaled and twocta and not reports and not resource`.
+- Split-4 result:
+  `28 passed`.
+- Classification: no new independent `FZ-*`; legal 2CTA scaled-MMAv5 rows
+  remain green next to report-only `FZ-0007`, `FZ-0013`, and `FZ-0015`.
+
+## 2026-04-21: Round 31 scales-copy and clean-boundary guardrail
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scales_copy_clean_round31.md`.
+- Selector:
+  `(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`.
+- Split-4 result:
+  `55 passed`.
+- Classification: no new independent `FZ-*`; scales copy and clean diagnostic
+  rows remain green next to Round 31 scaled operand and compiler-boundary
+  fuzzing.
+
 ## 2026-04-21: Round 31 local descriptor and copy guardrails
 
 - Wrote:

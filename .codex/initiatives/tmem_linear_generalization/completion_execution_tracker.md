@@ -88,6 +88,14 @@ The project is complete when:
   existing `FZ-0001`, `FZ-0016`, and `FZ-0017` across `18` MLIR probes and
   three pass modes. Results: `18` passes, `23` clean diagnostics, `12`
   assertion/stack-dump aborts, and `1` late illegal-op failure.
+  2026-04-21 Round 32 scaled-MMAv5 2CTA runtime guardrail completed.
+  Artifact: `agents/fuzz_scaled_twocta_round32.md`. Selector
+  `mma_scaled and twocta and not reports and not resource` passed split-4 as
+  `28 passed`; no new bucket.
+  2026-04-21 Round 31 scales-copy and clean-boundary guardrail completed.
+  Artifact: `agents/fuzz_local_scales_copy_clean_round31.md`. Selector
+  `(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`
+  passed split-4 as `55 passed`; no new bucket.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline

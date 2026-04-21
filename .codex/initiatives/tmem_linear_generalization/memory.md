@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 32 local scaled-MMAv5 2CTA guardrail completed.
+  Report: `agents/fuzz_scaled_twocta_round32.md`. Required `make -j8` was a
+  no-op. Selector `mma_scaled and twocta and not reports and not resource`
+  passed split-4 as `28 passed`; no compiler crash, false unsupported
+  diagnostic, opcode mismatch, runtime miscompile, or new independent `FZ-*`
+  bucket. This keeps legal 2CTA scaled-MMAv5 rows green next to report-only
+  `FZ-0007`, `FZ-0013`, and `FZ-0015`.
+
+- Latest: 2026-04-21 Round 31 local scales-copy and clean-boundary guardrail
+  completed. Report: `agents/fuzz_local_scales_copy_clean_round31.md`.
+  Selector
+  `(cp_scales or mbarrier or proxy or clean_error or clean_unsupported) and not reports and not resource`
+  collected `55/1615` and passed split-4 as `55 passed`; no new bucket.
+
 - Latest: 2026-04-21 12:51 UTC Round 31 compiler-boundary lane completed.
   Report: `agents/fuzz_compiler_boundaries_round31.md`. It generated `18`
   MLIR probes under `/tmp/tmem_compiler_boundaries_round31` and ran verifier,
