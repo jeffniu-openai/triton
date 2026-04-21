@@ -2555,3 +2555,8 @@ signal handling:
   `tmem_runtime_matrix_mma and not ldst and not mma_scaled and not reports and not resource and (m64 or twocta or indexed_acc_view or acc_subslice_view)`
   collected `185/1615` and passed split-4 as `185 passed`. No new independent
   `FZ-*` bucket.
+
+- 2026-04-21: Round 32 local TMEM lit guardrail completed. Report:
+  `agents/fuzz_local_lit_round32.md`. `tmem_layouts.mlir` and `invalid.mlir`
+  passed; `relayout_tritongpu.mlir` failed with existing `FZ-20260421-0016`.
+  No new independent `FZ-*` bucket.

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 32 local TMEM lit guardrail completed. Report:
+  `agents/fuzz_local_lit_round32.md`. `ninja triton-opt` was a no-op.
+  `TritonNvidiaGPU/tmem_layouts.mlir` and `TritonNvidiaGPU/invalid.mlir`
+  passed; `Conversion/relayout_tritongpu.mlir` failed with existing
+  `FZ-20260421-0016` (`dyn_cast on a non-existent value` through
+  `verifyTMEMOperand` / `TMEMAllocOp::verify`). No new independent `FZ-*`
+  bucket was found.
+
 - Latest: 2026-04-21 Round 32 local plain-MMAv5 accumulator/view guardrail
   completed. Report: `agents/fuzz_local_mma_accumulator_round32.md`. Selector
   `tmem_runtime_matrix_mma and not ldst and not mma_scaled and not reports and not resource and (m64 or twocta or indexed_acc_view or acc_subslice_view)`

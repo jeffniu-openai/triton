@@ -30374,6 +30374,21 @@ Open after this slice:
 - Classification: no compiler crash, false unsupported diagnostic, opcode
   mismatch, runtime miscompile, or new independent `FZ-*` bucket.
 
+## 2026-04-21: Round 32 local TMEM lit guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_lit_round32.md`.
+- Command:
+  `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/relayout_tritongpu.mlir`.
+- Result:
+  - `TritonNvidiaGPU/tmem_layouts.mlir`: pass
+  - `TritonNvidiaGPU/invalid.mlir`: pass
+  - `Conversion/relayout_tritongpu.mlir`: fail with existing
+    `FZ-20260421-0016`
+- Classification: no new independent `FZ-*`; the failure is the known
+  unencoded-tensor verifier crash through `verifyTMEMOperand` /
+  `TMEMAllocOp::verify`.
+
 ## 2026-04-21: Round 32 local ld/st narrow and half-row guardrail
 
 - Wrote

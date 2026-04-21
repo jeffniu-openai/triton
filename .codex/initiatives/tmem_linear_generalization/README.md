@@ -39,7 +39,10 @@ subword/narrow-shape lane ran `219` Python/Gluon runtime rows across sub-32-bit
 and 32-bit `ld/st`/copy paths, descriptor views, 1CTA/2CTA rows, and clean
 diagnostics, all passing or diagnosing as expected; local `ld/st` narrow and
 half-row guardrails added `141 passed`; plain-MMAv5 M64/two-CTA/indexed
-accumulator/subslice guardrails added `185 passed`. The `ld.red` extremes lane ran `23`
+accumulator/subslice guardrails added `185 passed`. Round 32 lit guardrail
+`agents/fuzz_local_lit_round32.md` kept `tmem_layouts.mlir` and
+`invalid.mlir` green and reconfirmed existing `FZ-0016` in
+`relayout_tritongpu.mlir`. The `ld.red` extremes lane ran `23`
 f32 runtime rows with torch reference and opcode checks; `15` passed,
 `3` reproduced existing `FZ-0012`, `1` reproduced existing `FZ-0010`, `2` were
 clean resource boundaries, and `2` established new candidate

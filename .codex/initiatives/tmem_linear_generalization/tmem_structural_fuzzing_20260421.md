@@ -96,6 +96,18 @@ remain family-specific and consume a bounded subset of the inventory.
 - Result: no new independent `FZ-*` bucket. Selector collected `185/1615`
   rows and passed split-4 as `185 passed`.
 
+### Round 32 Local, TMEM Lit / Compiler-Only Guardrail
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_lit_round32.md`.
+- Scope: `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir
+  test/TritonNvidiaGPU/invalid.mlir test/Conversion/relayout_tritongpu.mlir`
+  after `ninja triton-opt`.
+- Result: `tmem_layouts.mlir` and `invalid.mlir` passed;
+  `relayout_tritongpu.mlir` failed with existing `FZ-20260421-0016`.
+- Classification: no new independent `FZ-*` bucket.
+
 ### Round 31 Lane, ld.red descriptor/layout extremes
 
 - Time: 2026-04-21 12:54 UTC
