@@ -7,7 +7,17 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 34 no-scale copy
+Latest fuzzing checkpoint: 2026-04-21 Round 34 high-rank descriptor `ld/st`
+guardrail completed. Report:
+`agents/fuzz_local_high_rank_ldst_round34.md`. Selector
+`(ldst_descriptor and not reports and not resource and (rank5 or higher_rank or multidim or roundtrip))`
+collected `104/1615` checked-in runtime rows and completed split-4 as
+`43 passed, 61 skipped`; skips are existing allocation/resource-gated
+descriptor roundtrip rows. No compiler crash, false unsupported diagnostic,
+opcode mismatch, runtime miscompile, clean-boundary drift, unexpected skip/pass
+transition, or new independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 34 no-scale copy
 tile/subword/2CTA guardrail completed. Report:
 `agents/fuzz_local_copy_tile_subword_round34.md`. Selector
 `(cp_no_scales and not reports and not resource and (tile_permuted or subword or twocta_codegen or twocta_128x128b or dense_shared))`
@@ -16,7 +26,7 @@ collected `68/1615` checked-in runtime rows and passed split-4 as `68 passed`
 mismatch, runtime miscompile, clean-boundary drift, or new independent `FZ-*`
 bucket was found.
 
-Previous fuzzing checkpoint: 2026-04-21 Round 33 dynamic descriptor SSA/control-
+Earlier fuzzing checkpoint: 2026-04-21 Round 33 dynamic descriptor SSA/control-
 flow lane completed. Report:
 `agents/fuzz_dynamic_descriptor_round33.md`. A temporary Python/Gluon runtime
 probe collected `100` rows across runtime `parent.index(load(selector))`,

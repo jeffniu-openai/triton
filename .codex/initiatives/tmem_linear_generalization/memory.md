@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 34 local high-rank descriptor `ld/st` guardrail
+  completed. Report: `agents/fuzz_local_high_rank_ldst_round34.md`. Required
+  `make -j8` was a no-op. Selector
+  `(ldst_descriptor and not reports and not resource and (rank5 or higher_rank or multidim or roundtrip))`
+  collected `104/1615` rows and completed split-4 as `43 passed, 61 skipped`.
+  The skipped rows are existing allocation/resource-gated descriptor roundtrip
+  cases. No compiler crash, false unsupported diagnostic, opcode mismatch,
+  runtime miscompile, clean-boundary drift, unexpected skip/pass transition, or
+  new independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 Round 34 local no-scale copy tile/subword/2CTA guardrail
   completed. Report: `agents/fuzz_local_copy_tile_subword_round34.md`.
   Required `make -j8` was a no-op. Selector

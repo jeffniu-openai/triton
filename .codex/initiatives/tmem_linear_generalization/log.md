@@ -30569,3 +30569,19 @@ Open after this slice:
 - Classification: no compiler crash, false unsupported diagnostic, opcode
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
+
+## 2026-04-21: Round 34 local high-rank descriptor ld/st guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_high_rank_ldst_round34.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(ldst_descriptor and not reports and not resource and (rank5 or higher_rank or multidim or roundtrip))`.
+- Collection: `104/1615`.
+- Split-4 result: `43 passed, 61 skipped`
+  (`0 passed/26 skipped`, `1 passed/25 skipped`, `19 passed/7 skipped`,
+  `23 passed/3 skipped` by group).
+- Classification: skipped rows are existing allocation/resource-gated
+  descriptor roundtrip cases; no compiler crash, false unsupported diagnostic,
+  opcode mismatch, runtime miscompile, clean-boundary drift, unexpected
+  skip/pass transition, or new independent `FZ-*` bucket.

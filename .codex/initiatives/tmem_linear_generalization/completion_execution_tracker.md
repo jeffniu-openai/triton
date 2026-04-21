@@ -162,6 +162,13 @@ The project is complete when:
   collected `68/1615` and passed split-4 as `68 passed`; no compiler crash,
   false unsupported diagnostic, opcode mismatch, runtime miscompile,
   clean-boundary drift, or new independent `FZ-*`.
+  2026-04-21 Round 34 local high-rank descriptor `ld/st` guardrail completed.
+  Artifact: `agents/fuzz_local_high_rank_ldst_round34.md`. Selector
+  `(ldst_descriptor and not reports and not resource and (rank5 or higher_rank or multidim or roundtrip))`
+  collected `104/1615` and completed split-4 as `43 passed, 61 skipped`; no
+  compiler crash, false unsupported diagnostic, opcode mismatch, runtime
+  miscompile, clean-boundary drift, unexpected skip/pass transition, or new
+  independent `FZ-*`.
   2026-04-21 11:21 UTC Lane AI completed copy/mbarrier composition fuzzing
   without backend repairs. Report:
   `agents/fuzz_copy_mbarrier_composition_round14.md`. Checked-in copy baseline
