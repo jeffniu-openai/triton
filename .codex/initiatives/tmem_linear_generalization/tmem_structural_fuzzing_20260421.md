@@ -45,6 +45,14 @@ Every structural fuzz case records:
 - exact command
 - repro/minimization status
 
+Round 6 Lane D schema recommendation: split the durable descriptor from
+family-specific runnable kernels. A normalized descriptor should carry
+`family`, `shape`, `dtype`, `two_cta`, `num_ctas`, `view_chain`, `row_kind`,
+`col_kind`, `reg_variant`, `expected_class`, stable `seed`, and optional
+`legacy_case_id`/`source_case_id`. Keep descriptor enumeration CPU-only so
+coverage inventory can run without importing Gluon; runnable adapters can
+remain family-specific and consume a bounded subset of the inventory.
+
 ## Round Log
 
 ### Round 0, Campaign Setup
@@ -491,6 +499,44 @@ Every structural fuzz case records:
   - collect-only found `30` structural-fuzzer nodeids;
   - the new exact sentinel reported `1 xfailed`;
   - full structural fuzzer reported `9 passed, 21 xfailed`.
+
+### Lane D Round 6, Deterministic Structural Generator Prototype
+
+- Time: 2026-04-21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generator_round6.md`
+- Scope: build a `/tmp` prototype deterministic descriptor generator that
+  enumerates compact TMEM case descriptors across family, shape, dtype,
+  `two_cta`, `num_ctas`, descriptor-view chain, row/col layout permutation,
+  register-layout variant, and expected class. Use it to inventory checked-in
+  structural-fuzzer coverage and run a small runtime sample. No backend repair
+  was attempted.
+- Prototype artifacts:
+  - `/tmp/tmem_structural_case_generator_round6.py`;
+  - `/tmp/tmem_structural_case_generator_round6.json`.
+- Inventory result:
+  - generated descriptor total: `25245`;
+  - checked-in structural-fuzzer nodeids/case ids: `30`;
+  - exact normalized-id overlap: `0`, because the checked-in fuzzer currently
+    uses historical repro ids rather than normalized descriptor ids.
+- Runtime sample:
+  - required `make -j8` completed with Ninja reporting no work to do;
+  - collect-only found `30` structural-fuzzer nodeids;
+  - representative runtime sample over current `ldst`, `ldred`, copy, and
+    generic-pass loop-carried sentinel rows reported `3 passed, 1 xfailed`.
+- Coverage/schema recommendations:
+  - introduce a repo-local normalized `StructuralCaseDescriptor` before
+    promoting the full generator;
+  - preserve existing repro pytest ids initially through `legacy_case_id`, but
+    add normalized descriptor ids for mechanical inventory diffs;
+  - add generator-backed runnable slices in the order `ldred` indexed/direct
+    opcode rows, `ldst` read-only descriptor-view rows, copy descriptor-view
+    and `warpx2` readback rows, then compact MMA/scaled-MMA descriptor-view
+    control-flow rows;
+  - treat `num_ctas > 2`, copy non-scales/packed/subword boundaries, and
+    MMA/scaled-MMA descriptor-view control-flow contracts as first-class
+    inventory gaps, even when their runnable coverage remains in
+    `test_tmem_runtime_matrix.py` for now.
 
 ## Failure Catalog
 

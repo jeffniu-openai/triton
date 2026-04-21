@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 6 Lane D prototyped a deterministic structural
+  TMEM case descriptor generator in `/tmp` without promoting it to the repo.
+  The prototype enumerates normalized descriptors across `ldst`, `ldred`,
+  `copy`, `mma`, and `mma_scaled` families, including shape, dtype,
+  `two_cta`, `num_ctas`, view-chain, row/col permutation, register-layout
+  variant, and expected class. It generated `25245` descriptors and found
+  `0` exact-id matches against the checked-in `30` structural-fuzzer cases,
+  which confirms that current pytest ids are repro-history ids rather than a
+  normalized schema. Small runtime sample validation passed as
+  `3 passed, 1 xfailed` after the required `make -j8` no-op. No
+  backend/compiler code was changed. Report:
+  `agents/fuzz_generator_round6.md`.
+
 - Latest: 2026-04-21 09:20 UTC promoted the Round 5 generic-pass
   loop-carried memdesc-view crash into checked-in structural-fuzzer coverage.
   Added strict xfail

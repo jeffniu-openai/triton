@@ -26491,3 +26491,25 @@ Open after this slice:
   - collect-only found `30` structural-fuzzer nodeids;
   - exact new sentinel reported `1 xfailed`;
   - full structural fuzzer reported `9 passed, 21 xfailed`.
+
+## 2026-04-21 Round 6 Lane D: Deterministic generator prototype
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Built `/tmp/tmem_structural_case_generator_round6.py`, a CPU-only prototype
+  that enumerates normalized TMEM structural descriptors across family, shape,
+  dtype, `two_cta`, `num_ctas`, descriptor-view chain, row/col permutation,
+  register variant, and expected class.
+- Generated `/tmp/tmem_structural_case_generator_round6.json`:
+  - `25245` generated descriptors;
+  - `30` checked-in structural-fuzzer case ids;
+  - `0` exact normalized-id matches, showing that current checked-in ids are
+    repro-history ids and need descriptor metadata or a legacy-id bridge before
+    generator promotion.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - collect-only for `test_tmem_structural_fuzzer.py` found `30` nodeids;
+  - small runtime sample over `ldst`, `ldred`, copy, and generic-pass
+    loop-carried rows reported `3 passed, 1 xfailed`.
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generator_round6.md`.

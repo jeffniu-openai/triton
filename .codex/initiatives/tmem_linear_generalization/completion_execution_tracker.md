@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 09:20 UTC
+Last updated: 2026-04-21 Round 6 Lane D
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -79,6 +79,15 @@ The project is complete when:
   keeping discovery mode repair-deferred. Validation: required `make -j8`,
   py-compile, `30` collected structural-fuzzer nodeids, exact nodeid
   `1 xfailed`, and full fuzzer `9 passed, 21 xfailed`.
+  2026-04-21 Round 6 Lane D prototyped a deterministic structural descriptor
+  generator under `/tmp` and kept it out of the repo pending schema cleanup.
+  The inventory generated `25245` normalized descriptors across `ldst`,
+  `ldred`, `copy`, `mma`, and `mma_scaled`, with `0` exact normalized-id
+  matches against the current `30` checked-in structural-fuzzer cases. Next
+  generator slice should add a repo-local data-only `StructuralCaseDescriptor`
+  plus `legacy_case_id` bridge before promoting runnable family adapters.
+  Validation: required `make -j8` no-op, collect-only `30` nodeids, and small
+  runtime sample `3 passed, 1 xfailed`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive
