@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 55 FZ-0003 boundary lane B completed. Report:
+  `agents/fuzz_round55_fz0003_boundary_lane.md`. Required `make -j8` was a
+  no-op. A temporary static descriptor-view probe ran as `23 passed, 1 failed`;
+  the lone failure was a clean unsupported 2CTA `128x32` chain-0 diagnostic.
+  Wrong-result rows sharpen existing `FZ-20260421-0003`: chain-0 load-only
+  rows miscompile without dynamic SSA/control flow across 1CTA/2CTA,
+  f32/i32/f16, and row/column variants, while identity/row-neighbor chain-1
+  rows pass. Pure column-reverse `64x32` wrong-results for both chain-0 and
+  chain-1. View load/store followed by base readback masks the bug because the
+  bad mapping cancels. Checked-in exact sentinels stayed `3 xfailed`; no new
+  independent `FZ-*` and no backend repair.
+
 - Latest: 2026-04-21 15:24 UTC Round 54 resource/shape extremes lane B
   completed. Report:
   `agents/fuzz_round54_resource_shape_extremes_lane.md`. Required `make -j8`
@@ -16981,3 +16993,14 @@ rejection, not rescue
   `M128xN512` with `num_warps=8` reports clean shared-memory OOR. The
   checked-in selector `ld_red and not reports and not resource` stayed at
   `237 passed, 6 failed`, with only unchanged `FZ-0012` failures.
+
+- Round 55 dynamic two-CTA green-controls lane wrote
+  `agents/fuzz_round55_dynamic_2cta_green_controls_lane.md`. Required
+  `make -j8` was a no-op. The temporary probe
+  `/tmp/tmem_round55_dynamic_2cta_green_controls_probe.py` avoided known
+  chain-0 static-failing shapes and ran `8` generated rows: `5` chain-1 or
+  direct-branch `ld/st` rows passed with matching PTX/LLIR opcode streams, and
+  `3` direct runtime-index/copy rows reproduced existing
+  `FZ-20260421-0001` illegal `ttg.memdesc_index` LLVM-conversion failures.
+  Adjacent checked-in copy/plain-MMAv5/scaled-MMAv5 controls passed as
+  `47 passed`. No new independent `FZ-*`; backend repair remains deferred.

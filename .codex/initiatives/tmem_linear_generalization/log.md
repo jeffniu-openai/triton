@@ -1,3 +1,23 @@
+## 2026-04-21: Round 55 FZ-0003 boundary lane B
+
+- New report:
+  `agents/fuzz_round55_fz0003_boundary_lane.md`.
+- Required build:
+  `make -j8` was a no-op.
+- Temporary probe:
+  `/tmp/tmem_round55_fz0003_boundary_probe.py`.
+- Runtime probe:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -vv -s --tb=short /tmp/tmem_round55_fz0003_boundary_probe.py`
+  produced `23 passed, 1 failed`; the failure was clean unsupported for
+  minimal two-CTA `128x32` chain-0 `32x32b`.
+- Checked-in anchors:
+  exact `FZ-20260421-0003` descriptor-view sentinels remained `3 xfailed`.
+- Classification:
+  no new independent `FZ-*`; static chain-0 descriptor-view rows reproduce
+  wrong results, chain-1 neighbors mostly pass, pure column-reverse `64x32`
+  is an exception that wrong-results for both, and base-readback after
+  view-load/store masks the mapping bug.
+
 ## 2026-04-21: Round 54 opcode consistency lane C
 
 - Wrote
@@ -32485,3 +32505,20 @@ Open after this slice:
 - Classification: no compiler crash, verifier drift, false unsupported
   diagnostic, clean-boundary drift, runtime miscompile, hang, or independent
   `FZ-*`.
+## 2026-04-21 15:35 UTC: Round 55 dynamic 2CTA green-controls lane A
+
+- Added report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round55_dynamic_2cta_green_controls_lane.md`.
+- Required build:
+  `make -j8` was a no-op.
+- Temporary probe:
+  `/tmp/tmem_round55_dynamic_2cta_green_controls_probe.py`.
+- Exact commands:
+  `PYTHONPATH=.:./python python3 -m py_compile /tmp/tmem_round55_dynamic_2cta_green_controls_probe.py`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -vv -s --tb=short /tmp/tmem_round55_dynamic_2cta_green_controls_probe.py`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_twocta_linear_indexed_view or mma_twocta_indexed_acc_view or mma_scaled_twocta_acc_subslice_view_format_use_acc or cp_scales_warpx4_twocta_direct_copy'`.
+- Results:
+  temporary probe cataloged `8` generated rows as `5` pass and `3` existing
+  `FZ-20260421-0001`; checked-in adjacent controls passed as `47 passed`.
+- Classification:
+  no new independent `FZ-*`; no backend repairs attempted.

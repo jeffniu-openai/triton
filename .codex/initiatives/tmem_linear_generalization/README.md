@@ -7,8 +7,20 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 54 resource/shape extremes lane B
-completed. Report: `agents/fuzz_round54_resource_shape_extremes_lane.md`.
+Latest fuzzing checkpoint: 2026-04-21 Round 55 FZ-0003 boundary lane B
+completed. Report: `agents/fuzz_round55_fz0003_boundary_lane.md`. Required
+`make -j8` was a no-op. A static descriptor-view probe completed as
+`23 passed, 1 failed`; the failure was a clean unsupported minimal 2CTA
+`128x32` chain-0 diagnostic. Wrong-result rows sharpen existing
+`FZ-20260421-0003`: chain-0 load-only rows miscompile without dynamic
+SSA/control flow across 1CTA/2CTA, f32/i32/f16, and row/column variants,
+while matching identity/row-neighbor chain-1 rows pass. Pure column-reverse
+`64x32` wrong-results for both chain-0 and chain-1. View load/store followed
+by base readback masks the issue because the same bad mapping cancels.
+Checked-in exact sentinels stayed `3 xfailed`; no new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 54 resource/shape extremes lane
+B completed. Report: `agents/fuzz_round54_resource_shape_extremes_lane.md`.
 Required `make -j8` was a no-op. Combined checked-in resource/shape selector
 collected `515/1615` and ran split-4 as `439 passed, 70 skipped, 6 failed`;
 the six failures are unchanged existing `FZ-20260421-0012` M64 f32 `ld.red`
@@ -6349,3 +6361,17 @@ When resuming the initiative:
   descriptor-heavy `ld.red`/scaled rows `54 passed`, view-chain/copy `warpx2`
   rows `123 passed, 74 skipped`, and the checked-in structural fuzzer stayed
   stable as `9 passed, 24 xfailed`.
+
+## Latest: 2026-04-21 Round 55 dynamic two-CTA green controls
+
+- Lane A completed `agents/fuzz_round55_dynamic_2cta_green_controls_lane.md`.
+  No backend repair was attempted.
+- The temporary probe avoided known chain-0 static-failing shapes and ran
+  `8` generated two-CTA dynamic rows: `5` chain-1 or direct-branch `ld/st`
+  rows passed with PTX/LLIR opcode agreement, while `3` runtime direct-index
+  and branch-selected copy rows reproduced existing `FZ-20260421-0001`
+  illegal `ttg.memdesc_index` LLVM-conversion failures. No new independent
+  `FZ-*`.
+- Adjacent checked-in controls for two-CTA no-scale copy indexed views, plain
+  MMAv5 indexed accumulator views, two-CTA scales copy, and scaled-MMAv5
+  two-CTA accumulator subslice/copy passed as `47 passed`.

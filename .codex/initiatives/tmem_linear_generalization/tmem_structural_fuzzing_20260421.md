@@ -24,6 +24,21 @@ campaign requested on 2026-04-21.
 - Completion tracker: `completion_execution_tracker.md`
 - Handoff log: `handoff_2026-04-09.md`
 
+## Latest Round 55 FZ-0003 Boundary Lane B
+
+- Report: `agents/fuzz_round55_fz0003_boundary_lane.md`.
+- Scope: sharpen existing `FZ-20260421-0003`; no backend repairs.
+- Required build: `make -j8` was a no-op.
+- Temporary probe result: `23 passed, 1 failed`; the failure was a clean
+  unsupported minimal 2CTA `128x32` chain-0 row.
+- Finding: static chain-0 descriptor-view `ld/st` rows reproduce wrong results
+  without dynamic SSA/control flow across 1CTA/2CTA, f32/i32/f16, and
+  row/column variants. Chain-1 identity/row-neighbor controls pass; pure
+  column-reverse `64x32` wrong-results for both chain-0 and chain-1.
+- Operation sequence boundary: `view.load()` exposes the mismatch, while
+  `view.load(); view.store(); base.load()` can hide it by canceling the same
+  bad mapping.
+
 ## Case Schema
 
 Every structural fuzz case records:
@@ -4007,3 +4022,24 @@ remain family-specific and consume a bounded subset of the inventory.
   no-control-flow controls for the failing shapes also failed, classifying the
   wrong results as existing descriptor-view chain wrong-code rather than a new
   dynamic-only bucket.
+
+### Round 55 dynamic 2CTA green-controls lane A
+
+- Time: 2026-04-21 15:35 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round55_dynamic_2cta_green_controls_lane.md`
+- Scope:
+  Round 54 follow-up that avoided chain-0 static-failing shapes and probed
+  legal two-CTA dynamic descriptor selection over chain-1 `ld/st`, direct
+  branch `ld/st`, runtime direct index, and copy consumers, with checked-in
+  copy/plain-MMAv5/scaled-MMAv5 controls.
+- Result:
+  temporary probe ran `8` generated rows as `5` pass and `3` existing
+  `FZ-20260421-0001`; no new independent `FZ-*`. Chain-1 and direct-branch
+  `ld/st` dynamic selection stayed green. Runtime direct `parent.index(selector)`
+  and branch-selected direct copy consumers failed at LLVM conversion with
+  illegal `ttg.memdesc_index`, matching existing `FZ-0001`.
+- Adjacent controls:
+  checked-in two-CTA no-scale copy indexed views, plain-MMAv5 indexed
+  accumulator views, two-CTA scales copy, and scaled-MMAv5 two-CTA accumulator
+  subslice/copy controls passed as `47 passed`.
