@@ -31808,3 +31808,15 @@ Open after this slice:
   lowering pipeline.
 - Classification: no new proxy/TMA/MMAv5/TMEM-copy ordering bucket; ordinary
   checked-in proxy-adjacent coverage stayed green.
+
+## 2026-04-21 14:44 UTC: Round 48 clean-boundary runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundary_round48.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(reports_clean or clean_unsupported or clean_error or tmem_oor or resource) and not m64`.
+- Result: `176 passed, 1439 deselected`.
+- Classification: no diagnostic drift, assertion crash, generic
+  `PassManager::run failed`, runtime miscompile, unexpected failure, or new
+  independent `FZ-*`.

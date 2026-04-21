@@ -3342,3 +3342,10 @@ discovery.
   proxy-fence lit guardrail passed `1/1`. Disposable Round 14 and saved
   sequential-mbarrier reproducers reproduced only existing
   `FZ-20260421-0014`. No new independent `FZ-*`.
+
+- 2026-04-21 14:44 UTC: Round 48 clean-boundary runtime guardrail completed.
+  Report: `agents/fuzz_clean_boundary_round48.md`. Required `make -j8` was a
+  no-op. Selector
+  `(reports_clean or clean_unsupported or clean_error or tmem_oor or resource) and not m64`
+  produced `176 passed, 1439 deselected`. No diagnostic drift, assertion
+  crash, generic pass failure, runtime miscompile, or new independent `FZ-*`.
