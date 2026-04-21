@@ -26795,3 +26795,14 @@ Open after this slice:
     `.ld.red.`, an opcode fallback, an optimizer abort, and an allocator
     assertion;
   - `git diff --check` passed in the lane.
+
+## 2026-04-21: structural fuzzer checkpoint after Round 8 docs
+
+- Ran the checked-in structural fuzzer after promoting `FZ-20260421-0009` and
+  after integrating Round 8 Lane A/C/D report state.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `CUDA_VISIBLE_DEVICES=0`
+    `TRITON_CACHE_DIR=/tmp/triton-cache-local-r9-structural`
+    `PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+    reported `9 passed, 24 xfailed`.
