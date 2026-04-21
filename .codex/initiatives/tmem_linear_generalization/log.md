@@ -30620,6 +30620,18 @@ Open after this slice:
   harness limitation until a faithful JIT-equivalent `triton-opt` pipeline
   proves otherwise.
 
+## 2026-04-21: Round 35 allocator-pressure runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_allocator_pressure_round35.md`.
+- Required `make -j8` was a no-op.
+- Selector: `alloc_lifetime or mma_scaled or lhs_subslice`.
+- Collection: `303/1615`.
+- Split-4 result: `303 passed` (`76/76/76/75`).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`.
+
 ## 2026-04-21: Round 35 two-CTA proxy and subword guardrails
 
 - Wrote

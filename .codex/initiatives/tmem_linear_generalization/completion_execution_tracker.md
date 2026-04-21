@@ -2759,3 +2759,10 @@ discovery.
   `100/1615` and passed as `100 passed`. No compiler crash, false unsupported
   diagnostic, opcode mismatch, runtime miscompile, clean-boundary drift,
   unexpected xfail/pass transition, or new independent `FZ-*`.
+
+- 2026-04-21: Round 35 allocator-pressure runtime guardrail completed.
+  Report: `agents/fuzz_allocator_pressure_round35.md`. Selector
+  `alloc_lifetime or mma_scaled or lhs_subslice` collected `303/1615` and
+  passed split-4 as `303 passed` (`76/76/76/75`). No compiler crash, false
+  unsupported diagnostic, opcode mismatch, runtime miscompile, clean-boundary
+  drift, unexpected xfail/pass transition, or new independent `FZ-*`.

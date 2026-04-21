@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 35 allocator-pressure runtime guardrail completed.
+  Report: `agents/fuzz_allocator_pressure_round35.md`. Required `make -j8`
+  was a no-op. Selector `alloc_lifetime or mma_scaled or lhs_subslice`
+  collected `303/1615` rows and passed split-4 as `303 passed`
+  (`76/76/76/75`). No compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 Round 35 two-CTA proxy/commit and subword guardrails
   completed. Report: `agents/fuzz_twocta_subword_guardrails_round35.md`.
   Required `make -j8` was a no-op. Scale/proxy selector collected `34/1615`
