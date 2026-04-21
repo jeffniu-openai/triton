@@ -398,6 +398,47 @@ Every structural fuzz case records:
   `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs`, and
   `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan`.
 
+### Lane R4-C Round 4, ld/st Read-Only Descriptor-View Fuzzing
+
+- Time: 2026-04-21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_readonly_round4.md`
+- Scope: expand `FZ-20260421-0003` around read-only descriptor-view loads
+  across dtype/subword variants, packet families, M/N boundaries, two-CTA
+  lifted views, and roundtrip masking controls.
+- Result: no backend repair attempted; found one non-overlapping subword
+  sentinel and several same-root stability rows.
+- Key findings:
+  - `f32`/`i32` chain1 rows reproduce the existing row-stripe failure;
+  - `f16` chain2 identity `64x32 16x64b` miscompiles even though f32/i32
+    chain2 identity was green, making it a distinct subword read candidate;
+  - f8 legal smoke rows passed;
+  - direct two-CTA indexed-view controls passed, while chained two-CTA
+    descriptor views rejected cleanly;
+  - same-view roundtrip controls still mask the read-only address bug.
+- Recommended additional strict xfail sentinel:
+  `ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b`.
+
+### Round 4 Local Promotion / Validation
+
+- Time: 2026-04-21 08:50 UTC
+- Promoted eight round-four sentinels into
+  `python/test/gluon/test_tmem_structural_fuzzer.py` without backend repairs:
+  - `generic-pass-dynamic-if-chain0-false-16x128b`;
+  - `generic-pass-dynamic-if-chain0-inline`;
+  - `generic-pass-tuple-mixed-captures-chain0`;
+  - `generic-pass-layout-conversion-pressure-chain0-16x128b`;
+  - `ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b`;
+  - `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max`;
+  - `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs`;
+  - `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan`.
+- Validation:
+  - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
+  - collect-only found `29` structural-fuzzer nodeids;
+  - the eight new exact nodeids reported `8 xfailed` across four GPUs;
+  - full structural fuzzer reported `9 passed, 20 xfailed`;
+  - `git diff --check` passed.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -476,6 +517,11 @@ Every structural fuzz case records:
     chain0-specific in this harness;
   - report:
     `.codex/initiatives/tmem_linear_generalization/agents/fuzz_helper_cf_round4.md`.
+- Promotion status: added checked-in strict xfails:
+  - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-if-chain0-false-16x128b]`;
+  - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-dynamic-if-chain0-inline]`;
+  - `test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow[generic-pass-tuple-mixed-captures-chain0]`;
+  - `test_tmem_structural_fuzzer_generic_pass_layout_conversion_pressure[generic-pass-layout-conversion-pressure-chain0-16x128b]`.
 
 ### FZ-20260421-0003: ld/st descriptor-view chains miscompile
 
@@ -510,6 +556,14 @@ Every structural fuzz case records:
     view mapping;
   - added checked-in strict xfail:
     `test_tmem_structural_fuzzer_ldst_descriptor_view_read[ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b]`.
+- Round 4 expansion:
+  - `f16` chain2 identity `64x32 16x64b` miscompiles with subword packet
+    opcodes while f32/i32 chain2 identity is green in the R4-C harness;
+  - f8 smoke rows passed;
+  - chained two-CTA descriptor views reject cleanly while direct two-CTA
+    indexed views pass;
+  - added checked-in strict xfail:
+    `test_tmem_structural_fuzzer_ldst_descriptor_view_read[ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b]`.
 
 ### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
 
@@ -557,6 +611,18 @@ Every structural fuzz case records:
 - Promotion status: the 2CTA indexed sentinel is now checked in as strict
   xfail:
   `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min]`.
+- Round 4 expansion:
+  - 2CTA indexed `load_max`, `load_min(abs=True)`, and NaN-propagating
+    `load_min` all pass runtime correctness but emit plain `tcgen05.ld` rather
+    than `.ld.red.`;
+  - opcode loss also spans `N=32/64/128`, chain0/1/2, and additional row/col
+    layouts;
+  - row/col chain1 variants found a separate optimizer crash, kept report-only
+    until a crash-safe checked-in harness is added;
+  - added checked-in strict xfails:
+    `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max]`,
+    `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs]`, and
+    `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan]`.
 
 ### FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation
 
@@ -603,25 +669,26 @@ Every structural fuzz case records:
   optional next minimization is a lit `ttg.memdesc_index` crash/clean-error
   contract if repair work needs a compiler-only reproducer.
 - FZ-20260421-0002 is now covered by checked-in Python runtime xfail repros
-  for dynamic `if`, mixed tensor+memdesc capture, and layout-conversion
-  pressure variants.
+  for dynamic `if`, false-branch 16x128b, inline chain0, mixed and tuple-like
+  tensor+memdesc capture, and layout-conversion pressure variants.
 - FZ-20260421-0003 and FZ-20260421-0004 are now covered by checked-in Python
   runtime xfail repros, including the round-three chain2 col-reverse ld/st
-  packet sentinel and 2CTA indexed ld.red opcode sentinel.
+  packet sentinel, the round-four f16 subword ld/st sentinel, and 2CTA indexed
+  ld.red min/max/abs/NaN opcode sentinels.
 - FZ-20260421-0005 is now covered by a checked-in subprocess xfail. Optional
   next minimization remains capturing the MLIR reproducer and rerunning with
   `triton-opt --run-reproducer`.
 - FZ-20260421-0006 is now covered by a checked-in Python xfail. Expand around
   adjacent row/col permutations before classifying as a true boundary.
-- Round 4 discovery queue:
+- Round 5 discovery queue:
   - continue structural fuzzing without backend repairs until new findings
     stop or the user pivots;
-  - expand helper-returned view/control-flow variants around `FZ-20260421-0002`
-    and decide whether false-branch / `16x64b` rows need additional sentinels;
-  - capture a compact lit reproducer for minimized dynamic `memdesc_index`
-    if useful for later repair;
-  - stress ld/st read-only descriptor views with dtype/subword and 2CTA
-    variants that existing roundtrip tests can mask;
-  - probe `ld.red` view provenance across additional 2CTA indexed layouts and
-    non-min reductions while keeping clean diagnostics separate from opcode
-    fallback.
+  - investigate the report-only 2CTA indexed ld.red row/col chain1 optimizer
+    crash with a crash-safe checked-in repro if it remains stable;
+  - keep dynamic `memdesc_index` lit candidate report-only until the intended
+    contract is decided;
+  - continue probing clean-negative boundaries separately from opcode fallback
+    and runtime miscompile buckets;
+  - use future subagents on surfaces not yet stressed by the structural
+    fuzzer, especially copy/ld.red interactions and descriptor-view chains
+    through additional generic passes.

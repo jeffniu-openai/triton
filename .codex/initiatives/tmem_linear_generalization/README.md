@@ -5106,3 +5106,15 @@ When resuming the initiative:
   full structural fuzzer passed as `9 passed, 12 xfailed`.
 - Continue fuzzing and cataloging without backend repairs until interrupted or
   until new findings stop.
+
+## Latest: 2026-04-21 08:50 UTC structural fuzzing Round 4 promotion
+
+- Promoted eight additional strict xfail sentinels from round-four reports:
+  helper/control-flow false branch `16x128b`, inline chain0, tuple-like mixed
+  capture, layout-pressure `16x128b`, f16 ld/st subword chain2 identity, and
+  2CTA indexed ld.red max/abs/NaN opcode-loss rows.
+- Validation: py-compile passed; collect-only found `29` structural-fuzzer
+  nodeids; exact new sentinels xfailed; full structural fuzzer passed as
+  `9 passed, 20 xfailed`.
+- Report-only follow-ups: dynamic `memdesc_index` lit policy and the separate
+  R4-D row/col chain1 optimizer crash.

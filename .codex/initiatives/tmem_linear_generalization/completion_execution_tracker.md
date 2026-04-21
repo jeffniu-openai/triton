@@ -1266,3 +1266,14 @@ signal handling:
   scaled-MMA descriptor/narrow/tile selectors (`139/139`). Current active
   phase remains continuous fuzzing/cataloging with no backend fixes until
   findings stop or the user pivots.
+
+- 2026-04-21 08:50 UTC: completed TMEM structural fuzzing round 4 sentinel
+  promotion. Added eight strict xfails for non-overlapping round-four findings:
+  helper/control-flow false branch `16x128b`, inline chain0, tuple-like mixed
+  capture, layout-pressure `16x128b`, f16 ld/st subword chain2 identity, and
+  2CTA indexed ld.red max/abs/NaN opcode-loss rows. Validation passed:
+  py-compile, collect-only `29` nodeids, exact new sentinels `8 xfailed`, and
+  full structural fuzzer `9 passed, 20 xfailed`. Report-only follow-ups:
+  dynamic `memdesc_index` lit candidate policy, R4-D row/col chain1 optimizer
+  crash with a crash-safe harness, and continued clean-negative vs opcode-loss
+  separation.

@@ -14452,6 +14452,35 @@ rejection, not rescue
   - stress ld/st read-only descriptor views where roundtrips mask bugs;
   - expand 2CTA indexed ld.red provenance and non-min reductions.
 
+## Current: 2026-04-21 08:50 UTC structural fuzzing Round 4 promoted sentinels
+
+- Active campaign mode remains discovery-only; do not start backend repairs
+  while new findings continue unless the user explicitly pivots.
+- Current pushed HEAD before this local promotion was
+  `1af00b904 Document R4-A helper control-flow fuzzing`.
+- New checked-in strict xfail sentinels:
+  - `generic-pass-dynamic-if-chain0-false-16x128b`;
+  - `generic-pass-dynamic-if-chain0-inline`;
+  - `generic-pass-tuple-mixed-captures-chain0`;
+  - `generic-pass-layout-conversion-pressure-chain0-16x128b`;
+  - `ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b`;
+  - `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max`;
+  - `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs`;
+  - `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan`.
+- Validation evidence:
+  - py-compile passed for the structural fuzzer;
+  - collect-only found `29` nodeids;
+  - exact new sentinels xfailed individually across GPUs 0-3;
+  - full structural fuzzer reported `9 passed, 20 xfailed`;
+  - `git diff --check` should be rerun before commit.
+- Report-only current boundaries:
+  - compact dynamic `memdesc_index` lit candidate exists under `/tmp`, but keep
+    it out of lit until the intended contract is decided;
+  - R4-D row/col chain1 optimizer crash is separate from ld.red opcode loss and
+    needs a crash-safe checked-in harness before promotion;
+  - 2CTA chained ld/st descriptor views currently reject cleanly; direct 2CTA
+    controls pass.
+
 ## Current: 2026-04-21 02:51 UTC max-CTA coverage added
 
 - User asked whether coverage also checks more than 4 CTAs, up to the hardware

@@ -26444,3 +26444,32 @@ Open after this slice:
   - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_opcode_round3.md`;
   - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_copy_round3.md`;
   - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_round3.md`.
+
+## 2026-04-21 08:50 UTC: Structural fuzzing Round 4 sentinel promotion
+
+- Continued the discovery-only TMEM structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Round-four reports now cover helper/control-flow expansion, dynamic
+  `memdesc_index` lit minimization, ld/st read-only dtype/subword coverage,
+  and 2CTA indexed ld.red opcode selection.
+- Promoted eight non-overlapping strict xfail sentinels into
+  `python/test/gluon/test_tmem_structural_fuzzer.py`:
+  - dynamic-if false branch chain0 with `16x128b`;
+  - true inline/no-helper chain0 dynamic-if repro;
+  - tuple-like mixed memdesc+tensor capture;
+  - layout-pressure chain0 with `16x128b`;
+  - f16 chain2 identity `64x32 16x64b` ld/st read-only miscompile;
+  - 2CTA indexed ld.red `max`, `min(abs=True)`, and NaN-propagating `min`.
+- Left the R4-D row/col chain1 optimizer crash report-only for now because it
+  needs a separate crash-safe harness and should not be conflated with ld.red
+  opcode-loss assertions.
+- Validation:
+  - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
+  - collect-only found `29` structural-fuzzer nodeids;
+  - exact new sentinels reported `8 xfailed` across four GPUs;
+  - full structural fuzzer reported `9 passed, 20 xfailed`.
+- Report-only artifacts:
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_helper_cf_round4.md`;
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_memdesc_index_lit_round4.md`;
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_readonly_round4.md`;
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_2cta_round4.md`.
