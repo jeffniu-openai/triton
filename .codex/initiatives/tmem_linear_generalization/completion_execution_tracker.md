@@ -236,6 +236,11 @@ The project is complete when:
   `21/21/21/19` tests, and the aggregate result was
   `62 passed, 20 skipped`. Durations were stored at
   `/tmp/tmem_local_r10_rank5_higher_rank_durations.json`.
+  2026-04-21 local Round 10 `ld/st` row/column descriptor runtime slice stayed
+  green: collect-only selected `32/1615`, split-4 across GPUs 0-3 selected
+  `8/8/8/8` tests, and the aggregate result was `8 passed, 24 skipped`.
+  Durations were stored at
+  `/tmp/tmem_local_r10_ldst_rowcol_descriptor_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

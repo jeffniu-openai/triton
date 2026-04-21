@@ -40,6 +40,13 @@
   Durations were stored at
   `/tmp/tmem_local_r10_rank5_higher_rank_durations.json`.
 
+- Latest: 2026-04-21 local Round 10 `ld/st` row/column descriptor runtime
+  slice stayed green. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and rowcol and descriptor and not reports'`
+  selected `32/1615` tests. Split-4 execution across GPUs 0-3 selected
+  `8` tests per shard; aggregate result `8 passed, 24 skipped`. Durations
+  were stored at `/tmp/tmem_local_r10_ldst_rowcol_descriptor_durations.json`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

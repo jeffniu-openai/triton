@@ -105,6 +105,13 @@ When resuming the initiative:
   durations at `/tmp/tmem_local_r10_rank5_higher_rank_durations.json`.
   Aggregate result: `62 passed, 20 skipped`.
 
+- 2026-04-21: local Round 10 `ld/st` row/column descriptor slice stayed
+  green. The selector `ldst and rowcol and descriptor and not reports`
+  collected `32/1615` tests and ran split-4 across GPUs 0-3 with stable
+  caches and durations at
+  `/tmp/tmem_local_r10_ldst_rowcol_descriptor_durations.json`. Aggregate
+  result: `8 passed, 24 skipped`.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

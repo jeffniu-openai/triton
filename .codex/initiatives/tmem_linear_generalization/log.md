@@ -27020,3 +27020,19 @@ Open after this slice:
   - group 3/GPU 2: `4 passed, 17 skipped, 1594 deselected in 5.82s`;
   - group 4/GPU 3: `19 passed, 1596 deselected in 48.27s`.
 - Aggregate: `62 passed, 20 skipped`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 ld/st row/column descriptor slice
+
+- Collected and ran a compact `ld/st` row/column descriptor selector adjacent
+  to the known descriptor-chain packet-order bucket.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and rowcol and descriptor and not reports'`
+  selected `32 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_ldst_rowcol_descriptor_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and rowcol and descriptor and not reports'`
+- Result:
+  - group 1/GPU 0: `8 passed, 1607 deselected in 19.12s`;
+  - group 2/GPU 1: `8 skipped, 1607 deselected in 2.23s`;
+  - group 3/GPU 2: `8 skipped, 1607 deselected in 2.92s`;
+  - group 4/GPU 3: `8 skipped, 1607 deselected in 3.18s`.
+- Aggregate: `8 passed, 24 skipped`. No backend repairs were attempted.
