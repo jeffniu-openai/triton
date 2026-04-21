@@ -7,7 +7,14 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 38 clean-boundary guardrail
+Latest fuzzing checkpoint: 2026-04-21 Round 38 `test_core.py` TMEM/MMAv5
+guardrail completed. Report:
+`agents/fuzz_test_core_tmem_guardrail_round38.md`. Selector
+`tcgen05 and (tmem or mma or copy or multicast or mbarrier)` over
+`python/test/gluon/test_core.py` collected `123/18114` and passed/stably
+skipped split-4 as `120 passed, 3 skipped`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 38 clean-boundary guardrail
 completed. Report: `agents/fuzz_clean_boundary_guardrail_round38.md`.
 Selector `(clean_unsupported or clean_error or reports_clean or tmem_oor) and not reports`
 collected `22/1615` and passed as `22 passed`. No new independent `FZ-*`.

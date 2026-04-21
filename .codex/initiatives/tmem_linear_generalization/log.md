@@ -30766,6 +30766,20 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:35 UTC: Round 38 test_core.py TMEM/MMAv5 guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_test_core_tmem_guardrail_round38.md`.
+- Selector:
+  `tcgen05 and (tmem or mma or copy or multicast or mbarrier)` over
+  `python/test/gluon/test_core.py`.
+- Collection: `123/18114`.
+- Split-4 result: `120 passed, 3 skipped`
+  (`28 passed/3 skipped`, `31 passed`, `31 passed`, `30 passed` by group).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, clean-boundary drift, unexpected xfail/pass
+  transition, or new independent `FZ-*`. Backend repair remains deferred.
+
 ## 2026-04-21 14:30 UTC: Round 38 clean-boundary guardrail
 
 - Wrote

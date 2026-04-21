@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:35 UTC Round 38 `test_core.py` TMEM/MMAv5 guardrail
+  completed. Report:
+  `agents/fuzz_test_core_tmem_guardrail_round38.md`. Selector
+  `tcgen05 and (tmem or mma or copy or multicast or mbarrier)` over
+  `python/test/gluon/test_core.py` collected `123/18114` and passed/stably
+  skipped split-4 as `120 passed, 3 skipped` (`28/3 skipped`, `31`, `31`,
+  `30`). No compiler crash, false unsupported diagnostic, opcode absence,
+  runtime miscompile, clean-boundary drift, unexpected xfail/pass transition,
+  or new independent `FZ-*`.
+
 - Latest: 2026-04-21 14:30 UTC Round 38 clean-boundary guardrail completed.
   Report: `agents/fuzz_clean_boundary_guardrail_round38.md`. Selector
   `(clean_unsupported or clean_error or reports_clean or tmem_oor) and not reports`
