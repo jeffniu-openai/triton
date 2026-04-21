@@ -60,6 +60,16 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:27 UTC Round 44 descriptor/high-rank positive repeat
+  completed. Artifact: `agents/fuzz_descriptor_high_rank_repeat_round44.md`.
+  Required `make -j8` reported `no work to do`. Selector
+  `(descriptor_compositions or higher_rank or rank5 or multidim_slice or
+  half_rows) and not reports and not resource and not clean` collected
+  `140/1615` rows and passed/stably skipped split-4 as
+  `120 passed, 20 skipped` (`35`, `35`, `27/8`, `23/12`). No compiler crash,
+  false unsupported diagnostic, clean-boundary drift, unexpected pass/fail
+  transition, runtime miscompile, warm-cache sensitivity, or new independent
+  `FZ-*`; backend repair remains deferred.
   2026-04-21 14:26 UTC Round 43 mixed MMA sequence subagent lane integrated.
   Artifact: `agents/fuzz_mma_sequence_mix_round43.md`. Required `make -j8`
   reported `no work to do`. Checked-in selector over plain/scaled MMAv5,

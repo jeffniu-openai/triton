@@ -1,3 +1,17 @@
+## 2026-04-21 14:27 UTC: Round 44 descriptor/high-rank positive repeat
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_descriptor_high_rank_repeat_round44.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Collection selector:
+  `(descriptor_compositions or higher_rank or rank5 or multidim_slice or half_rows) and not reports and not resource and not clean`.
+- Collection/result: `140/1615` rows, split-4 as
+  `120 passed, 20 skipped` (`35`, `35`, `27/8`, `23/12`).
+- Classification: no compiler crash, false unsupported diagnostic,
+  clean-boundary drift, unexpected pass/fail transition, runtime miscompile,
+  warm-cache sensitivity, or new independent `FZ-*`.
+
 ## 2026-04-21 14:26 UTC: Round 43 mixed MMA sequence subagent lane
 
 - Integrated subagent report
