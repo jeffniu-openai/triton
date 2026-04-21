@@ -1,6 +1,30 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 23:04 UTC validation slice refreshed the broad positive
+- Latest: 2026-04-21 23:56 UTC repair slice fixed the live rank-5
+  selected-parent `ld/st` backend gap after the broad MMAv5 refresh. The
+  remaining small rank-5 rows were real compiler/backend coverage gaps, not
+  just stale markers: full-view replay could choose a descriptor rooted in
+  `memdesc_index(memdesc_subslice(...))` that the direct ld/st verifier could
+  not materialize, and an earlier `32x32b.x64` plan could repeat packets
+  through TMEM rows. Implementation: `OptimizeTMemLayouts` now canonicalizes
+  leading unit subslice plus index replay bases into the equivalent parent
+  index, compares replay bases structurally through constant index chains, and
+  uses physical base support only for that canonicalized case while preserving
+  existing full-view replay behavior elsewhere. Storeback detection now keeps
+  pointwise load/storeback replay in physical order, while ordinary reads and
+  reductions continue to preserve logical view semantics. `TensorMemoryUtils`
+  rejects vectorized `32x32b` packet repetition that advances through rows, and
+  LLVM lowering splits packed row/column offsets so row bits are added to the
+  TMEM base register instead of being emitted as a column immediate. Rank-5
+  marker expectations now allow the intentional subslice/index
+  canonicalization. Validation: required `make -j8`; exact small rank-5 repro
+  `1 passed`; full rank-5 ld/st descriptor selector `23 passed, 10 skipped`;
+  full structural fuzzer split-4 `36 passed`; targeted lit `2 passed`;
+  runtime and structural `py_compile` passed; broad MMAv5 split-4 passed as
+  `133 passed, 14 skipped`, `147 passed`, `147 passed`, and `147 passed`;
+  `git diff --check` passed. Remaining checked-in structural xfails: none.
+
+- Previous: 2026-04-21 23:04 UTC validation slice refreshed the broad positive
   MMAv5/frontier selector and fixed stale rank-5 descriptor-view TTGIR marker
   expectations. The selector `mma and not reports and not clean and not
   unsupported` collected `588/1623` rows. First run failed only three two-CTA

@@ -1,8 +1,34 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 23:04 UTC
+Last updated: 2026-04-21 23:56 UTC
 
-Latest validation checkpoint: 2026-04-21 23:04 UTC broad positive MMAv5
+Latest repair checkpoint: 2026-04-21 23:56 UTC rank-5 selected-parent `ld/st`
+backend gap is repaired. Current-head rank-5 replay showed six small rows still
+failed after marker cleanup, and one earlier unit-parent row had exposed a
+wrong-result risk from vectorized row-advancing `32x32b.x64` packet repetition.
+Root causes: full-view replay could try to direct-load/store an
+`index(subslice(parent, [1, 0, 0]), 0)` descriptor instead of the equivalent
+`index(parent, 1)` descriptor, support selection could choose a logical
+alias-layout packetization for a physical storeback, and lowering packed row
+bits into the bracket offset confused row displacement with the column
+immediate. Implementation: full-view replay now canonicalizes leading unit
+subslice plus index bases to the parent index only for that case, tracks
+equivalent replay bases through constant index chains, uses physical base
+support for canonicalized storeback while preserving existing replay behavior
+elsewhere, rejects vectorized `32x32b` packet repetition through TMEM rows, and
+splits row/column packet offsets in LLVM lowering. Runtime-matrix rank-5
+markers now allow the canonicalized subslice/index to disappear while keeping
+runtime correctness and exact `tcgen05` opcode counts. Validation: required
+`make -j8`; exact small repro `1 passed`; full rank-5 ld/st descriptor selector
+`23 passed, 10 skipped`; full structural fuzzer split-4 `36 passed`; lit
+`TritonNvidiaGPU/tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`;
+runtime and structural `py_compile` passed; broad MMAv5 selector split-4
+`133 passed, 14 skipped`, `147 passed`, `147 passed`, `147 passed`;
+`git diff --check` passed. Remaining checked-in structural xfails: none. Next
+frontier: continue staged broad validation and then move to heuristic cleanup
+or remaining non-structural completion phases.
+
+Previous validation checkpoint: 2026-04-21 23:04 UTC broad positive MMAv5
 frontier is green on current head after stale rank-5 descriptor-view marker
 cleanup. Selector `mma and not reports and not clean and not unsupported`
 collected `588/1623` rows. Initial split-4 run had `3` failures, all two-CTA

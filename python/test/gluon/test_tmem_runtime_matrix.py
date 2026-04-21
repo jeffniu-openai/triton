@@ -8178,13 +8178,9 @@ def test_tmem_runtime_matrix_ldst_descriptor_rank5_small_roundtrip(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
-    # Exact two-CTA lifted layouts can canonicalize the no-op reshape/transpose
-    # pair away while preserving the nontrivial prefix descriptor selection as
-    # an indexed subslice.
-    if layout_group != "twocta":
-        assert "ttg.memdesc_reshape" in ttgir
-        assert "ttg.memdesc_trans" in ttgir
+    # Full-view replay may canonicalize a leading unit subslice plus index into
+    # the equivalent parent index before direct tcgen05 ld/st. Runtime
+    # correctness and exact opcode counts above are the semantic checks.
     if num_ctas == 2:
         assert "twoCTAs = true" in ttgir
 
@@ -8221,13 +8217,9 @@ def test_tmem_runtime_matrix_ldst_descriptor_rank5_unit_parent_n256_roundtrip(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    # For the exact two-CTA MMAv5 unit-parent layout all prefix slices and the
-    # shape view chain are semantic no-ops after indexing, so the frontend is
-    # allowed to fold them before TTGIR emission.
-    if case_name != "twocta_mmav5":
-        assert "ttg.memdesc_subslice" in ttgir
-        assert "ttg.memdesc_reshape" in ttgir
-        assert "ttg.memdesc_trans" in ttgir
+    # The unit-parent rank-5 prefix and shape view chain are semantic no-ops
+    # after indexing, so the frontend is allowed to fold subslice/reshape/trans
+    # descriptors before TTGIR emission.
     if num_ctas == 2:
         assert "twoCTAs = true" in ttgir
 

@@ -9096,6 +9096,25 @@ computeTMemLdStEncodingInfoImpl(
                                 prefersTwoCTAScalesDescriptorViewI16x32bx2);
   if (failed(info))
     return failure();
+  auto packetRepetitionTouchesRow = [&]() {
+    if (!info->reps.hasInDim(kReg) || !info->reps.hasOutDim(kRow))
+      return false;
+    for (unsigned idx = 0; idx < info->reps.getInDimSizeLog2(kReg); ++idx)
+      if (info->reps.getBasis(kReg, idx, kRow) != 0)
+        return true;
+    return false;
+  };
+  if (info->atom == TMemAccessAtom::I32x32b &&
+      info->numRegsPerMessage > getElementsPerThread(info->atom) &&
+      packetRepetitionTouchesRow()) {
+    if (emitError) {
+      emitError() << "Failed to lower TMEM load/store: vectorized 32x32b "
+                     "packet repetition must not advance through TMEM rows. "
+                     "Use a register layout whose packet repetition stays in "
+                     "columns, or scalarize the row-discontiguous view.";
+    }
+    return failure();
+  }
   // Sparse higher-rank TMEM views can carry logical selection bits as zero
   // column bases. Collapsing those views into a single wide 32x32b.xN message
   // over-updates the backing tile; retry without vectorization so the lowering

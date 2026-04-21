@@ -434,14 +434,21 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
       // colOffset.
       staticOffset = col | (row << 16);
     }
+    uint32_t packedOffset = static_cast<uint32_t>(staticOffset);
+    uint32_t rowOffset = packedOffset & 0xffff0000u;
+    int colOffset = static_cast<int>(packedOffset & 0xffffu);
+    Value packetBase = tmemBase;
+    if (rowOffset != 0)
+      packetBase = b.add(packetBase, b.i32_val(rowOffset));
+
     if (isStore) {
       auto chunk = to_vector(vals.slice(i, valsPerMessage));
-      createTensorMemoryStore(loc, tmemBase, /*colOffset=*/staticOffset, chunk,
+      createTensorMemoryStore(loc, packetBase, /*colOffset=*/colOffset, chunk,
                               /*secondHalfOffset=*/secondHalfOffset, pred,
                               /*unpacked=*/unpacked, atom, rewriter);
     } else {
       auto [outVals, redval] =
-          createTensorMemoryLoad(loc, ctx, tmemBase, /*colOffset=*/staticOffset,
+          createTensorMemoryLoad(loc, ctx, packetBase, /*colOffset=*/colOffset,
                                  /*secondHalfOffset=*/secondHalfOffset,
                                  /*unpacked=*/unpacked,
                                  /*numRegPerMessage=*/valsPerMessage, atom,

@@ -508,6 +508,43 @@ static bool hasReductionAlongNUse(Value value) {
   return foundReductionAlongN;
 }
 
+static bool areEquivalentReplayBaseValues(Value lhs, Value rhs) {
+  if (lhs == rhs)
+    return true;
+  if (lhs.getType() != rhs.getType())
+    return false;
+
+  auto getConstantIndexKey =
+      [](Value value) -> std::optional<std::pair<Value, int64_t>> {
+    auto indexOp = value.getDefiningOp<ttg::MemDescIndexOp>();
+    if (!indexOp)
+      return std::nullopt;
+
+    APInt indexValue;
+    if (!matchPattern(indexOp.getIndex(), m_ConstantInt(&indexValue)))
+      return std::nullopt;
+
+    Value src = indexOp.getSrc();
+    int64_t linearIndex = indexValue.getSExtValue();
+    if (auto subslice = src.getDefiningOp<ttg::MemDescSubsliceOp>()) {
+      auto offsets = subslice.getOffsets();
+      if (offsets.empty() ||
+          llvm::any_of(offsets.drop_front(), [](int32_t value) {
+            return value != 0;
+          }))
+        return std::nullopt;
+      src = subslice.getSrc();
+      linearIndex += offsets.front();
+    }
+    return std::make_pair(src, linearIndex);
+  };
+
+  auto lhsKey = getConstantIndexKey(lhs);
+  auto rhsKey = getConstantIndexKey(rhs);
+  return lhsKey && rhsKey && lhsKey->second == rhsKey->second &&
+         areEquivalentReplayBaseValues(lhsKey->first, rhsKey->first);
+}
+
 static bool isDerivedFromTMemLoadOfBase(Value value, Value base) {
   SmallVector<Value> worklist{value};
   SmallPtrSet<Value, 8> seen;
@@ -521,10 +558,10 @@ static bool isDerivedFromTMemLoadOfBase(Value value, Value base) {
       continue;
 
     if (auto load = dyn_cast<TMEMLoadOp>(def)) {
-      if (load.getSrc() == base)
+      if (areEquivalentReplayBaseValues(load.getSrc(), base))
         return true;
       auto match = matchReplayableFullView(load.getSrc());
-      if (match && match->base == base)
+      if (match && areEquivalentReplayBaseValues(match->base, base))
         return true;
       continue;
     }
@@ -535,6 +572,42 @@ static bool isDerivedFromTMemLoadOfBase(Value value, Value base) {
     }
   }
   return false;
+}
+
+static bool shouldApplyReplayFullViewTransforms(
+    TMEMLoadOp loadOp, const TMemReplayFullViewMatch &match) {
+  if (hasReductionAlongNUse(loadOp.getResult()))
+    return true;
+
+  SmallVector<Value> worklist{loadOp.getResult()};
+  SmallPtrSet<Value, 8> seen;
+  bool storesBackToSameView = false;
+  while (!worklist.empty()) {
+    Value value = worklist.pop_back_val();
+    if (!seen.insert(value).second)
+      continue;
+
+    for (Operation *user : value.getUsers()) {
+      if (auto store = dyn_cast<TMEMStoreOp>(user)) {
+        auto storeMatch = matchReplayableFullView(store.getDst());
+        Value storeBase = storeMatch ? storeMatch->base : store.getDst();
+        if (!areEquivalentReplayBaseValues(storeBase, match.base))
+          return true;
+        storesBackToSameView = true;
+        continue;
+      }
+
+      if (isa<ttg::ConvertLayoutOp, ReshapeOp, TransOp>(user) ||
+          user->hasTrait<OpTrait::Elementwise>()) {
+        llvm::append_range(worklist, user->getResults());
+        continue;
+      }
+
+      return true;
+    }
+  }
+
+  return !storesBackToSameView;
 }
 
 static Value lowerLeadingSliceViewLoad(PatternRewriter &rewriter, Location loc,
@@ -677,7 +750,8 @@ getRequestedTMemLdStAtom(Value memDesc, RankedTensorType regTy, int maxnreg) {
 static std::optional<RankedTensorType>
 getReplayFullViewSupportTensorType(Value base, Value view,
                                    RankedTensorType requestedTy,
-                                   unsigned numWarps, int maxnreg) {
+                                   unsigned numWarps, int maxnreg,
+                                   bool allowRequestedTy = true) {
   auto baseTy = dyn_cast<ttg::MemDescType>(base.getType());
   auto desiredAtom = getRequestedTMemLdStAtom(view, requestedTy, maxnreg);
   if (!desiredAtom && view != base)
@@ -750,7 +824,7 @@ getReplayFullViewSupportTensorType(Value base, Value view,
     }
     return atoms;
   }();
-  if (baseTy && desiredAtom &&
+  if (allowRequestedTy && baseTy && desiredAtom &&
       llvm::equal(baseTy.getShape(), requestedTy.getShape()) &&
       isSupportedByBase(requestedTy, *desiredAtom))
     return requestedTy;
@@ -853,6 +927,42 @@ getReplayFullViewSupportTensorType(Value base, Value view,
     return candidate;
 
   return getTMemLdStDirectSupportTensorType(base, numWarps);
+}
+
+static std::optional<RankedTensorType>
+getReplayFullViewBaseSupportTensorType(Value base, Value view,
+                                       RankedTensorType requestedTy,
+                                       unsigned numWarps, int maxnreg) {
+  auto baseTy = dyn_cast<ttg::MemDescType>(base.getType());
+  if (!baseTy)
+    return std::nullopt;
+
+  auto desiredAtom = getRequestedTMemLdStAtom(view, requestedTy, maxnreg);
+  if (!desiredAtom && view != base)
+    desiredAtom = getRequestedTMemLdStAtom(base, requestedTy, maxnreg);
+
+  std::optional<TMemLdStRowPlan> queryRowPlan =
+      getTMemLdStRowPlanForQuery(base, baseTy);
+  for (std::optional<TMemLdStRowPlan> rowPlan :
+       {std::optional<TMemLdStRowPlan>{}, queryRowPlan}) {
+    for (TMemAccessAtom atom : getTMemLdStAtomSearchOrder(desiredAtom)) {
+      auto layout =
+          getDistributedLayoutForTmemLdSt(baseTy, atom, numWarps, rowPlan);
+      if (!layout)
+        continue;
+      Attribute encoding =
+          gpu::LinearEncodingAttr::get(baseTy.getContext(), std::move(*layout));
+      auto regTy =
+          RankedTensorType::get(baseTy.getShape(), baseTy.getElementType(),
+                                encoding);
+      FailureOr<TMemLdStEncodingInfo> info = computeTMemLdStEncodingInfo(
+          regTy, baseTy, maxnreg, /*emitError=*/{}, rowPlan);
+      if (succeeded(info) &&
+          isTMemAccessAtomCompatibleWithRequest(baseTy, desiredAtom, info->atom))
+        return regTy;
+    }
+  }
+  return std::nullopt;
 }
 
 static SmallVector<int64_t>
@@ -1040,19 +1150,115 @@ lowerReplayHalfSliceViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
   return success();
 }
 
+static Value materializeDirectLeadingSubsliceIndexBase(PatternRewriter &rewriter,
+                                                       Location loc,
+                                                       Value base) {
+  auto indexOp = base.getDefiningOp<ttg::MemDescIndexOp>();
+  if (!indexOp)
+    return base;
+
+  APInt indexValue;
+  if (!matchPattern(indexOp.getIndex(), m_ConstantInt(&indexValue)))
+    return base;
+
+  auto subsliceOp = indexOp.getSrc().getDefiningOp<ttg::MemDescSubsliceOp>();
+  if (!subsliceOp)
+    return base;
+
+  auto srcTy = dyn_cast<ttg::MemDescType>(subsliceOp.getSrc().getType());
+  auto sliceTy = dyn_cast<ttg::MemDescType>(subsliceOp.getType());
+  auto baseTy = dyn_cast<ttg::MemDescType>(base.getType());
+  if (!srcTy || !sliceTy || !baseTy || srcTy.getRank() == 0 ||
+      sliceTy.getRank() != srcTy.getRank() ||
+      baseTy.getRank() + 1 != sliceTy.getRank())
+    return base;
+  if (!llvm::equal(sliceTy.getShape().drop_front(), baseTy.getShape()) ||
+      !llvm::equal(srcTy.getShape().drop_front(), baseTy.getShape()))
+    return base;
+
+  ArrayRef<int32_t> offsets = subsliceOp.getOffsets();
+  if (offsets.size() != static_cast<size_t>(srcTy.getRank()) ||
+      llvm::any_of(offsets.drop_front(), [](int32_t value) {
+        return value != 0;
+      }))
+    return base;
+
+  int64_t localIndex = indexValue.getSExtValue();
+  int64_t globalIndex = static_cast<int64_t>(offsets.front()) + localIndex;
+  if (localIndex < 0 || localIndex >= sliceTy.getShape().front() ||
+      globalIndex < 0 || globalIndex >= srcTy.getShape().front())
+    return base;
+
+  Value globalIndexValue =
+      arith::ConstantIntOp::create(rewriter, loc, globalIndex, 32);
+  auto directIndex = ttg::MemDescIndexOp::createChecked(
+      rewriter, loc, subsliceOp.getSrc(), globalIndexValue);
+  if (failed(directIndex) || directIndex->getType() != base.getType())
+    return base;
+  return directIndex->getResult();
+}
+
+static bool isDirectLeadingSubsliceIndexBase(Value base) {
+  auto indexOp = base.getDefiningOp<ttg::MemDescIndexOp>();
+  if (!indexOp)
+    return false;
+
+  APInt indexValue;
+  if (!matchPattern(indexOp.getIndex(), m_ConstantInt(&indexValue)))
+    return false;
+
+  auto subsliceOp = indexOp.getSrc().getDefiningOp<ttg::MemDescSubsliceOp>();
+  if (!subsliceOp)
+    return false;
+
+  auto srcTy = dyn_cast<ttg::MemDescType>(subsliceOp.getSrc().getType());
+  auto sliceTy = dyn_cast<ttg::MemDescType>(subsliceOp.getType());
+  auto baseTy = dyn_cast<ttg::MemDescType>(base.getType());
+  if (!srcTy || !sliceTy || !baseTy || srcTy.getRank() == 0 ||
+      sliceTy.getRank() != srcTy.getRank() ||
+      baseTy.getRank() + 1 != sliceTy.getRank())
+    return false;
+  if (!llvm::equal(sliceTy.getShape().drop_front(), baseTy.getShape()) ||
+      !llvm::equal(srcTy.getShape().drop_front(), baseTy.getShape()))
+    return false;
+
+  ArrayRef<int32_t> offsets = subsliceOp.getOffsets();
+  if (offsets.size() != static_cast<size_t>(srcTy.getRank()) ||
+      llvm::any_of(offsets.drop_front(), [](int32_t value) {
+        return value != 0;
+      }))
+    return false;
+
+  int64_t localIndex = indexValue.getSExtValue();
+  int64_t globalIndex = static_cast<int64_t>(offsets.front()) + localIndex;
+  return localIndex >= 0 && localIndex < sliceTy.getShape().front() &&
+         globalIndex >= 0 && globalIndex < srcTy.getShape().front();
+}
+
 static FailureOr<Value>
 lowerReplayFullViewValueLoad(PatternRewriter &rewriter, Location loc,
                              Value view, RankedTensorType resultTy,
                              const TMemReplayFullViewMatch &match,
                              unsigned numWarps, int maxnreg,
                              bool applyViewTransforms) {
-  auto maybeSupportTy = getReplayFullViewSupportTensorType(
-      match.base, view, resultTy, numWarps, maxnreg);
+  Value replayBase =
+      materializeDirectLeadingSubsliceIndexBase(rewriter, loc, match.base);
+  bool canonicalizedBase = replayBase != match.base;
+  std::optional<RankedTensorType> maybeSupportTy;
+  if (canonicalizedBase)
+    maybeSupportTy = getReplayFullViewBaseSupportTensorType(
+        replayBase, view, resultTy, numWarps, maxnreg);
+  if (canonicalizedBase && !maybeSupportTy && !applyViewTransforms)
+    maybeSupportTy = getTMemLdStDirectSupportTensorType(replayBase, numWarps);
+  if (!maybeSupportTy)
+    maybeSupportTy = getReplayFullViewSupportTensorType(
+        replayBase, view, resultTy, numWarps, maxnreg,
+        /*allowRequestedTy=*/!canonicalizedBase);
   if (!maybeSupportTy)
     return failure();
 
   RankedTensorType supportTy = *maybeSupportTy;
-  Value support = TMEMLoadOp::create(rewriter, loc, supportTy, match.base);
+  Value support = TMEMLoadOp::create(rewriter, loc, supportTy, replayBase);
   Value replacement = support;
   if (applyViewTransforms && supportTy != resultTy)
     replacement =
@@ -1063,11 +1269,15 @@ lowerReplayFullViewValueLoad(PatternRewriter &rewriter, Location loc,
 static FailureOr<Value>
 lowerReplayFullViewLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp,
                         const TMemReplayFullViewMatch &match) {
+  bool applyViewTransforms =
+      isDirectLeadingSubsliceIndexBase(match.base)
+          ? shouldApplyReplayFullViewTransforms(loadOp, match)
+          : hasReductionAlongNUse(loadOp.getResult());
   return lowerReplayFullViewValueLoad(
       rewriter, loadOp.getLoc(), loadOp.getSrc(),
       cast<RankedTensorType>(loadOp.getType()), match,
       ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp),
-      hasReductionAlongNUse(loadOp.getResult()));
+      applyViewTransforms);
 }
 
 static bool
@@ -1153,23 +1363,36 @@ lowerReplayFullViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
     return failure();
 
   int numWarps = ttg::lookupNumWarps(storeOp);
-  auto maybeSupportTy = getReplayFullViewSupportTensorType(
-      match.base, storeOp.getDst(),
-      cast<RankedTensorType>(storeOp.getSrc().getType()), numWarps,
-      getContextualMaxNReg(storeOp));
+  Value replayBase = materializeDirectLeadingSubsliceIndexBase(
+      rewriter, storeOp.getLoc(), match.base);
+  bool canonicalizedBase = replayBase != match.base;
+  std::optional<RankedTensorType> maybeSupportTy;
+  if (canonicalizedBase)
+    maybeSupportTy = getReplayFullViewBaseSupportTensorType(
+        replayBase, storeOp.getDst(),
+        cast<RankedTensorType>(storeOp.getSrc().getType()), numWarps,
+        getContextualMaxNReg(storeOp));
+  if (canonicalizedBase && !maybeSupportTy)
+    maybeSupportTy = getTMemLdStDirectSupportTensorType(replayBase, numWarps);
+  if (!maybeSupportTy)
+    maybeSupportTy = getReplayFullViewSupportTensorType(
+        replayBase, storeOp.getDst(),
+        cast<RankedTensorType>(storeOp.getSrc().getType()), numWarps,
+        getContextualMaxNReg(storeOp),
+        /*allowRequestedTy=*/!canonicalizedBase);
   if (!maybeSupportTy)
     return failure();
 
   RankedTensorType supportTy = *maybeSupportTy;
   Value supportReplacement = storeOp.getSrc();
   bool sourceAlreadyInReplayOrder =
-      isDerivedFromTMemLoadOfBase(supportReplacement, match.base);
+      isDerivedFromTMemLoadOfBase(supportReplacement, replayBase);
   if (!sourceAlreadyInReplayOrder && supportReplacement.getType() != supportTy)
     supportReplacement = applyInverseTensorViewTransforms(
         rewriter, storeOp.getLoc(), supportReplacement, match.transforms);
   supportReplacement = reshapeAndConvertToType(
       rewriter, storeOp.getLoc(), supportReplacement, supportTy);
-  TMEMStoreOp::create(rewriter, storeOp.getLoc(), match.base,
+  TMEMStoreOp::create(rewriter, storeOp.getLoc(), replayBase,
                       supportReplacement, storeOp.getPred());
   rewriter.eraseOp(storeOp);
   return success();
@@ -1437,10 +1660,14 @@ public:
                             const TMemReplayFullViewMatch &match) {
       Value view = yieldOp.getOperand(resultIndex);
       rewriter.setInsertionPoint(yieldOp);
+      bool applyViewTransforms =
+          isDirectLeadingSubsliceIndexBase(match.base)
+              ? shouldApplyReplayFullViewTransforms(loadOp, match)
+              : hasReductionAlongNUse(loadOp.getResult());
       FailureOr<Value> replacement = lowerReplayFullViewValueLoad(
           rewriter, loadOp.getLoc(), view, resultTy, match,
           ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp),
-          hasReductionAlongNUse(loadOp.getResult()));
+          applyViewTransforms);
       assert(succeeded(replacement) &&
              "prevalidated replayable full-view if yield failed to lower");
       yieldOp.setOperand(resultIndex, *replacement);

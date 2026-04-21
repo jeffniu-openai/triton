@@ -7,7 +7,29 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest validation checkpoint: 2026-04-21 23:04 UTC refreshed the broad
+Latest validation checkpoint: 2026-04-21 23:56 UTC repaired the rank-5
+selected-parent `ld/st` backend gap exposed after the broad MMAv5 refresh.
+The remaining small rank-5 descriptor rows were not test-only failures: a
+replayable full-view chain rooted at `memdesc_index(memdesc_subslice(...))`
+could not be directly materialized, and the earlier vectorized `32x32b.x64`
+plan could also advance packet repetition through TMEM rows. The backend now
+canonicalizes leading unit subslice plus index replay bases to the equivalent
+parent index, uses physical base support only for that canonicalized case,
+keeps existing full-view replay behavior for older paths, rejects
+row-advancing vectorized `32x32b` packet repetition, and splits packed
+row/column offsets during LLVM lowering so row displacement is carried in the
+TMEM base register rather than the bracket column immediate. Rank-5 marker
+expectations were updated to allow this canonicalization while keeping runtime
+and exact opcode checks. Validation: required `make -j8`; exact small rank-5
+repro `1 passed`; full rank-5 ld/st descriptor selector `23 passed,
+10 skipped`; full structural fuzzer split-4 `36 passed`; targeted lit
+`tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`; runtime and
+structural `py_compile` passed; broad MMAv5 selector reran split-4 as
+`133 passed, 14 skipped`, `147 passed`, `147 passed`, and `147 passed`
+(`574 passed, 14 skipped`); `git diff --check` passed. Remaining checked-in
+structural xfails: none.
+
+Previous validation checkpoint: 2026-04-21 23:04 UTC refreshed the broad
 positive MMAv5/frontier selector and cleaned up stale rank-5 descriptor-view
 TTGIR marker expectations. Selector
 `mma and not reports and not clean and not unsupported` collected `588/1623`

@@ -33552,6 +33552,57 @@ Open after this slice:
   boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
   staged broad validation.
 
+## 2026-04-21 23:56 UTC: rank-5 selected-parent full-view replay repair
+
+- Branch/HEAD before this repair slice:
+  `6bfc0e4b3 Refresh rank5 MMAv5 marker expectations`.
+- Starting state:
+  full rank-5 `ld/st` descriptor selector still had six small-rank compiler
+  failures after stale marker cleanup. A previous unit-parent N256 row had also
+  shown a real wrong-result when `32x32b.x64` packet repetition advanced through
+  TMEM rows.
+- Root causes:
+  full-view replay could root replacement loads/stores at
+  `memdesc_index(memdesc_subslice(parent, [1, 0, 0]), 0)`, which is logically
+  the same tile as `memdesc_index(parent, 1)` but is not a direct ld/st
+  descriptor form the verifier/lowering can materialize. Support selection also
+  needed to keep pointwise storeback in physical base order for that canonical
+  case, while preserving logical-view behavior for ordinary reads and
+  reductions. Separately, LLVM lowering was passing packed row bits through the
+  bracket column offset instead of adding the row displacement to the TMEM base
+  register.
+- Completed implementation:
+  `OptimizeTMemLayouts` now canonicalizes leading unit subslice+index full-view
+  replay bases to the equivalent parent index, compares replay bases through
+  constant index chains, and uses physical base support only for that
+  canonicalized case. Storeback detection follows elementwise, layout, reshape,
+  and transpose users to avoid double-applying inverse view transforms when a
+  store rewrite runs before the load rewrite. Existing noncanonical full-view
+  replay paths keep their previous requested-type behavior. `TensorMemoryUtils`
+  rejects vectorized `32x32b` packet repetition through TMEM rows, and
+  `TensorMemoryToLLVM` splits packed row/column offsets into base-register row
+  displacement plus column immediate.
+- Test expectation cleanup:
+  rank-5 runtime-matrix tests now allow replay to remove the intermediate
+  subslice/reshape/trans descriptor ops when the backend canonicalizes them to
+  equivalent parent indexes. Runtime correctness and exact `tcgen05` opcode
+  counts remain the semantic checks.
+- Validation evidence:
+  required `make -j8`; exact small rank-5 repro `1 passed`; full rank-5
+  `ldst_descriptor_rank5 and not reports` selector `23 passed, 10 skipped`;
+  full structural fuzzer split-4 `9 + 9 + 9 + 9 = 36 passed`; targeted lit
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`; runtime and
+  structural `py_compile` passed; broad MMAv5 selector
+  `mma and not reports and not clean and not unsupported` split-4 passed as
+  group1 `133 passed, 14 skipped`, group2 `147 passed`, group3 `147 passed`,
+  and group4 `147 passed`; `git diff --check` passed.
+- Remaining repair-plan frontier:
+  no checked-in structural xfails remain. Continue staged broad validation and
+  then move through the remaining completion queue: broader MMAv5 reachable
+  families, heuristic cleanup, copy/scales boundaries if new current-head
+  probes reproduce, and eventual long-running broad validation.
+
 ## 2026-04-21 22:50 UTC: FZ-0016 verifier and FZ-0023 frontend drift repair
 
 - Branch/HEAD before this repair slice:
