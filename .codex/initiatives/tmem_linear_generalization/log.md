@@ -27148,3 +27148,11 @@ Open after this slice:
   - group 3/GPU 2: `28 passed, 1587 deselected in 9.93s`;
   - group 4/GPU 3: `25 passed, 1590 deselected in 12.47s`.
 - Aggregate: `109 passed`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 TMEM lit sanity
+
+- Ran a cheap compiler-only lit sanity pass while runtime fuzzing lanes were
+  active.
+- Command:
+  `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+- Result: `3/3` passed.

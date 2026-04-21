@@ -103,6 +103,10 @@
   `28`, `28`, `28`, and `25` tests; aggregate result `109 passed`. Durations
   were stored at `/tmp/tmem_local_r10_plain_mma_desc_durations.json`.
 
+- Latest: 2026-04-21 local Round 10 lit sanity remains green:
+  `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+  passed `3/3`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

@@ -164,6 +164,11 @@ When resuming the initiative:
   caches and durations at `/tmp/tmem_local_r10_plain_mma_desc_durations.json`.
   Aggregate result: `109 passed`.
 
+- 2026-04-21: local Round 10 lit sanity remains green. From
+  `build/cmake.linux-aarch64-cpython-3.12`, `ninja triton-opt` was no-op and
+  `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+  passed `3/3`.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

@@ -277,6 +277,9 @@ The project is complete when:
   collect-only selected `109/1615`, split-4 across GPUs 0-3 selected
   `28/28/28/25` tests, and all `109` passed. Durations were stored at
   `/tmp/tmem_local_r10_plain_mma_desc_durations.json`.
+  2026-04-21 local Round 10 lit sanity stayed green: `ninja triton-opt` no-op
+  and `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+  passed `3/3`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive
