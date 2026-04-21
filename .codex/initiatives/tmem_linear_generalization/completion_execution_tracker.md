@@ -218,6 +218,11 @@ The project is complete when:
   green while Lane I and Lane J fuzzing are active. Required `make -j8` no-op;
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
   reported `9 passed, 24 xfailed in 24.16s`.
+  2026-04-21 local Round 10 clean-diagnostic runtime slice stayed green:
+  `reports_clean_unsupported` ran split-4 across GPUs 0-3 with stable caches,
+  each shard selected `23` tests, and the aggregate result was `92 passed`.
+  Durations were stored at
+  `/tmp/tmem_local_r10_clean_diagnostics_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

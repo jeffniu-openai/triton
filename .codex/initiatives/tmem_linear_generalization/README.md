@@ -80,6 +80,13 @@ When resuming the initiative:
   `9 passed, 24 xfailed in 24.16s`. This confirms the currently promoted
   sentinels still match the expected discovery-only state.
 
+- 2026-04-21: local Round 10 clean-diagnostic runtime slice remains green.
+  The focused `reports_clean_unsupported` runtime-matrix selector ran as
+  split-4 across GPUs 0-3 with stable per-GPU caches and stored durations at
+  `/tmp/tmem_local_r10_clean_diagnostics_durations.json`; each shard selected
+  `23` tests, for `92 passed` total. This keeps the clean hardware/resource
+  boundary surface checked while deeper fuzzing continues.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

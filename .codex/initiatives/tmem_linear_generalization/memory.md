@@ -7,6 +7,15 @@
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
   Result: `9 passed, 24 xfailed in 24.16s`. Backend repair remains deferred.
 
+- Latest: 2026-04-21 local Round 10 clean-diagnostic runtime slice is green
+  across all four GPUs. Commands used stable caches
+  `/tmp/triton-cache-gpu{0,1,2,3}` and
+  `--splits 4 --group {1,2,3,4}` on
+  `python/test/gluon/test_tmem_runtime_matrix.py -k reports_clean_unsupported`
+  with durations stored at
+  `/tmp/tmem_local_r10_clean_diagnostics_durations.json`. Each group selected
+  `23` tests; aggregate result `92 passed`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

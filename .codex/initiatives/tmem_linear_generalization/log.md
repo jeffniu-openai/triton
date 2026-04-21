@@ -26961,3 +26961,17 @@ Open after this slice:
     reported `9 passed, 24 xfailed in 24.16s`.
   - The expected promoted-sentinel state is unchanged; backend repair remains
     deferred.
+
+## 2026-04-21: Round 10 clean-diagnostic runtime slice
+
+- Ran the Lane H recommended clean-diagnostic runtime selector across all four
+  GPUs with stable per-GPU caches while subagent fuzzers continued probing new
+  surfaces.
+- Command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_clean_diagnostics_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k reports_clean_unsupported`
+- Result:
+  - group 1/GPU 0: `23 passed, 1592 deselected in 8.72s`;
+  - group 2/GPU 1: `23 passed, 1592 deselected in 5.13s`;
+  - group 3/GPU 2: `23 passed, 1592 deselected in 5.95s`;
+  - group 4/GPU 3: `23 passed, 1592 deselected in 9.85s`.
+- Aggregate: `92 passed`. No backend repairs were attempted.
