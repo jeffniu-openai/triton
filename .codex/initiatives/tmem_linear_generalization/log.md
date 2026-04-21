@@ -1,3 +1,17 @@
+## 2026-04-21 14:10 UTC: Round 40 clean-boundary runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundary_guardrail_round40.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Initial sentinel selector `(clean_unsupported or resource) and not reports`
+  passed `4` rows.
+- Broader selector:
+  `(reports_clean_error or reports_clean_unsupported or reports_tmem_oor or reports_resource_boundary) and not cp_no_scales and not cp_scales and not mma_twocta_tma`.
+- Collection/result: `112/1615` rows, split-4 as `112 passed`
+  (`28/28/28/28`).
+- Classification: no compiler crash, diagnostic drift, unexpected pass/fail
+  transition, runtime miscompile, or new independent `FZ-*`.
+
 ## 2026-04-21 14:08 UTC: Round 39 ld.red extremes subagent lane
 
 - Integrated subagent report

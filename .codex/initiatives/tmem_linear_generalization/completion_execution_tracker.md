@@ -60,6 +60,16 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:10 UTC Round 40 clean-boundary runtime guardrail completed.
+  Artifact: `agents/fuzz_clean_boundary_guardrail_round40.md`. Initial sentinel
+  `(clean_unsupported or resource) and not reports` passed `4` rows. Broader
+  selector
+  `(reports_clean_error or reports_clean_unsupported or reports_tmem_oor or
+  reports_resource_boundary) and not cp_no_scales and not cp_scales and not
+  mma_twocta_tma` collected `112/1615` rows and passed split-4 as
+  `112 passed` (`28/28/28/28`). No compiler crash, diagnostic drift,
+  unexpected pass/fail transition, runtime miscompile, or new independent
+  `FZ-*`; backend repair remains deferred.
   2026-04-21 14:08 UTC Round 39 `ld.red` extremes subagent lane integrated.
   Artifact: `agents/fuzz_ldred_extremes_round39.md`; subagent commit
   `88e3a31d4`. Required `make -j8` reported `no work to do`. Checked-in
