@@ -42,6 +42,17 @@
   gap: separate kernel launch/CGA size, layout visibility/multicast mapping,
   and instruction-local `tcgen05` `cta_group::1/2`.
 
+- Latest: 2026-04-21 completed Round 12 Lane S plain-MMAv5 runtime-index
+  reduction. Report: `agents/fuzz_plain_mma_runtime_index_round12.md`.
+  `FZ-20260421-0011` is now narrowed to FPSAN-instrumented plain-MMAv5
+  runtime-index accumulator selection. The smallest stable row is
+  `N=32,K=128,selector=1,use_acc=False` under FPSAN; it repeated `3/3` fresh
+  subprocesses with `4081/4096` mismatches, `16` NaNs, and finite max absolute
+  difference around `3.303e38`. Without FPSAN, the lifted-linear runtime-index
+  shape changes failure mode to known `FZ-20260421-0001` illegal
+  `ttg.memdesc_index` lowering. Runtime-matrix imports are not the deciding
+  detail.
+
 - Latest: 2026-04-21 completed Round 10 Lane N MMAv5/scaled-MMAv5 dynamic
   descriptor-selection fuzzing. Report: `agents/fuzz_mma_dynamic_round10.md`.
   New report-only bucket candidate `FZ-20260421-0011`: plain MMAv5

@@ -27409,3 +27409,21 @@ Open after this slice:
 - The report recommends promoting high-CGA xfails for linear `ld/st`,
   `ld.red`, no-scales copy, and a smaller scales-layout diagnostic, with the
   passing high-CGA MMA controls kept as green contrast.
+
+## 2026-04-21: Round 12 Lane S plain-MMAv5 runtime-index reduction
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_plain_mma_runtime_index_round12.md`.
+- Classification: narrows `FZ-20260421-0011` to FPSAN-instrumented plain MMAv5
+  runtime-index accumulator selection.
+- Smallest stable FPSAN row:
+  `N=32,K=128,selector=1,use_acc=False`; repeated `3/3` fresh subprocesses
+  with `4081/4096` mismatches and `16` NaNs.
+- Non-FPSAN lifted-linear runtime-index rows hit known `FZ-20260421-0001`
+  illegal `ttg.memdesc_index` lowering instead. Runtime-matrix imports are not
+  the deciding factor.
+- Promotion guidance: any checked-in strict xfail for `FZ-20260421-0011` must
+  explicitly pin FPSAN instrumentation and include dynamic-slice and
+  constexpr-index controls.

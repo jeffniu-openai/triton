@@ -371,6 +371,13 @@ The project is complete when:
   scales-copy layout-construction diagnostics under 4/8/16 CTA launch
   contexts. Passing high-CGA MMA controls stayed green as `2 passed in
   3.18s`. Report: `agents/fuzz_high_cga_gate_round12.md`.
+  2026-04-21 Round 12 Lane S completed plain-MMAv5 runtime-index reduction
+  without backend repairs. `FZ-20260421-0011` is FPSAN-specific: the
+  `N=32,K=128,selector=1,use_acc=False` row repeated `3/3` fresh subprocesses
+  with stable `4081/4096` mismatches under FPSAN, while the non-FPSAN
+  lifted-linear runtime-index form falls back to known `FZ-20260421-0001`
+  illegal `ttg.memdesc_index` lowering. Report:
+  `agents/fuzz_plain_mma_runtime_index_round12.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

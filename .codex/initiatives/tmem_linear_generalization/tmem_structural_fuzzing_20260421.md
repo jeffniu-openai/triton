@@ -1647,7 +1647,37 @@ remain family-specific and consume a bounded subset of the inventory.
   scales-layout diagnostic test. Keep the high-CGA MMA controls as green
   contrast evidence.
 
+### Round 12 Lane S, plain-MMAv5 runtime-index reduction
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_plain_mma_runtime_index_round12.md`
+- Reducer:
+  `/tmp/tmem_plain_mma_runtime_index_round12_probe.py`.
+- Scope: selector `0/1`, `use_acc` false/true, `N in {32,64,128,256}`,
+  `K in {32,64,128,256}`, lifted rank-3 linear parents, legacy/direct parent
+  variants, explicit reshape, preinit, shared/load-layout variants,
+  dynamic-slice controls, constexpr-index controls, and runtime-matrix import
+  vs standalone reducer.
+- Result: `FZ-20260421-0011` is stable only when FPSAN instrumentation is
+  enabled. The smallest stable row is `N=32,K=128,selector=1,use_acc=False`
+  under FPSAN; it repeated `3/3` fresh subprocesses with `4081/4096`
+  mismatches, `16` NaNs, and finite max absolute difference around
+  `3.303e38`.
+- Non-FPSAN classification: lifted-linear runtime-index rows change failure
+  mode to known `FZ-20260421-0001` illegal `ttg.memdesc_index` lowering.
+  Importing runtime-matrix helpers is not the preserving detail.
+- Controls: constexpr index on lifted linear parent, dynamic slice selection
+  between `[M,2N]` sibling views, default-pipeline runtime index on a legacy
+  parent, and default-pipeline runtime index with a direct 2D parent layout
+  passed. Under FPSAN, legacy-parent and direct-2D-parent runtime-index rows
+  also miscompiled.
+- Promotion recommendation: only add a strict xfail if the test explicitly
+  pins FPSAN instrumentation; include dynamic-slice and constexpr-index green
+  controls next to it.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
-  miscompile can be minimized without degenerating into the known
-  `FZ-20260421-0001` illegal `ttg.memdesc_index` path.
+  miscompile can be minimized without changing failure mode. Round 12 Lane S
+  narrowed that to an FPSAN-pinned sentinel candidate; do not promote a
+  non-FPSAN variant because it degenerates into `FZ-20260421-0001`.
