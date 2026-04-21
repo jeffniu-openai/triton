@@ -26911,3 +26911,14 @@ Open after this slice:
 - Command:
   `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
 - Result: `3/3` passed.
+
+## 2026-04-21: ld.red modifier runtime-matrix spot checks
+
+- While Round 10 `ld.red` modifier fuzzing was running in a subagent, sampled
+  checked-in modifier/NaN coverage.
+- Collection inventory:
+  - `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and propagate_nan'`
+    collected `176` nodeids.
+- Runtime spot checks:
+  - identity `min` and `max` with `abs=True`/NaN propagation plus explicit
+    `32x32b` compatible-layout `min` passed `3/3`.
