@@ -27004,3 +27004,19 @@ Open after this slice:
   - group 3/GPU 2: `21 passed, 1594 deselected in 6.91s`;
   - group 4/GPU 3: `20 passed, 1595 deselected in 14.45s`.
 - Aggregate: `83 passed`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 higher-rank/rank-5 descriptor runtime slice
+
+- Collected and ran the higher-rank/rank-5 descriptor runtime selector across
+  all four GPUs with stable per-GPU caches.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'descriptor_rank5 or higher_rank'`
+  selected `82 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_rank5_higher_rank_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'descriptor_rank5 or higher_rank'`
+- Result:
+  - group 1/GPU 0: `21 passed, 1594 deselected in 56.79s`;
+  - group 2/GPU 1: `18 passed, 3 skipped, 1594 deselected in 6.12s`;
+  - group 3/GPU 2: `4 passed, 17 skipped, 1594 deselected in 5.82s`;
+  - group 4/GPU 3: `19 passed, 1596 deselected in 48.27s`.
+- Aggregate: `62 passed, 20 skipped`. No backend repairs were attempted.

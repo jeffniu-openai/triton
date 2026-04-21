@@ -99,6 +99,12 @@ When resuming the initiative:
   `/tmp/tmem_local_r10_scaled_use_acc_durations.json`; shards reported
   `21`, `21`, `21`, and `20` passed tests, for `83 passed` total.
 
+- 2026-04-21: local Round 10 higher-rank/rank-5 descriptor runtime slice
+  remains green. The selector `descriptor_rank5 or higher_rank` collected
+  `82/1615` tests and ran split-4 across GPUs 0-3 with stable caches and
+  durations at `/tmp/tmem_local_r10_rank5_higher_rank_durations.json`.
+  Aggregate result: `62 passed, 20 skipped`.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

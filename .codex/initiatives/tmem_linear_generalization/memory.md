@@ -32,6 +32,14 @@
   `83 passed`. Durations were stored at
   `/tmp/tmem_local_r10_scaled_use_acc_durations.json`.
 
+- Latest: 2026-04-21 local Round 10 higher-rank/rank-5 descriptor runtime
+  slice is green. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'descriptor_rank5 or higher_rank'`
+  selected `82/1615` tests. Split-4 execution across GPUs 0-3 selected
+  `21`, `21`, `21`, and `19` tests; aggregate result `62 passed, 20 skipped`.
+  Durations were stored at
+  `/tmp/tmem_local_r10_rank5_higher_rank_durations.json`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`
