@@ -3850,3 +3850,31 @@ discovery.
   `ninja triton-opt` passed `invalid.mlir`, `ops.mlir`, and
   `tmem_layouts.mlir` as `3/3`. No unexpected xfail transition, lit
   verifier/conversion drift, or new independent `FZ-*`.
+
+- 2026-04-21: Round 57 copy view boundary lane D completed. Report:
+  `agents/fuzz_round57_copy_view_boundaries_lane.md`. Required `make -j8`
+  was a no-op. Primary no-scale copy non-overlap selector collected `7/1615`
+  and passed split-4 as `7 passed`; broad no-scale copy guardrail collected
+  `121/1615` and passed as `121 passed`; structural control-flow contrast
+  collected `10/33` and ran as `2 passed, 8 xfailed` under existing
+  `FZ-20260421-0001` and `FZ-20260421-0002`. No new independent `FZ-*`.
+
+- 2026-04-21: Round 57 local direct higher-rank lane completed. Report:
+  `agents/fuzz_round57_local_direct_higher_rank_lane.md`. Required
+  `make -j8` was a no-op. Selector `ldst_direct_higher_rank and not reports`
+  collected `4/1615` and passed split-4 as `4 passed`. Direct higher-rank
+  `get_reg_layout`, load/store replay, and `load_red` replay positives stayed
+  green with no compiler crash, verifier drift, false unsupported diagnostic,
+  runtime miscompile, hang, or new independent `FZ-*`.
+
+- 2026-04-21: Round 57 `ld.red` boundary/opcode lane E completed. Report:
+  `agents/fuzz_round57_ldred_boundary_opcode_lane.md`. Required `make -j8`
+  was a no-op. M64/resource-ish selector collected `39/1615` and ran as
+  `33 passed, 6 failed`, all existing `FZ-20260421-0012`; non-M64
+  non-identity hardware `ld.red` selector collected `66/1615` and passed as
+  `66 passed`; software-vs-hardware classification selector collected
+  `48/1615` and passed as `48 passed`; half-view replay ran `32` rows as
+  `8` pass, `12` clean diagnostics, `8` existing `FZ-20260421-0022`, and
+  `4` existing `FZ-20260421-0020`. No compiler crash, verifier drift, false
+  unsupported diagnostic, opcode-selection regression, software/hardware
+  classification drift, runtime miscompile, or new independent `FZ-*`.

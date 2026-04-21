@@ -32749,3 +32749,53 @@ Open after this slice:
   no new independent `FZ-*`; dynamic dense-copy TMEM destination descriptor
   selection broadens existing `FZ-20260421-0001`, while shared-source branch
   subslices and branch-selected `warpx2` concrete views stayed green.
+
+## 2026-04-21: Round 57 copy view boundary lane D
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round57_copy_view_boundaries_lane.md`.
+- Required `make -j8` was a no-op.
+- Primary non-overlap no-scale copy selector collected `7/1615` and passed
+  split-4 as `7 passed`.
+- Broad no-scale copy guardrail collected `121/1615` and passed split-4 as
+  `121 passed`.
+- Structural control-flow contrast collected `10/33` and ran as
+  `2 passed, 8 xfailed`, matching existing `FZ-20260421-0001` and
+  `FZ-20260421-0002`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, unexpected xfail transition, or new independent `FZ-*`.
+
+## 2026-04-21: Round 57 local direct higher-rank lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round57_local_direct_higher_rank_lane.md`.
+- Required `make -j8` was a no-op.
+- Selector `ldst_direct_higher_rank and not reports` collected `4/1615`.
+- Split-4 runtime result:
+  `4 passed`.
+- Classification:
+  direct higher-rank `get_reg_layout`, load/store replay, and `load_red`
+  replay positives stayed green with no compiler crash, verifier drift, false
+  unsupported diagnostic, runtime miscompile, hang, or new independent
+  `FZ-*`.
+
+## 2026-04-21: Round 57 `ld.red` boundary/opcode lane E
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round57_ldred_boundary_opcode_lane.md`.
+- Required `make -j8` was a no-op.
+- M64/resource-ish checked-in selector collected `39/1615` and ran as
+  `33 passed, 6 failed`; all failures are existing `FZ-20260421-0012`.
+- Non-M64 non-identity hardware `ld.red` selector collected `66/1615` and
+  passed split-4 as `66 passed`.
+- Software-vs-hardware classification selector collected `48/1615` and passed
+  split-4 as `48 passed`.
+- Half-row/half-column descriptor-view replay ran `32` generated rows:
+  `8` pass, `8` clean unsupported descriptor-view diagnostics, `4` clean
+  scalar `.x1` diagnostics, `8` existing `FZ-20260421-0022`, and `4`
+  existing `FZ-20260421-0020`.
+- Classification:
+  no new independent `FZ-*`; no compiler crash, verifier drift, false
+  unsupported diagnostic, opcode-selection regression, software/hardware
+  reduction classification drift, or runtime miscompile.

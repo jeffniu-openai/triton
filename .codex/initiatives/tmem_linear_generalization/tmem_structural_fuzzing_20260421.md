@@ -4187,3 +4187,59 @@ remain family-specific and consume a bounded subset of the inventory.
   `FZ-20260421-0007`, `FZ-20260421-0008`, and `FZ-20260421-0009` were
   revalidated. No unexpected xfail transition, lit verifier/conversion drift,
   or new independent `FZ-*`. Backend repair remains deferred.
+
+### Round 57 copy view boundary lane D
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round57_copy_view_boundaries_lane.md`
+- Scope:
+  no-scale `tcgen05.copy` descriptor/view boundaries adjacent to the Round 56
+  dynamic copy lane, including `4x256b`, canonical indexed copy views,
+  shared-source bad-offset diagnostics, TMEM OOR clean boundaries, broad
+  warpx2/subslice/slice-index copy guardrails, and structural control-flow
+  contrast rows.
+- Result:
+  primary non-overlap selector `7/1615` collected and passed split-4 as
+  `7 passed`; broad copy guardrail `121/1615` collected and passed as
+  `121 passed`; structural contrast `10/33` collected and ran as
+  `2 passed, 8 xfailed`.
+- Classification:
+  no new independent `FZ-*`; structural xfails remained existing
+  `FZ-20260421-0001` and `FZ-20260421-0002`.
+
+### Round 57 local direct higher-rank lane
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round57_local_direct_higher_rank_lane.md`
+- Scope:
+  direct higher-rank `get_reg_layout`, load/store replay, and `load_red`
+  replay positives.
+- Result:
+  selector `ldst_direct_higher_rank and not reports` collected `4/1615` and
+  passed split-4 as `4 passed`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, or new independent `FZ-*`.
+
+### Round 57 `ld.red` boundary/opcode lane E
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round57_ldred_boundary_opcode_lane.md`
+- Scope:
+  M64/resource-ish `ld.red`, non-M64 non-identity row/column hardware
+  reductions, software-vs-hardware reduction classification, and descriptor
+  half-row/half-column replay.
+- Result:
+  M64/resource-ish selector `39/1615` collected and ran as
+  `33 passed, 6 failed`; all six failures are existing `FZ-20260421-0012`.
+  Non-M64 non-identity selector `66/1615` passed as `66 passed`;
+  software-vs-hardware selector `48/1615` passed as `48 passed`; half-view
+  replay ran `32` rows as `8` pass, `12` clean diagnostics, `8` existing
+  `FZ-20260421-0022`, and `4` existing `FZ-20260421-0020`.
+- Classification:
+  no new independent `FZ-*`; no compiler crash, verifier drift, false
+  unsupported diagnostic, opcode-selection regression, software/hardware
+  classification drift, or runtime miscompile.
