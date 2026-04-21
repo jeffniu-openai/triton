@@ -3683,6 +3683,21 @@ discovery.
   `6 passed`. No compiler crash, verifier drift, opcode absence, runtime
   miscompile, or new independent `FZ-*`.
 
+- 2026-04-21: Round 54 opcode consistency lane completed. Report:
+  `agents/fuzz_round54_opcode_consistency_lane.md`. Required `make -j8` was a
+  no-op. Focused runtime-matrix opcode selector collected `172` rows and
+  passed split-4 as `172 passed`, covering allocation/wait, `ld/st`, hardware
+  and software `ld.red`, copy, scaled-copy, plain MMAv5, scaled MMAv5, and
+  commit. Focused proxy/mbarrier/multicast selector over runtime matrix plus
+  `test_core.py` collected `39/19729` and passed. Representative forced-dump
+  replay passed `9` nodeids and captured `27` TTGIR/LLIR/PTX artifacts under
+  `/tmp/tmem_round54_opcode_dump`; inspected streams matched for expected
+  opcodes including hardware `ld.red`, software non-f32 reductions, warpx2,
+  two-CTA copy, plain/scaled MMAv5, waits, commit, proxy fence, and cluster
+  barriers. No PTX-vs-LLIR mismatch, missing hardware opcode, unexpected
+  software fallback, verifier over-strictness, crash, miscompile, or new
+  independent `FZ-*`.
+
 - 2026-04-21 15:21 UTC: Round 54 dynamic 2CTA descriptor SSA lane completed.
   Report: `agents/fuzz_round54_dynamic_2cta_lane.md`. Required `make -j8`
   was a no-op. Temporary `/tmp/tmem_round54_dynamic_2cta_probe.py` crossed

@@ -32395,6 +32395,30 @@ Open after this slice:
   diagnostic, opcode absence, runtime miscompile, hang, or independent
   `FZ-*`.
 
+## 2026-04-21: Round 54 opcode consistency lane
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_opcode_consistency_lane.md`.
+- Required `make -j8` was a no-op.
+- Initial collection without `PYTHONPATH=.:./python` failed before tests with
+  a local import-path error; all subsequent commands used the correct
+  `PYTHONPATH`.
+- Focused runtime-matrix opcode selector:
+  `172/1615` collected, split-4 as `172 passed`.
+- Focused proxy/mbarrier/multicast selector over runtime matrix plus
+  `test_core.py`:
+  `39/19729` collected, `39 passed`.
+- Representative forced-compile dump:
+  `9 passed`; captured `27` TTGIR/LLIR/PTX artifacts under
+  `/tmp/tmem_round54_opcode_dump`.
+- Inspected streams matched LLIR/PTX expectations for `32x32b` load/store,
+  hardware `ld.red`, non-f32 software-reduce fallback, `warpx2`, two-CTA
+  `128x256b` copy, plain MMAv5, scaled MMAv5, waits, commit, proxy fence, and
+  cluster barriers.
+- Classification: no PTX-vs-LLIR opcode mismatch, missing hardware opcode,
+  unexpected software fallback, verifier over-strictness, compiler crash,
+  runtime miscompile, or independent `FZ-*`.
+
 ## 2026-04-21 15:21 UTC: Round 54 dynamic 2CTA descriptor SSA lane
 
 - Wrote
