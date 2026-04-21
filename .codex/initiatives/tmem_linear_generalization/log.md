@@ -30620,6 +30620,19 @@ Open after this slice:
   harness limitation until a faithful JIT-equivalent `triton-opt` pipeline
   proves otherwise.
 
+## 2026-04-21: Round 35 structural descriptor/ld.red fuzzer slice
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_structural_descriptor_ldred_round35.md`.
+- Selector: `descriptor_view or ldst_view or ldred or ld_red`.
+- Collection: `18/33`.
+- Runtime result:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py -k 'descriptor_view or ldst_view or ldred or ld_red'`
+  completed as `7 passed, 15 deselected, 11 xfailed`.
+- Classification: no unexpected failure, XPASS, compiler crash, false
+  unsupported diagnostic, opcode mismatch, runtime miscompile, or new
+  independent `FZ-*`.
+
 ## 2026-04-21: Round 35 allocator-pressure runtime guardrail
 
 - Wrote

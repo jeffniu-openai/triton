@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 35 structural descriptor/`ld.red` fuzzer slice
+  completed. Report: `agents/fuzz_structural_descriptor_ldred_round35.md`.
+  Selector `descriptor_view or ldst_view or ldred or ld_red` collected `18/33`
+  structural fuzzer tests and ran as `7 passed, 11 xfailed`. No XPASS,
+  unexpected failure, compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 Round 35 allocator-pressure runtime guardrail completed.
   Report: `agents/fuzz_allocator_pressure_round35.md`. Required `make -j8`
   was a no-op. Selector `alloc_lifetime or mma_scaled or lhs_subslice`

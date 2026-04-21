@@ -2766,3 +2766,10 @@ discovery.
   passed split-4 as `303 passed` (`76/76/76/75`). No compiler crash, false
   unsupported diagnostic, opcode mismatch, runtime miscompile, clean-boundary
   drift, unexpected xfail/pass transition, or new independent `FZ-*`.
+
+- 2026-04-21: Round 35 structural descriptor/`ld.red` fuzzer slice completed.
+  Report: `agents/fuzz_structural_descriptor_ldred_round35.md`. Selector
+  `descriptor_view or ldst_view or ldred or ld_red` collected `18/33` and ran
+  as `7 passed, 11 xfailed`. No XPASS, unexpected failure, compiler crash,
+  false unsupported diagnostic, opcode mismatch, runtime miscompile, or new
+  independent `FZ-*`.

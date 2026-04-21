@@ -7,7 +7,14 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 35 allocator-pressure runtime
+Latest fuzzing checkpoint: 2026-04-21 Round 35 structural descriptor/`ld.red`
+fuzzer slice completed. Report:
+`agents/fuzz_structural_descriptor_ldred_round35.md`. Selector
+`descriptor_view or ldst_view or ldred or ld_red` collected `18/33` structural
+fuzzer tests and ran as `7 passed, 11 xfailed`; there were no unexpected
+failures or new independent `FZ-*` buckets.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 35 allocator-pressure runtime
 guardrail completed. Report: `agents/fuzz_allocator_pressure_round35.md`.
 Selector `alloc_lifetime or mma_scaled or lhs_subslice` collected `303/1615`
 rows and passed split-4 as `303 passed`. No compiler crash, false unsupported
