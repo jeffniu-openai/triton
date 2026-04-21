@@ -73,6 +73,28 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21: completed Round 8 Lane D generic-pass / analysis fuzzing. Wrote
+  `agents/fuzz_generic_pass_round8.md` from
+  `/tmp/tmem_generic_pass_round8.py`. No new independent `FZ-*` id was
+  assigned. The lane showed that direct chain0 descriptor-view load
+  mismatches dominate several generic-looking helper, tuple, sibling,
+  static-loop, and same-base dynamic-if rows, extending `FZ-20260421-0003`
+  rather than proving a new generic-pass root. Runtime direct
+  `memdesc_index` still reproduces `FZ-20260421-0001`. Validation: required
+  `make -j8` no-op, py-compile, collect-only `14` nodeids, split-4 sweep
+  `7 failed, 7 passed` with expected classified failures, and fresh exact
+  confirmations.
+
+- 2026-04-21: completed Round 8 Lane C copy/readback generator adapters.
+  Wrote `agents/fuzz_copy_readback_round8.md` from
+  `/tmp/tmem_copy_readback_round8_probe.py`. No new backend/compiler failure
+  was found and no new `FZ-*` id was assigned. Positive no-scales `warpx2`,
+  two-CTA `warpx2::01_23`, scales `warpx4`, and descriptor-chain `ld.red`
+  readback rows stayed positive; two-CTA `warpx2::02_13`, packed/subword,
+  larger-CGA two-CTA-layout, and scales descriptor-view copy rows stayed clean
+  diagnostics. Validation: required `make -j8` no-op, py-compile,
+  collect-only `18` nodeids, full probe `18 passed`.
+
 - 2026-04-21: promoted Round 7 Lane B `FZ-20260421-0009` into checked-in
   structural-fuzzer coverage. Added subprocess-isolated strict xfail
   `test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash` for

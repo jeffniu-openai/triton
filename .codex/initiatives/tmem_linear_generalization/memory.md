@@ -1,5 +1,30 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 completed Round 8 Lane D generic compiler-pass /
+  analysis interaction fuzzing. Wrote
+  `agents/fuzz_generic_pass_round8.md` from
+  `/tmp/tmem_generic_pass_round8.py`. No new independent `FZ-*` id was
+  assigned. The lane separated generic-pass structure from the direct
+  descriptor-view packet bug: direct chain0 view, static helper tuple,
+  sibling view, static loop, and same-base dynamic-if rows all mismatch at
+  roughly `8061-8064 / 8192`, while direct base, direct chain1, tuple chain1,
+  sibling chain1, static-loop chain1, and dynamic-if chain1/chain2 controls
+  pass under normal f32 tolerance. Classification: chain0 rows extend
+  `FZ-20260421-0003`; runtime direct `memdesc_index` extends
+  `FZ-20260421-0001`. Backend repair remains deferred. Validation: required
+  `make -j8`, py-compile, collect-only `14`, split-4 sweep `7 failed,
+  7 passed` with expected classified failures, and fresh exact confirmations.
+
+- Latest: 2026-04-21 completed Round 8 Lane C copy/readback generator
+  adapters. Wrote `agents/fuzz_copy_readback_round8.md` from
+  `/tmp/tmem_copy_readback_round8_probe.py`. No stable new backend/compiler
+  failure was found. The lane kept positive copy/readback rows positive for
+  no-scales `warpx2`, two-CTA `warpx2::01_23`, scales `warpx4`, and
+  descriptor-chain `ld.red`, and kept clean diagnostics clean for two-CTA
+  `warpx2::02_13`, packed/subword, larger-CGA two-CTA-layout, and scales
+  descriptor-view copy. Validation: required `make -j8`, py-compile,
+  collect-only `18`, and full probe `18 passed`.
+
 - Latest: 2026-04-21 promoted Round 7 Lane B `FZ-20260421-0009` into
   checked-in structural-fuzzer coverage. Added subprocess-isolated strict
   xfail

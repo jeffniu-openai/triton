@@ -158,6 +158,23 @@ The project is complete when:
   parent pytest process alive. Validation: required `make -j8`, py-compile,
   `33` collected structural-fuzzer nodeids, exact sentinel `1 xfailed`, and
   full fuzzer `9 passed, 24 xfailed`. Backend repair remains deferred.
+  2026-04-21 Round 8 Lane C completed copy/readback generator-adapter
+  discovery without backend repairs. Positive no-scales/scales copy/readback
+  and descriptor-chain `ld.red` readback rows stayed positive; two-CTA
+  `warpx2::02_13`, packed/subword, larger-CGA two-CTA-layout, and scales
+  descriptor-view copy rows stayed clean diagnostics. No new `FZ-*` id.
+  Validation: required `make -j8`, py-compile, `18` collected nodeids, and
+  full probe `18 passed`. Report:
+  `agents/fuzz_copy_readback_round8.md`.
+  2026-04-21 Round 8 Lane D completed generic-pass / analysis interaction
+  discovery without backend repairs. No new independent `FZ-*` id. Direct
+  chain0 descriptor-view mismatches dominate several generic-looking helper,
+  tuple, sibling, static-loop, and same-base dynamic-if rows, so they extend
+  `FZ-20260421-0003`; runtime direct `memdesc_index` still extends
+  `FZ-20260421-0001`. Chain1/chain2 generic controls reached runtime and
+  passed. Validation: required `make -j8`, py-compile, `14` collected
+  nodeids, split-4 classified sweep `7 failed, 7 passed`, and fresh exact
+  confirmations. Report: `agents/fuzz_generic_pass_round8.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -666,6 +666,65 @@ remain family-specific and consume a bounded subset of the inventory.
     runtime mismatch;
   - checked-in `ldst-view-identity-32x32b` control passed.
 
+### Lane C Round 8, Copy/Readback Generator Adapters
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_readback_round8.md`
+- Scope: deterministic temporary copy/readback probe with its own case table,
+  input generation, opcode checks, and clean-diagnostic classification. It
+  covered no-scales `warpx2::01_23` and `warpx2::02_13`, direct/indexed/
+  subslice/slice-index TMEM descriptor views, two-CTA `warpx2::01_23`
+  positives, two-CTA `warpx2::02_13` clean diagnostics, packed/subword clean
+  diagnostics, scales `warpx4` direct/two-CTA positives, scales descriptor
+  view clean unsupported boundary, descriptor-chain `ld.red` readback, and
+  two-CTA layouts used from `num_ctas` `{4,8,16}` contexts.
+- Result: no stable new backend/compiler failure and no new `FZ-*` id.
+- Boundary separation:
+  - no-scales `warpx2` direct and view copy/readback stayed positive;
+  - two-CTA no-scales `warpx2::01_23` direct/view stayed positive;
+  - scales `warpx4` direct and two-CTA direct copy/readback stayed positive;
+  - descriptor-chain `ld.red` readback emitted
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32`;
+  - two-CTA no-scales `warpx2::02_13`, f16 packed/subword copy, larger-CGA
+    two-CTA-layout contexts, and scales descriptor-view copy all reported
+    clean diagnostics rather than assertions or late lowering failures.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_copy_readback_round8_probe.py` py-compiled;
+  - collect-only found `18` nodeids;
+  - full temporary probe passed `18 passed`.
+
+### Lane D Round 8, Generic-Pass / Analysis Interaction Fuzz
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round8.md`
+- Scope: temporary runtime probes around TMEM memdesc values through helper
+  returns, tuple-like returns, direct controls, sibling views, static indexes,
+  `ttgl.static_range`, dynamic `scf.if`, runtime `memdesc_index`, layout
+  conversions, and non-TMEM tensor side inputs, while avoiding rows already
+  masked by the known R5-C auto-layout crash.
+- Result: no new independent `FZ-*` id.
+- Key classification:
+  - direct chain0 view, static helper tuple, sibling view, static loop, and
+    same-base dynamic-if rows all mismatch at roughly `8061-8064 / 8192`
+    elements and extend `FZ-20260421-0003`;
+  - direct base load, direct chain1 view, static tuple chain1, sibling
+    chain1, static-loop chain1, and dynamic-if chain1/chain2 controls pass;
+  - runtime direct `parent.index(ttgl.load(selector))` still reaches
+    `ConvertTritonGPUToLLVM` as illegal `ttg.memdesc_index`, extending
+    `FZ-20260421-0001`;
+  - generic control flow over memdesc values is not uniformly broken once the
+    probe avoids the direct chain0 descriptor-view packet mismatch and R5-C.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_generic_pass_round8.py` py-compiled;
+  - collect-only found `14` nodeids;
+  - split-4 sweep classified as `7 failed, 7 passed`;
+  - fresh exact confirmations reproduced the FZ-0003 and FZ-0001 overlaps
+    and the green chain1/chain2 controls.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -759,6 +818,15 @@ remain family-specific and consume a bounded subset of the inventory.
     sentinel is fixed before assigning any new runtime-miscompile bucket.
   - report:
     `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_analysis_round7.md`.
+- Round 8 Lane D classification:
+  - direct chain0 descriptor-view load mismatches even with no helper,
+    tuple-return, side tensor, loop, or meaningful branch merge, while direct
+    base and chain1 controls pass;
+  - helper/tuple/sibling/static-loop/same-base dynamic-if chain0 rows are
+    therefore repair-validation inventory for `FZ-20260421-0003`, not a new
+    generic-pass root;
+  - report:
+    `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round8.md`.
 
 ### FZ-20260421-0003: ld/st descriptor-view chains miscompile
 
@@ -1113,3 +1181,9 @@ remain family-specific and consume a bounded subset of the inventory.
 - Round 7 Lane C found no new copy/readback failure to add to the repro queue.
   Future copy generator work should promote a stable repo-local runnable case
   adapter before replacing the current runtime-matrix-backed launcher.
+- Round 8 Lane C found no new copy/readback failure to add to the repro queue.
+  It validated 18 temporary generator-adapter rows and kept scales
+  descriptor-view copy as a clean unsupported boundary.
+- Round 8 Lane D found no new generic-pass failure to add to the repro queue.
+  Keep its chain0 helper/tuple/sibling/static-loop/same-base dynamic-if rows
+  as `FZ-20260421-0003` repair-validation inventory.

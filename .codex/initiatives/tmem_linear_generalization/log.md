@@ -26710,3 +26710,40 @@ Open after this slice:
   - collect-only found `33` structural-fuzzer nodeids;
   - exact new sentinel reported `1 xfailed`;
   - full structural fuzzer reported `9 passed, 24 xfailed`.
+
+## 2026-04-21: Round 8 Lane C copy/readback generator adapters
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_readback_round8.md`.
+- Classification: no stable new backend/compiler failure and no new `FZ-*`
+  id. Positive no-scales `warpx2`, two-CTA `warpx2::01_23`, scales
+  `warpx4`, and descriptor-chain `ld.red` readback rows stayed positive.
+  Clean diagnostics stayed clean for two-CTA `warpx2::02_13`,
+  packed/subword, larger-CGA two-CTA-layout, and scales descriptor-view copy.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_copy_readback_round8_probe.py` py-compiled;
+  - collect-only found `18` nodeids;
+  - full temporary probe passed `18 passed`.
+
+## 2026-04-21: Round 8 Lane D generic-pass / analysis fuzzing
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round8.md`.
+- Classification: no new independent `FZ-*` id. Direct chain0
+  descriptor-view load mismatches dominate generic-looking helper, tuple,
+  sibling, static-loop, and same-base dynamic-if rows, so they extend
+  `FZ-20260421-0003`. Runtime direct `memdesc_index` still extends
+  `FZ-20260421-0001`. Chain1/chain2 generic controls reached runtime and
+  passed.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `/tmp/tmem_generic_pass_round8.py` py-compiled;
+  - collect-only found `14` nodeids;
+  - split-4 sweep classified as `7 failed, 7 passed`;
+  - fresh exact confirmations reproduced the FZ-0003 and FZ-0001 overlaps
+    and the green controls.
