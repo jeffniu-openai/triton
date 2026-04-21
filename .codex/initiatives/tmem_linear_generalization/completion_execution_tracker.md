@@ -1,8 +1,30 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 22:39 UTC
+Last updated: 2026-04-21 22:50 UTC
 
-Latest repair checkpoint: 2026-04-21 22:39 UTC `FZ-20260421-0015` is repaired
+Latest repair checkpoint: 2026-04-21 22:50 UTC `FZ-20260421-0016` and
+`FZ-20260421-0023` are repaired on current head. `FZ-0016` was a verifier abort
+in `Conversion/relayout_tritongpu.mlir`: pre-conversion unencoded tensors were
+accepted by TMEM verifier preconditions, but the verifier then called the
+ld/st compatibility planner and crashed while deriving a `LinearLayout` from a
+missing tensor encoding. `verifyTMEMOperand` now defers compatibility planning
+for unencoded tensors, and the tensor-memory-scales broadcast and reduction
+load verifier paths guard their later layout-dependent checks the same way.
+`FZ-0023` was frontend inline expected-text drift; the expected TMEM subslice
+register layout now includes the current `[0,32]`, `[0,64]`, and `[0,128]`
+register bases. Current copy `warpx2`/scales frontier replay collected
+`97/1623` and passed split-4 as `25 + 25 + 25 + 22`, so no live copy/scales
+implementation failure was found in this slice. Validation: required
+`make -j8`; lit `Conversion/relayout_tritongpu.mlir`,
+`TritonNvidiaGPU/tmem_layouts.mlir`, and `TritonNvidiaGPU/interleave_tmem.mlir`
+passed `3/3`; exact frontend drift test `1 passed`; frontend
+`tensor_memory or tmem_` selector `29 passed`; full structural fuzzer split-4
+`36 passed`; frontend `py_compile` passed. Remaining checked-in structural
+xfails: none. Next frontier: broader MMAv5 reachable-family support, heuristic
+cleanup, staged broad validation, and any still-live temporary-probe buckets
+that reproduce on current head.
+
+Previous repair checkpoint: 2026-04-21 22:39 UTC `FZ-20260421-0015` is repaired
 for valid selected direct B-scale scaled-MMAv5 rows. Current-head replay
 showed that direct branch/helper/pass-through selected B-scale rows were
 already stale-green, but the loop-carried `scf.for` B-scale row still

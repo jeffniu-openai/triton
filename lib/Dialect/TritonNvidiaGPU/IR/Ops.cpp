@@ -1420,6 +1420,12 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   if (failed(verifyTMEMOperandPreconditions(op, type, memdesc, memdescValue,
                                             regName)))
     return failure();
+  // Pre-conversion IR can still carry unencoded tensor operands/results.  The
+  // conversion pipeline chooses the concrete distributed layout, so verifier
+  // compatibility checks that need a register LinearLayout must wait until the
+  // tensor is encoded.
+  if (!type.getEncoding())
+    return success();
   if (isOptimizerReplayableTMemLdSt(op, memdescValue) ||
       isDistributedLayoutTMemCompatible(op, type, memdesc))
     return success();
@@ -1604,6 +1610,7 @@ LogicalResult TMEMLoadOp::verify() {
   }
 
   if (isa<TensorMemoryScalesEncodingAttr>(getSrc().getType().getEncoding()) &&
+      getType().getEncoding() &&
       getSrc().getType().getElementTypeBitWidth() < 32) {
     auto kReg = StringAttr::get(getContext(), "register");
     if (toLinearLayout(getType()).getFreeVariableMasks().lookup(kReg) != 0) {
@@ -1642,6 +1649,9 @@ LogicalResult TMEMLoadOp::verify() {
       return emitOpError(
           "tmem_load reduction is not supported for tensor memory scales.");
     auto regTy = getType();
+    if (!regTy.getEncoding())
+      return triton::gpu::verifyMemoryOpTypes(*this, getSrc().getType(),
+                                              getType());
     auto maxnreg = getContextualMaxNReg(*this);
     auto srcMemTy = cast<MemDescType>(getSrc().getType());
     bool directSourceFriendly = isReductionFriendlyTmemSourceLayout(srcMemTy);

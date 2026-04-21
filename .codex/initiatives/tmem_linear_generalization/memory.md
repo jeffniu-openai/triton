@@ -1,6 +1,26 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 22:39 UTC repair slice 11 fixed the remaining valid
+- Latest: 2026-04-21 22:50 UTC repair slice 12 fixed the live
+  `FZ-20260421-0016` verifier abort and `FZ-20260421-0023` frontend expectation
+  drift, after first refreshing the current copy `warpx2`/scales frontier.
+  Root cause for `FZ-0016`: the TMEM verifier accepted pre-conversion
+  unencoded tensor operands/results in `verifyTMEMOperandPreconditions`, then
+  immediately asked the ld/st planner to derive a register `LinearLayout` from
+  the missing encoding. Implementation: `verifyTMEMOperand` now returns
+  success before compatibility planning when the tensor has no encoding, and
+  the tensor-memory-scales broadcast check plus reduction-load verifier avoid
+  layout-dependent queries until conversion has assigned a concrete encoding.
+  The frontend `test_tmem_subslice_reg_layout_constexpr` inline expectation now
+  records the current subslice register basis (`[0, 32]`, `[0, 64]`,
+  `[0, 128]`). Validation: required `make -j8`; copy/scales frontier selector
+  collected `97/1623` and passed split-4 as `25 + 25 + 25 + 22`; lit
+  `Conversion/relayout_tritongpu.mlir`, `tmem_layouts.mlir`, and
+  `interleave_tmem.mlir` passed `3/3`; exact frontend test `1 passed`;
+  frontend `tensor_memory or tmem_` selector `29 passed`; full structural
+  fuzzer split-4 `36 passed`; frontend `py_compile` passed. Remaining
+  checked-in structural xfails: none.
+
+- Previous: 2026-04-21 22:39 UTC repair slice 11 fixed the remaining valid
   `FZ-20260421-0015` selected direct B-scale scaled-MMAv5 rows. The direct
   branch/helper/pass-through rows were already green on current head after the
   earlier selected-alias liveness repairs, but the loop-carried `scf.for`

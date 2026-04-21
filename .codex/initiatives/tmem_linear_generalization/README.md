@@ -7,7 +7,28 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 22:39 UTC repaired the remaining valid
+Latest repair checkpoint: 2026-04-21 22:50 UTC repaired the live
+`FZ-20260421-0016` verifier abort and `FZ-20260421-0023` frontend expectation
+drift, and refreshed the copy `warpx2`/scales frontier on current head. The
+verifier crash in `Conversion/relayout_tritongpu.mlir` was caused by
+`verifyTMEMOperandPreconditions` accepting pre-conversion unencoded tensor
+operands/results, followed by `verifyTMEMOperand` immediately calling the
+TMEM ld/st planner, which requires a concrete register `LinearLayout`.
+`verifyTMEMOperand` now consistently defers TMEM compatibility checks when the
+tensor has no encoding, and the later tensor-memory-scales and reduction-load
+checks also avoid layout-dependent queries until a concrete encoding exists.
+The frontend inline expectation for `test_tmem_subslice_reg_layout_constexpr`
+now records the current richer register basis for the TMEM subslice load.
+Validation: required `make -j8`; current copy/scales frontier selector
+collected `97/1623` and passed split-4 as `25 + 25 + 25 + 22`; lit
+`Conversion/relayout_tritongpu.mlir`, `tmem_layouts.mlir`, and
+`interleave_tmem.mlir` passed `3/3`; exact frontend drift test `1 passed`;
+frontend `tensor_memory or tmem_` selector `29 passed`; full structural fuzzer
+split-4 `36 passed`; frontend `py_compile` passed. Remaining checked-in
+structural xfails: none; next frontier is broader MMAv5 reachable-family
+support, heuristic cleanup, and staged broad validation.
+
+Previous repair checkpoint: 2026-04-21 22:39 UTC repaired the remaining valid
 `FZ-20260421-0015` selected direct B-scale scaled-MMAv5 runtime rows. The
 branch/helper/pass-through `arith.select` rows were already stale on current
 head after the earlier alias-liveness work, but the loop-carried `scf.for`

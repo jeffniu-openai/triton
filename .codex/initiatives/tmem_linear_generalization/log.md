@@ -33552,6 +33552,47 @@ Open after this slice:
   boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
   staged broad validation.
 
+## 2026-04-21 22:50 UTC: FZ-0016 verifier and FZ-0023 frontend drift repair
+
+- Branch/HEAD before this repair slice:
+  `ceeed709f Fix loop-carried selected B-scale liveness`.
+- Current-head frontier refresh:
+  copy `warpx2`/scales selector
+  `(cp_no_scales_warpx2 or cp_scales or mma_scaled_shared_scale_descriptor_view_auto_tmem_copy) and not reports`
+  collected `97/1623` rows and passed split-4 across GPUs as `25`, `25`,
+  `25`, and `22` passed. No live copy/scales implementation failure was found.
+- Root cause:
+  `Conversion/relayout_tritongpu.mlir` still reproduced `FZ-20260421-0016`.
+  `verifyTMEMOperandPreconditions` returned success for unencoded
+  pre-conversion tensors, but `verifyTMEMOperand` then immediately called
+  `isDistributedLayoutTMemCompatible` / `computeTMemLdStEncodingInfo`, which
+  tried to derive a register `LinearLayout` from a null tensor encoding and
+  aborted in `dyn_cast<DistributedEncodingTrait>`.
+- Completed implementation:
+  `verifyTMEMOperand` now returns success before compatibility planning when
+  the tensor operand/result has no encoding, preserving the pre-conversion
+  contract until the conversion pipeline chooses a concrete distributed
+  layout. The tensor-memory-scales broadcast check and reduction-load verifier
+  also guard their layout-dependent checks so unencoded tensors do not reach
+  `toLinearLayout` / `toLinearEncoding`.
+- Frontend expectation cleanup:
+  `test_tmem_subslice_reg_layout_constexpr` was the live
+  `FZ-20260421-0023` mismatch. Its inline expected register layout now includes
+  the current TMEM subslice register bases `[0, 32]`, `[0, 64]`, and
+  `[0, 128]`.
+- Validation evidence:
+  required `make -j8`; lit `test/Conversion/relayout_tritongpu.mlir`,
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`, and
+  `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `3/3`; exact frontend
+  test `test_tmem_subslice_reg_layout_constexpr` passed; frontend selector
+  `tensor_memory or tmem_` passed `29/29`; full structural fuzzer split-4
+  passed `9 + 9 + 9 + 9 = 36`; frontend `py_compile` passed.
+- Remaining repair-plan frontier:
+  no checked-in structural xfails remain. With the copy/scales frontier green
+  on current head, continue with broader MMAv5 reachable-family support,
+  heuristic cleanup, staged broad validation, and any still-live temporary
+  probe buckets that reproduce on current head.
+
 ## 2026-04-21 22:39 UTC: FZ-0015 selected B-scale loop liveness repair
 
 - Branch/HEAD before this repair slice:
