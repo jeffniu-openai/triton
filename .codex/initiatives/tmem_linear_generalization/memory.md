@@ -1,5 +1,27 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 07:00 UTC completed Round 4 of the requested TMEM backend
+  audit on generic compiler analyses and layout-conversion interactions with
+  TMEM memdescs. Audited `lib/Analysis/AxisInfo.cpp`,
+  `lib/Dialect/TritonGPU/Transforms/Coalesce.cpp`,
+  `CoalesceUtils.cpp`, `RemoveLayoutConversions.cpp`,
+  `OptimizeThreadLocality.cpp`, `LayoutPropagationUtility.cpp`,
+  `lib/Dialect/TritonGPU/IR/LinearLayoutConversions.cpp`, and the recent
+  warp-specialization capture/partition fixes. Findings: `AxisInfo` excludes
+  memdesc SSA results from propagated AxisInfo state; coalescing is limited to
+  ranked pointer tensors or descriptor load/store tensor payloads; remove-
+  layout-conversions only inserts `convert_layout` for ranked tensors and
+  rematerialization leaves memdesc values as slice roots; optimize-thread-
+  locality only rewrites tensor reshape/gather/reduce patterns; the only
+  `CanonicalizePointers` pass in this checkout is AMD-specific and has no TMEM
+  memdesc surface. No new concrete crash or silent wrong-code gap was found.
+  Validation: required `make -j8`; lit `combine.mlir`, `coalesce.mlir`,
+  `optimize-locality.mlir`, `tmem_layouts.mlir`,
+  `optimize-partition-warps.mlir`, `partition-scheduling.mlir`,
+  `interleave_tmem.mlir`, `invalid.mlir`,
+  `tritongpu_to_llvm_blackwell.mlir`, and `Analysis/test-alignment.mlir`
+  passed.
+
 - Latest: 2026-04-21 06:47 UTC completed a second adversarial
   copy/ld/st/ld.red audit focused on descriptor chains, multi-CTA ownership,
   subword/packed boundaries, and refresh/view behavior. A real backend copy

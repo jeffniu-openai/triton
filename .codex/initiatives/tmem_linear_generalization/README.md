@@ -73,6 +73,20 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 07:00 UTC: completed Round 4 of the TMEM backend audit focused
+  on generic compiler analyses and layout-conversion interactions with TMEM
+  memdescs. Audited `AxisInfo`, `Coalesce`, `RemoveLayoutConversions`,
+  `OptimizeThreadLocality`, linear-layout conversion utilities,
+  `LayoutPropagationUtility`, and the scoped warp-specialization capture/
+  partition fixes from prior rounds. No new fixable memdesc/ranked-tensor
+  confusion or descriptor-view wrong-code gap was found. Validation: required
+  `make -j8`; lit for `combine.mlir`, `coalesce.mlir`,
+  `optimize-locality.mlir`, `tmem_layouts.mlir`,
+  `optimize-partition-warps.mlir`, `partition-scheduling.mlir`,
+  `interleave_tmem.mlir`, `invalid.mlir`,
+  `tritongpu_to_llvm_blackwell.mlir`, and `Analysis/test-alignment.mlir`
+  passed.
+
 - 2026-04-21 06:47 UTC: completed the copy/ld/st/ld.red-focused adversarial
   follow-up audit. Fixed a real multicast `tcgen05.copy` two-CTA ownership
   false negative for 128-row `TensorMemoryScalesLayout` destinations: their

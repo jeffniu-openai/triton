@@ -26142,3 +26142,35 @@ Open after this slice:
   - unrelated concurrent edit in
     `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` was not touched or
     staged by this slice.
+
+## 2026-04-21 07:00 UTC: Round 4 generic-pass TMEM audit
+
+- User asked for Round 4 of 5 focused on generic compiler analyses and
+  layout-conversion interactions with TMEM memdescs.
+- Audited paths:
+  - `lib/Analysis/AxisInfo.cpp`;
+  - `lib/Dialect/TritonGPU/Transforms/Coalesce.cpp` and `CoalesceUtils.cpp`;
+  - `lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp`;
+  - `lib/Dialect/TritonGPU/Transforms/OptimizeThreadLocality.cpp`;
+  - `lib/Dialect/TritonGPU/Transforms/LayoutPropagationUtility.cpp`;
+  - `lib/Dialect/TritonGPU/IR/LinearLayoutConversions.cpp`;
+  - recent warp-specialization capture/partition fixes.
+- No new concrete fixable gap was found. `AxisInfo` excludes memdesc SSA
+  results from propagated state, coalescing is limited to ranked pointer
+  tensors or descriptor tensor payloads, remove-layout-conversions only creates
+  `convert_layout` for ranked tensors, and optimize-thread-locality only
+  rewrites ranked tensor reshape/gather/reduce patterns. The only
+  `CanonicalizePointers` pass in this checkout is AMD-specific and has no TMEM
+  memdesc surface.
+- Validation:
+  - required
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`;
+  - lit `test/TritonGPU/combine.mlir`, `test/TritonGPU/coalesce.mlir`,
+    `test/TritonGPU/optimize-locality.mlir`,
+    `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+    `test/TritonGPU/optimize-partition-warps.mlir`, and
+    `test/TritonGPU/partition-scheduling.mlir` passed `6/6`;
+  - lit `test/TritonNvidiaGPU/interleave_tmem.mlir`,
+    `test/TritonNvidiaGPU/invalid.mlir`, and
+    `test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed `3/3`;
+  - lit `test/Analysis/test-alignment.mlir` passed.
