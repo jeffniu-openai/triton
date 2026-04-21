@@ -26806,3 +26806,16 @@ Open after this slice:
     `TRITON_CACHE_DIR=/tmp/triton-cache-local-r9-structural`
     `PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
     reported `9 passed, 24 xfailed`.
+
+## 2026-04-21: clean-boundary runtime-matrix spot checks
+
+- While Round 9 clean-diagnostic fuzzing was running in a subagent, sampled
+  representative checked-in clean-boundary rows locally.
+- Collection inventory:
+  - `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'reports_clean_error or reports_clean_unsupported or resource_boundary'`
+    collected `149` nodeids.
+- Runtime spot checks:
+  - copy `warpx2::02_13` two-CTA clean unsupported, two-CTA layout in a
+    4-CTA context, and `ld.red` `256x256` resource boundary passed `3/3`;
+  - MMA i8 clean error, MMA row/col-permuted clean unsupported, and scaled
+    MMA `N=16` B-scale descriptor-view clean error passed `3/3`.
