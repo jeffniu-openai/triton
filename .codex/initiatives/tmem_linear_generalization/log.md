@@ -26819,3 +26819,15 @@ Open after this slice:
     4-CTA context, and `ld.red` `256x256` resource boundary passed `3/3`;
   - MMA i8 clean error, MMA row/col-permuted clean unsupported, and scaled
     MMA `N=16` B-scale descriptor-view clean error passed `3/3`.
+
+## 2026-04-21: plain-MMAv5 runtime-matrix spot checks
+
+- While Round 9 plain-MMAv5 fuzzing was running in a subagent, sampled
+  representative checked-in plain-MMAv5 descriptor/control-flow surfaces.
+- Collection inventory:
+  - `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not mma_scaled and (indexed or acc_subslice or descriptor or twocta)'`
+    collected `224` nodeids.
+- Runtime spot checks:
+  - 1CTA indexed accumulator and accumulator-subslice rows passed `3/3`;
+  - 2CTA indexed accumulator, accumulator-subslice, and clean
+    shared-transpose diagnostic rows passed `3/3`.
