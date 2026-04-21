@@ -26406,3 +26406,41 @@ Open after this slice:
 - Backend/compiler code was not changed.
 - Report written:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_expansion_round2.md`.
+
+## 2026-04-21 08:43 UTC: Structural fuzzing Round 3 promotion and clean-surface validation
+
+- Continued the user-requested 24-hour discovery-only TMEM structural fuzzing
+  campaign with four subagent lanes and local four-GPU sanity sweeps. No
+  backend/compiler code was changed.
+- Lane R3-A minimized `FZ-20260421-0001` to direct runtime
+  `parent.index(tt.load(selector))` on `[2,128,32]`, with no view chain,
+  helper return, control-flow merge, or pre-store. Static/constexpr direct
+  indices pass, and the load-only MLIR reproduces with
+  `triton-opt --run-reproducer`.
+- Lane R3-B tightened `FZ-20260421-0004`: 1CTA direct indexed views can emit
+  `ld.red`, but descriptor chains lose the opcode; 2CTA full-parent reduction
+  emits `ld.red`, but resource-valid 2CTA indexed views lose it even at
+  chain0.
+- Lane R3-C found no new copy/MMA/scaled-MMA/membar failures. Runtime-matrix
+  selector passed as `49 + 49 + 49 + 47`; larger-CGA `num_ctas=4/8/16` probes
+  produced clean diagnostics.
+- Lane R3-D minimized `FZ-20260421-0003`: read-only chain1
+  `[2,64,32] -> [64,32]` remains the smallest stable miscompile; chain2/chain4
+  col-reverse `16x64b` rows are same-bucket packet-order evidence; same-view
+  roundtrips can mask the bug.
+- Promoted three strict xfail sentinels into
+  `python/test/gluon/test_tmem_structural_fuzzer.py`:
+  - `generic-pass-dynamic-index-load-only-128x32`;
+  - `ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b`;
+  - `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min`.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - py-compile for `test_tmem_structural_fuzzer.py`;
+  - collect-only found `21` nodeids;
+  - each new promoted nodeid reported `1 xfailed`;
+  - full structural fuzzer reported `9 passed, 12 xfailed`.
+- Reports written:
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_memdesc_index_round3.md`;
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_opcode_round3.md`;
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_copy_round3.md`;
+  - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_round3.md`.

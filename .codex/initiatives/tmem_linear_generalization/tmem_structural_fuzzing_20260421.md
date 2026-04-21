@@ -230,6 +230,80 @@ Every structural fuzz case records:
     `[2,256,32]` and `[2,256,64]`, isolating the 2CTA failure to indexed
     descriptor-view provenance rather than global 2CTA reduction support.
 
+### Lane R3-A Round 3, Dynamic `memdesc_index` Minimization
+
+- Time: 2026-04-21 08:39 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_memdesc_index_round3.md`
+- Scope: minimize `FZ-20260421-0001` and determine whether descriptor-view
+  chains are required for the illegal dynamic `ttg.memdesc_index`.
+- Result: no backend repair attempted; minimized to direct runtime
+  `parent.index(tt.load(selector))` on parent `[2,128,32]`, selected view
+  `[128,32]`, with no helper return, control-flow merge, pre-store, reshape,
+  or permute.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - temporary Python/Gluon probes showed static/constexpr direct index rows
+    pass while runtime direct index fails in `ConvertTritonGPUToLLVM`;
+  - the compiler-emitted load-only MLIR reproduces with
+    `triton-opt --run-reproducer`.
+- Promotion: added checked-in strict xfail
+  `generic-pass-dynamic-index-load-only-128x32`.
+
+### Lane R3-C Round 3, MMA / Copy / Membar Clean-Surface Fuzzing
+
+- Time: 2026-04-21 08:42 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_copy_round3.md`
+- Scope: adversarially probe copy, plain MMA, scaled MMA, larger-CGA clean
+  diagnostics, and warp-specialized/membar surfaces outside the currently
+  failing ld/st and ld.red buckets.
+- Result: no new backend failures.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - runtime-matrix selector over copy `warpx2`, plain two-CTA MMA
+    accumulator views, and scaled-MMA descriptor/narrow/tile-permuted surfaces
+    passed as `49 + 49 + 49 + 47`;
+  - structural-fuzzer anchors passed as `3 passed, 5 xfailed`;
+  - temporary larger-CGA probes for `num_ctas=4/8/16` produced clean
+    diagnostics for copy, plain MMA, and scaled MMA;
+  - warp-specialized/membar probes passed `2`.
+
+### Lane R3-D Round 3, ld/st Descriptor-View Miscompile Minimization
+
+- Time: 2026-04-21 08:43 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_round3.md`
+- Scope: minimize and expand `FZ-20260421-0003` with read-only descriptor-view
+  loads, separating them from roundtrip patterns that can mask address
+  arithmetic bugs.
+- Result: no backend repair attempted; smallest runtime miscompile remains
+  parent `[2,64,32]`, indexed view `[64,32]`, `f32`, chain1, identity layout,
+  `32x32b`. Smaller `16x32` and `32x32` rows cleanly reject before launch.
+- Additional stable same-bucket evidence:
+  - chain2 and chain4 col-reverse `16x64b` rows miscompile with matching
+    packet-order samples/opcodes;
+  - direct chain0 read-only controls pass;
+  - same-view roundtrip controls can pass because the bad mapping cancels.
+- Promotion: added checked-in strict xfail
+  `ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b`.
+
+### Round 3 Local Promotion / Validation
+
+- Time: 2026-04-21 08:43 UTC
+- Promoted three round-three sentinels into
+  `python/test/gluon/test_tmem_structural_fuzzer.py` without backend repairs:
+  - minimized direct dynamic-index load-only `FZ-20260421-0001`;
+  - ld/st chain2 col-reverse `16x64b` `FZ-20260421-0003`;
+  - 2CTA resource-valid indexed-view ld.red opcode loss
+    `FZ-20260421-0004`.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
+  - collect-only found `21` structural-fuzzer nodeids;
+  - the three new exact nodeids each reported `1 xfailed`;
+  - full structural fuzzer reported `9 passed, 12 xfailed`.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -256,6 +330,14 @@ Every structural fuzz case records:
   - representative repro:
     `/tmp/tmem_expansion_round2_cf.py::test_cf_helper_returned_views[index-128-64-identity-identity-3-0-32x32b]`;
   - log: `/tmp/tmem_expansion_round2_confirm_cf_index_chain3.log`.
+- Round 3 minimization:
+  - direct runtime `parent.index(tt.load(selector))` on `[2,128,32]` reaches
+    the same illegal `ttg.memdesc_index` in `ConvertTritonGPUToLLVM` with no
+    helper, control flow, pre-store, reshape, or permute;
+  - static/constexpr direct index rows pass;
+  - the emitted load-only MLIR reproduces with `triton-opt --run-reproducer`;
+  - checked-in strict xfail:
+    `test_tmem_structural_fuzzer_generic_pass_dynamic_index_load_only[generic-pass-dynamic-index-load-only-128x32]`.
 
 ### FZ-20260421-0002: helper-returned chain0 TMEM view miscompiles through control flow
 
@@ -312,6 +394,15 @@ Every structural fuzz case records:
     `/tmp/tmem_expansion_round2_ldst_ldred.py::test_ldst_adjacent_row_col_permutations[64-32-identity-reverse-2-16x64b]`;
   - fresh result mismatched `1024 / 2048` elements;
   - log: `/tmp/tmem_expansion_round2_confirm_ldst_chain2_colrev.log`.
+- Round 3 minimization:
+  - read-only `64x32` chain1 identity `32x32b` remains the smallest stable
+    miscompile; smaller `16x32` and `32x32` rows cleanly reject;
+  - chain2 and chain4 col-reverse `16x64b` share mismatch samples/opcodes and
+    are treated as same-root packet-ordering evidence;
+  - roundtrip tests can hide the bug because load and store use the same bad
+    view mapping;
+  - added checked-in strict xfail:
+    `test_tmem_structural_fuzzer_ldst_descriptor_view_read[ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b]`.
 
 ### FZ-20260421-0004: ld.red descriptor chains fall back to plain ld plus software reduce
 
@@ -356,6 +447,9 @@ Every structural fuzz case records:
     `/tmp/tmem_ldred_opcode_round3_confirm_onecta_chain1.log`,
     `/tmp/tmem_ldred_opcode_round3_confirm_twocta_index_chain0.log`, and
     `/tmp/tmem_ldred_opcode_round3_confirm_twocta_full_parent_positive.log`.
+- Promotion status: the 2CTA indexed sentinel is now checked in as strict
+  xfail:
+  `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min]`.
 
 ### FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation
 
@@ -405,18 +499,22 @@ Every structural fuzz case records:
   for dynamic `if`, mixed tensor+memdesc capture, and layout-conversion
   pressure variants.
 - FZ-20260421-0003 and FZ-20260421-0004 are now covered by checked-in Python
-  runtime xfail repros.
+  runtime xfail repros, including the round-three chain2 col-reverse ld/st
+  packet sentinel and 2CTA indexed ld.red opcode sentinel.
 - FZ-20260421-0005 is now covered by a checked-in subprocess xfail. Optional
   next minimization remains capturing the MLIR reproducer and rerunning with
   `triton-opt --run-reproducer`.
 - FZ-20260421-0006 is now covered by a checked-in Python xfail. Expand around
   adjacent row/col permutations before classifying as a true boundary.
-- Round 2 expansion queue:
-  - promote or minimize runtime `memdesc_index` chain2/chain3 crashes;
-  - decide whether helper false-branch and `16x64b` variants need additional
-    checked-in xfail rows beyond existing FZ-0002 coverage;
-  - promote the chain2 col-reverse ld/st `16x64b` repro or reduce it to the
-    exact broken address-arithmetic layer;
-  - compare the resource-valid 2CTA ld.red temporary row against the checked-in
-    two-CTA direct higher-rank positive before repair, to isolate red-layout
-    contract mismatch from true opcode-selection loss.
+- Round 4 discovery queue:
+  - continue structural fuzzing without backend repairs until new findings
+    stop or the user pivots;
+  - expand helper-returned view/control-flow variants around `FZ-20260421-0002`
+    and decide whether false-branch / `16x64b` rows need additional sentinels;
+  - capture a compact lit reproducer for minimized dynamic `memdesc_index`
+    if useful for later repair;
+  - stress ld/st read-only descriptor views with dtype/subword and 2CTA
+    variants that existing roundtrip tests can mask;
+  - probe `ld.red` view provenance across additional 2CTA indexed layouts and
+    non-min reductions while keeping clean diagnostics separate from opcode
+    fallback.

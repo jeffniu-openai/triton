@@ -137,6 +137,15 @@ class GenericPassLayoutPressureCase:
     chain_id: int
 
 
+@dataclass(frozen=True)
+class DynamicIndexLoadOnlyCase:
+    case_id: str
+    seed: int
+    m: int
+    n: int
+    selector: int
+
+
 LDST_CASES = [
     LdStCase("ldst-view-identity-32x32b", 0x101, 128, 64, "identity", "identity", "32x32b", 0),
     LdStCase("ldst-view-col-reverse-32x32b", 0x102, 128, 64, "identity", "reverse", "32x32b", 1),
@@ -161,12 +170,35 @@ LDST_DESCRIPTOR_VIEW_XFAIL_CASES = [
             reason="FZ-20260421-0003: ld/st descriptor-view chain1 miscompiles",
         ),
     ),
+    pytest.param(
+        LdStCase(
+            "ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b",
+            0xA013,
+            64,
+            32,
+            "identity",
+            "reverse",
+            "16x64b",
+            2,
+        ),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0003: ld/st descriptor-view chain2 col-reverse packet mapping miscompiles",
+        ),
+    ),
 ]
 
 LDRED_CASES = [
     LdRedCase("ldred-direct-128x64", 0x201, 128, 64, False, 0),
     LdRedCase("ldred-view-128x64", 0x202, 128, 64, False, 1),
     LdRedCase("ldred-twocta-lifted-256x64", 0x203, 256, 64, True, 0),
+    pytest.param(
+        LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min", 0xA014, 256, 32, True, 1),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0004: resource-valid 2CTA indexed view emits plain ld instead of ld.red",
+        ),
+    ),
     pytest.param(
         LdRedCase("ldred-fz20260421-0004-chain1-64x32-min", 0xA004, 64, 32, False, 2),
         marks=pytest.mark.xfail(
@@ -239,6 +271,16 @@ GENERIC_PASS_LAYOUT_PRESSURE_CASES = [
     ),
 ]
 
+DYNAMIC_INDEX_LOAD_ONLY_CASES = [
+    pytest.param(
+        DynamicIndexLoadOnlyCase("generic-pass-dynamic-index-load-only-128x32", 0xE021, 128, 32, 1),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="FZ-20260421-0001: direct runtime TMEM memdesc_index reaches LLVM conversion as illegal op",
+        ),
+    ),
+]
+
 
 @gluon.jit
 def _generic_pass_identity_view0(desc, M: ttgl.constexpr, N: ttgl.constexpr):
@@ -280,6 +322,23 @@ def _fuzz_generic_pass_dynamic_index_kernel(
 
     index = ttgl.load(selector_ptr)
     view = _generic_pass_view(parent.index(index), M, N, chain_id)
+    view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant="32x32b")
+    out = view.load(view_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, view_layout))
+
+
+@gluon.jit
+def _fuzz_generic_pass_dynamic_index_load_only_kernel(
+    out_ptr,
+    selector_ptr,
+    parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+):
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    index = ttgl.load(selector_ptr)
+    view = parent.index(index)
     view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant="32x32b")
     out = view.load(view_layout)
     ttgl.store(out_ptr + offs, ttgl.convert_layout(out, view_layout))
@@ -492,6 +551,30 @@ def _fuzz_ldred_twocta_kernel(in_ptr, out_ptr, red_ptr, parent_layout: ttgl.cons
 
 
 @gluon.jit
+def _fuzz_ldred_twocta_indexed_kernel(
+    in_ptr,
+    out_ptr,
+    red_ptr,
+    parent_layout: ttgl.constexpr,
+    red_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+):
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    view = parent.index(1)
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))[None, :]
+    offs = offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    view.store(ttgl.convert_layout(value, reg_layout))
+    out, reduced = view.load_min()
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
+    red_m = ttgl.arange(0, M, red_layout)
+    ttgl.store(red_ptr + red_m, ttgl.convert_layout(reduced, red_layout))
+
+
+@gluon.jit
 def _fuzz_copy_scales_kernel(in_ptr, out_ptr, TWO_CTAS: ttgl.constexpr):
     M: ttgl.constexpr = 128 if TWO_CTAS else 64
     N: ttgl.constexpr = 16
@@ -624,12 +707,33 @@ def test_tmem_structural_fuzzer_ldred(case):
         layout = _make_linear_layout(case.m, case.n, two_ctas=True)
         parent_layout = _lift_layout(layout, [2])
         red_layout = ttgl.BlockedLayout([1, 1], [1, 32], [1, 8], [1, 0], cga_layout=[[1, 0]])
-        inp = torch.randn((2, case.m, case.n), dtype=torch.float32, device="cuda")
-        out = torch.empty_like(inp)
-        red = torch.empty((2, case.m), dtype=torch.float32, device="cuda")
-        compiled = _fuzz_ldred_twocta_kernel[(1, )](inp, out, red, parent_layout, red_layout, num_warps=8, num_ctas=2)
-        torch.testing.assert_close(out, inp, atol=0, rtol=0)
-        torch.testing.assert_close(red, torch.min(inp, dim=2).values, atol=0, rtol=0)
+        if case.chain_id == 0:
+            inp = torch.randn((2, case.m, case.n), dtype=torch.float32, device="cuda")
+            out = torch.empty_like(inp)
+            red = torch.empty((2, case.m), dtype=torch.float32, device="cuda")
+            compiled = _fuzz_ldred_twocta_kernel[(1, )](
+                inp, out, red, parent_layout, red_layout, num_warps=8, num_ctas=2
+            )
+            torch.testing.assert_close(out, inp, atol=0, rtol=0)
+            torch.testing.assert_close(red, torch.min(inp, dim=2).values, atol=0, rtol=0)
+        else:
+            inp = torch.randn((case.m, case.n), dtype=torch.float32, device="cuda")
+            out = torch.empty_like(inp)
+            red = torch.empty((case.m, ), dtype=torch.float32, device="cuda")
+            indexed_red_layout = ttgl.BlockedLayout([1], [32], [8], [0], cga_layout=[[1]])
+            compiled = _fuzz_ldred_twocta_indexed_kernel[(1, )](
+                inp,
+                out,
+                red,
+                parent_layout,
+                indexed_red_layout,
+                case.m,
+                case.n,
+                num_warps=8,
+                num_ctas=2,
+            )
+            torch.testing.assert_close(out, inp, atol=0, rtol=0)
+            torch.testing.assert_close(red, torch.min(inp, dim=1).values, atol=0, rtol=0)
     else:
         layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
         parent_layout = _lift_layout(layout, [2])
@@ -718,6 +822,23 @@ def test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow(case):
     assert ptx_ops == llir_ops
     assert any(".ld." in op for op in ptx_ops)
     assert any(".st." in op for op in ptx_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", DYNAMIC_INDEX_LOAD_ONLY_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_generic_pass_dynamic_index_load_only(case):
+    torch.manual_seed(case.seed)
+    base_layout = _make_linear_layout(case.m, case.n)
+    parent_layout = _lift_layout(base_layout, [2])
+    out = torch.empty((case.m, case.n), dtype=torch.float32, device="cuda")
+    selector = torch.tensor([case.selector], dtype=torch.int32, device="cuda")
+    compiled = _fuzz_generic_pass_dynamic_index_load_only_kernel[(1, )](
+        out, selector, parent_layout, case.m, case.n, num_warps=4
+    )
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
+    assert ptx_ops == llir_ops
+    assert any(".ld." in op for op in ptx_ops)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -1250,3 +1250,19 @@ signal handling:
   adjacent repros as strict xfails where useful, and compare the 2CTA ld.red
   row against the checked-in two-CTA direct higher-rank positive before any
   repair work.
+
+- 2026-04-21 08:43 UTC: completed TMEM structural fuzzing round 3 and promoted
+  the highest-value new sentinels while preserving discovery-only mode. Four
+  subagent lanes produced reports for dynamic `memdesc_index`, ld.red opcode
+  loss, MMA/copy clean surfaces, and ld/st read-only descriptor-view
+  minimization. New checked-in strict xfails:
+  `generic-pass-dynamic-index-load-only-128x32`,
+  `ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b`, and
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min`. Required
+  `make -j8` was no-op; py-compile passed; collect-only found `21` structural
+  fuzzer nodeids; exact new sentinels each xfailed; full structural fuzzer
+  passed as `9 passed, 12 xfailed`. Existing clean-surface sanity sweeps passed
+  for ld.red descriptor matrix (`50/50`), copy warpx2/scales (`103/103`), and
+  scaled-MMA descriptor/narrow/tile selectors (`139/139`). Current active
+  phase remains continuous fuzzing/cataloging with no backend fixes until
+  findings stop or the user pivots.

@@ -14417,6 +14417,41 @@ rejection, not rescue
   - preexisting uncommitted initiative-doc and structural-fuzzer changes from
     other active lanes were preserved.
 
+## Current: 2026-04-21 08:43 UTC structural fuzzing Round 3 promoted sentinels
+
+- Active campaign mode remains discovery-only. Do not begin backend repairs
+  while structural fuzzing continues to find or sharpen failures unless the
+  user explicitly pivots.
+- Latest pushed/report checkpoints from round 3:
+  - `c6c810fc4` documented the minimized dynamic TMEM `memdesc_index` crash;
+  - `ebfafdaf9` documented ld.red opcode-loss round 3;
+  - `7c40f0acb` documented MMA/copy clean-surface round 3;
+  - current local slice adds the ld/st round-three report and promotes the
+    best new sentinels.
+- New checked-in strict xfail sentinels in
+  `python/test/gluon/test_tmem_structural_fuzzer.py`:
+  - `generic-pass-dynamic-index-load-only-128x32`: direct runtime
+    `parent.index(tt.load(selector))` on `[2,128,32]` reaches illegal
+    `ttg.memdesc_index` in `ConvertTritonGPUToLLVM`;
+  - `ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b`: packet-order
+    read-only descriptor-view miscompile, same bucket as FZ-0003;
+  - `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min`: resource-valid
+    2CTA indexed view emits plain `tcgen05.ld` instead of `.ld.red.`.
+- Validation evidence:
+  - required `make -j8` no-op;
+  - py-compile passed for the structural fuzzer;
+  - collect-only found `21` nodeids;
+  - each new promoted sentinel xfailed individually;
+  - full structural fuzzer reported `9 passed, 12 xfailed`;
+  - local sanity sweeps passed existing `ld_red and descriptor` (`50/50`),
+    copy warpx2/scales (`103/103`), and scaled-MMA descriptor/narrow/tile
+    selectors (`139/139`).
+- Next fuzzing focus:
+  - continue helper/control-flow `FZ-0002` expansion;
+  - add lit minimization for dynamic `memdesc_index` if useful;
+  - stress ld/st read-only descriptor views where roundtrips mask bugs;
+  - expand 2CTA indexed ld.red provenance and non-min reductions.
+
 ## Current: 2026-04-21 02:51 UTC max-CTA coverage added
 
 - User asked whether coverage also checks more than 4 CTAs, up to the hardware

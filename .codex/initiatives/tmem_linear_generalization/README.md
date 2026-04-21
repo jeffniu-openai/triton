@@ -5089,3 +5089,20 @@ When resuming the initiative:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_expansion_round2.md`.
 - Central catalog:
   `.codex/initiatives/tmem_linear_generalization/tmem_structural_fuzzing_20260421.md`.
+
+## Latest: 2026-04-21 08:43 UTC structural fuzzing Round 3 promotion
+
+- Discovery-only TMEM structural fuzzing round 3 completed four subagent lanes:
+  dynamic `memdesc_index` minimization, ld.red opcode-loss expansion,
+  MMA/copy clean-surface fuzzing, and ld/st read-only descriptor-view
+  minimization.
+- New checked-in strict xfail sentinels in
+  `python/test/gluon/test_tmem_structural_fuzzer.py`:
+  - direct dynamic-index load-only `FZ-20260421-0001`;
+  - ld/st chain2 col-reverse `16x64b` `FZ-20260421-0003`;
+  - 2CTA indexed ld.red opcode-loss `FZ-20260421-0004`.
+- Validation: required `make -j8` no-op; py-compile passed; collect-only found
+  `21` structural-fuzzer nodeids; exact new sentinels xfailed individually;
+  full structural fuzzer passed as `9 passed, 12 xfailed`.
+- Continue fuzzing and cataloging without backend repairs until interrupted or
+  until new findings stop.
