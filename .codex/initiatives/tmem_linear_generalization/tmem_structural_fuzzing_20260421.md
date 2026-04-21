@@ -878,6 +878,29 @@ remain family-specific and consume a bounded subset of the inventory.
   - exact `nvfp4` high-selector contrasts and larger-CGA sanity controls
     passed as classified tests.
 
+### Lane H Round 9, Validation Logistics
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_validation_logistics_round9.md`
+- Scope: collection sizing, representative runtime timing, duration-aware
+  splitting, and selector triage for TMEM-heavy structural-fuzzer and
+  runtime-matrix sweeps. No backend/compiler repair attempted.
+- Result: no new `FZ-*` id.
+- Key inventory:
+  - structural fuzzer: `33` collected; representative runtime
+    `9 passed, 24 xfailed in 27.10s`;
+  - full runtime matrix: `1615` collected;
+  - compact recommended slices: scaled MMA `use_acc` (`28`), copy `warpx2`
+    (`28`), LD.RED descriptor (`30`), clean diagnostics (`96`);
+  - broad/noisy selectors to avoid for casual sweeps: full runtime matrix,
+    `twocta`, broad `mma_scaled`, broad `ldst and descriptor`, and broad
+    `ld_red or ldred`.
+- Logistics recommendation: store durations for repeat slices and use
+  `--splits 4 --group <n> --splitting-algorithm=least_duration` for skewed
+  4-GPU reruns; do not use selectors that only collect skipped rows as timing
+  calibration sources.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
@@ -1396,3 +1419,5 @@ remain family-specific and consume a bounded subset of the inventory.
   xfail under `FZ-20260421-0007` for the `nvfp4xnvfp4`, `N=16`, `K=256`,
   selector-1 dynamic accumulator-view miscompile, with direct high/low
   controls documented as passing.
+- Round 9 validation logistics added practical next sweep slices and selector
+  guidance; use those before launching broad runtime-matrix sweeps.

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
+  `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
+  found. Current inventory: checked-in structural fuzzer collects `33`
+  nodeids and ran as `9 passed, 24 xfailed`; full runtime matrix collects
+  `1615` nodeids. Practical focused slices: scaled MMA `use_acc` (`28`),
+  copy `warpx2` (`28`), LD.RED descriptor (`30`), and clean diagnostics
+  (`96`). Avoid casual broad selectors like full runtime matrix, `twocta`,
+  broad `mma_scaled`, broad `ldst and descriptor`, and broad `ld_red`.
+
 - Latest: 2026-04-21 completed Round 8 Lane B scaled-MMAv5 accumulator
   descriptor-view control-flow fuzzing. Wrote
   `agents/fuzz_scaled_mma_round8.md`. No new independent bucket was assigned.

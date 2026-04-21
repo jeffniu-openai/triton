@@ -26922,3 +26922,20 @@ Open after this slice:
 - Runtime spot checks:
   - identity `min` and `max` with `abs=True`/NaN propagation plus explicit
     `32x32b` compatible-layout `min` passed `3/3`.
+
+## 2026-04-21: Round 9 Lane H validation logistics
+
+- Continued the discovery-only structural fuzzing campaign. No backend or
+  compiler repairs were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_validation_logistics_round9.md`.
+- Classification: no new `FZ-*` bucket. This lane produced collection sizes,
+  representative timings, duration-aware split guidance, and broad-selector
+  warnings for continuing fuzzing.
+- Key results:
+  - structural fuzzer collected `33` and ran as `9 passed, 24 xfailed`;
+  - runtime matrix collected `1615`;
+  - recommended focused next slices are scaled MMA `use_acc` (`28`), copy
+    `warpx2` (`28`), LD.RED descriptor (`30`), and clean diagnostics (`96`);
+  - avoid casual broad sweeps over full runtime matrix, `twocta`, broad
+    `mma_scaled`, broad `ldst and descriptor`, and broad `ld_red or ldred`.

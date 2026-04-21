@@ -207,6 +207,13 @@ The project is complete when:
   `use_acc=False`; direct controls pass and MMA opcodes agree. Helper-indexed
   rows overlap `FZ-20260421-0001`. Report:
   `agents/fuzz_scaled_mma_round8.md`.
+  2026-04-21 Round 9 Lane H completed validation logistics without backend
+  repairs. No new `FZ-*` id. Use the structural fuzzer as the frequent smoke
+  gate (`33` nodeids, current expected `9 passed, 24 xfailed`). Prefer
+  focused runtime slices for repeated lanes: scaled MMA `use_acc` (`28`),
+  copy `warpx2` (`28`), LD.RED descriptor (`30`), and clean diagnostics
+  (`96`), with stored durations and least-duration split-4 reruns. Report:
+  `agents/fuzz_validation_logistics_round9.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

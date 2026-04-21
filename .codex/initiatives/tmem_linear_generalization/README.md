@@ -73,6 +73,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
+  `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
+  found. Current checked-in structural fuzzer collects `33` tests and runs as
+  `9 passed, 24 xfailed`; full runtime matrix collects `1615` tests.
+  Recommended focused next slices are scaled MMA `use_acc` (`28`), copy
+  `warpx2` (`28`), LD.RED descriptor (`30`), and clean diagnostics (`96`),
+  with duration-aware splitting for repeated 4-GPU runs.
+
 - 2026-04-21: completed Round 8 Lane B scaled-MMAv5 accumulator
   descriptor-view control-flow fuzzing. Wrote
   `agents/fuzz_scaled_mma_round8.md` from
