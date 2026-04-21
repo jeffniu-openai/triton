@@ -1,3 +1,23 @@
+## 2026-04-21: Round 54 opcode consistency lane C
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_opcode_consistency_lane.md`.
+- Required `make -j8` was a no-op.
+- Initial collection without `PYTHONPATH=.:./python` failed before tests with
+  `ModuleNotFoundError: No module named 'triton.compiler.errors'`; corrected
+  commands used `PYTHONPATH=.:./python`.
+- Focused opcode selector over `python/test/gluon/test_tmem_runtime_matrix.py`
+  collected `172/1615` rows and passed split-4 as `43 + 43 + 43 + 43 =
+  172 passed`.
+- Focused proxy/mbarrier/multicast selector over runtime matrix plus
+  `python/test/gluon/test_core.py` collected `39/19729` rows and passed as
+  `39 passed`.
+- Representative forced-compile dump replay passed `9` nodeids and captured
+  `27` TTGIR/LLIR/PTX artifacts under `/tmp/tmem_round54_opcode_dump`.
+- Classification: no PTX-vs-LLIR opcode mismatch, missing hardware opcode,
+  unexpected software fallback, verifier over-strictness, compiler crash,
+  runtime miscompile, process contamination, or new independent `FZ-*`.
+
 ## 2026-04-21 14:33 UTC: Round 45 mixed exact smoke guardrail
 
 - Wrote
@@ -32327,3 +32347,23 @@ Open after this slice:
   combinations with seeds `0x530001` through `0x530102`.
 - Classification: no XPASS, compiler crash, verifier drift, false unsupported
   diagnostic, clean-boundary drift, runtime miscompile, or independent `FZ-*`.
+
+## 2026-04-21 15:21 UTC: Round 54 dynamic 2CTA descriptor SSA lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_dynamic_2cta_lane.md`.
+- Required `make -j8` was a no-op.
+- Temporary probe:
+  `/tmp/tmem_round54_dynamic_2cta_probe.py`.
+- Syntax check:
+  `PYTHONPATH=.:./python python3 -m py_compile /tmp/tmem_round54_dynamic_2cta_probe.py`
+  passed.
+- Dynamic two-CTA descriptor SSA/control-flow run:
+  `3 failed, 3 passed`; failed rows were branch-selected, loop-carried, and
+  mixed-capture chain-0 `ld/st` wrong results.
+- Static controls for the failing shapes:
+  `3 failed`, with the same 99.2% descriptor-view wrong-result signature.
+- Aggregate classification:
+  `9` rows total, `3` pass, `6` existing `FZ-20260421-0003`, `0` new
+  independent `FZ-*`.
+- No backend fixes were attempted.

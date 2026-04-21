@@ -3973,3 +3973,19 @@ remain family-specific and consume a bounded subset of the inventory.
   row-reversed half-row `ld.red` parse failure.
 - No runtime wrong-result miscompile was confirmed; an earlier software-reduce
   oracle mismatch was excluded as a harness issue.
+
+### Round 54 dynamic 2CTA descriptor SSA lane
+
+- Time: 2026-04-21 15:21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round54_dynamic_2cta_lane.md`
+- Scope:
+  temporary Python/Gluon runtime probe crossing branch-selected,
+  mixed-capture, and loop-carried descriptor SSA/control-flow with legal
+  lifted two-CTA `TensorMemoryLinearLayout` `ld/st` layouts.
+- Result:
+  `9` rows total: `3` pass, `6` existing `FZ-20260421-0003`, and `0` new
+  independent `FZ-*`. Dynamic rows produced `3 passed, 3 failed`; static
+  no-control-flow controls for the failing shapes also failed, classifying the
+  wrong results as existing descriptor-view chain wrong-code rather than a new
+  dynamic-only bucket.

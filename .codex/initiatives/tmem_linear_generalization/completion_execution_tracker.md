@@ -2,6 +2,19 @@
 
 Last updated: 2026-04-21
 
+Latest fuzzing checkpoint: 2026-04-21 15:21 UTC Round 54 opcode consistency
+lane C completed. Report: `agents/fuzz_round54_opcode_consistency_lane.md`.
+Required `make -j8` was a no-op. Focused runtime-matrix opcode selector
+collected `172/1615` rows and passed split-4 as `172 passed`; focused
+proxy/mbarrier/multicast selector collected `39/19729` rows and passed as
+`39 passed`; representative forced-compile dump replay passed `9` nodeids and
+captured `27` TTGIR/LLIR/PTX artifacts under `/tmp/tmem_round54_opcode_dump`.
+Coverage included `ld/st`, hardware f32 `ld.red`, intentional software-reduce
+fallbacks, copy including `warpx2` and two-CTA `128x256b`, scaled-copy, plain
+MMAv5, scaled MMAv5, wait/commit/proxy/mbarrier/multicast streams. No
+PTX-vs-LLIR mismatch, missing hardware opcode, unexpected fallback, verifier
+drift, compiler crash, runtime miscompile, or new independent `FZ-*`.
+
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
 progress board so future sessions can resume without relying on chat context.
@@ -3646,3 +3659,14 @@ discovery.
   row/column permutation rows and passed as `5 passed`. No XPASS, compiler
   crash, verifier drift, false unsupported diagnostic, runtime miscompile, or
   new independent `FZ-*`.
+
+- 2026-04-21 15:21 UTC: Round 54 dynamic 2CTA descriptor SSA lane completed.
+  Report: `agents/fuzz_round54_dynamic_2cta_lane.md`. Required `make -j8`
+  was a no-op. Temporary `/tmp/tmem_round54_dynamic_2cta_probe.py` crossed
+  branch-selected, mixed-capture, and loop-carried descriptor SSA with legal
+  lifted two-CTA `ld/st` layouts. Dynamic rows produced `3 passed, 3 failed`;
+  three static controls for the failing shapes also failed. Aggregate:
+  `3` pass and `6` existing `FZ-20260421-0003` descriptor-view chain wrong
+  results, with `0` new independent `FZ-*`. No compiler crash, verifier
+  strictness issue, false unsupported diagnostic, opcode mismatch, or process
+  contamination was observed.
