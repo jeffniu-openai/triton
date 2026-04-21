@@ -316,6 +316,31 @@ The project is complete when:
   stable caches selected `43/43/43/40` tests and reported aggregate
   `165 passed, 4 skipped`. Durations were stored at
   `/tmp/tmem_local_r11_cp_no_scales_nonwarpx2_durations.json`.
+  2026-04-21 Round 10 Lane N completed MMAv5/scaled-MMAv5 dynamic descriptor
+  selection fuzzing without backend repairs. New report-only candidate
+  `FZ-20260421-0011`: plain MMAv5 runtime-selector-index accumulator rows
+  compile, keep PTX/LLIR MMA opcode agreement, and miscompile at runtime with
+  NaN-heavy mismatches (`~8150/8192` for `N=64,K=128`). The temporary harness
+  did not show the `FZ-20260421-0001` illegal `ttg.memdesc_index` signature,
+  but a first checked-in minimization attempt did hit `FZ-0001` and was not
+  committed. Scaled rows expand `FZ-20260421-0007`; exact controls stayed
+  green. Report: `agents/fuzz_mma_dynamic_round10.md`.
+  2026-04-21 Round 10 Lane P completed clean-boundary adversarial fuzzing
+  without backend repairs. No new independent `FZ-*` id. Most perturbations
+  stayed pass or clean-diagnostic across copy OOR, explicit subword, `warpx2`,
+  scales descriptor-view, scaled-MMA accumulator-layout, CTA/CGA mismatch, and
+  ld.red transpose/slice boundaries. `ld_red_identity_n512` overlaps the
+  existing `FZ-20260421-0005/0009` ld.red resource/crash family. Report:
+  `agents/fuzz_clean_boundary_round10.md`.
+  2026-04-21 Round 11 Lane Q completed multi-CTA/CGA structural fuzzing
+  without backend repairs. New independent candidate `FZ-20260421-0010`:
+  1CTA/2CTA TMEM linear/scales layouts are rejected in 4/8/16 CTA launch
+  contexts with `Layout has X CTAs per CGA, but the context requires Y CTAs
+  per CGA`, even though the rows are local 1CTA/2CTA TMEM operations and
+  checked-in high-CGA MMA/TMA-MMA controls passed as `136 passed, 12 skipped,
+  74 deselected`. This points at an over-strict layout CTA-count gate that
+  conflates kernel CGA shape with instruction-local `cta_group`. Report:
+  `agents/fuzz_multicta_cga_round11.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

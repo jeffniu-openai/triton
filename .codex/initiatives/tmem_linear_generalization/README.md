@@ -5433,3 +5433,24 @@ When resuming the initiative:
   `165 passed, 4 skipped`; durations are in
   `/tmp/tmem_local_r11_cp_no_scales_nonwarpx2_durations.json`.
 - No new bug bucket was found.
+
+## Latest: 2026-04-21 Round 10/11 fuzz reports
+
+- Lane Q completed multi-CTA/CGA structural fuzzing:
+  `agents/fuzz_multicta_cga_round11.md`.
+- New independent candidate `FZ-20260421-0010`: 1CTA/2CTA TMEM
+  linear/scales layouts are rejected in 4/8/16 CTA launch contexts with
+  `Layout has X CTAs per CGA, but the context requires Y CTAs per CGA`.
+  Checked-in high-CGA MMA/TMA-MMA controls passed, so this looks like an
+  over-strict CTA-count gate conflating kernel CGA size with instruction-local
+  `cta_group`.
+- Lane N completed MMAv5/scaled-MMAv5 dynamic descriptor-selection fuzzing:
+  `agents/fuzz_mma_dynamic_round10.md`.
+- New report-only candidate `FZ-20260421-0011`: plain MMAv5 accumulator
+  selected by runtime index compiles, PTX/LLIR MMA opcodes agree, and runtime
+  output is NaN-heavy wrong. A first checked-in minimization attempt hit known
+  `FZ-20260421-0001`, so keep this report-only until minimized without
+  changing the failure mode.
+- Lane P completed clean-boundary adversarial fuzzing:
+  `agents/fuzz_clean_boundary_round10.md`. It found no new independent bucket;
+  `ld_red_identity_n512` overlaps existing `FZ-20260421-0005/0009`.

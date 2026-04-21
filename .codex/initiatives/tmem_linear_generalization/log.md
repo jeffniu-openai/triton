@@ -27268,3 +27268,57 @@ Open after this slice:
   - group 3/GPU 2: `43 passed, 1572 deselected in 16.39s`;
   - group 4/GPU 3: `40 passed, 1575 deselected in 24.70s`.
 - Aggregate: `165 passed, 4 skipped`. No new bucket was found.
+
+## 2026-04-21: Round 10 Lane N MMAv5 dynamic descriptor fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_dynamic_round10.md`.
+- Classification: new report-only candidate `FZ-20260421-0011` for plain
+  MMAv5 runtime-selector-index accumulator miscompile.
+- The temporary probe compiled plain runtime-index rows, PTX and LLIR MMA
+  opcode extraction agreed, and runtime output was NaN-heavy wrong. The
+  representative `N=64,K=128,selector=0,use_acc=False` row reproduced in a
+  fresh process and fresh cache with around `8150/8192` mismatches.
+- Classification boundary: this did not show the `FZ-20260421-0001`
+  `ttg.memdesc_index` illegal-lowering signature in the temporary harness.
+  A first checked-in minimization attempt did degenerate into the known
+  `FZ-0001` path, so no structural-fuzzer sentinel was committed in this
+  slice.
+- Existing-bucket expansion: scaled dynamic-select/runtime-index/indexed rows
+  continue to expand `FZ-20260421-0007`; exact direct/subslice 1CTA and 2CTA
+  runtime-matrix controls stayed green.
+
+## 2026-04-21: Round 10 Lane P clean-boundary fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundary_round10.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Copy OOR, explicit `.x1` subword, legacy subword, `warpx2`, scales
+  descriptor-view, scaled-MMA accumulator-layout, >2 CTA/CGA mismatch, and
+  ld.red transpose/slice perturbations stayed pass or clean-diagnostic.
+- The only compiler failure was `ld_red_identity_n512`, classified as overlap
+  with the existing `FZ-20260421-0005/0009` ld.red resource/crash family.
+
+## 2026-04-21: Round 11 Lane Q multi-CTA/CGA fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_multicta_cga_round11.md`.
+- Classification: new independent candidate `FZ-20260421-0010`.
+- Checked-in high-CGA controls passed:
+  `python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit` and
+  `python/test/gluon/test_core.py::test_tma_mma_shared_inputs` with selector
+  `ctas_per_cga2 or ctas_per_cga1` reported
+  `136 passed, 12 skipped, 74 deselected`.
+- Temporary fresh-process structural probes showed 1CTA/2CTA TMEM
+  linear/scales layouts rejecting in 4/8/16 CTA launch contexts with
+  `Layout has X CTAs per CGA, but the context requires Y CTAs per CGA`.
+- Representative affected rows include 1CTA `ld/st` descriptor-view chains,
+  1CTA and 2CTA scales copy, and 2CTA indexed `ld.red` in larger CGA launch
+  contexts. This appears to conflate kernel CGA size with instruction-local
+  `cta_group`.

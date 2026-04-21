@@ -1547,3 +1547,83 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: green contrast coverage for no-scales copy indexed,
   subslice, two-CTA, subword, and tile-permuted rows outside the already-run
   `warpx2` selector. No new bucket.
+
+### Round 10 Lane N, MMAv5/scaled-MMAv5 dynamic descriptor selection
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mma_dynamic_round10.md`
+- Probe: `/tmp/tmem_mma_dynamic_round10_probe.py`, subprocess-isolated worker
+  rows after required `make -j8` and py-compile.
+- Scope: dynamic `if`, helper-returned views, loop-carried views, sibling
+  views, runtime selector indices, indexed/subslice/slice-index chains,
+  `use_acc`, 1CTA/2CTA controls, `N in {16,32,64,128,256}`, and
+  `K in {32,64,128,256}` where supported.
+- New report-only bucket candidate: `FZ-20260421-0011`, plain MMAv5
+  runtime-selector-index accumulator selection miscompiles. Representative
+  rows compiled, had matching PTX/LLIR MMA opcodes, and then produced
+  NaN-heavy runtime mismatches:
+  - `plain-runtime-index-n64-k128-sel0-acc0`: around `8150/8192` mismatches;
+  - `plain-runtime-index-n64-k128-sel1-acc0`: `8169/8192` mismatches;
+  - `plain-runtime-index-n64-k128-sel1-acc1`: `8159/8192` mismatches;
+  - `plain-runtime-index-n128-k128-sel1-acc1`: `16314/16384` mismatches.
+- Classification note: the temporary harness did not show the illegal
+  `ttg.memdesc_index` lowering signature of `FZ-20260421-0001`. A first
+  checked-in minimization attempt in `test_tmem_structural_fuzzer.py` did hit
+  that known `FZ-0001` path instead, so no checked-in sentinel was committed.
+  Keep `FZ-0011` report-only until the exact runtime-miscompile shape is
+  minimized without changing its failure mode.
+- Existing-bucket expansion: scaled dynamic-select/runtime-index/indexed rows
+  expand `FZ-20260421-0007`. Plain helper/loop/sibling/indexed/subslice rows
+  and exact 1CTA/2CTA runtime-matrix controls stayed green.
+
+### Round 10 Lane P, clean-boundary adversarial sweep
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundary_round10.md`
+- Probe: `/tmp/fuzz_clean_boundary_round10_probe.py`, split over GPUs 0-3.
+- Result: no new independent `FZ-*` bucket.
+- Pass/clean-diagnostic coverage stayed stable for copy/TMEM OOR boundaries,
+  explicit `.x1` subword rows, legacy subword parse boundaries,
+  `warpx2::02_13`, scales descriptor-view boundaries, scaled-MMA
+  tile-permuted accumulator layouts, >2 CTA/CGA mismatches, and ld.red
+  transpose/slice boundaries.
+- Only compiler-failure row: `ld_red_identity_n512`, classified as overlap
+  with the existing `FZ-20260421-0005/0009` ld.red resource/crash family.
+
+### Round 11 Lane Q, multi-CTA/CGA structural fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_multicta_cga_round11.md`
+- Required build: `make -j8` no-op.
+- Checked-in high-CGA controls:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit python/test/gluon/test_core.py::test_tma_mma_shared_inputs -k 'ctas_per_cga2 or ctas_per_cga1'`
+  reported `136 passed, 12 skipped, 74 deselected in 139.31s`.
+- Temporary probe:
+  `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=.:./python:./python/test/gluon python /tmp/tmem_multicta_cga_round11_probe.py`.
+- New independent candidate: `FZ-20260421-0010`, over-strict layout CTA-count
+  gate in larger CGA contexts. Local 1CTA/2CTA TMEM linear/scales operations
+  inside 4/8/16 CTA launch contexts reject before lowering with messages such
+  as:
+  - `Layout has 1 CTAs per CGA, but the context requires 4 CTAs per CGA.`
+  - `Layout has 1 CTAs per CGA, but the context requires 8 CTAs per CGA.`
+  - `Layout has 1 CTAs per CGA, but the context requires 16 CTAs per CGA.`
+  - `Layout has 2 CTAs per CGA, but the context requires 4 CTAs per CGA.`
+  - `Layout has 2 CTAs per CGA, but the context requires 8 CTAs per CGA.`
+  - `Layout has 2 CTAs per CGA, but the context requires 16 CTAs per CGA.`
+- Representative affected surfaces: 1CTA `ld/st` descriptor-view chains,
+  1CTA and 2CTA tensor-memory-scales copy, and 2CTA indexed `ld.red` layouts
+  launched in 4/8/16 CTA contexts.
+- Classification note: this is distinct from the earlier 2CTA uniformity
+  hardware rule. The rows are not requesting a 4/8/16-CTA TCGEN05 instruction;
+  the passing high-CGA controls show legal high-CGA kernels exist when full CGA
+  metadata is available. The likely schema/backend gap is distinguishing
+  kernel CGA shape from instruction-local `cta_group` for linear/scales TMEM
+  layouts.
+
+- Round 10 Lane N recommends a future strict runtime xfail under the
+  report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
+  miscompile can be minimized without degenerating into the known
+  `FZ-20260421-0001` illegal `ttg.memdesc_index` path.

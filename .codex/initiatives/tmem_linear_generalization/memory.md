@@ -1,5 +1,37 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 completed Round 10 Lane N MMAv5/scaled-MMAv5 dynamic
+  descriptor-selection fuzzing. Report: `agents/fuzz_mma_dynamic_round10.md`.
+  New report-only bucket candidate `FZ-20260421-0011`: plain MMAv5
+  runtime-selector-index accumulator selection compiles, PTX/LLIR MMA opcodes
+  agree, and runtime output is NaN-heavy wrong (`~8150/8192` mismatches) for
+  `N=64,K=128` and related rows. It does not show the `ttg.memdesc_index`
+  illegal-lowering signature of `FZ-20260421-0001` in the temporary harness.
+  A first checked-in minimization attempt in `test_tmem_structural_fuzzer.py`
+  lowered to the known `FZ-20260421-0001` path instead, so it was not
+  committed. Scaled dynamic-select/runtime-index/indexed rows expand
+  `FZ-20260421-0007`; direct/helper/loop/sibling/indexed plain controls and
+  exact runtime-matrix 1CTA/2CTA controls stayed green.
+
+- Latest: 2026-04-21 completed Round 10 Lane P clean-boundary adversarial
+  sweep. Report: `agents/fuzz_clean_boundary_round10.md`. No new independent
+  `FZ-*` bucket. CP OOR, `.x1`/legacy subword, `warpx2::02_13`, scales
+  descriptor-view, scaled-MMA tile-permuted, CTA/CGA mismatch, and ld.red
+  transpose/slice perturbations stayed pass or clean-diagnostic except
+  `ld_red_identity_n512`, which overlaps the existing `FZ-20260421-0005/0009`
+  ld.red resource/crash family.
+
+- Latest: 2026-04-21 completed Round 11 Lane Q multi-CTA/CGA structural
+  fuzzing. Report: `agents/fuzz_multicta_cga_round11.md`. New independent
+  candidate `FZ-20260421-0010`: 1CTA and 2CTA TMEM linear/scales layouts are
+  rejected in 4/8/16 CTA launch contexts with `Layout has X CTAs per CGA, but
+  the context requires Y CTAs per CGA`, even for rows that are local 1CTA/2CTA
+  TMEM operations rather than 4/8/16-CTA instructions. Checked-in high-CGA
+  MMA/TMA-MMA controls passed as `136 passed, 12 skipped, 74 deselected`,
+  showing high-CGA kernels work when layouts carry full CGA metadata. This
+  looks like an over-strict layout CTA-count gate conflating kernel CGA shape
+  with instruction-local `cta_group`; no backend repair was attempted.
+
 - Latest: 2026-04-21 local Round 11 no-scales copy non-`warpx2` runtime slice
   stayed green. Required `make -j8` reported no work to do. Collect-only for
   `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and not warpx2 and not reports'`
