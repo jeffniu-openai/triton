@@ -23,7 +23,8 @@ Latest local Round 30 guardrails:
 `agents/fuzz_local_ldst_descriptor_round30.md` passed the descriptor `ld/st`
 non-roundtrip selector as `53 passed`, and
 `agents/fuzz_local_clean_boundary_round30.md` passed the runtime clean-boundary
-selector as `184 passed`.
+selector as `184 passed`; `agents/fuzz_local_lit_round30.md` passed the
+`tmem_layouts.mlir` and `invalid.mlir` lit baselines.
 The repaired high-CGA scaled-MMAv5 mixed-ownership harness proved scaled-MMAv5
 controls pass for `num_ctas=4/8/16`, then local 1CTA/2CTA descriptor-view
 `st`, `ld`, `ld.red`, and `tcgen05.copy` rows all classify as existing
@@ -54,7 +55,10 @@ ordinary Gluon `torch.float64`/`torch.int64` TMEM round-trip kernels during JIT;
 initialized alloc, standalone store, and standalone load crash, while dead
 uninitialized alloc is eliminated. A subprocess runtime follow-up confirmed
 `float64` and `int64` roundtrip, store-only, and load-only probes all abort on
-the same assertion.
+the same assertion. Round 30 expanded `FZ-0017` across legacy and linear
+layouts, 1CTA and valid 2CTA rows, descriptor-view load/store at LLVM
+conversion, and Python/Gluon frontend kernels; 64-bit `ld.red` rejects cleanly
+and 64-bit `ttng.tmem_copy` passes the generated allocation+LLVM probes.
 Round 29 memdesc-index fuzzing broadened `FZ-20260421-0001`: runtime
 `parent.index(ttgl.load(selector))` leaves illegal `ttg.memdesc_index` for
 direct load, store, copy, `ld.red`, and mixed consumers, and direct

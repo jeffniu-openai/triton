@@ -2412,6 +2412,19 @@ signal handling:
   `reports_clean or clean_unsupported or clean_error or tmem_oor` collected
   `184/1615` and passed split-4 as `184 passed`. No new bucket was found.
 
+- 2026-04-21: Round 30 local TMEM lit baseline completed. Report:
+  `agents/fuzz_local_lit_round30.md`. `tmem_layouts.mlir` and `invalid.mlir`
+  both passed after `ninja triton-opt`. No new bucket was found.
+
+- 2026-04-21: Round 30 FZ-0017 expansion completed. Report:
+  `agents/fuzz_fz0017_round30.md`. No new bucket; `FZ-20260421-0017` now
+  covers legacy/linear layouts, 1CTA/2CTA, initialized alloc, store-only,
+  load-only, roundtrip, descriptor-view load/store at LLVM conversion, and
+  Python/Gluon frontend kernels for `i64`/`f64`. Clean contrasts: 64-bit
+  `ld.red` rejects with the f32-only diagnostic, 64-bit `ttng.tmem_copy`
+  passes generated allocation+LLVM probes, and high-CGA rows reject under
+  existing CTA-count diagnostics.
+
 - 2026-04-21: Round 30 direct branch copy minimization completed. Report:
   `agents/fuzz_copy_branch_round30.md`. No new bucket; sharpens
   `FZ-20260421-0001`. Same-parent, branch-selected distinct indices feeding

@@ -30079,6 +30079,41 @@ Open after this slice:
 - Classification: no compiler crash, verifier failure, runtime miscompile,
   opcode mismatch, or new independent `FZ-*` bucket.
 
+## 2026-04-21: Round 30 local TMEM lit baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_lit_round30.md`.
+- Commands:
+  `ninja triton-opt`, `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir`, and
+  `lit -v test/TritonNvidiaGPU/invalid.mlir`.
+- Result:
+  both lit tests passed.
+- Classification: no new independent `FZ-*`; compiler-only TMEM layout and
+  invalid verifier baselines remain green.
+
+## 2026-04-21: Round 30 FZ-0017 64-bit expansion
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0017_round30.md`.
+- Required `make -j8` was a no-op in the lane.
+- Result: no new independent `FZ-*`; expanded existing
+  `FZ-20260421-0017`.
+- Allocation-pass matrix: `60` `ASSERT_BITWIDTH_32`, `115` clean diagnostics,
+  and `25` passes across `i64`/`f64`, shapes `128x64`, `128x128`,
+  `128x256`, linear `256x32`, legacy/linear TMEM layouts, initialized alloc,
+  store-only, load-only, roundtrip, and permuted layout rows.
+- Focused 2CTA/high-CGA probe: valid 2CTA linear rows assert for `i64`/`f64`;
+  high-CGA rows reject with existing CTA-count diagnostics before bitwidth
+  lowering.
+- Descriptor-view rows: valid `i64`/`f64` view load/store pass allocation, then
+  assert under allocation+LLVM; `i32`/`f32` controls pass the same pipeline.
+- Frontend reachability: Python/Gluon `torch.float64` and `torch.int64` rows
+  assert for roundtrip, store-only, load-only, linear/legacy layouts,
+  descriptor-sliced views, and 2CTA linear rows.
+- Clean contrasts: 64-bit `ld.red` rejects with the f32-only reduction
+  diagnostic, and 64-bit `ttng.tmem_copy` passes the generated allocation+LLVM
+  probes.
+
 ## 2026-04-21: Round 30 direct branch copy minimization
 
 - Integrated

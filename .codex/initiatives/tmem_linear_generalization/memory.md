@@ -16200,6 +16200,23 @@ rejection, not rescue
   `184/1615` and completed split-4 as `184 passed`. No new bucket or changed
   failure mode.
 
+- Round 30 local lit baseline wrote `agents/fuzz_local_lit_round30.md`.
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonNvidiaGPU/invalid.mlir` both passed after `ninja triton-opt`.
+
+- Round 30 FZ-0017 expansion lane wrote `agents/fuzz_fz0017_round30.md`. No
+  new bucket, but `FZ-20260421-0017` now covers `i64`/`f64` direct TMEM
+  load/store for legacy and linear layouts, initialized alloc, store-only,
+  load-only, roundtrip, valid 2CTA linear rows, descriptor-view load/store at
+  LLVM conversion, and Python/Gluon frontend kernels. Allocation-pass matrix:
+  `60` `ASSERT_BITWIDTH_32`, `115` clean diagnostics, `25` passes. Focused
+  2CTA/high-CGA probe: `6` assertions, `12` clean CTA diagnostics, `4` other
+  clean diagnostics. Valid descriptor-view rows pass allocation, then `i64`/
+  `f64` view load/store crash under allocation+LLVM while `i32`/`f32` pass.
+  Clean contrasts: 64-bit `ld.red` rejects with the f32-only reduction
+  diagnostic, 64-bit `ttng.tmem_copy` passes generated allocation+LLVM probes,
+  and high-CGA rows reject with existing `FZ-0010` CTA-count diagnostics.
+
 - Round 30 copy-branch minimization lane wrote
   `agents/fuzz_copy_branch_round30.md`. No new bucket; it sharpens
   `FZ-20260421-0001`. The failing minimum is same-parent, branch-selected

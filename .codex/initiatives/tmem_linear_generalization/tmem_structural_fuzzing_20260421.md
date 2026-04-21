@@ -3604,6 +3604,30 @@ remain family-specific and consume a bounded subset of the inventory.
   no new independent `FZ-*`; committed clean-boundary runtime surface remains
   green.
 
+### Round 30 local TMEM lit baseline
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_lit_round30.md`
+- Result:
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonNvidiaGPU/invalid.mlir` passed after `ninja triton-opt`.
+- Classification:
+  no new independent `FZ-*`; compiler-only TMEM lit baselines remain green.
+
+### Round 30 FZ-0017 64-bit expansion
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0017_round30.md`
+- Result:
+  no new independent `FZ-*`; expanded `FZ-0017` to legacy/linear layouts,
+  1CTA/2CTA, initialized alloc, store-only, load-only, roundtrip,
+  descriptor-view load/store at LLVM conversion, and Python/Gluon frontend
+  kernels for `i64`/`f64`.
+- Clean contrasts:
+  64-bit `ld.red` rejects with the f32-only diagnostic, 64-bit `ttng.tmem_copy`
+  passes generated allocation+LLVM probes, and high-CGA rows reject under
+  existing CTA-count diagnostics.
+
 ### Round 30 direct branch copy minimization
 
 - Report:
