@@ -60,6 +60,14 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 15:12 UTC Round 39 MMAv5 dynamic descriptor/view subagent lane
+  integrated. Artifact: `agents/fuzz_mmav5_dynamic_views_round39.md`.
+  Checked-in runtime selector collected `190/19729` and passed split-4 as
+  `190 passed`; structural selector completed as `2 passed, 3 xfailed`; temp
+  dynamic-scale, B-scale dynamic-view, scaled multi-MMA, and high-CGA scaled
+  probes found no new independent `FZ-*`. Findings remain under existing
+  `FZ-20260421-0001`, `FZ-20260421-0007`, `FZ-20260421-0013`,
+  `FZ-20260421-0015`, and `FZ-20260421-0010`; backend repair remains deferred.
   2026-04-21 15:08 UTC Round 39 structural xfail guardrail completed.
   Artifact: `agents/fuzz_structural_xfail_guardrail_round39.md`. Selector
   `generic_pass or descriptor_view or ldred or scaled_mma` over

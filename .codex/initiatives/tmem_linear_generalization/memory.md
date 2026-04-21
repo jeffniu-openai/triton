@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 15:12 UTC Round 39 MMAv5 dynamic descriptor/view
+  subagent lane integrated. Report:
+  `agents/fuzz_mmav5_dynamic_views_round39.md`. Required `make -j8` was a
+  no-op. Checked-in runtime selector over scaled/MMAv5 descriptor views,
+  B-scale extra users, `use_acc`, indexed accumulators, subslices, two-CTA,
+  and multicast collected `190/19729` and passed split-4 as `190 passed`
+  (`48/48/48/46`). Checked-in structural selector completed as
+  `2 passed, 3 xfailed`. Temp probes: dynamic scales `16` cases with
+  `unexpected=0`; B-scale dynamic views `5 passed`; scaled multi-MMA
+  discriminator `9 passed, 5 known-bucket failures`; high-CGA scaled controls
+  `3 passed` plus `24` expected `FZ-20260421-0010` diagnostics. No new
+  independent `FZ-*`; boundaries remain existing `FZ-20260421-0001`,
+  `FZ-20260421-0007`, `FZ-20260421-0013`, `FZ-20260421-0015`, and
+  `FZ-20260421-0010`.
+
 - Latest: 2026-04-21 15:08 UTC Round 39 structural xfail guardrail
   completed. Report: `agents/fuzz_structural_xfail_guardrail_round39.md`.
   Selector `generic_pass or descriptor_view or ldred or scaled_mma` over

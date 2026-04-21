@@ -7,7 +7,17 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 39 structural xfail guardrail
+Latest fuzzing checkpoint: 2026-04-21 Round 39 MMAv5 dynamic descriptor/view
+subagent lane integrated. Report:
+`agents/fuzz_mmav5_dynamic_views_round39.md`. Checked-in runtime selector
+collected `190/19729` and passed split-4 as `190 passed`; structural selector
+completed as `2 passed, 3 xfailed`; temp dynamic-scale probe had `unexpected=0`
+over `16` cases; B-scale dynamic-view probe passed `5`; scaled multi-MMA
+discriminator classified `9` pass and `5` known-bucket failures; high-CGA
+scaled probe classified `3` pass and `24` expected `FZ-20260421-0010`
+diagnostics. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 39 structural xfail guardrail
 completed. Report: `agents/fuzz_structural_xfail_guardrail_round39.md`.
 Selector `generic_pass or descriptor_view or ldred or scaled_mma` over
 `python/test/gluon/test_tmem_structural_fuzzer.py` collected `26/33` and

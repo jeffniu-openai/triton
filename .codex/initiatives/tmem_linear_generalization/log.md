@@ -30766,6 +30766,25 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 15:12 UTC: Round 39 MMAv5 dynamic descriptor/view subagent lane integrated
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mmav5_dynamic_views_round39.md`.
+- Required `make -j8` was a no-op in the subagent lane.
+- Checked-in runtime selector over `python/test/gluon/test_tmem_runtime_matrix.py`
+  and `python/test/gluon/test_core.py` collected `190/19729` and passed
+  split-4 as `190 passed` (`48/48/48/46`).
+- Checked-in structural selector collected `5/33` and completed as
+  `2 passed, 3 xfailed`.
+- Temp probes:
+  dynamic scales `16` cases with `unexpected=0`; B-scale dynamic views
+  `5 passed`; scaled multi-MMA discriminator `9 passed, 5 known-bucket
+  failures`; high-CGA scaled probe `3` controls passed and `24` expected
+  CTA-count diagnostics.
+- Classification: no new independent `FZ-*`. Findings remain existing
+  `FZ-20260421-0001`, `FZ-20260421-0007`, `FZ-20260421-0013`,
+  `FZ-20260421-0015`, and `FZ-20260421-0010`.
+
 ## 2026-04-21 15:08 UTC: Round 39 structural xfail guardrail
 
 - Wrote
