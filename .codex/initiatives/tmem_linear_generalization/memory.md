@@ -14,6 +14,23 @@
   Malformed linear layouts, CGA-mismatched `warpx2`/`warpx4` copy candidates,
   noncanonical scale-copy layout, and `i64` scale TMEM all diagnosed cleanly.
 
+- Latest: 2026-04-21 13:11 UTC Round 33 dynamic descriptor SSA/control-flow
+  runtime lane completed. Report:
+  `agents/fuzz_dynamic_descriptor_round33.md`. Required `make -j8` was a
+  no-op. Temporary probe `/tmp/tmem_dynamic_descriptor_round33_probe.py`
+  collected `100` rows across runtime `parent.index(ttgl.load(selector))`,
+  same-parent distinct-index branch selection, loop-carried descriptors,
+  direct versus chain0 descriptor views, and load, store, `tcgen05.copy`,
+  hardware `.ld.red`, and mixed load/store/`.ld.red` consumers. Split-4
+  result by shard was `12 failed, 13 passed`, `8 failed, 17 passed`,
+  `17 failed, 8 passed`, and `17 failed, 8 passed`; manual classification is
+  `46` pass, `20` existing `FZ-20260421-0001` late illegal
+  `ttg.memdesc_index`, `24` existing `FZ-20260421-0002`/`FZ-20260421-0003`
+  descriptor-view wrong-result rows, and `10` clean unsupported chain0 copy
+  diagnostics. Practical MMAv5 controls added `2 passed` plain indexed
+  accumulator rows and `1 xfailed` scaled-MMAv5 `FZ-20260421-0007` sentinel.
+  No new independent `FZ-*` bucket.
+
 - Latest: 2026-04-21 13:10 UTC Round 32 FZ-0018 `ld.red` minimization
   completed. Report: `agents/fuzz_ldred_fz0018_min_round32.md`. Required
   `make -j8` was a no-op. Temporary subprocess-isolated runtime probe:
