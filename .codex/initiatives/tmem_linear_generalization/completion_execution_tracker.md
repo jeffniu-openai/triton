@@ -3947,3 +3947,13 @@ discovery.
   `getModuleTwoCTAs` propagation bug, compiler crash, verifier drift, false
   unsupported diagnostic outside the known CTA-count gate, runtime miscompile,
   hang, proxy/TMA/mbarrier ownership regression, or new independent `FZ-*`.
+
+- 2026-04-21: Round 59 local codegen/opcode lane completed. Report:
+  `agents/fuzz_round59_local_codegen_opcode_lane.md`. Required `make -j8` was
+  a no-op. Selector `(cp_no_scales and codegen) or mma_scaled_minimal`
+  collected `27/1615` and passed split-4 as `27 passed`. Coverage included
+  no-scale `4x256b` refresh codegen, two-CTA no-scale copy codegen across
+  linear/legacy and multiple dtypes, two-CTA `128x128b` no-scale copy codegen,
+  and minimal scaled-MMAv5. No compiler crash, verifier drift, opcode/codegen
+  assertion drift, false unsupported diagnostic, runtime miscompile, hang, or
+  new independent `FZ-*`.

@@ -17151,3 +17151,12 @@ rejection, not rescue
   diagnostics. No missed `getModuleTwoCTAs` propagation bug, proxy/TMA/
   mbarrier ownership regression, or new independent `FZ-*`; backend repair
   remains deferred.
+
+- Round 59 local codegen/opcode lane wrote
+  `agents/fuzz_round59_local_codegen_opcode_lane.md`. Required `make -j8` was
+  a no-op. Selector `(cp_no_scales and codegen) or mma_scaled_minimal`
+  collected `27/1615` and passed split-4 as `27 passed`, covering no-scale
+  `4x256b` refresh codegen, two-CTA no-scale copy codegen across
+  linear/legacy and multiple dtypes, two-CTA `128x128b` no-scale copy codegen,
+  and minimal scaled-MMAv5. No new independent `FZ-*`; backend repair remains
+  deferred.

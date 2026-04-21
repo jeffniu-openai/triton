@@ -4327,3 +4327,20 @@ remain family-specific and consume a bounded subset of the inventory.
   drift, false unsupported diagnostic outside the known CTA-count gate,
   runtime miscompile, hang, proxy/TMA/mbarrier ownership regression, or new
   independent `FZ-*`.
+
+### Round 59 local codegen/opcode lane
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round59_local_codegen_opcode_lane.md`
+- Scope:
+  no-scale `4x256b` refresh codegen, two-CTA no-scale copy codegen across
+  linear/legacy and multiple dtypes, two-CTA `128x128b` no-scale copy codegen,
+  and minimal scaled-MMAv5.
+- Result:
+  selector `(cp_no_scales and codegen) or mma_scaled_minimal` collected
+  `27/1615` and passed split-4 as `27 passed`.
+- Classification:
+  no compiler crash, verifier drift, opcode/codegen assertion drift, false
+  unsupported diagnostic, runtime miscompile, hang, or new independent
+  `FZ-*`.
