@@ -437,6 +437,22 @@ The project is complete when:
   commit/mbarrier rows passed `13/13`, runtime-matrix allocation lifetime rows
   passed `7/7`, and descriptor-chain/physical-bitcast rows passed `29/29`.
   Report: `agents/fuzz_lifetime_mbarrier_round13.md`.
+  2026-04-21 local ConSan TMEM instrumentation report found no new `FZ-*`:
+  `python/test/gluon/test_consan.py -k 'tmem or tcgen05 or tensor_memory'`
+  collected `36/348` and passed split-4 as `30 passed, 6 skipped`. Report:
+  `agents/fuzz_consan_tmem_round13.md`.
+  2026-04-21 checked-in FPSAN MMAv5/scaled-MMAv5 controls collected `37/104`
+  and passed split-4 as `32 passed, 5 skipped`; durations stored at
+  `/tmp/tmem_local_r13_fpsan_controls_durations.json`.
+  2026-04-21 local scaled-MMAv5 FP4/tile/narrow controls found no new
+  `FZ-*`: selector
+  `mma_scaled and (tile_permuted or narrow or e2m1 or fp4)` collected
+  `202/1615` and passed split-4 as `202 passed`. Report:
+  `agents/fuzz_scaled_fp4_tile_narrow_round13.md`.
+  2026-04-21 local warp-specialized TMEM partitioning controls found no new
+  `FZ-*`: Python selector `warp_specialize and tmem` collected `2/18218` and
+  passed `2/2`; lit partition/allocation/interleave/NVWS files passed `4/4`.
+  Report: `agents/fuzz_warpspec_partition_round13.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

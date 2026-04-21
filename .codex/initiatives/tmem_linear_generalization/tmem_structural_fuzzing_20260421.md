@@ -1804,6 +1804,57 @@ remain family-specific and consume a bounded subset of the inventory.
   - runtime-matrix allocation lifetime selector passed `7/7`;
   - descriptor-chain and physical-bitcast selector passed `29/29`.
 
+### Round 13 local ConSan and FPSAN instrumentation controls
+
+- Time: 2026-04-21
+- ConSan report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_consan_tmem_round13.md`
+- Required build: `make -j8` no-op.
+- ConSan scope: existing ConSan runtime coverage touching TMEM operations:
+  1CTA/2CTA/4CTA `tcgen05_mma`, TMEM load/store race checks,
+  `tcgen05_copy`, TMA, multicast, and TMEM load/store access patterns.
+- ConSan result: `36/348` collected, split-4 passed as `30 passed,
+  6 skipped`; no new `FZ-*` bucket.
+- FPSAN checked-in control scope:
+  `python/test/gluon/test_fpsan.py -k 'tcgen05_mma or tcgen05_mma_scaled'`
+  selected `37/104` rows.
+- FPSAN checked-in control result: split-4 passed as `32 passed, 5 skipped`;
+  no new `FZ-*` bucket. This is independent green-control evidence around
+  the still-active FPSAN runtime-index reducer lane.
+
+### Round 13 local scaled-MMAv5 FP4/tile/narrow controls
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_fp4_tile_narrow_round13.md`
+- Required build: `make -j8` no-op.
+- Scope: checked-in scaled-MMAv5 runtime coverage around MXFP4/NVFP4 and
+  mixed FP8/FP4 formats, root/indexed/subslice accumulator views, 1CTA/2CTA
+  rows, LHS subslice and tile-permuted TMEM operands, tile-permuted
+  accumulator layouts, narrow accumulator fragments, and clean unsupported
+  mixed-precision FP4-LHS diagnostics.
+- Result: `202/1615` collected for
+  `mma_scaled and (tile_permuted or narrow or e2m1 or fp4)`, split-4 passed
+  as `202 passed`; no new `FZ-*` bucket.
+
+### Round 13 local warp-specialized TMEM partitioning controls
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_warpspec_partition_round13.md`
+- Required build: `make -j8` no-op.
+- Scope: runtime rows for TMEM copy/store inside `gl.warp_specialize`, lit
+  partition scheduling for TMEM load/store/MMA users, tensor-memory allocation
+  through warp-specialized captures and subviews, TMEM interleave coverage, and
+  NVWS async-reference insertion for TMEM/MMAv5 flows.
+- Result:
+  - Python selector `warp_specialize and tmem` collected `2/18218` and passed
+    `2/2`;
+  - lit files `partition-scheduling.mlir`,
+    `test_tensor_memory_allocation.mlir`, `interleave_tmem.mlir`, and
+    `aref-tmem-insertion.mlir` passed `4/4`.
+- No new `FZ-*` bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

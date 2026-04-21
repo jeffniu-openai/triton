@@ -27613,3 +27613,53 @@ Open after this slice:
   `13/13` split across GPUs 0-3.
 - Runtime-matrix allocation lifetime selector passed `7/7`.
 - Descriptor-chain and physical-bitcast selector passed `29/29`.
+
+## 2026-04-21: local ConSan and FPSAN instrumentation controls
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_consan_tmem_round13.md`.
+- Classification: no new independent `FZ-*` bucket.
+- ConSan command:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> python/test/gluon/test_consan.py -k 'tmem or tcgen05 or tensor_memory'`
+- ConSan result after required `make -j8`: `36/348` collected, split-4 as
+  `30 passed, 6 skipped`.
+- FPSAN collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_fpsan.py -k 'tcgen05_mma or tcgen05_mma_scaled'`
+  selected `37/104` rows.
+- FPSAN command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r13_fpsan_controls_durations.json python/test/gluon/test_fpsan.py -k 'tcgen05_mma or tcgen05_mma_scaled'`
+- FPSAN result after required `make -j8` per shard:
+  - group 1/GPU 0: `7 passed, 3 skipped, 94 deselected in 6.37s`;
+  - group 2/GPU 1: `8 passed, 2 skipped, 94 deselected in 6.38s`;
+  - group 3/GPU 2: `10 passed, 94 deselected in 4.17s`;
+  - group 4/GPU 3: `7 passed, 97 deselected in 4.04s`.
+- FPSAN aggregate: `32 passed, 5 skipped`. No new bucket was found.
+
+## 2026-04-21: local scaled-MMAv5 FP4/tile/narrow controls
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_fp4_tile_narrow_round13.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Required `make -j8` was a no-op.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and (tile_permuted or narrow or e2m1 or fp4)'`
+  selected `202/1615` rows.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -q -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r13_scaled_fp4_tile_narrow_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and (tile_permuted or narrow or e2m1 or fp4)'`
+- Result: groups 1-4 passed as `51/51/51/49`, aggregate `202 passed`.
+
+## 2026-04-21: local warp-specialized TMEM partitioning controls
+
+- Recorded
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_warpspec_partition_round13.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Required `make -j8` was a no-op.
+- Python selector:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_fpsan.py python/test/gluon/test_core.py -k 'warp_specialize and tmem'`
+  collected `2/18218` rows.
+- Python runtime:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -q -s --tb=short python/test/gluon/test_fpsan.py -k 'warp_specialize and tmem'`
+  passed as `2 passed, 102 deselected in 2.37s`.
+- Lit:
+  `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonGPU/partition-scheduling.mlir test/TritonNvidiaGPU/test_tensor_memory_allocation.mlir test/TritonNvidiaGPU/interleave_tmem.mlir test/NVWS/aref-tmem-insertion.mlir`
+  passed `4/4`.

@@ -14995,6 +14995,18 @@ rejection, not rescue
   `agents/fuzz_lifetime_mbarrier_round13.md` found no new `FZ-*`: core
   commit/mbarrier rows passed `13/13`, allocation lifetime rows passed `7/7`,
   and descriptor-chain/physical-bitcast rows passed `29/29`.
+- Local ConSan TMEM instrumentation report
+  `agents/fuzz_consan_tmem_round13.md` found no new `FZ-*`: `36/348`
+  collected and split-4 passed as `30 passed, 6 skipped`.
+- Checked-in FPSAN MMAv5/scaled-MMAv5 controls collected `37/104` and passed
+  split-4 as `32 passed, 5 skipped`; this is green-control evidence while the
+  FPSAN runtime-index reducer lane remains active.
+- Local scaled-MMAv5 FP4/tile/narrow control report
+  `agents/fuzz_scaled_fp4_tile_narrow_round13.md` found no new `FZ-*`:
+  `202/1615` selected rows passed `202/202`.
+- Local warp-specialized TMEM partitioning report
+  `agents/fuzz_warpspec_partition_round13.md` found no new `FZ-*`: Python
+  runtime rows passed `2/2` and lit files passed `4/4`.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 
