@@ -356,6 +356,125 @@ static FailureOr<Value> applyAliasViewChainToTensor(
   return current;
 }
 
+static std::optional<ttg::MemDescType>
+getMMAv5ScaleStorageTypeThroughViews(Value scale) {
+  auto scaleType = dyn_cast<ttg::MemDescType>(scale.getType());
+  if (!scaleType)
+    return std::nullopt;
+  if (isa<TensorMemoryScalesEncodingAttr>(scaleType.getEncoding()))
+    return scaleType;
+
+  Value current = scale;
+  while (Operation *defOp = current.getDefiningOp()) {
+    if (!defOp->hasTrait<OpTrait::MemDescViewTrait>() ||
+        defOp->getNumOperands() == 0)
+      return std::nullopt;
+
+    current = defOp->getOperand(0);
+    auto currentType = dyn_cast<ttg::MemDescType>(current.getType());
+    if (!currentType)
+      return std::nullopt;
+    if (!isa<TensorMemoryScalesEncodingAttr>(currentType.getEncoding()))
+      continue;
+    if (currentType.getElementType() != scaleType.getElementType() ||
+        currentType.getMemorySpace() != scaleType.getMemorySpace())
+      return std::nullopt;
+    return ttg::MemDescType::get(scaleType.getShape(),
+                                 scaleType.getElementType(),
+                                 currentType.getEncoding(),
+                                 scaleType.getMemorySpace(),
+                                 scaleType.getMutableMemory());
+  }
+  return std::nullopt;
+}
+
+struct TMemScaleStoreInfo {
+  SmallVector<Value> aliases;
+  DenseSet<Value> aliasSet;
+  TMEMAllocOp allocOp;
+  TMEMStoreOp storeOp;
+  Value storeAlias;
+  bool hasOtherUsers = false;
+};
+
+static FailureOr<TMemScaleStoreInfo>
+getSingleTMemScaleStoreInfo(Value scale, Operation *consumer,
+                            unsigned ignoredConsumerOperand) {
+  auto scaleType = cast<ttg::MemDescType>(scale.getType());
+  SmallVector<Operation *> allocs = getAlloc(scale);
+  if (allocs.size() != 1)
+    return failure();
+  auto allocOp = dyn_cast<TMEMAllocOp>(allocs.front());
+  if (!allocOp || allocOp.getSrc())
+    return failure();
+  auto allocType = cast<ttg::MemDescType>(allocOp.getType());
+  if (allocType.getElementType() != scaleType.getElementType() ||
+      allocType.getMemorySpace() != scaleType.getMemorySpace())
+    return failure();
+
+  TMemScaleStoreInfo info;
+  info.allocOp = allocOp;
+  info.aliases = getMemDescViewAliasChain(scale);
+  for (Value alias : info.aliases)
+    info.aliasSet.insert(alias);
+
+  for (Value alias : info.aliases) {
+    for (Operation *user : alias.getUsers()) {
+      auto candidate = dyn_cast<TMEMStoreOp>(user);
+      if (!candidate || candidate.getDst() != alias)
+        continue;
+      if (info.storeOp)
+        return failure();
+      info.storeOp = candidate;
+      info.storeAlias = alias;
+    }
+  }
+  if (!info.storeOp)
+    return failure();
+  if (info.storeOp->getBlock() != consumer->getBlock() ||
+      !info.storeOp->isBeforeInBlock(consumer))
+    return failure();
+
+  for (Value alias : info.aliases) {
+    for (Operation *user : llvm::make_early_inc_range(alias.getUsers())) {
+      if (user == consumer || user == info.storeOp.getOperation() ||
+          isAliasViewChainEdge(user, info.aliasSet))
+        continue;
+      info.hasOtherUsers = true;
+    }
+  }
+  for (OpOperand &operand : consumer->getOpOperands()) {
+    if (operand.getOperandNumber() == ignoredConsumerOperand)
+      continue;
+    if (info.aliasSet.contains(operand.get()))
+      info.hasOtherUsers = true;
+  }
+
+  auto storedType =
+      dyn_cast<RankedTensorType>(info.storeOp.getSrc().getType());
+  auto storeAliasType = cast<ttg::MemDescType>(info.storeAlias.getType());
+  if (!storedType || storedType.getShape() != storeAliasType.getShape())
+    return failure();
+  return info;
+}
+
+static void cleanupScaleAliasChain(PatternRewriter &rewriter,
+                                   TMemScaleStoreInfo &info, Value scale) {
+  if (!info.hasOtherUsers) {
+    rewriter.eraseOp(info.storeOp);
+    Value unusedView = scale;
+    while (Operation *defOp = unusedView.getDefiningOp()) {
+      if (defOp == info.allocOp.getOperation() || !defOp->use_empty() ||
+          !defOp->hasTrait<OpTrait::MemDescViewTrait>())
+        break;
+      unusedView = defOp->getOperand(0);
+      rewriter.eraseOp(defOp);
+    }
+  }
+  if (info.allocOp->use_empty())
+    rewriter.eraseOp(info.allocOp);
+}
+
 class MaterializeSharedMMAScalesToTMem
     : public OpRewritePattern<TCGen5MMAScaledOp> {
 public:
@@ -425,17 +544,6 @@ public:
     if (!bScaleStorageType)
       return failure();
 
-    SmallVector<Operation *> allocs = getAlloc(bScale);
-    if (allocs.size() != 1)
-      return failure();
-    auto allocOp = dyn_cast<TMEMAllocOp>(allocs.front());
-    if (!allocOp || allocOp.getSrc())
-      return failure();
-    auto allocType = cast<ttg::MemDescType>(allocOp.getType());
-    if (allocType.getElementType() != bScaleType.getElementType() ||
-        allocType.getMemorySpace() != bScaleType.getMemorySpace())
-      return failure();
-
     std::optional<SmallVector<int64_t>> rematerializedShape =
         std::nullopt;
     unsigned ctaColumns = 0;
@@ -466,58 +574,29 @@ public:
     if (!rematerializedShape)
       return failure();
 
-    SmallVector<Value> bScaleAliases = getMemDescViewAliasChain(bScale);
-    DenseSet<Value> bScaleAliasSet;
-    for (Value alias : bScaleAliases)
-      bScaleAliasSet.insert(alias);
-
-    TMEMStoreOp storeOp;
-    Value storeAlias;
-    for (Value alias : bScaleAliases) {
-      for (Operation *user : alias.getUsers()) {
-        auto candidate = dyn_cast<TMEMStoreOp>(user);
-        if (!candidate || candidate.getDst() != alias)
-          continue;
-        if (storeOp)
-          return failure();
-        storeOp = candidate;
-        storeAlias = alias;
-      }
-    }
-    if (!storeOp)
+    FailureOr<TMemScaleStoreInfo> maybeInfo =
+        getSingleTMemScaleStoreInfo(
+            bScale, mmaOp.getOperation(),
+            mmaOp.getBScaleMutable().getOperandNumber());
+    if (failed(maybeInfo))
       return failure();
-    if (storeOp->getBlock() != mmaOp->getBlock() ||
-        !storeOp->isBeforeInBlock(mmaOp.getOperation()))
+    TMemScaleStoreInfo &info = *maybeInfo;
+
+    if (bScaleType.getRank() != 2)
       return failure();
 
-    bool hasOtherBScaleUsers = false;
-    for (Value alias : bScaleAliases) {
-      for (Operation *user : llvm::make_early_inc_range(alias.getUsers())) {
-        if (user == mmaOp.getOperation() || user == storeOp.getOperation() ||
-            isAliasViewChainEdge(user, bScaleAliasSet))
-          continue;
-        hasOtherBScaleUsers = true;
-      }
-    }
-
-    auto storedType = dyn_cast<RankedTensorType>(storeOp.getSrc().getType());
-    auto storeAliasType = cast<ttg::MemDescType>(storeAlias.getType());
-    if (!storedType || storedType.getShape() != storeAliasType.getShape() ||
-        bScaleType.getRank() != 2)
-      return failure();
-
-    rewriter.setInsertionPoint(storeOp);
-    Value stored = storeOp.getSrc();
-    if (storeAlias != bScale) {
+    rewriter.setInsertionPoint(info.storeOp);
+    Value stored = info.storeOp.getSrc();
+    if (info.storeAlias != bScale) {
       FailureOr<Value> logicalStored = applyAliasViewChainToTensor(
-          rewriter, storeOp.getLoc(), stored, storeAlias, bScale,
-          bScaleAliases);
+          rewriter, info.storeOp.getLoc(), stored, info.storeAlias, bScale,
+          info.aliases);
       if (failed(logicalStored))
         return failure();
       stored = *logicalStored;
     }
 
-    storedType = cast<RankedTensorType>(stored.getType());
+    auto storedType = cast<RankedTensorType>(stored.getType());
     assert(storedType.getShape() == bScaleType.getShape() &&
            "alias view replay should materialize the B-scale logical shape");
 
@@ -536,7 +615,7 @@ public:
         instructionCount, 1, static_cast<int64_t>(instrSizeN),
         storedType.getShape()[1]};
 
-    Location loc = storeOp.getLoc();
+    Location loc = info.storeOp.getLoc();
     Value grouped =
         triton::ReshapeOp::create(rewriter, loc, groupedShape, stored,
                                   /*allowReorder=*/false);
@@ -556,11 +635,11 @@ public:
         bScaleStorageType->getMutableMemory());
     auto rematerializedTensorType =
         cast<RankedTensorType>(rematerialized.getType());
-    if (!isDistributedLayoutTMemCompatible(storeOp.getOperation(),
+    if (!isDistributedLayoutTMemCompatible(info.storeOp.getOperation(),
                                            rematerializedTensorType,
                                            rematerializedType)) {
       SmallVector<ttg::DistributedEncodingTrait> layouts =
-          getTmemCompatibleLayouts(storeOp.getOperation(),
+          getTmemCompatibleLayouts(info.storeOp.getOperation(),
                                    rematerializedTensorType,
                                    rematerializedType);
       if (layouts.empty())
@@ -574,25 +653,90 @@ public:
     auto rematerializedAlloc =
         TMEMAllocOp::create(rewriter, loc, rematerializedType, Value());
     TMEMStoreOp::create(rewriter, loc, rematerializedAlloc.getResult(),
-                        rematerialized, storeOp.getPred());
+                        rematerialized, info.storeOp.getPred());
 
     rewriter.modifyOpInPlace(mmaOp, [&] {
       mmaOp.getBScaleMutable().assign(rematerializedAlloc.getResult());
     });
-    if (!hasOtherBScaleUsers) {
-      rewriter.eraseOp(storeOp);
-      Value unusedView = bScale;
-      while (Operation *defOp = unusedView.getDefiningOp()) {
-        if (defOp == allocOp.getOperation() || !defOp->use_empty() ||
-            !defOp->hasTrait<OpTrait::MemDescViewTrait>())
-          break;
-        unusedView = defOp->getOperand(0);
-        rewriter.eraseOp(defOp);
-      }
-    }
-    if (allocOp->use_empty())
-      rewriter.eraseOp(allocOp);
+    cleanupScaleAliasChain(rewriter, info, bScale);
     return success();
+  }
+};
+
+class RematerializeScaledMmaScaleDescriptorViews
+    : public OpRewritePattern<TCGen5MMAScaledOp> {
+public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult rematerializeScale(OpOperand &operand,
+                                   TCGen5MMAScaledOp mmaOp,
+                                   PatternRewriter &rewriter) const {
+    Value scale = operand.get();
+    auto scaleType = cast<ttg::MemDescType>(scale.getType());
+    if (isa<TensorMemoryScalesEncodingAttr>(scaleType.getEncoding()))
+      return failure();
+
+    std::optional<ttg::MemDescType> storageType =
+        getMMAv5ScaleStorageTypeThroughViews(scale);
+    if (!storageType)
+      return failure();
+
+    FailureOr<TMemScaleStoreInfo> maybeInfo =
+        getSingleTMemScaleStoreInfo(scale, mmaOp.getOperation(),
+                                    operand.getOperandNumber());
+    if (failed(maybeInfo))
+      return failure();
+    TMemScaleStoreInfo &info = *maybeInfo;
+
+    rewriter.setInsertionPoint(info.storeOp);
+    Value stored = info.storeOp.getSrc();
+    if (info.storeAlias != scale) {
+      FailureOr<Value> logicalStored = applyAliasViewChainToTensor(
+          rewriter, info.storeOp.getLoc(), stored, info.storeAlias, scale,
+          info.aliases);
+      if (failed(logicalStored))
+        return failure();
+      stored = *logicalStored;
+    }
+
+    auto storedType = cast<RankedTensorType>(stored.getType());
+    assert(storedType.getShape() == storageType->getShape() &&
+           "alias view replay should materialize the scale logical shape");
+    Value materialized = stored;
+    if (!isDistributedLayoutTMemCompatible(info.storeOp.getOperation(),
+                                           storedType, *storageType)) {
+      SmallVector<ttg::DistributedEncodingTrait> layouts =
+          getTmemCompatibleLayouts(info.storeOp.getOperation(), storedType,
+                                   *storageType);
+      if (layouts.empty())
+        return failure();
+      auto convertedType = storedType.cloneWithEncoding(layouts[0]);
+      materialized = ttg::ConvertLayoutOp::create(
+          rewriter, info.storeOp.getLoc(), convertedType, materialized);
+    }
+
+    auto rematerializedAlloc = TMEMAllocOp::create(
+        rewriter, info.storeOp.getLoc(), *storageType, Value());
+    TMEMStoreOp::create(rewriter, info.storeOp.getLoc(),
+                        rematerializedAlloc.getResult(), materialized,
+                        info.storeOp.getPred());
+    rewriter.modifyOpInPlace(mmaOp, [&] {
+      operand.assign(rematerializedAlloc.getResult());
+    });
+    cleanupScaleAliasChain(rewriter, info, scale);
+    return success();
+  }
+
+  LogicalResult matchAndRewrite(TCGen5MMAScaledOp mmaOp,
+                                PatternRewriter &rewriter) const override {
+    bool changed = false;
+    if (succeeded(rematerializeScale(mmaOp.getAScaleMutable(), mmaOp,
+                                     rewriter)))
+      changed = true;
+    if (succeeded(rematerializeScale(mmaOp.getBScaleMutable(), mmaOp,
+                                     rewriter)))
+      changed = true;
+    return success(changed);
   }
 };
 
@@ -724,7 +868,8 @@ public:
     DenseMap<triton::nvidia_gpu::TMEMAllocOp, int> offsets;
     RewritePatternSet patterns(ctx);
     patterns.add<MaterializeSharedMMAScalesToTMem,
-                 RematerializeScaledMmaBScaleFragments>(ctx);
+                 RematerializeScaledMmaBScaleFragments,
+                 RematerializeScaledMmaScaleDescriptorViews>(ctx);
     if (failed(applyPatternsGreedily(mod, std::move(patterns))))
       return signalPassFailure();
 

@@ -33499,3 +33499,55 @@ Open after this slice:
   finished: M64 `ld.red` destination planning (`FZ-20260421-0012`), copy
   `warpx2`/scales boundaries, broader MMAv5 reachable-family support, heuristic
   cleanup, and staged broad validation remain the next work queue.
+
+## 2026-04-21 22:19 UTC: FZ-0013 scale descriptor-view repair
+
+- Branch/HEAD before this repair slice:
+  `787facd87 Fix selected TMEM alias liveness`.
+- Dirty files at checkpoint:
+  `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`,
+  `python/test/gluon/test_tmem_runtime_matrix.py`, plus initiative
+  documentation.
+- Root cause:
+  scaled-MMAv5 scale operands that were descriptor views rooted in
+  `TensorMemoryScalesLayout` could reach allocation/lowering as transformed
+  memdescs. The hardware MMA scale pointer was then planned from root storage
+  order rather than the logical descriptor-view row order. The earlier B-scale
+  fragment repair covered repeated/narrow B-scale rematerialization only; full
+  linear A/B scale descriptor views had no fragment requirement and still used
+  the wrong scale order.
+- Completed implementation:
+  `TensorMemoryAllocation` now has a shared scale alias/store helper. It finds
+  a unique producer `ttng.tmem_store` through the descriptor-view alias chain,
+  detects live side users including other operands on the same MMA, replays
+  supported reshape/transpose descriptor-view transforms on the stored tensor,
+  materializes a fresh canonical `TensorMemoryScalesLayout` allocation, and
+  rewrites the scaled MMA operand. The existing repeated/narrow B-scale
+  fragment rematerializer now uses the same helper.
+- Promoted checked-in positives:
+  `test_tmem_runtime_matrix_mma_scaled_linear_scale_descriptor_view[a]` and
+  `[b]`, covering A-scale and B-scale `reshape -> transpose -> reshape`
+  descriptor views with a linear scaled accumulator.
+- Reclassification:
+  temporary padded full-width linear fuzz rows are invalid positives unless
+  the accumulator layout has a narrow/repeated-N scale-fragment requirement.
+  Padding a full `N=128` or `N=256` linear scale descriptor to twice the rows
+  duplicates only part of the logical scale rows before MMA consumes its first
+  full tile. The checked-in padded N32 tile-permuted B-scale descriptor-view
+  control remains valid and passed.
+- Validation evidence:
+  required `make -j8`; new A/B linear scale descriptor-view test `2 passed`;
+  existing B-scale descriptor-view, extra-user, and padded controls `3 passed`;
+  temporary `FZ-0013` B-view/A-view/NVFP4 B-view probes `3 passed`;
+  scaled-MMAv5 descriptor/accumulator selector split-4 ran as group1
+  `27 passed`, group2 `27 passed`, group3 `27 passed`, and group4
+  `26 passed`; full structural fuzzer split-4 ran as `9 + 9 + 9 + 9 =
+  36 passed`; M64 `ld_red_m64 and not reports` split-4 ran as
+  `10 + 10 + 10 + 9 = 39 passed`, so `FZ-20260421-0012` is stale on current
+  head; targeted lit `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`; runtime test
+  `py_compile` passed; `git diff --check` passed.
+- Remaining repair-plan frontier:
+  no checked-in structural xfails remain. Continue with copy `warpx2`/scales
+  boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
+  staged broad validation.

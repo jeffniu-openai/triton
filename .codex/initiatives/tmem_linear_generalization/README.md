@@ -7,7 +7,37 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 21:56 UTC repaired the final checked-in
+Latest repair checkpoint: 2026-04-21 22:19 UTC repaired valid
+`FZ-20260421-0013` scaled-MMAv5 scale descriptor-view operands. The gap was
+not limited to repeated/narrow B-scale fragments: when a scaled MMA consumed
+an A-scale or B-scale descriptor view rooted in `TensorMemoryScalesLayout`, the
+allocation pass could leave the MMA pointing at the transformed memdesc. LLVM
+lowering then planned the scale pointer from the root storage order instead of
+the logical `reshape -> transpose -> reshape` view order. `TensorMemoryAllocation`
+now recognizes scale descriptor-view operands, finds the unique producer store
+through the alias chain, replays supported descriptor-view transforms on the
+stored tensor, materializes a fresh canonical scale allocation, and rewrites
+the MMA to consume it. The existing B-scale fragment rematerializer shares the
+same alias/store helper and preserves original storage when another live user
+exists. The old padded full-width linear fuzz rows are reclassified as invalid
+positives: without a narrow/repeated-N scale-fragment requirement, padding a
+full `N=128` or `N=256` scale descriptor to twice the rows duplicates only a
+subset of logical scale rows before MMA consumes the first full tile. The
+checked-in padded tile-permuted N32 B-scale control remains valid and green.
+Validation: required `make -j8`; new A/B linear scale descriptor-view runtime
+test `2 passed`; existing B-scale descriptor-view, extra-user, and padded
+controls `3 passed`; representative temporary `FZ-0013` probes for B-view,
+A-view, and NVFP4 B-view `3 passed`; scaled-MMAv5 descriptor/accumulator
+selector split-4 `107 passed`; full structural fuzzer split-4 `36 passed`;
+M64 `ld_red_m64 and not reports` selector split-4 `39 passed`, so
+`FZ-20260421-0012` is stale on current head; targeted lit `tmem_layouts.mlir`
+and `interleave_tmem.mlir` `2 passed`; `py_compile` and `git diff --check`
+passed. Remaining checked-in structural xfails: none; next frontier is the
+remaining long-term completion queue, especially copy `warpx2`/scales
+boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
+staged broad validation.
+
+Previous repair checkpoint: 2026-04-21 21:56 UTC repaired the final checked-in
 structural xfail, `FZ-20260421-0007`, and hardened the scaled-MMAv5 B-scale
 descriptor-view rematerialization path exposed by validation. The dynamic
 scaled-MMAv5 low-accumulator subslice row was not an MMA lowering bug: TMEM

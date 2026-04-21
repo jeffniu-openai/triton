@@ -1,6 +1,35 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 21:56 UTC repair slice 9 fixed the final checked-in
+- Latest: 2026-04-21 22:19 UTC repair slice 10 fixed valid
+  `FZ-20260421-0013` scaled-MMAv5 scale descriptor views. Root cause: scaled
+  MMA scale operands that were descriptor views rooted in
+  `TensorMemoryScalesLayout` could reach lowering as transformed memdescs, so
+  scale pointer planning consumed root storage order rather than the logical
+  descriptor-view row order. Implementation: `TensorMemoryAllocation` now
+  recognizes A-scale and B-scale descriptor-view operands, finds the unique
+  producer store through the alias chain, replays supported reshape/transpose
+  view transforms on the stored tensor, materializes a canonical scale
+  allocation, and rewrites the MMA operand. The repeated/narrow B-scale
+  fragment rematerializer shares the same alias/store helper, and cleanup now
+  preserves the original store if another operand on the same MMA still uses
+  the alias chain. Important reclassification: padded full-width linear fuzz
+  rows are invalid positives unless the accumulator layout has a narrow or
+  repeated-N scale-fragment requirement; padding `N=128/256` linear scale
+  descriptors to twice the rows duplicates only part of the logical scales
+  before the MMA consumes its first full tile. The checked-in padded N32
+  tile-permuted B-scale case remains valid and green. Validation: required
+  `make -j8`; new A/B linear scale descriptor-view test `2 passed`; existing
+  B-scale descriptor-view, extra-user, and padded controls `3 passed`;
+  representative temporary `FZ-0013` probes `3 passed`; scaled-MMAv5
+  descriptor/accumulator selector split-4 `107 passed`; full structural fuzzer
+  split-4 `36 passed`; M64 `ld_red_m64 and not reports` selector split-4
+  `39 passed`, making `FZ-20260421-0012` stale on current head; targeted lit
+  `2 passed`; runtime test `py_compile` and `git diff --check` passed. Next:
+  continue the non-structural completion queue: copy `warpx2`/scales
+  boundaries, broader MMAv5 reachable families, heuristic cleanup, and staged
+  broad validation.
+
+- Previous: 2026-04-21 21:56 UTC repair slice 9 fixed the final checked-in
   structural xfail, `FZ-20260421-0007`, and corrected a scaled-MMAv5 B-scale
   descriptor-view rematerialization gap exposed by the broader selector.
   Root causes: TMEM allocation liveness followed direct descriptor views but

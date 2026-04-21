@@ -1,8 +1,32 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21
+Last updated: 2026-04-21 22:19 UTC
 
-Latest repair checkpoint: 2026-04-21 21:56 UTC checked-in `FZ-0007`
+Latest repair checkpoint: 2026-04-21 22:19 UTC `FZ-20260421-0013` is repaired
+for valid scaled-MMAv5 scale descriptor-view operands. `TensorMemoryAllocation`
+now canonicalizes A-scale and B-scale descriptor views before MMA by finding
+the unique producer store through the scale alias chain, replaying supported
+reshape/transpose descriptor-view transforms on the stored tensor, and storing
+the logical view tensor into a fresh `TensorMemoryScalesLayout` allocation. The
+B-scale fragment rematerializer uses the same alias/store helper, and cleanup
+preserves the original store when another operand on the same MMA still uses
+the alias chain. Reclassification: the temporary padded full-width linear
+fuzzer rows are invalid positives without a narrow/repeated-N scale-fragment
+requirement; padding a full `N=128/256` linear scale descriptor duplicates only
+part of the scale rows before MMA consumes the first full tile. The checked-in
+padded N32 tile-permuted B-scale control remains valid. Validation: required
+`make -j8`; new linear A/B scale descriptor-view runtime test `2 passed`;
+existing B-scale descriptor-view, extra-user, and padded controls `3 passed`;
+temporary `FZ-0013` B-view/A-view/NVFP4 B-view probes `3 passed`;
+scaled-MMAv5 descriptor/accumulator selector split-4 `107 passed`; structural
+fuzzer split-4 `36 passed`; M64 `ld_red_m64 and not reports` split-4
+`39 passed`, so `FZ-20260421-0012` is stale on current head; targeted lit
+`2 passed`; `py_compile` and `git diff --check` passed. Remaining checked-in
+structural xfails: none. Next repair-plan frontier: copy `warpx2`/scales
+boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
+staged broad validation.
+
+Previous repair checkpoint: 2026-04-21 21:56 UTC checked-in `FZ-0007`
 (`mma-scaled-fz20260421-0007-subslice-if-n64-selector0`) is repaired and the
 checked-in structural fuzzer has no remaining xfails. The core bug was TMEM
 allocation liveness, not scaled MMA lowering: selected/yielded memdesc aliases
