@@ -15,6 +15,21 @@
   4-GPU pytest slice covering ld.red descriptor chains plus the recent two-CTA
   scales copy path passed `31/31`.
 
+- Latest: 2026-04-21 07:03 UTC completed Round 3 warp-specialization /
+  partition-scheduling / barrier audit. Audited
+  `PartitionScheduling.cpp`, `PartitionSchedulingUtility.cpp`,
+  `OptimizePartitionWarps.cpp`, `ClusterBarrierInsertion.cpp`,
+  `lib/Analysis/Membar.cpp`, and the focused lit files
+  `partition-scheduling.mlir`, `optimize-partition-warps.mlir`,
+  `partition-verifier-locality.mlir`, and `membar-cluster.mlir`. No concrete
+  implementation bug was reproduced. Added lit coverage in
+  `test/TritonNvidiaGPU/membar-cluster.mlir` for a valid 4-CTA CGA using
+  two-CTA `tc_gen5_mma` with an async completion mbarrier, covering the
+  larger-CGA pair/mbarrier path beyond the existing 2-CTA MMA and 4/16 CTA
+  `ttng.tmem_copy` cases. Validation: required `make -j8`; focused lit for
+  `membar-cluster.mlir` passed; lit for the three warp-specialization /
+  partition tests plus `membar-cluster.mlir` passed `4/4`.
+
 - Latest: 2026-04-21 07:00 UTC completed Round 4 of the requested TMEM backend
   audit on generic compiler analyses and layout-conversion interactions with
   TMEM memdescs. Audited `lib/Analysis/AxisInfo.cpp`,

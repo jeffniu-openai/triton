@@ -374,6 +374,54 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 8 : i32, "ttng.tw
 
 // -----
 
+#sharedA4CTA = #ttg.nvmma_shared<{swizzlingByteWidth = 64, transposed = false, elementBitWidth = 16, CGALayout = [[1, 0], [2, 0]]}>
+#sharedB4CTA = #ttg.nvmma_shared<{swizzlingByteWidth = 64, transposed = false, elementBitWidth = 16, CGALayout = [[0, 1], [0, 0]]}>
+#barrierEnc4CTA = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0], CGALayout = [[1], [2]]}>
+#blocked4CTA = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [16, 2], warpsPerCTA = [4, 2], order = [0, 1], CGALayout = [[1, 0], [2, 0]]}>
+#tmem4CTA = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1, CGALayout = [[1, 0], [2, 0]], twoCTAs = true>
+#smem = #ttg.shared_memory
+
+module attributes {"ttg.num-ctas" = 4 : i32, "ttg.num-warps" = 8 : i32, "ttng.two-ctas" = true, ttg.target = "cuda:90", "ttg.threads-per-warp" = 32 : i32} {
+  // Two-CTA MMA inside a larger CGA still fans completion through CTA pairs.
+  // The completion mbarrier is one per CTA and the pass must use the consumer
+  // op, not a hard-coded two-CTA module assumption, to insert init sync.
+  // CHECK-LABEL: @mma_v5_fourcta_two_ctas_wait_barrier
+  // CHECK: ttng.init_barrier
+  // CHECK-NEXT: ttng.cluster_barrier
+  // CHECK-NEXT: ttng.fence_mbarrier_init_release_cluster
+  // CHECK-NEXT: ttng.tc_gen5_mma
+  // CHECK-NEXT: ttng.cluster_barrier
+  // CHECK-NEXT: ttng.wait_barrier
+  tt.func @mma_v5_fourcta_two_ctas_wait_barrier() -> tensor<512x32xf16, #blocked4CTA> {
+    %a = ttg.local_alloc : () -> !ttg.memdesc<512x32xf16, #sharedA4CTA, #smem, mutable>
+    %b = ttg.local_alloc : () -> !ttg.memdesc<32x128xf16, #sharedB4CTA, #smem, mutable>
+    %acc = ttng.tmem_alloc : () -> !ttg.memdesc<512x128xf32, #tmem4CTA, #ttng.tensor_memory, mutable>
+    %barrier = ttg.local_alloc : () -> !ttg.memdesc<4xi64, #barrierEnc4CTA, #smem, mutable>
+    %c0 = arith.constant 0 : i32
+    %true = arith.constant true
+    %cst = arith.constant dense<0.000000e+00> : tensor<512x32xf16, #blocked4CTA>
+    ttng.init_barrier %barrier, 1 : !ttg.memdesc<4xi64, #barrierEnc4CTA, #smem, mutable>
+    ttng.tc_gen5_mma %a, %b, %acc, %true, %true, %barrier[%true] {is_async, two_ctas} :
+       !ttg.memdesc<512x32xf16, #sharedA4CTA, #smem, mutable>,
+       !ttg.memdesc<32x128xf16, #sharedB4CTA, #smem, mutable>,
+       !ttg.memdesc<512x128xf32, #tmem4CTA, #ttng.tensor_memory, mutable>,
+       !ttg.memdesc<4xi64, #barrierEnc4CTA, #smem, mutable>
+    ttng.wait_barrier %barrier, %c0 deps %a, %b :
+      !ttg.memdesc<4xi64, #barrierEnc4CTA, #smem, mutable>,
+      !ttg.memdesc<512x32xf16, #sharedA4CTA, #smem, mutable>,
+      !ttg.memdesc<32x128xf16, #sharedB4CTA, #smem, mutable>
+    ttg.local_dealloc %a : !ttg.memdesc<512x32xf16, #sharedA4CTA, #smem, mutable>
+    ttg.local_dealloc %b : !ttg.memdesc<32x128xf16, #sharedB4CTA, #smem, mutable>
+    ttg.local_dealloc %barrier : !ttg.memdesc<4xi64, #barrierEnc4CTA, #smem, mutable>
+    %buf = ttg.local_alloc : () -> !ttg.memdesc<512x32xf16, #sharedA4CTA, #smem, mutable>
+    ttg.local_store %cst, %buf : tensor<512x32xf16, #blocked4CTA> -> !ttg.memdesc<512x32xf16, #sharedA4CTA, #smem, mutable>
+    %ld = ttg.local_load %buf : !ttg.memdesc<512x32xf16, #sharedA4CTA, #smem, mutable> -> tensor<512x32xf16, #blocked4CTA>
+    tt.return %ld : tensor<512x32xf16, #blocked4CTA>
+  }
+}
+
+// -----
+
 #blockedSplitM = #ttg.blocked<{sizePerThread = [1, 32], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1], CGALayout = [[1, 0]]}>
 #slice0 = #ttg.slice<{dim = 0, parent = #blockedSplitM}>
 #shared1d = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0], CGALayout = [[0]]}>

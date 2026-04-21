@@ -26175,6 +26175,52 @@ Open after this slice:
     `test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed `3/3`;
   - lit `test/Analysis/test-alignment.mlir` passed.
 
+## 2026-04-21 07:03 UTC: Round 3 warp-specialization and barrier audit
+
+- User asked for Round 3 of 5 focused on TMEM interactions with warp
+  specialization, partition scheduling, optimize-partition-warps, cluster
+  barriers, and membar, with special attention to memdesc edge sizing, TMEM
+  view roots through control flow, and pair-leader/membar behavior in valid
+  larger CGAs.
+- Audited paths:
+  - `lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionScheduling.cpp`;
+  - `lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionSchedulingUtility.cpp`;
+  - `lib/Dialect/TritonGPU/Transforms/WarpSpecialization/OptimizePartitionWarps.cpp`;
+  - `lib/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierInsertion.cpp`;
+  - `lib/Analysis/Membar.cpp`;
+  - focused lit coverage in `test/TritonGPU/partition-scheduling.mlir`,
+    `test/TritonGPU/optimize-partition-warps.mlir`,
+    `test/TritonGPU/partition-verifier-locality.mlir`, and
+    `test/TritonNvidiaGPU/membar-cluster.mlir`.
+- Findings:
+  - no new concrete implementation bug was reproduced in this pass;
+  - the current partition scheduler already traces same-allocation TMEM roots
+    through `MemDescViewTrait`, SCF loop/if forwarding, `arith.select`, and
+    warp-specialize captures;
+  - `OptimizePartitionWarps` still preserves TMEM partitions at their original
+    warp count until a TMEM-aware relayout path exists;
+  - `membar-cluster.mlir` already covered two-CTA MMA and 4/16 CTA
+    `ttng.tmem_copy`, but did not cover two-CTA MMA inside a larger CGA.
+- Added coverage:
+  - `test/TritonNvidiaGPU/membar-cluster.mlir` now has
+    `@mma_v5_fourcta_two_ctas_wait_barrier`, a valid 4-CTA CGA using
+    two-CTA `tc_gen5_mma` with an async completion mbarrier;
+  - the check pins `init_barrier`, cluster init sync, `tc_gen5_mma`, and the
+    post-MMA cluster barrier/wait sequence so the pass cannot regress to an
+    exact two-CTA module assumption.
+- Residual risk:
+  - `PartitionSchedulingUtility::Edge::getSize` still uses product-of-shape
+    sizing for memdesc edges. This remains a scheduling heuristic risk, but no
+    bad partition, verifier crash, or wrong-code reproducer was found in this
+    audit.
+- Validation:
+  - required `make -j8`;
+  - `lit -v test/TritonNvidiaGPU/membar-cluster.mlir`;
+  - `lit -v test/TritonGPU/partition-scheduling.mlir
+    test/TritonGPU/optimize-partition-warps.mlir
+    test/TritonGPU/partition-verifier-locality.mlir
+    test/TritonNvidiaGPU/membar-cluster.mlir`.
+
 ## 2026-04-21 07:03 UTC: Round 2 copy/ld/st/ld.red subview audit
 
 - User asked for Round 2 of 5 focused on `tcgen05.copy`, `ttng.tmem_load`,

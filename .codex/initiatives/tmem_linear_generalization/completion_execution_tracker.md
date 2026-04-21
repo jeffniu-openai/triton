@@ -119,6 +119,13 @@ The project is complete when:
   memdesc SSA values out of AxisInfo/layout-conversion tensor rewrites, or
   restrict themselves to ranked pointer/tensor payloads. Validation covered
   the generic pass lit files plus TMEM layout/verifier/conversion lit.
+  2026-04-21 07:03 UTC Round 3 warp-specialization / partitioning /
+  barrier audit found no new concrete scheduling or membar implementation bug.
+  Added `membar-cluster.mlir` coverage for a valid 4-CTA CGA using two-CTA
+  `tc_gen5_mma` with an async completion mbarrier, so the larger-CGA
+  pair/mbarrier path is pinned alongside existing 2-CTA MMA and 4/16 CTA
+  `ttng.tmem_copy` barrier cases. The memdesc edge-size heuristic remains
+  noted as a scheduling-cost risk without a reproduced bad partition.
   2026-04-21 07:03 UTC Round 2 copy/ld/st/ld.red follow-up fixed an
   additional ld.red descriptor-view false negative: `ttng.tmem_subslice`
   views can now use the canonical standalone query type for reduction

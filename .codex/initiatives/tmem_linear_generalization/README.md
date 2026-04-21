@@ -84,6 +84,15 @@ When resuming the initiative:
   selected query type. Added conversion lit coverage for the subview-base
   offset plus `tcgen05.ld.red.sync.aligned.32x32b.x64`.
 
+- 2026-04-21 07:03 UTC: completed Round 3 of the TMEM backend audit focused
+  on warp specialization, partition scheduling, optimize-partition-warps,
+  cluster barriers, and membar interactions. No implementation bug was
+  reproduced in the current scheduling or membar code. Added lit coverage for
+  a valid 4-CTA CGA running `tc_gen5_mma` in two-CTA mode with an async
+  completion mbarrier, pinning that cluster init sync is driven by the
+  two-CTA MMA consumer rather than by an exact two-CTA module assumption.
+  Existing 4/16 CTA `ttng.tmem_copy` cluster-barrier coverage remains green.
+
 - 2026-04-21 07:00 UTC: completed Round 4 of the TMEM backend audit focused
   on generic compiler analyses and layout-conversion interactions with TMEM
   memdescs. Audited `AxisInfo`, `Coalesce`, `RemoveLayoutConversions`,
