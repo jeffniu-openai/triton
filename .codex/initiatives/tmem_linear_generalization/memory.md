@@ -107,6 +107,25 @@
   `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
   passed `3/3`.
 
+- Latest: 2026-04-21 completed Round 10 Lane L generic pass/control-flow
+  descriptor fuzzing. Report: `agents/fuzz_generic_controlflow_round10.md`.
+  The `/tmp/tmem_round10_exact_probe.py` exact runner replayed checked-in
+  structural-fuzzer cases across four GPUs. Result: `7` pass, `1` clean
+  unsupported diagnostic, `20` known failures, and no new independent `FZ-*`.
+  Known owners: `FZ-20260421-0001`, `FZ-20260421-0002`,
+  `FZ-20260421-0003`, `FZ-20260421-0004`, `FZ-20260421-0006`,
+  `FZ-20260421-0007`, plus the existing `R5-C` auto-layout crash sentinel.
+
+- Latest: 2026-04-21 completed Round 10 Lane M copy/scales/CGA fuzzing.
+  Report: `agents/fuzz_copy_scales_cga_round10.md`. No new `FZ-*`.
+  Positive rows remained positive for direct/source-subslice scales `warpx4`,
+  no-scales `warpx2` single-CTA, and scaled-MMA copy setup. Clean boundaries
+  remained clean for scales descriptor-view, no-scales two-CTA `warpx2::02_13`,
+  subword rows, and larger-CGA two-CTA contexts. The scaled-MMA `num_ctas > 2`
+  assertion-like result is an early `make_scales_descriptor` shape-divisibility
+  guardrail, not a backend bug. Exact rerun of the temporary-wrapper
+  `warpx2` two-CTA `01_23` false lead passed `2/2`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

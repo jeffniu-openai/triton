@@ -211,6 +211,42 @@ remain family-specific and consume a bounded subset of the inventory.
 - Clean boundaries: 2CTA copy `256x256` OOR and scaled-MMA tile-permuted
   `N=16` unsupported diagnostic.
 
+### Lane L Round 10, Generic Pass and Control Flow
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_controlflow_round10.md`
+- Scope: exact four-GPU replay of checked-in structural-fuzzer cases through a
+  `/tmp` runner, stressing nested helpers, tuple-like returns, sibling views,
+  loops with memdesc/tensor iter args, dynamic `if`/select, mixed TMEM and
+  non-TMEM tensors, layout conversions, runtime scalar indices, `ld/st`,
+  `ld.red`, and one scaled-MMA accumulator descriptor row.
+- Result: no new independent `FZ-*` bucket. The exact rerun produced `7`
+  passes, `1` clean unsupported diagnostic, and `20` failures owned by
+  existing buckets: `FZ-20260421-0001`, `FZ-20260421-0002`,
+  `FZ-20260421-0003`, `FZ-20260421-0004`, `FZ-20260421-0006`,
+  `FZ-20260421-0007`, and `R5-C`.
+- Follow-up: keep using this exact checked-in-case replay as a compact generic
+  control-flow bucket guard; no backend repairs during discovery mode.
+
+### Lane M Round 10, Copy / Scales / Multicast / CGA
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_scales_cga_round10.md`
+- Scope: temporary `/tmp` subprocess fuzzing of no-scales `warpx2::{01_23,02_13}`
+  copy, scales `warpx4` copy, source/destination descriptor views,
+  indexed/subslice/slice-index chains, subword rows, two-CTA layouts in larger
+  CGA contexts, and scaled-MMA copy/multicast setup rows.
+- Result: no new `FZ-*` bucket. Direct/source-subslice scales `warpx4`,
+  no-scales `warpx2` single-CTA, and scaled-MMA copy setup rows stayed
+  positive. Scales descriptor-view, no-scales two-CTA `warpx2::02_13`,
+  subword, and larger-CGA two-CTA-context rows stayed clean boundaries.
+- Follow-up: keep the scaled-MMA `num_ctas > 2` `make_scales_descriptor`
+  shape-divisibility assertion classified as an early guardrail for now; exact
+  runtime-matrix rerun ruled out the temporary-wrapper two-CTA `01_23` false
+  lead (`2/2` passed).
+
 ### Lane A2 Round 2, ld/st and ld.red Promotion
 
 - Time: 2026-04-21 09:10 UTC

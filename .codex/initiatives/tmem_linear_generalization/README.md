@@ -169,6 +169,24 @@ When resuming the initiative:
   `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
   passed `3/3`.
 
+- 2026-04-21: completed Round 10 Lane L generic pass/control-flow descriptor
+  fuzzing. Wrote `agents/fuzz_generic_controlflow_round10.md`. No new
+  independent `FZ-*` bucket was found. The exact four-GPU checked-in-case
+  rerun produced `7` passes, `1` clean unsupported diagnostic, and `20`
+  failures that map to `FZ-20260421-0001`, `FZ-20260421-0002`,
+  `FZ-20260421-0003`, `FZ-20260421-0004`, `FZ-20260421-0006`,
+  `FZ-20260421-0007`, plus the existing `R5-C` auto-layout crash sentinel.
+
+- 2026-04-21: completed Round 10 Lane M copy/scales/CGA fuzzing. Wrote
+  `agents/fuzz_copy_scales_cga_round10.md`. No new `FZ-*` bucket was found.
+  Direct and source-subslice scales `warpx4`, no-scales `warpx2` single-CTA,
+  and scaled-MMA copy setup rows stayed positive; scales descriptor-view,
+  no-scales two-CTA `warpx2::02_13`, subword, and larger-CGA two-CTA-context
+  rows stayed clean boundaries. The only assertion-like row was the
+  scaled-MMA `num_ctas > 2` `make_scales_descriptor` shape-divisibility
+  guardrail, left unpromoted. A temporary-wrapper `warpx2` two-CTA `01_23`
+  false lead was ruled out by exact runtime-matrix rerun (`2/2` passed).
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as

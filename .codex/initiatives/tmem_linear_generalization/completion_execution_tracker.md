@@ -280,6 +280,19 @@ The project is complete when:
   2026-04-21 local Round 10 lit sanity stayed green: `ninja triton-opt` no-op
   and `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
   passed `3/3`.
+  2026-04-21 Round 10 Lane L completed generic pass/control-flow descriptor
+  fuzzing without backend repairs. No new independent `FZ-*` id. The exact
+  four-GPU checked-in-case rerun produced `7` passes, `1` clean unsupported
+  diagnostic, and `20` failures owned by existing buckets
+  `FZ-20260421-0001`, `FZ-20260421-0002`, `FZ-20260421-0003`,
+  `FZ-20260421-0004`, `FZ-20260421-0006`, `FZ-20260421-0007`, and `R5-C`.
+  Report: `agents/fuzz_generic_controlflow_round10.md`.
+  2026-04-21 Round 10 Lane M completed copy/scales/CGA fuzzing without
+  backend repairs. No new `FZ-*` id. Positive scales `warpx4`, no-scales
+  `warpx2`, and scaled-MMA copy setup rows stayed positive; descriptor-view,
+  two-CTA `warpx2::02_13`, subword, and larger-CGA rows stayed clean
+  boundaries. The `num_ctas > 2` scaled-MMA shape assertion is an early
+  guardrail. Report: `agents/fuzz_copy_scales_cga_round10.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

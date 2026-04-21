@@ -27156,3 +27156,45 @@ Open after this slice:
 - Command:
   `cd build/cmake.linux-aarch64-cpython-3.12 && ninja triton-opt && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
 - Result: `3/3` passed.
+
+## 2026-04-21: Round 10 Lane L generic control-flow fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_controlflow_round10.md`.
+- Classification: no new independent `FZ-*` bucket. The `/tmp` exact runner
+  replayed checked-in structural-fuzzer cases across four GPUs and produced:
+  - `7` passes;
+  - `1` clean unsupported diagnostic;
+  - `20` known failures;
+  - `0` new independent roots.
+- Known failure owners: `FZ-20260421-0001`, `FZ-20260421-0002`,
+  `FZ-20260421-0003`, `FZ-20260421-0004`, `FZ-20260421-0006`,
+  `FZ-20260421-0007`, and the existing `R5-C` auto-layout crash sentinel.
+- Representative mismatch counts remain stable: generic chain0 rows around
+  `8064/8192`, `ld/st` packet-order rows around `1984/2048`,
+  `1792/2048`, and `1023/2048`, plus the known scaled-MMA accumulator-view
+  wrong-value row.
+
+## 2026-04-21: Round 10 Lane M copy/scales/CGA fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_scales_cga_round10.md`.
+- Classification: no new `FZ-*` bucket.
+- Positive rows stayed positive for:
+  - direct and source-subslice scales `warpx4`;
+  - no-scales `warpx2` single-CTA `01_23` and `02_13`;
+  - scaled-MMA copy setup with `num_ctas` 1 and 2.
+- Clean boundaries stayed clean for:
+  - scales `warpx4` descriptor-view copy;
+  - no-scales two-CTA `warpx2::02_13`;
+  - no-scales `warpx2` subword rows;
+  - two-CTA layouts embedded in larger CGA contexts.
+- The only assertion-like behavior was scaled-MMA `num_ctas > 2` in
+  `make_scales_descriptor`, classified as an early shape-divisibility
+  guardrail rather than a backend bug. A temporary-wrapper false lead on
+  two-CTA `warpx2::01_23` was ruled out by exact runtime-matrix rerun
+  (`2/2` passed).
