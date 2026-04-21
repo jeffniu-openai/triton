@@ -28512,6 +28512,24 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 12:03 UTC: Round 22 local split-N/fixed-offset baseline
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_splitn_fixed_round22.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Selector `(splitn or fixed_offset) and not ld_red` collected `33/1615`
+  rows.
+- Split-4 result with stable per-GPU caches:
+  `33 passed`:
+  - GPU 0 / group 1: `9 passed`;
+  - GPU 1 / group 2: `9 passed`;
+  - GPU 2 / group 3: `9 passed`;
+  - GPU 3 / group 4: `6 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:54 UTC: Round 18 local MMAv5 and scaled-MMAv5 selector
 
 - Wrote

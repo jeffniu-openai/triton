@@ -2425,6 +2425,18 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+### Round 22 local split-N and fixed-offset baseline
+
+- Time: 2026-04-21 12:03 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_splitn_fixed_round22.md`
+- Selector:
+  `(splitn or fixed_offset) and not ld_red` collected `33/1615`.
+- Split-4 result:
+  `33 passed` (`9/9/9/6`).
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 ### Round 18 local MMAv5 and scaled-MMAv5 selector
 
 - Time: 2026-04-21 11:54 UTC

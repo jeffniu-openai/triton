@@ -15646,3 +15646,11 @@ rejection, not rescue
   (`23/23/23/22`). No new bucket; this is a green contrast showing the current
   scaled-MMAv5 failures are not explained by these static layout families
   alone when known selected-B-scale rows are excluded.
+
+- Local Round 22 split-N/fixed-offset baseline wrote
+  `agents/fuzz_local_splitn_fixed_round22.md`. Required `make -j8` was a
+  no-op. Selector `(splitn or fixed_offset) and not ld_red` collected
+  `33/1615` rows and passed split-4 as `33 passed` (`9/9/9/6`). No new
+  bucket; this is a green non-reduction contrast for split-N and fixed-offset
+  ld/st while the delegated `ld.red` lane probes hardware-reduction planner
+  edges.

@@ -2093,3 +2093,7 @@ signal handling:
 - 2026-04-21 12:03 UTC: local scaled-MMAv5 static-layout baseline completed.
   Report: `agents/fuzz_local_scaled_layouts_round21.md`. Selector collected
   `91/1615` and passed split-4 as `91 passed`; no new bucket.
+
+- 2026-04-21 12:03 UTC: local split-N/fixed-offset baseline completed.
+  Report: `agents/fuzz_local_splitn_fixed_round22.md`. Selector collected
+  `33/1615` and passed split-4 as `33 passed`; no new bucket.
