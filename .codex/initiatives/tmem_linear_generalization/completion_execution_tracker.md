@@ -2331,6 +2331,30 @@ signal handling:
   `FZ-20260421-0012` M64 row/column-permuted planner rows. No new independent
   bucket or changed failure mode was found.
 
+- 2026-04-21: Round 26 dynamic descriptor SSA/control-flow lane completed.
+  Report: `agents/fuzz_dynamic_ssa_round26.md`. Seven temporary runtime rows
+  covered nested helpers, tuple-like returns, loop-carried descriptors,
+  runtime indices, `ld/st`, `ld.red`, copy, mixed consumers, and plain-MMAv5
+  accumulator consumers. No new bucket: copy/runtime-index rows broaden
+  existing `FZ-20260421-0001`, wrong-output `ld/st`/`ld.red` rows broaden
+  existing `FZ-20260421-0002`, and the plain-MMAv5 branch-selected accumulator
+  control passed. Follow-up direct descriptor controls passed for branch
+  selected `ld/st`, same-object branch `ld/st`, and branch-selected `ld.red`,
+  narrowing `FZ-0002` toward descriptor-view composition crossing SSA/control
+  flow.
+
+- 2026-04-21: Round 29 broad scaled-MMAv5 runtime guardrail completed. Report:
+  `agents/fuzz_local_mma_scaled_round29.md`. Selector
+  `mma_scaled and not reports and not resource` collected `243/1615` and
+  passed split-4 as `243 passed`. No compiler crash, verifier failure, runtime
+  miscompile, opcode mismatch, or new bucket was found.
+
+- 2026-04-21: Round 29 no-scale copy runtime guardrail completed. Report:
+  `agents/fuzz_local_copy_round29.md`. Selector
+  `cp_no_scales and not reports and not high and not cga and not selector and
+  not subword` collected `201/1615` and passed split-4 as
+  `197 passed, 4 skipped`. No new bucket was found.
+
 - 2026-04-21: Round 26 dynamic descriptor SSA lane completed. Report:
   `agents/fuzz_dynamic_ssa_round26.md`. No new bucket. Runtime-index `ld.red`
   and branch-yielded copy descriptors sharpen existing `FZ-20260421-0001`;

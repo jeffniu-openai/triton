@@ -16115,6 +16115,31 @@ rejection, not rescue
   `FZ-20260421-0012` M64 row/column-permuted destination-layout planner gaps.
   No new `FZ-*` or changed failure mode.
 
+- Round 26 dynamic descriptor SSA/control-flow lane wrote
+  `agents/fuzz_dynamic_ssa_round26.md`. No new `FZ-*`. The branch-yielded copy
+  and runtime-index `ld.red` rows broaden existing `FZ-20260421-0001`
+  (`ttg.memdesc_index` remains illegal at LLVM conversion). Nested-helper,
+  loop-carried, branch-yielded `ld.red`, and mixed `ld/st`+`ld.red` consumers
+  broaden existing `FZ-20260421-0002` wrong-output descriptor SSA semantics.
+  Plain-MMAv5 branch-selected accumulator view passed as a positive control.
+  Follow-up direct descriptor controls also passed for branch-selected
+  `parent.index(0/1)` feeding `ld/st`, same-object direct branch feeding
+  `ld/st`, and branch-selected direct descriptors feeding `ld.red` with a
+  hardware reduction opcode. This narrows `FZ-0002` toward descriptor-view
+  composition crossing SSA/control flow, not plain branch-carried memdescs.
+
+- Round 29 broad scaled-MMAv5 runtime guardrail wrote
+  `agents/fuzz_local_mma_scaled_round29.md`. Selector
+  `mma_scaled and not reports and not resource` completed as `243 passed`.
+  This is green committed-surface evidence outside report-only `FZ-0013` and
+  `FZ-0015` temporary probes.
+
+- Round 29 local no-scale copy guardrail wrote
+  `agents/fuzz_local_copy_round29.md`. Selector
+  `cp_no_scales and not reports and not high and not cga and not selector and
+  not subword` collected `201/1615` and completed split-4 as
+  `197 passed, 4 skipped`. No new bucket or changed failure mode.
+
 - Round 26 dynamic descriptor SSA lane wrote
   `agents/fuzz_dynamic_ssa_round26.md`. No new independent `FZ-*`. It
   sharpened `FZ-20260421-0001` with runtime-index `ld.red` and branch-yielded

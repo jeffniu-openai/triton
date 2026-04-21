@@ -29909,3 +29909,49 @@ Open after this slice:
   `237 passed, 6 failed`; exact rerun reproduced the same six failures.
 - Classification: no new independent `FZ-*`; all failures are existing
   `FZ-20260421-0012` M64 row/column-permuted destination-layout planner gaps.
+
+## 2026-04-21: Round 26 dynamic descriptor SSA/control-flow
+
+- Integrated report
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_ssa_round26.md`.
+- Temporary probe:
+  `/tmp/tmem_dynamic_ssa_round26_probe.py`.
+- Seven rows covered nested helpers, tuple-like returns, loop-carried
+  descriptors, runtime indices, `ld/st`, `ld.red`, copy, mixed consumers, and
+  plain-MMAv5 accumulator consumers.
+- Classification: no new independent `FZ-*`. Branch-yielded copy and
+  runtime-index `ld.red` sharpen existing `FZ-20260421-0001`; dynamic
+  `ld/st`/`ld.red` wrong-output rows sharpen existing `FZ-20260421-0002`; the
+  plain-MMAv5 branch-selected accumulator control passed.
+- Follow-up direct descriptor controls passed: branch-selected direct
+  `parent.index(0/1)` feeding `ld/st`, same-object direct branch feeding
+  `ld/st`, and branch-selected direct descriptors feeding `ld.red`. This
+  narrows `FZ-0002` to descriptor-view composition crossing SSA/control flow
+  rather than plain memdesc branch carrying.
+
+## 2026-04-21: Round 29 broad scaled-MMAv5 runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_scaled_round29.md`.
+- Selector:
+  `mma_scaled and not reports and not resource`.
+- Collection:
+  `243/1615`.
+- Split-4 result:
+  `243 passed`.
+- Classification: no compiler crash, verifier failure, runtime miscompile,
+  opcode mismatch, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 29 no-scale copy runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_round29.md`.
+- Selector:
+  `cp_no_scales and not reports and not high and not cga and not selector and
+  not subword`.
+- Collection:
+  `201/1615`.
+- Split-4 result:
+  `197 passed, 4 skipped`.
+- Classification: no compiler crash, verifier failure, runtime miscompile,
+  opcode mismatch, or new independent `FZ-*` bucket.

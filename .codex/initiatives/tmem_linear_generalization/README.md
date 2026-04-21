@@ -11,8 +11,13 @@ Latest fuzzing checkpoint: 2026-04-21 Round 26-28 discovery lanes. Reports:
 `agents/fuzz_high_cga_scaled_round26.md`,
 `agents/fuzz_verifier_round26.md`,
 `agents/fuzz_local_mma_guard_round26.md`,
+`agents/fuzz_dynamic_ssa_round26.md`,
 `agents/fuzz_structural_rerun_round27.md`, and
-`agents/fuzz_ldred_round28.md`. No new independent `FZ-*` bucket was found.
+`agents/fuzz_ldred_round28.md`. Latest local guardrail:
+`agents/fuzz_local_mma_scaled_round29.md` passed the broad checked-in
+scaled-MMAv5 selector as `243 passed`; `agents/fuzz_local_copy_round29.md`
+passed the no-scale copy selector as `197 passed, 4 skipped`. No new
+independent `FZ-*` bucket was found.
 The repaired high-CGA scaled-MMAv5 mixed-ownership harness proved scaled-MMAv5
 controls pass for `num_ctas=4/8/16`, then local 1CTA/2CTA descriptor-view
 `st`, `ld`, `ld.red`, and `tcgen05.copy` rows all classify as existing
@@ -20,7 +25,13 @@ controls pass for `num_ctas=4/8/16`, then local 1CTA/2CTA descriptor-view
 alloc/load/store unencoded tensor verifier paths. The checked-in structural
 fuzzer stayed stable as `9 passed, 24 xfailed`; the MMAv5 guardrail stayed
 green as `323 passed, 14 skipped`; the broad `ld.red` slice reproduced only
-known `FZ-20260421-0012` rows (`237 passed, 6 failed`).
+known `FZ-20260421-0012` rows (`237 passed, 6 failed`). The dynamic SSA lane
+broadened existing `FZ-20260421-0001`/`FZ-20260421-0002` across copy,
+`ld.red`, and mixed descriptor consumers, with a plain-MMAv5 accumulator
+branch control passing. Follow-up direct descriptor controls passed for
+branch-selected `ld/st`, same-object branch `ld/st`, and branch-selected
+`ld.red`, narrowing `FZ-0002` to descriptor-view composition crossing the SSA
+or control-flow boundary rather than plain memdesc branch carrying.
 
 Previous Round 25 fuzzing checkpoint: 2026-04-21 14:30 UTC. Reports:
 `agents/fuzz_fz0016_code_audit_round25.md`,

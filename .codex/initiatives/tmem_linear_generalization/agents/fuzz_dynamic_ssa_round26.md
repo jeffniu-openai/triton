@@ -141,3 +141,36 @@ Updated diagnosis:
   descriptor-view/control-flow issue is not only distinct-object address
   rematerialization. The view-chain semantics are implicated even when both
   control-flow arms name the same base descriptor object.
+
+## Direct Descriptor Controls
+
+The same probe was extended again with direct-no-view controls to separate
+plain memdesc control flow from descriptor-view composition.
+
+Commands:
+
+```bash
+PYTHONPATH=.:./python:./python/test/gluon python -m py_compile /tmp/tmem_dynamic_ssa_round26_probe.py
+PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only /tmp/tmem_dynamic_ssa_round26_probe.py
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short '/tmp/tmem_dynamic_ssa_round26_probe.py::test_round26_dynamic_ssa_ldst[branch-direct-ldst]' 2>&1 | tee /tmp/tmem_dynamic_ssa_round26_branch_direct_ldst.log
+CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short '/tmp/tmem_dynamic_ssa_round26_probe.py::test_round26_dynamic_ssa_ldst[same-object-direct-ldst]' 2>&1 | tee /tmp/tmem_dynamic_ssa_round26_same_direct_ldst.log
+CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short '/tmp/tmem_dynamic_ssa_round26_probe.py::test_round26_dynamic_ssa_ldred[branch-direct-ldred]' 2>&1 | tee /tmp/tmem_dynamic_ssa_round26_branch_direct_ldred.log
+```
+
+Results:
+
+| Row | Consumer path | Observed result | Classification |
+| --- | --- | --- | --- |
+| `branch-direct-ldst` | branch-selected direct `parent.index(0/1)` descriptor, then `tmem_load` | passed, `ldst mismatch_count 0` | Positive control |
+| `same-object-direct-ldst` | both branch arms yield the same direct `parent.index(0)` descriptor, then `tmem_load` | passed, `ldst mismatch_count 0` | Positive control |
+| `branch-direct-ldred` | branch-selected direct `parent.index(0/1)` descriptor, then `load_min` | passed with `tcgen05.ld.red.sync.aligned.32x32b.x32.min.f32`; output and reduction mismatch counts both `0` | Positive control |
+
+Updated narrowing:
+
+`FZ-20260421-0002` is not triggered by plain branch-yielded TMEM descriptors
+feeding `ld/st` or `ld.red`. The failing rows require descriptor-view
+composition, such as the chain0 reshape/permute/reshape identity view, crossing
+the control-flow/SSA boundary. This makes the likely repair target the
+interaction between memdesc view-chain lowering and control-flow value
+materialization, rather than a blanket inability to carry TMEM memdesc values
+through `scf.if`.

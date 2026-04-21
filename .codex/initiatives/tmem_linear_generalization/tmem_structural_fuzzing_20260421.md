@@ -3462,3 +3462,47 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification:
   no new independent `FZ-*`; the six failures are existing
   `FZ-20260421-0012` M64 row/column-permuted destination-layout planner gaps.
+
+### Round 26 dynamic descriptor SSA/control-flow
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_dynamic_ssa_round26.md`
+- Temporary probe:
+  `/tmp/tmem_dynamic_ssa_round26_probe.py`
+- Result:
+  seven rows collected. Copy/runtime-index rows reproduced existing
+  `FZ-20260421-0001`; nested-helper, loop-carried, branch-yielded `ld.red`,
+  and mixed `ld/st`+`ld.red` rows reproduced existing `FZ-20260421-0002`;
+  plain-MMAv5 branch-selected accumulator view passed.
+- Follow-up:
+  direct descriptor controls passed for branch-selected direct `ld/st`,
+  same-object direct branch `ld/st`, and branch-selected direct `ld.red`,
+  narrowing `FZ-0002` toward descriptor-view composition crossing SSA/control
+  flow rather than plain branch-carried memdescs.
+- Classification:
+  no new independent `FZ-*`.
+
+### Round 29 broad scaled-MMAv5 runtime guardrail
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_mma_scaled_round29.md`
+- Selector:
+  `mma_scaled and not reports and not resource`
+- Split-4 result:
+  `243 passed`.
+- Classification:
+  no new independent `FZ-*`; committed scaled-MMAv5 positive surface remains
+  green outside report-only and resource-boundary rows.
+
+### Round 29 no-scale copy runtime guardrail
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_copy_round29.md`
+- Selector:
+  `cp_no_scales and not reports and not high and not cga and not selector and
+  not subword`
+- Split-4 result:
+  `197 passed, 4 skipped`
+- Classification:
+  no new independent `FZ-*`; committed no-scale copy positive surface remains
+  green outside report-only and high-CGA boundary rows.
