@@ -3331,10 +3331,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     return layout;
   };
   auto hasExpectedCTAOwnership = [&](Attribute attr) {
-    auto maybeTwoCTAs = getTensorMemoryTwoCTAs(memType.getEncoding());
-    if (!maybeTwoCTAs)
-      return true;
-    unsigned expectedCTAs = *maybeTwoCTAs ? 2 : 1;
+    unsigned expectedCTAs = getNumCTAs(memType.getEncoding());
     return product<unsigned>(getCTAsPerCGA(attr)) == expectedCTAs;
   };
   auto isValidLayout = [&](const LinearLayout &layout) {

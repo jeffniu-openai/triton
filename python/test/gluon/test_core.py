@@ -426,7 +426,7 @@ TMEM_LINEAR_F16_ROUNDTRIP_AUTO_KERNEL = _make_tmem_linear_roundtrip_kernel(ttgl.
 
 
 def _expected_scaled_mma_opcode(a_format, b_format, num_ctas):
-    prefix = f"tcgen05.mma.cta_group::{2 if num_ctas == 2 else 1}.kind::"
+    prefix = f"tcgen05.mma.cta_group::{2 if num_ctas > 1 else 1}.kind::"
     if a_format == "nvfp4" and b_format == "nvfp4":
         return prefix + "mxf4nvf4.block_scale.scale_vec::4X"
     if a_format == "mxfp4" and b_format == "mxfp4":
@@ -435,7 +435,7 @@ def _expected_scaled_mma_opcode(a_format, b_format, num_ctas):
 
 
 def _expected_scaled_cp_opcode(num_ctas):
-    return f"tcgen05.cp.cta_group::{2 if num_ctas == 2 else 1}.warpx4.32x128b"
+    return f"tcgen05.cp.cta_group::{2 if num_ctas > 1 else 1}.warpx4.32x128b"
 
 
 @gluon.jit
@@ -957,9 +957,6 @@ def tcgen05_mma_scaled_direct_multicast_kernel(a_desc, b_desc, out_ptr, BLOCK_M:
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tcgen05_mma_scaled_direct_multicast_barrier():
-    pytest.xfail(
-        "two-CTA 2x2 scaled-MMA accumulator readback still needs an explicit "
-        "supported TMEM load layout instead of auto")
     num_ctas = 4
     BLOCK_M = 256
     BLOCK_N = 256
@@ -5713,11 +5710,6 @@ def mma_scaled_tcgen05_copy(A, B, A_scale, B_scale, VEC_SIZE, BLOCK_M, BLOCK_N, 
 @pytest.mark.parametrize("multicast", [True, False])
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_mma_scaled_tcgen05_copy(M, N, K, BLOCK_K, a_format, b_format, ctas_per_cga, multicast):
-    if ctas_per_cga != (1, 1):
-        pytest.xfail(
-            "two-CTA scaled tcgen05.copy coverage needs canonical non-broadcast "
-            "scale TMEM block bases; broadcast scale layouts are a clean "
-            "hardware-boundary diagnostic after the upstream merge")
     BLOCK_M = 128 * ctas_per_cga[0]
     BLOCK_N = 128 * ctas_per_cga[1]
     num_ctas = ctas_per_cga[0] * ctas_per_cga[1]
@@ -5766,10 +5758,6 @@ def test_mma_scaled_tcgen05_copy(M, N, K, BLOCK_K, a_format, b_format, ctas_per_
 @pytest.mark.parametrize("num_ctas", [1, 2])
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_mma_scaled_tcgen05_copy_linear_acc(a_format, b_format, num_ctas):
-    if num_ctas != 1:
-        pytest.xfail(
-            "two-CTA scaled tcgen05.copy with broadcast scale operands is not "
-            "hardware-realizable through the current direct copy atom")
     ctas_per_cga = (num_ctas, 1)
     BLOCK_M = 256 if num_ctas == 2 else 128
     BLOCK_N = 128

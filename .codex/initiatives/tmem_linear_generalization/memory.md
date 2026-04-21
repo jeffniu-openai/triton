@@ -14071,3 +14071,52 @@ rejection, not rescue
     python/examples/gluon/08-tmem-layout-as-epilogue.py`;
   - script benchmark transcripts for `05`, `06`, and `08` were refreshed from
     local runs.
+
+## Current: 2026-04-21 01:13 UTC restored main tests and fixed scaled-copy regressions
+
+- User clarified that execution/runtime tests green on main must not be
+  dropped or xfailed on the branch. The previous post-merge xfails for
+  `test_mma_scaled_tcgen05_copy*` and
+  `test_tcgen05_mma_scaled_direct_multicast_barrier` are superseded.
+- Backend fixes:
+  - `getDistributedLayoutForTmemLdSt(gpu::MemDescType, ...)` now checks CTA
+    ownership against the full memdesc CGA product instead of treating
+    `two_ctas=true` as total CGA size `2`. `two_ctas` selects the MMAv5
+    instruction group; a 2x2 CGA still owns four CTAs.
+  - multicast `tcgen05.copy.warpx4.32x128b` destination support now accepts
+    broadcast scale block bases and outer row-only CTA-pair bases such as
+    `[256, 0]` when the canonical within-pair `[128, 0]` basis is present.
+    Dense/direct copy validation remains strict.
+- Runtime test changes:
+  - removed xfails from `test_tcgen05_mma_scaled_direct_multicast_barrier`,
+    `test_mma_scaled_tcgen05_copy`, and
+    `test_mma_scaled_tcgen05_copy_linear_acc`;
+  - opcode expectations now use `cta_group::2` for any multi-CTA scaled MMA or
+    scaled copy, including 4-CTA, 8-CTA, and 16-CTA CGAs, because the emitted
+    instruction group remains a two-CTA group.
+- Restored lit tests:
+  - upstream sections restored in `test/Analysis/test-membar-ttng.mlir`,
+    `test/Conversion/tritongpu_to_llvm_blackwell.mlir`,
+    `test/TritonGPU/invalid.mlir`, `test/TritonNvidiaGPU/invalid.mlir`,
+    `test/TritonNvidiaGPU/membar-cluster.mlir`, and
+    `test/TritonNvidiaGPU/tmem_layouts.mlir`;
+  - audit also found and restored upstream MLIR functions in
+    `test/Analysis/amd/test-alignment.mlir`,
+    `test/Conversion/amd/async_ops_to_llvm.mlir`,
+    `test/Conversion/amd/tritongpu_tdm_stride_order.mlir`,
+    `test/TritonGPU/amd/amd-fold-true-cmpi.mlir`, and
+    `test/TritonNvidiaGPU/test_tensor_memory_allocation.mlir`;
+  - IR/diagnostic expectations were updated where branch behavior legitimately
+    changed, including AMD async vectorization diagnostics, AMD alignment
+    attributes, TMEM allocation DCE, mutable shared subviews, and branch-added
+    supported `ld.red` / subslice cases.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8` passed;
+  - focused representative runtime nodeids for `(4,1)`, `(4,2)`, and `(4,4)`
+    CGAs passed;
+  - split 4-GPU selector over
+    `python/test/gluon/test_core.py -k 'test_mma_scaled_tcgen05_copy or test_tcgen05_mma_scaled_direct_multicast_barrier'`
+    passed all groups: `27`, `27`, `27`, and `24` selected tests;
+  - affected lit suite passed `11/11`;
+  - upstream MLIR symbol audit reports `TOTAL_MISSING_FUNCS 0`;
+  - `git diff --check` passed.

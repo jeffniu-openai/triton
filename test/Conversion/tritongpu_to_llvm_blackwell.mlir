@@ -34,6 +34,29 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32} {
 
 // -----
 
+#tma_scatter_broadcast_blocked = #ttg.blocked<{sizePerThread = [1, 4], threadsPerWarp = [32, 1], warpsPerCTA = [1, 4], order = [1, 0], CGALayout = [[0, 0]]}>
+#tma_scatter_broadcast_shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16, CGALayout = [[0, 0]]}>
+module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.two-ctas" = true} {
+  // CHECK-LABEL: @tma_scatter_broadcast_two_ctas
+  // CHECK: %[[CTA:.+]] = nvg.cluster_id
+  // CHECK: %[[MASK:.+]] = llvm.mlir.constant(1 : i32) : i32
+  // CHECK: %[[CTA_IN_GROUP:.+]] = llvm.and %[[CTA]], %[[MASK]] : i32
+  // CHECK: %[[ZERO:.+]] = llvm.mlir.constant(0 : i32) : i32
+  // CHECK: %[[IS_LEADER:.+]] = llvm.icmp "eq" %[[CTA_IN_GROUP]], %[[ZERO]] : i32
+  // CHECK: %[[WARP_PRED:.+]] = llvm.icmp "eq" {{.*}} : i32
+  // CHECK: %[[LEADER_WARP_PRED:.+]] = llvm.and %[[IS_LEADER]], %[[WARP_PRED]] : i1
+  // CHECK: %[[ELECT:.+]] = nvvm.elect.sync -> i1
+  // CHECK: %[[PRED:.+]] = llvm.and %[[LEADER_WARP_PRED]], %[[ELECT]] : i1
+  // CHECK: @$0 cp.async.bulk.tensor.2d.tile::scatter4.global.shared::cta.bulk_group
+  // CHECK-SAME: "b,l,r,r,r,r,r,r" %[[PRED]],
+  tt.func @tma_scatter_broadcast_two_ctas(%desc: !tt.tensordesc<1x128xbf16, #tma_scatter_broadcast_shared>, %x_offsets: tensor<32xi32, #ttg.slice<{dim = 0, parent = #tma_scatter_broadcast_blocked}>>, %y_offset: i32, %src: !ttg.memdesc<32x128xbf16, #tma_scatter_broadcast_shared, #ttg.shared_memory, mutable>) {
+    ttng.async_tma_scatter %desc[%x_offsets, %y_offset] %src : !tt.tensordesc<1x128xbf16, #tma_scatter_broadcast_shared>, tensor<32xi32, #ttg.slice<{dim = 0, parent = #tma_scatter_broadcast_blocked}>>, i32, !ttg.memdesc<32x128xbf16, #tma_scatter_broadcast_shared, #ttg.shared_memory, mutable>
+    tt.return
+  }
+}
+
+// -----
+
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #shared1 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 16}>
 #shared2 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>

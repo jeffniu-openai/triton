@@ -85,6 +85,21 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.thr
 
 #shared = #ttg.padded_shared<[32:+4] {order = [0, 1, 2], shape = [1, 1, 1]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @tdm_1x1xi(%arg0: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %runtime_stride: i64) {
+    %c_stride1 = arith.constant 1 : i64
+    %c_shape = arith.constant 1 : i32
+    %c_shape2 = arith.constant 128 : i32
+    // expected-error @+2 {{last dimension must have stride 1}}
+    // expected-error @+1 {{failed to legalize operation}}
+    %0 = tt.make_tensor_descriptor %arg0, [%c_shape, %c_shape, %c_shape2], [%c_stride1, %c_stride1, %runtime_stride] : <f16>, <1x1x1xf16, #shared>
+    tt.return
+  }
+}
+
+// -----
+
+#shared = #ttg.padded_shared<[32:+4] {order = [0, 1, 2], shape = [1, 1, 1]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tdm_1xix1(%arg0: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %runtime_stride: i64) {
     %c_stride1 = arith.constant 1 : i64
     %c_shape = arith.constant 1 : i32

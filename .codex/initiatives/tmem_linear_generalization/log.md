@@ -25823,3 +25823,30 @@ Open after this slice:
     `python/test/gluon/test_core.py python/test/gluon/test_fpsan.py` passed
     after rerunning group 1: group summaries were `9 passed/22 xfailed`,
     `8 passed/23 xfailed`, `31 xfailed`, and `20 passed/9 xfailed`.
+
+## 2026-04-21 01:13 UTC: restored upstream tests and fixed main-runtime scaled-copy regressions
+
+- User clarified that execution tests green on main must be preserved on the
+  branch; xfails/drops are not acceptable for runtime semantics.
+- Removed the post-merge xfails from
+  `test_tcgen05_mma_scaled_direct_multicast_barrier`,
+  `test_mma_scaled_tcgen05_copy`, and
+  `test_mma_scaled_tcgen05_copy_linear_acc`.
+- Fixed backend gaps:
+  - TMEM load auto-layout selection now validates CTA ownership against the
+    full memdesc CGA product rather than the `two_ctas` instruction-group flag;
+  - multicast `tcgen05.copy.warpx4.32x128b` now accepts broadcast and outer
+    row-only CTA-pair block bases for scale destinations while still requiring
+    the canonical within-pair `[128, 0]` basis when ownership is not fully
+    broadcast.
+- Restored dropped upstream lit coverage. The final audit comparing MLIR
+  `tt.func`/`func.func` symbols in `test/` against `origin/main` merge-base
+  reports `TOTAL_MISSING_FUNCS 0`.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13:/usr/lib/gcc/aarch64-linux-gnu/13/include make -j8`;
+  - affected lit suite passed `11/11`;
+  - split 4-GPU selector over
+    `python/test/gluon/test_core.py -k 'test_mma_scaled_tcgen05_copy or test_tcgen05_mma_scaled_direct_multicast_barrier'`
+    passed: group 1 `27 passed`, group 2 `27 passed`, group 3 `27 passed`,
+    group 4 `24 passed`;
+  - `git diff --check`.

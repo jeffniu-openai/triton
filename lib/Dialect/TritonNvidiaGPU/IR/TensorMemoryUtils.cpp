@@ -10991,7 +10991,8 @@ static TMemCopySupportResult getDenseTMemCopyColumnPermutationFailure(
 
 static TMemCopySupportResult getTMemCopyDestinationBlockOwnershipSupport(
     const LinearLayout &ll, MLIRContext *ctx, TMemCopyFamily family,
-    bool twoCTAs, int32_t expectedBlockRow) {
+    bool twoCTAs, int32_t expectedBlockRow,
+    bool allowBroadcastBlockOwnership = false) {
   if (!twoCTAs)
     return getSupportedTMemCopyResult();
 
@@ -11005,14 +11006,34 @@ static TMemCopySupportResult getTMemCopyDestinationBlockOwnershipSupport(
             Twine(expectedBlockRow) + ", 0]]. " + detail);
   };
 
-  if (!ll.hasInDim(kBlock) || ll.getInDimSize(kBlock) != 2)
-    return makeFailure("The destination query does not expose exactly one "
-                       "two-CTA block-selection bit.");
+  if (!ll.hasInDim(kBlock))
+    return makeFailure("The destination query does not expose any "
+                       "two-CTA block-selection bits.");
 
   auto blockBases = ll.getBases().lookup(kBlock);
-  if (blockBases.size() != 1 || blockBases.front().size() < 2 ||
-      blockBases.front()[0] != expectedBlockRow ||
-      blockBases.front()[1] != 0) {
+  unsigned canonicalBasisCount = 0;
+  bool allOtherBlockBasesCompatible = true;
+  for (ArrayRef<int32_t> basis : blockBases) {
+    bool isCanonical = basis.size() >= 2 && basis[0] == expectedBlockRow &&
+                       basis[1] == 0;
+    bool isBroadcast =
+        llvm::all_of(basis, [](int32_t value) { return value == 0; });
+    bool isOuterRowOwnership =
+        allowBroadcastBlockOwnership && basis.size() >= 2 &&
+        basis[0] > expectedBlockRow && basis[0] % expectedBlockRow == 0 &&
+        basis[1] == 0 &&
+        llvm::all_of(basis.drop_front(2),
+                     [](int32_t value) { return value == 0; });
+    canonicalBasisCount += isCanonical ? 1 : 0;
+    allOtherBlockBasesCompatible &=
+        isCanonical || isBroadcast || isOuterRowOwnership;
+  }
+  bool hasCanonicalBlockBasis =
+      canonicalBasisCount == 1 && allOtherBlockBasesCompatible;
+  bool hasBroadcastBlockBasis =
+      allowBroadcastBlockOwnership && canonicalBasisCount == 0 &&
+      allOtherBlockBasesCompatible;
+  if (!hasCanonicalBlockBasis && !hasBroadcastBlockBasis) {
     return makeFailure("CTA ownership is part of the instruction schedule; "
                        "without this basis the current copy atom cannot "
                        "select the second CTA's physical row half correctly.");
@@ -11219,7 +11240,8 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
 
   auto blockOwnershipSupport =
       getTMemCopyDestinationBlockOwnershipSupport(ll, ctx, family, twoCTAs,
-                                                  /*expectedBlockRow=*/128);
+                                                  /*expectedBlockRow=*/128,
+                                                  /*allowBroadcastBlockOwnership=*/true);
   if (!blockOwnershipSupport)
     return blockOwnershipSupport;
 

@@ -73,6 +73,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 01:13 UTC: restored upstream lit coverage and fixed the main
+  regression in 2CTA/larger-CGA scaled `tcgen05.copy` execution tests. The
+  previous post-merge xfails for `test_mma_scaled_tcgen05_copy*` and
+  `test_tcgen05_mma_scaled_direct_multicast_barrier` are superseded and have
+  been removed. Backend fixes distinguish the `tcgen05` instruction group
+  (`cta_group::2`) from total CGA ownership, and allow multicast scale-copy
+  destinations whose canonical `[[128, 0]]` within-pair basis is accompanied
+  by broadcast or outer row-only CTA-pair bases. Restored/updated lit coverage
+  now has zero upstream MLIR function symbols missing by audit.
+
 - 2026-04-20 23:34 UTC: upstream-main merge recovery is active. The branch has
   merged `upstream/main` at `2c7ce4925d37802dd84dfde1f6458cae19485617` and
   has no unresolved textual conflicts. Build and conflicted lit validation are

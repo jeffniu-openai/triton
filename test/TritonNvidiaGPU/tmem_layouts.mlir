@@ -28,6 +28,32 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
 
 // -----
 
+#rank1_reduce_linear = #ttg.linear<{register = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]], lane = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]], warp = [[32, 0], [64, 0], [0, 32]], block = []}>
+#rank1_reduce_tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 64, colStride = 1>
+
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.target = "cuda:100"} {
+  // CHECK-LABEL: @tmem_load_reduce_rank1
+  // CHECK: "tt.reduce"
+  // CHECK: "tt.reduce"
+  // CHECK: tt.return
+  tt.func public @tmem_load_reduce_rank1(%arg0: !ttg.memdesc<128x64xf32, #rank1_reduce_tmem, #ttng.tensor_memory>) -> f32 {
+    %0 = ttng.tmem_load %arg0 : !ttg.memdesc<128x64xf32, #rank1_reduce_tmem, #ttng.tensor_memory> -> tensor<128x64xf32, #rank1_reduce_linear>
+    %1 = "tt.reduce"(%0) <{axis = 1 : i32}> ({
+    ^bb0(%lhs: f32, %rhs: f32):
+      %2 = arith.addf %lhs, %rhs : f32
+      tt.reduce.return %2 : f32
+    }) : (tensor<128x64xf32, #rank1_reduce_linear>) -> tensor<128xf32, #ttg.slice<{dim = 1, parent = #rank1_reduce_linear}>>
+    %3 = "tt.reduce"(%1) <{axis = 0 : i32}> ({
+    ^bb0(%lhs: f32, %rhs: f32):
+      %4 = arith.addf %lhs, %rhs : f32
+      tt.reduce.return %4 : f32
+    }) : (tensor<128xf32, #ttg.slice<{dim = 1, parent = #rank1_reduce_linear}>>) -> f32
+    tt.return %3 : f32
+  }
+}
+
+// -----
+
 #blocked = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 2], order = [1, 0]}>
 #blocked1 = #ttg.blocked<{sizePerThread = [1, 2, 1], threadsPerWarp = [1, 1, 32], warpsPerCTA = [4, 1, 2], order = [1, 2, 0]}>
 #blocked2 = #ttg.blocked<{sizePerThread = [1, 1, 2], threadsPerWarp = [1, 32, 1], warpsPerCTA = [4, 2, 1], order = [2, 1, 0]}>

@@ -1072,3 +1072,12 @@ signal handling:
   Gluon tests. Next concrete slice is final `make`/lit sanity, commit the
   post-merge runtime follow-up, push, and then decide whether a broader
   non-selector Gluon sweep is warranted.
+
+- 2026-04-21 01:13 UTC: superseded the previous scaled-copy/direct-multicast
+  xfail classification per user direction. Runtime tests green on main are not
+  branch-xfail candidates. Implemented the backend fixes for larger-CGA
+  scaled `tcgen05.copy` and 2x2 direct multicast accumulator load selection,
+  removed the xfails, restored upstream lit coverage, and audited MLIR test
+  symbols against `origin/main` merge-base (`TOTAL_MISSING_FUNCS 0`). Current
+  active slice is ready to commit/push after final status review; next broad
+  work can resume GB200/Gluon sweeps from a coverage-preserving branch.

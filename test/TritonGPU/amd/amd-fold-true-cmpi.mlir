@@ -178,6 +178,24 @@ module attributes {"ttg.num-warps" = 4 : i32} {
 
 // -----
 
+// Upstream kept this case under the negative-looking name.  The current range
+// analysis can prove it true, so keep the coverage and update the expectation.
+module attributes {"ttg.num-warps" = 4 : i32} {
+  tt.func @dontfoldtensor() -> tensor<128xi1> {
+    %t0 = tt.make_range {end = 128 : i32, start = 0 : i32} : tensor<128xi32>
+    %t1 = tt.make_range {end = 257 : i32, start = 129 : i32} : tensor<128xi32>
+    %cmp = arith.cmpi sgt, %t1, %t0 : tensor<128xi32>
+    tt.return %cmp: tensor<128xi1>
+  }
+}
+
+// CHECK-LABEL:   tt.func @dontfoldtensor
+// CHECK:           %[[TRUE:.*]] = arith.constant dense<true> : tensor<128xi1>
+// CHECK:           tt.return %[[TRUE]] : tensor<128xi1>
+// CHECK:         }
+
+// -----
+
 // Tensor-typed cmpi that is statically false should be folded to dense<false>.
 // make_range(0, 128) elements are [0..127], make_range(129, 257) elements
 // are [129..256]. Since max(t0)=127 < min(t1)=129, sgt is always false.
