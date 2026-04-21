@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 local Round 14 scaled-MMAv5 descriptor/accumulator
+  selector stayed green while Lane AG minimized `FZ-20260421-0013`. Report:
+  `agents/fuzz_local_scaled_descriptor_acc_round14.md`. Required `make -j8`
+  was a no-op. The selector
+  `mma_scaled and (descriptor or scale_descriptor or bscale or acc_subslice_view or indexed_acc) and not reports`
+  collected `105/1615` rows and passed split-4 as `105 passed`. No new
+  bucket; the checked-in scaled descriptor/accumulator coverage does not
+  expose the temporary report-only B-scale descriptor-view miscompile.
+
 - Latest: 2026-04-21 local Round 14 clean-boundary selector stayed stable.
   Report: `agents/fuzz_local_clean_boundaries_round14.md`. Required
   `make -j8` was a no-op. The selector

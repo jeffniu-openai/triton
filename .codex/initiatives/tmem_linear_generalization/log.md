@@ -28031,3 +28031,19 @@ Open after this slice:
 - Classification: no new bucket. Existing clean unsupported, clean error, and
   TMEM OOR rows stayed clean across ld/st, copy, MMAv5, scaled-MMAv5,
   high-CGA context, row/column-permuted, and subword/exotic layout boundaries.
+
+## 2026-04-21: Round 14 local scaled-MMAv5 descriptor/accumulator selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_descriptor_acc_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and (descriptor or scale_descriptor or bscale or acc_subslice_view or indexed_acc) and not reports'`
+  selected `105/1615`.
+- Split-4 runtime execution with stable per-GPU caches reported aggregate
+  `105 passed` (`27`, `27`, `27`, `24` by shard).
+- Classification: no new bucket. Checked-in scaled-MMAv5 descriptor,
+  scale-descriptor, B-scale descriptor-view/rematerialization, indexed
+  accumulator, and accumulator-subslice coverage stayed green.

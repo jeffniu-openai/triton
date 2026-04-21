@@ -553,6 +553,11 @@ The project is complete when:
   `reports_clean_unsupported or reports_clean_error or reports_tmem_oor`
   selector collected `157/1615` and passed split-4 as `157 passed`; no clean
   diagnostic row drifted into an unexpected crash or runtime path.
+  2026-04-21 local scaled-MMAv5 descriptor/accumulator selector wrote
+  `agents/fuzz_local_scaled_descriptor_acc_round14.md`. The
+  `mma_scaled and (descriptor or scale_descriptor or bscale or acc_subslice_view or indexed_acc) and not reports`
+  selector collected `105/1615` and passed split-4 as `105 passed`; no new
+  bucket from checked-in scaled descriptor coverage.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

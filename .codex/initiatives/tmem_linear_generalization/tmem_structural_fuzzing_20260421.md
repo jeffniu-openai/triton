@@ -2124,6 +2124,20 @@ remain family-specific and consume a bounded subset of the inventory.
   remained stable and did not drift into unexpected compiler crashes or runtime
   execution paths.
 
+### Round 14 local scaled-MMAv5 descriptor/accumulator selector
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_scaled_descriptor_acc_round14.md`
+- Required build: `make -j8` no-op.
+- Selector:
+  `mma_scaled and (descriptor or scale_descriptor or bscale or acc_subslice_view or indexed_acc) and not reports`
+  collected `105/1615` rows.
+- Split-4 result:
+  `105 passed` (`27`, `27`, `27`, `24` by shard).
+- Classification: no new bucket. This is a checked-in green baseline next to
+  Lane AG's temporary `FZ-20260421-0013` minimization.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
