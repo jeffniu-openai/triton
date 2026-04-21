@@ -73,6 +73,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-21 09:20 UTC: promoted the Round 5 generic-pass loop-carried
+  memdesc-view crash into checked-in structural fuzzer coverage. Added
+  `generic-pass-loop-carried-memdesc-view-chain0` as a strict xfail in
+  `python/test/gluon/test_tmem_structural_fuzzer.py`, covering the
+  `GluonResolveAutoEncodingsPass` / auto-layout inference failure reported in
+  `agents/fuzz_generic_pass_round5.md`. Backend fixes remain deferred during
+  discovery mode. Validation: required `make -j8` no-op; py-compile passed;
+  collect-only found `30` nodeids; the exact new nodeid reported `1 xfailed`;
+  full structural fuzzer reported `9 passed, 21 xfailed`.
+
 - 2026-04-21 09:10 UTC: completed structural fuzzing round 2 Lane A2
   promotion for ld/st and ld.red findings. FZ-20260421-0003 through
   FZ-20260421-0006 now have checked-in strict xfail coverage in

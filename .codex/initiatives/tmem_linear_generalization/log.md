@@ -26473,3 +26473,21 @@ Open after this slice:
   - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_memdesc_index_lit_round4.md`;
   - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldst_readonly_round4.md`;
   - `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_2cta_round4.md`.
+
+## 2026-04-21 09:20 UTC: Structural fuzzing Round 5 generic-pass sentinel
+
+- Continued the discovery-only 24-hour TMEM structural fuzzing campaign. No
+  backend or compiler repairs were attempted.
+- Promoted the R5-C generic-pass loop-carried memdesc-view crash into
+  `python/test/gluon/test_tmem_structural_fuzzer.py` as strict xfail
+  `generic-pass-loop-carried-memdesc-view-chain0`.
+- The sentinel carries a TMEM descriptor view through an `scf.for` loop and
+  dynamic branch. Current compilation fails in `GluonResolveAutoEncodingsPass`
+  / auto-layout inference for `tt.make_range`, matching
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round5.md`.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - `PYTHONPATH=.:./python python -m py_compile python/test/gluon/test_tmem_structural_fuzzer.py`;
+  - collect-only found `30` structural-fuzzer nodeids;
+  - exact new sentinel reported `1 xfailed`;
+  - full structural fuzzer reported `9 passed, 21 xfailed`.

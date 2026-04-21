@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 09:10 UTC
+Last updated: 2026-04-21 09:20 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -72,6 +72,13 @@ The project is complete when:
   and transpose/slice ld.red false-unsupported candidate. Exact nodeids
   reported `4 xfailed`; the full structural fuzzer reported
   `9 passed, 9 xfailed`. Backend repair remains deferred.
+  2026-04-21 09:20 UTC promoted the Round 5 generic-pass loop-carried
+  memdesc-view crash into checked-in strict xfail coverage:
+  `generic-pass-loop-carried-memdesc-view-chain0`. This covers the
+  `GluonResolveAutoEncodingsPass` / auto-layout inference failure while
+  keeping discovery mode repair-deferred. Validation: required `make -j8`,
+  py-compile, `30` collected structural-fuzzer nodeids, exact nodeid
+  `1 xfailed`, and full fuzzer `9 passed, 21 xfailed`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

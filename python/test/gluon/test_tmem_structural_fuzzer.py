@@ -143,6 +143,16 @@ class GenericPassLayoutPressureCase:
 
 
 @dataclass(frozen=True)
+class GenericPassLoopCarriedCase:
+    case_id: str
+    seed: int
+    chain_id: int
+    selector: int
+    loops: int
+    instr_variant: str = "32x32b"
+
+
+@dataclass(frozen=True)
 class DynamicIndexLoadOnlyCase:
     case_id: str
     seed: int
@@ -342,6 +352,16 @@ GENERIC_PASS_LAYOUT_PRESSURE_CASES = [
     ),
 ]
 
+GENERIC_PASS_LOOP_CARRIED_CASES = [
+    pytest.param(
+        GenericPassLoopCarriedCase("generic-pass-loop-carried-memdesc-view-chain0", 0x5C01, 0, 1, 2),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="R5-C: loop-carried TMEM view fails auto-layout inference in GluonResolveAutoEncodingsPass",
+        ),
+    ),
+]
+
 DYNAMIC_INDEX_LOAD_ONLY_CASES = [
     pytest.param(
         DynamicIndexLoadOnlyCase("generic-pass-dynamic-index-load-only-128x32", 0xE021, 128, 32, 1),
@@ -529,6 +549,38 @@ def _fuzz_generic_pass_layout_pressure_kernel(
     loaded = view.load(layout_b)
     out = ttgl.convert_layout(ttgl.convert_layout(loaded, layout_c), layout_b)
     ttgl.store(out_ptr + offs, ttgl.convert_layout(out, layout_b))
+
+
+@gluon.jit
+def _fuzz_generic_pass_loop_carried_kernel(
+    in_ptr,
+    out_ptr,
+    selector_ptr,
+    loop_count_ptr,
+    parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    chain_id: ttgl.constexpr,
+    instr_variant: ttgl.constexpr,
+):
+    parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    layout: ttgl.constexpr = parent.index(0).get_reg_layout(instr_variant=instr_variant)
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+    parent.index(0).store(ttgl.convert_layout(value + 10.0, layout))
+    parent.index(1).store(ttgl.convert_layout(value + 20.0, layout))
+
+    view = _generic_pass_view(parent.index(0), M, N, chain_id)
+    selector = ttgl.load(selector_ptr)
+    for i in range(0, ttgl.load(loop_count_ptr), 1):
+        if i == selector:
+            view = _generic_pass_view(parent.index(1), M, N, chain_id)
+        else:
+            view = view
+
+    view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    out = view.load(view_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, view_layout))
 
 
 @gluon.jit
@@ -1001,6 +1053,40 @@ def test_tmem_structural_fuzzer_generic_pass_layout_conversion_pressure(case):
         inp, out, parent_layout, m, n, case.chain_id, case.instr_variant, num_warps=4
     )
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
+    assert ptx_ops == llir_ops
+    assert any(".ld." in op for op in ptx_ops)
+    assert any(".st." in op for op in ptx_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", GENERIC_PASS_LOOP_CARRIED_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_generic_pass_loop_carried(case):
+    m = 128
+    n = 64
+    torch.manual_seed(case.seed)
+    base_layout = _make_linear_layout(m, n)
+    parent_layout = _lift_layout(base_layout, [2])
+    inp = torch.randn((m, n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    selector = torch.tensor([case.selector], dtype=torch.int32, device="cuda")
+    loop_count = torch.tensor([case.loops], dtype=torch.int32, device="cuda")
+
+    compiled = _fuzz_generic_pass_loop_carried_kernel[(1, )](
+        inp,
+        out,
+        selector,
+        loop_count,
+        parent_layout,
+        m,
+        n,
+        case.chain_id,
+        case.instr_variant,
+        num_warps=4,
+    )
+    expected = inp + (20.0 if case.selector < case.loops else 10.0)
+    torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
     ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
     llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
     assert ptx_ops == llir_ops

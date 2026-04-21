@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 09:20 UTC promoted the Round 5 generic-pass
+  loop-carried memdesc-view crash into checked-in structural-fuzzer coverage.
+  Added strict xfail
+  `test_tmem_structural_fuzzer_generic_pass_loop_carried[generic-pass-loop-carried-memdesc-view-chain0]`
+  to `python/test/gluon/test_tmem_structural_fuzzer.py`. This pins the
+  `GluonResolveAutoEncodingsPass` / auto-layout inference failure from
+  `agents/fuzz_generic_pass_round5.md` without starting backend repair.
+  Validation: required `make -j8` no-op; py-compile passed; collect-only found
+  `30` nodeids; exact new nodeid reported `1 xfailed`; full structural fuzzer
+  reported `9 passed, 21 xfailed`.
+
 - Latest: 2026-04-21 09:10 UTC completed structural fuzzing round 2 lane A2
   promotion for ld/st and ld.red findings. `FZ-20260421-0003` through
   `FZ-20260421-0006` now have strict checked-in xfail coverage in

@@ -468,6 +468,30 @@ Every structural fuzz case records:
   - `num_ctas=4/8/16` larger-CGA contexts for a two-CTA indexed copy parent
     reported clean layout-context diagnostics without assertions.
 
+### Lane R5-C Round 5, Generic-Pass Loop-Carried Memdesc Views
+
+- Time: 2026-04-21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round5.md`
+- Scope: generic-pass stress on TMEM descriptor-view values carried through
+  loops, nested conditionals, multiple live sibling views, and helper-returned
+  chains.
+- Result: found a distinct compiler-crash bucket in
+  `GluonResolveAutoEncodingsPass`. Loop-carried memdesc views and related
+  generic-pass forms fail auto-layout inference for `tt.make_range` before
+  they can reach runtime execution.
+- Checked-in sentinel:
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_generic_pass_loop_carried[generic-pass-loop-carried-memdesc-view-chain0]`.
+- Classification: compiler crash / false failure for resource-valid TMEM
+  descriptor-view control flow. Backend repair is deferred during the active
+  discovery campaign.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - py-compile passed for `test_tmem_structural_fuzzer.py`;
+  - collect-only found `30` structural-fuzzer nodeids;
+  - the new exact sentinel reported `1 xfailed`;
+  - full structural fuzzer reported `9 passed, 21 xfailed`.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
