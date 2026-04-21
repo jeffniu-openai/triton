@@ -3390,3 +3390,11 @@ discovery.
   repeats stayed `2 passed, 2 xfailed` twice and `2 passed, 1 xfailed` twice.
   No cache-key, process-contamination, global-state, XPASS, or new `FZ-*`
   issue was found.
+
+- 2026-04-21 14:47 UTC: Round 49 scaled/MMAv5 and scales-copy positive union
+  completed. Report: `agents/fuzz_scaled_copy_positive_round49.md`. Required
+  `make -j8` was a no-op. Selector
+  `((mma_scaled and not reports and not clean and not resource and not m64) or (cp_scales and not reports and not clean and not resource))`
+  produced `276 passed, 1339 deselected`. No compiler crash, false
+  unsupported diagnostic, runtime miscompile, opcode drift, or new independent
+  `FZ-*`.

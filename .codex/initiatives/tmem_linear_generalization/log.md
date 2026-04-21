@@ -31883,3 +31883,14 @@ Open after this slice:
   `2 passed, 1 xfailed` twice.
 - Classification: no missing cache-key input, process/device contamination,
   async compile/global-state drift, XPASS drift, or new independent `FZ-*`.
+
+## 2026-04-21 14:47 UTC: Round 49 scaled/MMAv5 and scales-copy positive union
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_copy_positive_round49.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `((mma_scaled and not reports and not clean and not resource and not m64) or (cp_scales and not reports and not clean and not resource))`.
+- Result: `276 passed, 1339 deselected`.
+- Classification: no compiler crash, false unsupported diagnostic, runtime
+  miscompile, opcode drift, or new independent `FZ-*`.
