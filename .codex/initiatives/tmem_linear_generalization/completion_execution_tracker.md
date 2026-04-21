@@ -60,6 +60,18 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:15 UTC Round 41 M64 descriptor-chain oracle lane integrated.
+  Artifact: `agents/fuzz_m64_descriptor_oracle_round41.md`. Required
+  `make -j8` reported `no work to do`. The Round 39 unpromoted
+  `same_chain_m64_n256_m64_row_reverse_w4` watch item was confirmed as real
+  wrong-output evidence, not a harness artifact, but classified as additional
+  `FZ-20260421-0003` evidence rather than a new bucket. Dedicated temporary
+  oracle minimized the issue to `same_load`, M64, `N=32`, with a no-op
+  reshape/slice descriptor chain zeroing rows `16..31` and `48..63`
+  (`1024/2048` mismatches). `same_ldred` rows fail similarly across
+  `N=32/64/128/256`, `min`/`max`, and explicit variants while still emitting
+  hardware `.ld.red`; direct M64 `ld.red` passes. Not `FZ-0002`, not
+  `FZ-0012`, and not `FZ-0004`; backend repair remains deferred.
   2026-04-21 14:14 UTC Round 41 TMEM lit guardrail completed. Artifact:
   `agents/fuzz_lit_guardrail_round41.md`. Build-tree `ninja triton-opt`
   reported `no work to do`. Lit passed `tmem_layouts.mlir`,
