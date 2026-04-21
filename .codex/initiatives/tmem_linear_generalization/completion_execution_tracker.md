@@ -273,6 +273,10 @@ The project is complete when:
   green after Lane I/J/K integration: required `make -j8` no-op, and
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
   reported `9 passed, 24 xfailed in 8.16s`.
+  2026-04-21 local Round 10 plain-MMAv5 descriptor slice stayed green:
+  collect-only selected `109/1615`, split-4 across GPUs 0-3 selected
+  `28/28/28/25` tests, and all `109` passed. Durations were stored at
+  `/tmp/tmem_local_r10_plain_mma_desc_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

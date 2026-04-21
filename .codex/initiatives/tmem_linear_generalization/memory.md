@@ -96,6 +96,13 @@
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.
   Result: `9 passed, 24 xfailed in 8.16s`.
 
+- Latest: 2026-04-21 local Round 10 plain-MMAv5 descriptor slice stayed green.
+  Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not mma_scaled and not cp and (indexed_acc_view or acc_subslice_view)'`
+  selected `109/1615` tests. Split-4 execution across GPUs 0-3 selected
+  `28`, `28`, `28`, and `25` tests; aggregate result `109 passed`. Durations
+  were stored at `/tmp/tmem_local_r10_plain_mma_desc_durations.json`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`

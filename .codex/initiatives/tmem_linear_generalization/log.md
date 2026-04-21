@@ -27131,3 +27131,20 @@ Open after this slice:
   - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
     reported `9 passed, 24 xfailed in 8.16s`.
 - The promoted sentinel state is unchanged. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 plain-MMAv5 descriptor slice
+
+- Collected and ran the plain-MMAv5 descriptor-view selector across all four
+  GPUs with stable per-GPU caches, as contrast coverage while Lane N probes
+  dynamic MMAv5/scaled-MMAv5 descriptor selection.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not mma_scaled and not cp and (indexed_acc_view or acc_subslice_view)'`
+  selected `109 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_plain_mma_desc_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not mma_scaled and not cp and (indexed_acc_view or acc_subslice_view)'`
+- Result:
+  - group 1/GPU 0: `28 passed, 1587 deselected in 4.55s`;
+  - group 2/GPU 1: `28 passed, 1587 deselected in 15.63s`;
+  - group 3/GPU 2: `28 passed, 1587 deselected in 9.93s`;
+  - group 4/GPU 3: `25 passed, 1590 deselected in 12.47s`.
+- Aggregate: `109 passed`. No backend repairs were attempted.

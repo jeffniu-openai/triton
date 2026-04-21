@@ -157,6 +157,13 @@ When resuming the initiative:
   no work to do; the checked-in structural fuzzer ran on GPU 0 with stable
   cache `/tmp/triton-cache-gpu0` and reported `9 passed, 24 xfailed in 8.16s`.
 
+- 2026-04-21: local Round 10 plain-MMAv5 descriptor slice stayed green. The
+  selector
+  `mma and not mma_scaled and not cp and (indexed_acc_view or acc_subslice_view)`
+  collected `109/1615` tests and ran split-4 across GPUs 0-3 with stable
+  caches and durations at `/tmp/tmem_local_r10_plain_mma_desc_durations.json`.
+  Aggregate result: `109 passed`.
+
 - 2026-04-21: completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current checked-in structural fuzzer collects `33` tests and runs as
