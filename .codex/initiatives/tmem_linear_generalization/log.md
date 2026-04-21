@@ -30766,6 +30766,18 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 15:24 UTC: Round 39 scale-layout guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scales_layout_guardrail_round39.md`.
+- Selector:
+  `(scales_variant or scales_layout or cp_scales_layout_probe or scales_ldst) and not reports and not resource`.
+- Collection: `19/1615`.
+- Result: `19 passed`.
+- Classification: no opcode drift, false unsupported diagnostic, runtime
+  miscompile, compiler crash, unexpected pass/fail transition, or new
+  independent `FZ-*`. Backend repair remains deferred.
+
 ## 2026-04-21 15:18 UTC: Round 39 TMEM lit guardrail
 
 - Wrote

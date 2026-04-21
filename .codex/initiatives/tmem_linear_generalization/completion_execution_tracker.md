@@ -60,6 +60,13 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 15:24 UTC Round 39 scale-layout guardrail completed. Artifact:
+  `agents/fuzz_scales_layout_guardrail_round39.md`. Selector
+  `(scales_variant or scales_layout or cp_scales_layout_probe or scales_ldst) and not reports and not resource`
+  collected `19/1615` and passed as `19 passed`. No opcode drift, false
+  unsupported diagnostic, runtime miscompile, compiler crash, unexpected
+  pass/fail transition, or new independent `FZ-*`; backend repair remains
+  deferred.
   2026-04-21 15:18 UTC Round 39 TMEM lit guardrail completed. Artifact:
   `agents/fuzz_lit_tmem_guardrail_round39.md`. Build-tree `ninja triton-opt`
   was a no-op. Lit passed `tmem_layouts.mlir`, `interleave_tmem.mlir`, and

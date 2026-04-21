@@ -7,7 +7,12 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 39 TMEM lit guardrail completed.
+Latest fuzzing checkpoint: 2026-04-21 Round 39 scale-layout guardrail
+completed. Report: `agents/fuzz_scales_layout_guardrail_round39.md`.
+Selector `(scales_variant or scales_layout or cp_scales_layout_probe or scales_ldst) and not reports and not resource`
+collected `19/1615` and passed as `19 passed`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 39 TMEM lit guardrail completed.
 Report: `agents/fuzz_lit_tmem_guardrail_round39.md`. Build-tree `ninja
 triton-opt` was a no-op; `lit -v` passed
 `test/TritonNvidiaGPU/tmem_layouts.mlir`,

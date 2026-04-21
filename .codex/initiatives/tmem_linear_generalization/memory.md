@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 15:24 UTC Round 39 scale-layout guardrail completed.
+  Report: `agents/fuzz_scales_layout_guardrail_round39.md`. Selector
+  `(scales_variant or scales_layout or cp_scales_layout_probe or scales_ldst) and not reports and not resource`
+  collected `19/1615` and passed as `19 passed`. No opcode drift, false
+  unsupported diagnostic, runtime miscompile, compiler crash, unexpected
+  pass/fail transition, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 15:18 UTC Round 39 TMEM lit guardrail completed.
   Report: `agents/fuzz_lit_tmem_guardrail_round39.md`. Build-tree
   `ninja triton-opt` was a no-op. `lit -v` passed
