@@ -1686,6 +1686,38 @@ remain family-specific and consume a bounded subset of the inventory.
   harness construction, not at a backend surface, and were not assigned
   `FZ-*` ids.
 
+### FZ-20260421-0018: M128xN512 f32 ld.red reaches late ptxas register allocation failure
+
+- Source: Round 31 `ld.red` descriptor/layout extremes.
+- Failure class: `compiler_crash` / late toolchain resource failure without a
+  clean frontend/backend diagnostic.
+- Family: `ldred`.
+- Shape: direct `[128,512]` f32 TMEM tile.
+- Layout: 1CTA direct `TensorMemoryLinearLayout`, identity row/col bases.
+- Operation: store full tile, then `load_min()` with hardware `.ld.red`
+  expected.
+- Observed: compilation reaches `ptxas-blackwell`, then fails with register
+  allocation count `255` instead of an earlier clean resource or unsupported
+  diagnostic.
+- Rows:
+  - `direct_m128_n512_identity`;
+  - `direct_m128_n512_identity_32x32b_splitn`.
+- Independence evidence:
+  - not `FZ-20260421-0012`: no `unsupported dst layout`; lowering reaches
+    ptxas;
+  - not `FZ-20260421-0010`: no CTA ownership mismatch;
+  - not a generic `N=512` impossibility: `direct_m64_n512_identity_splitn`
+    executes correctly and emits four `16x32bx2.x64` `.ld.red` instructions;
+  - same `M128xN512` shape with `num_warps=8` reports clean shared-memory OOR.
+- Artifacts:
+  `/tmp/tmem_ldred_extremes_round31.py`,
+  `/tmp/tmem_ldred_extremes_round31/summary.json`, and per-case stdout/stderr
+  files under `/tmp/tmem_ldred_extremes_round31/`.
+- Repair guidance: add a compiler-only minimizer and decide whether the correct
+  outcome is supported codegen with a better resource plan or an earlier clean
+  resource diagnostic. Backend repair is intentionally deferred during the
+  active fuzzing campaign.
+
 ## Repro Queue
 
 - FZ-20260421-0001 is now covered by checked-in Python runtime xfail repros;
@@ -1718,6 +1750,10 @@ remain family-specific and consume a bounded subset of the inventory.
 - Round 7 Lane C found no new copy/readback failure to add to the repro queue.
   Future copy generator work should promote a stable repo-local runnable case
   adapter before replacing the current runtime-matrix-backed launcher.
+- FZ-20260421-0018 needs a compiler-only minimizer that preserves `.ld.red`
+  generation while sweeping `M=128`, high `N`, `num_warps`, and explicit
+  variants; keep it report-only until the minimized repro is ready for
+  checked-in subprocess or lit coverage.
 - Round 8 Lane C found no new copy/readback failure to add to the repro queue.
   It validated 18 temporary generator-adapter rows and kept scales
   descriptor-view copy as a clean unsupported boundary.

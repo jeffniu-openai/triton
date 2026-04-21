@@ -20,7 +20,8 @@ fuzzing. Reports:
 `agents/fuzz_compiler_boundaries_round31.md`,
 `agents/fuzz_compiler_boundaries_round31b.md`,
 `agents/fuzz_sub32_python_round32.md`,
-`agents/fuzz_subword_narrow_round32.md`, and
+`agents/fuzz_subword_narrow_round32.md`,
+`agents/fuzz_local_ldst_narrow_round32.md`, and
 `agents/fuzz_ldred_extremes_round31.md`. The scaled operand lane found no
 new bucket and revalidated existing `FZ-0013`, `FZ-0015`, and `FZ-0010`
 boundaries; the 2CTA scaled-MMAv5 guardrail passed as `28 passed`;
@@ -35,8 +36,9 @@ compiler-boundary lanes sharpened existing `FZ-0001`, `FZ-0016`, and
 `FZ-0017`, including reduction-load and scale-layout follow-up probes. The
 subword/narrow-shape lane ran `219` Python/Gluon runtime rows across sub-32-bit
 and 32-bit `ld/st`/copy paths, descriptor views, 1CTA/2CTA rows, and clean
-diagnostics, all passing or diagnosing as expected. The `ld.red` extremes lane
-ran `23` f32 runtime rows with torch reference and opcode checks; `15` passed,
+diagnostics, all passing or diagnosing as expected; local `ld/st` narrow and
+half-row guardrails added `141 passed`. The `ld.red` extremes lane ran `23`
+f32 runtime rows with torch reference and opcode checks; `15` passed,
 `3` reproduced existing `FZ-0012`, `1` reproduced existing `FZ-0010`, `2` were
 clean resource boundaries, and `2` established new candidate
 `FZ-20260421-0018`: direct `M128xN512` hardware `ld.red` reaches ptxas register

@@ -30349,3 +30349,29 @@ Open after this slice:
   `FZ-20260421-0017` isolated to encoded `i64`/`f64` non-reduction TMEM
   load/store lowering under the covered subword and supported-32-bit
   neighborhood.
+
+## 2026-04-21: Round 32 local ld/st narrow and half-row guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_narrow_round32.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip)`.
+- Collection: `141/1615`.
+- Split-4 result: `141 passed` (`36/36/36/33` by group).
+- Note: group 3 was slow (`104.45s`) but completed successfully.
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  mismatch, runtime miscompile, or new independent `FZ-*` bucket.
+
+## 2026-04-21: Round 32 local ld/st narrow and half-row guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_narrow_round32.md`.
+- Required `make -j8` was a no-op.
+- Checked-in selector
+  `ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip`
+  collected `141/1615` rows.
+- Four-GPU split result: `141 passed` (`36/36/36/33`).
+- Classification: no new independent `FZ-*`; this is a green guardrail for
+  narrow `N=32`, half-row, `i32` broad-layout, and subword-adjacent
+  `16x128b`/`16x256b` runtime `ld/st` rows.

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 Round 32 local ld/st narrow and half-row guardrail
+  completed. Report: `agents/fuzz_local_ldst_narrow_round32.md`. Required
+  `make -j8` was a no-op. Selector
+  `(ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip)`
+  collected `141/1615` and passed split-4 as `141 passed`. Group 3 was slow
+  (`104.45s`) but completed successfully. No compiler crash, false unsupported
+  diagnostic, opcode mismatch, runtime miscompile, or new independent `FZ-*`
+  bucket was found.
+
 - Latest: 2026-04-21 12:57 UTC Round 32 subword/narrow-shape Python runtime
   TMEM fuzzing completed. Reports:
   `agents/fuzz_subword_narrow_round32.md` and sibling
@@ -11,6 +20,13 @@
   mismatch, runtime miscompile, or new independent `FZ-*`. This keeps
   `FZ-20260421-0017` isolated to encoded `i64`/`f64` non-reduction TMEM
   load/store lowering for now.
+
+- Latest: 2026-04-21 Round 32 local `ld/st` narrow and half-row guardrail
+  completed. Report: `agents/fuzz_local_ldst_narrow_round32.md`. Required
+  `make -j8` was a no-op. Selector
+  `ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip`
+  collected `141/1615` rows and passed split-4 as `141 passed`; no new
+  independent `FZ-*`.
 
 - Latest: 2026-04-21 Round 32 local scaled-MMAv5 2CTA guardrail completed.
   Report: `agents/fuzz_scaled_twocta_round32.md`. Required `make -j8` was a

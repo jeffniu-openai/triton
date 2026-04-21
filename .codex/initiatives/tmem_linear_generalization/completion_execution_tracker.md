@@ -96,6 +96,11 @@ The project is complete when:
   Python/Gluon dtype roundtrip probe `80 passed`. No new independent `FZ-*`;
   this is a green guardrail around `FZ-0017`, which remains isolated to
   encoded 64-bit non-reduction TMEM load/store lowering under this coverage.
+  2026-04-21 Round 32 local `ld/st` narrow and half-row guardrail completed.
+  Artifact: `agents/fuzz_local_ldst_narrow_round32.md`. Selector
+  `ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip`
+  collected `141/1615` rows and passed split-4 as `141 passed`; no new
+  independent `FZ-*`.
   2026-04-21 Round 32 scaled-MMAv5 2CTA runtime guardrail completed.
   Artifact: `agents/fuzz_scaled_twocta_round32.md`. Selector
   `mma_scaled and twocta and not reports and not resource` passed split-4 as
@@ -2538,3 +2543,9 @@ signal handling:
   passes and `M128xN512` with `num_warps=8` cleanly reports shared-memory
   OOR. Checked-in ld.red selector stayed stable as `237 passed, 6 failed`,
   all known `FZ-0012`.
+
+- 2026-04-21: Round 32 local ld/st narrow and half-row guardrail completed.
+  Report: `agents/fuzz_local_ldst_narrow_round32.md`. Selector
+  `(ldst and (n32 or half_rows or x1 or i32_broad) and not reports and not resource and not clean and not roundtrip)`
+  collected `141/1615` and passed split-4 as `141 passed`; group 3 was slow
+  (`104.45s`) but completed. No new independent `FZ-*` bucket.
