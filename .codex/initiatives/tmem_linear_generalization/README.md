@@ -23,6 +23,12 @@ non-f32 `ld.red`, scale-shape, and parent-view subslice boundaries without
 late illegal ops. Local clean-boundary selector collected `199/1615` rows and
 passed as `199 passed`. Backend repair remains deferred.
 
+Newest local validation after that checkpoint: 2026-04-21 11:48 UTC Round 18
+descriptor `ld/st` plus `cp_scales` selector. Report:
+`agents/fuzz_local_ldst_cpscales_round18.md`. Selector
+`(ldst_descriptor_compositions or ldred_descriptor or cp_scales) and not reports`
+collected `62/1615` and passed split-4 as `62 passed`; no new bucket.
+
 Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and

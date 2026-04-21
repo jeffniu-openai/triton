@@ -2412,6 +2412,19 @@ remain family-specific and consume a bounded subset of the inventory.
   remain associated with `FZ-20260421-0010` when otherwise-legal
   instruction-local layouts are launched in incompatible CGA contexts.
 
+### Round 18 local descriptor ld/st plus cp_scales selector
+
+- Time: 2026-04-21 11:48 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_cpscales_round18.md`
+- Selector:
+  `(ldst_descriptor_compositions or ldred_descriptor or cp_scales) and not reports`
+  collected `62/1615`.
+- Split-4 result:
+  `62 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

@@ -1960,3 +1960,11 @@ signal handling:
   checked-in rows and passed split-4, then its focused temporary probe passed
   descriptor-view, high-CGA, subword, non-f32 `ld.red`, scale-shape, and
   parent-view subslice boundaries without late illegal ops.
+
+- 2026-04-21 11:48 UTC: local Round 18 selector
+  `(ldst_descriptor_compositions or ldred_descriptor or cp_scales) and not reports`
+  collected `62/1615` rows and passed split-4 as `62 passed`. Report:
+  `agents/fuzz_local_ldst_cpscales_round18.md`. No new bucket; this is a green
+  baseline for descriptor `ld/st` composition and scale-copy runtime rows while
+  subagents probe proxy-fence intervals and dynamic descriptor clean-boundary
+  combinations.

@@ -28493,6 +28493,25 @@ Open after this slice:
   categorized under existing `FZ-20260421-0010`; dynamic/generic memdesc SSA
   late failures remain owned by existing `FZ-20260421-0001`.
 
+## 2026-04-21 11:48 UTC: Round 18 local descriptor ld/st plus cp_scales selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_ldst_cpscales_round18.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op from the immediately preceding checkpoint.
+- Selector
+  `(ldst_descriptor_compositions or ldred_descriptor or cp_scales) and not reports`
+  collected `62/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `62 passed`:
+  - GPU 0 / group 1: `16 passed`;
+  - GPU 1 / group 2: `16 passed`;
+  - GPU 2 / group 3: `16 passed`;
+  - GPU 3 / group 4: `14 passed`.
+- Classification: no runtime miscompile, compiler crash, unexpected
+  unsupported diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote

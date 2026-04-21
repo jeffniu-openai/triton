@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:48 UTC local Round 18 descriptor `ld/st` plus
+  `cp_scales` selector passed. Report:
+  `agents/fuzz_local_ldst_cpscales_round18.md`. Selector
+  `(ldst_descriptor_compositions or ldred_descriptor or cp_scales) and not reports`
+  collected `62/1615` and passed split-4 as `62 passed`; no runtime miscompile,
+  compiler crash, unexpected unsupported diagnostic, or new `FZ-*` bucket was
+  observed.
+
 - Latest: 2026-04-21 11:41 UTC Round 17 copy/ldst and clean-boundary
   checkpoint stayed green. Reports:
   `agents/fuzz_copy_ldst_mixed_round17.md`,
