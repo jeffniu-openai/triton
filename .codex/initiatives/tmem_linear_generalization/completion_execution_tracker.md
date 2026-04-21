@@ -2,6 +2,19 @@
 
 Last updated: 2026-04-21
 
+Latest fuzzing checkpoint: 2026-04-21 16:09 UTC Round 59 clean-negative
+diagnostics lane B completed. Report:
+`agents/fuzz_round59_clean_negative_diagnostics_lane.md`. Required `make -j8`
+was a no-op. Checked-in pytest clean-negative selector over invalid TMEM
+layouts, copy, `ld.red`, plain MMAv5, and scaled-MMAv5 collected `200/1615`
+and passed split-4 as `200 passed` (`50`, `50`, `50`, `50`). Non-Round-57 lit
+conversion/pass-manager sweep discovered `6` tests and ran as
+`5 passed, 1 failed`; the failure is existing `FZ-20260421-0016` in
+`Conversion/relayout_tritongpu.mlir`. No false unsupported diagnostic,
+assertion text drift outside the known bucket, PassManager failure,
+vague/incorrect diagnostic drift, runtime miscompile, or new independent
+`FZ-*`.
+
 Latest fuzzing checkpoint: 2026-04-21 16:09 UTC Round 59 higher-rank
 descriptor-chain lane A completed. Report:
 `agents/fuzz_round59_higher_rank_descriptor_lane.md`. Required `make -j8` was
