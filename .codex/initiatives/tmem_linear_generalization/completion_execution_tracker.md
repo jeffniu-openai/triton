@@ -60,6 +60,13 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:55 UTC Round 39 allocation-lifetime guardrail completed.
+  Artifact: `agents/fuzz_alloc_lifetime_guardrail_round39.md`. Selector
+  `(alloc_lifetime or allocation or source_initialization) and not reports and not resource`
+  collected `7/1615` and passed as `7 passed`. No allocator assertion,
+  resource drift, runtime miscompile, compiler crash, false unsupported
+  diagnostic, unexpected pass/fail transition, or new independent `FZ-*`;
+  backend repair remains deferred.
   2026-04-21 14:45 UTC Round 38 copy/scale rematerialization subagent lane
   integrated. Artifact: `agents/fuzz_copy_scale_remat_round38.md`.
   Runtime-matrix copy/scales/remat selector collected `176/1615` and passed

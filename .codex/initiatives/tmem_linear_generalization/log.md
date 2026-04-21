@@ -30766,6 +30766,18 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:55 UTC: Round 39 allocation-lifetime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_alloc_lifetime_guardrail_round39.md`.
+- Selector:
+  `(alloc_lifetime or allocation or source_initialization) and not reports and not resource`.
+- Collection: `7/1615`.
+- Result: `7 passed`.
+- Classification: no allocator assertion, resource drift, runtime miscompile,
+  compiler crash, false unsupported diagnostic, unexpected pass/fail
+  transition, or new independent `FZ-*`. Backend repair remains deferred.
+
 ## 2026-04-21 14:45 UTC: Round 38 copy/scale rematerialization subagent lane integrated
 
 - Integrated

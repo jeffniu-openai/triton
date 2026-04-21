@@ -7,7 +7,12 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 38 copy/scale rematerialization
+Latest fuzzing checkpoint: 2026-04-21 Round 39 allocation-lifetime guardrail
+completed. Report: `agents/fuzz_alloc_lifetime_guardrail_round39.md`.
+Selector `(alloc_lifetime or allocation or source_initialization) and not reports and not resource`
+collected `7/1615` and passed as `7 passed`. No new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 38 copy/scale rematerialization
 subagent lane integrated. Report:
 `agents/fuzz_copy_scale_remat_round38.md`. Runtime-matrix copy/scales/remat
 selector collected `176/1615` and passed split-4 as `176 passed`; structural
