@@ -7,15 +7,19 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:03 UTC Round 14 Lane AE completed
-direct `ld/st` descriptor-algebra fuzzing with no new independent `FZ-*`.
-Report: `agents/fuzz_ldst_descriptor_algebra_round14.md`. Custom rank-6 /
-runtime-selector probing classified `12` rows as `1` pass, `2`
-`FZ-20260421-0001`, `2` `FZ-20260421-0003`, `5` clean direct-`ld/st`
-row-anchor diagnostics, and `2` clean rank-view diagnostics. Checked-in
-`ld/st` descriptor/rank/subword selector collected `232/1615` and passed
-split-4 as `134 passed, 98 skipped`; adjacent copy/MMAv5 controls collected
-`243/1615` and passed split-4 as `243 passed`.
+Latest fuzzing checkpoint: 2026-04-21 11:11 UTC Round 14 Lane AG minimized
+and broadened `FZ-20260421-0013`. Report:
+`agents/fuzz_scaled_fz0013_min_round14.md`. Required `make -j8` was a no-op.
+A four-GPU fresh-subprocess temporary scaled-MMAv5 scale descriptor-view
+matrix classified `33` rows as `19` runtime miscompiles, `5` passes, `2`
+clean unsupported diagnostics, and `7` diagnostic/probe-limited non-runtime
+rows. The smallest stable wrong-result row is local 1CTA non-FPSAN
+`N=128,K=128`, linear accumulator, B-scale
+`reshape -> trans -> reshape`, unpadded scale storage, no extra scale user;
+it reproduced `3/3` fresh subprocesses with matching PTX/LLIR scaled-MMA
+opcodes. The bucket now covers A-scale and B-scale descriptor views across
+padded/unpadded storage, `N=128/256`, `use_acc`, and probed format
+combinations; no new independent `FZ-*` was assigned.
 
 ## How To Use This Folder
 

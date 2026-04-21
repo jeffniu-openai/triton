@@ -2138,6 +2138,41 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no new bucket. This is a checked-in green baseline next to
   Lane AG's temporary `FZ-20260421-0013` minimization.
 
+### Round 14 Lane AG, FZ-0013 scaled-MMAv5 scale descriptor minimization
+
+- Time: 2026-04-21 11:11 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_fz0013_min_round14.md`
+- Required build: `make -j8` no-op.
+- Scope: minimized and broadened the Round 14 Lane AB
+  `FZ-20260421-0013` scaled-MMAv5 B-scale descriptor-view wrong-result
+  candidate across `N=128/256`, padded/unpadded scale storage, extra scale
+  user, accumulator layout family, `use_acc`, scale format combinations,
+  A-scale versus B-scale, descriptor chain order/depth, and nearby
+  unsupported boundaries.
+- Temporary probe:
+  `/tmp/tmem_scaled_fz0013_min_round14_probe.py`.
+- Result: no new independent `FZ-*`; `FZ-20260421-0013` is broadened.
+- Fresh-subprocess matrix classification over `33` rows:
+  - `19` runtime miscompiles;
+  - `5` passes;
+  - `2` clean unsupported diagnostics;
+  - `1` explicit narrow-N unsupported diagnostic followed by
+    `PassManager::run failed`;
+  - `6` parser/setup/unsupported-view limitations.
+- Smallest stable row:
+  `min-n128-b-rtr-pad0-linear`, local 1CTA non-FPSAN `N=128,K=128`, linear
+  accumulator, B-scale `reshape -> trans -> reshape`, unpadded storage, no
+  extra user. It reproduced `3/3` fresh subprocesses with `16109/16384`
+  mismatches and matching PTX/LLIR
+  `tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X`.
+- Classification update: `FZ-0013` should be treated as a scaled-MMAv5 scale
+  descriptor-view wrong-result bucket covering both A-scale and B-scale
+  descriptor views. Direct no-view controls and unpadded same-shape
+  `slice -> index` A/B scale views passed, so the trigger remains tied to
+  descriptor-view scale-fragment mapping/rematerialized scale storage rather
+  than generic scaled-MMAv5 opcode selection.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

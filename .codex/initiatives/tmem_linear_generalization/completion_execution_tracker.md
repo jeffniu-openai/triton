@@ -1774,3 +1774,16 @@ signal handling:
   `134 passed, 98 skipped`; adjacent copy/MMAv5 controls passed as
   `243 passed`. No new independent bucket was assigned. Active phase remains
   continuous discovery/cataloging with backend repairs deferred.
+
+- 2026-04-21 11:11 UTC: completed Round 14 Lane AG
+  `FZ-20260421-0013` minimization in discovery-only mode. Report:
+  `agents/fuzz_scaled_fz0013_min_round14.md`. Required `make -j8` was a
+  no-op. Temporary scaled-MMAv5 scale descriptor-view probe classified `33`
+  fresh-subprocess rows as `19` runtime miscompiles, `5` passes, `2` clean
+  unsupported diagnostics, and `7` diagnostic/probe-limited non-runtime rows.
+  Smallest repeated row is local 1CTA non-FPSAN `N=128,K=128`, linear
+  accumulator, B-scale `reshape -> trans -> reshape`, unpadded storage, no
+  extra user; `3/3` repeats produced `16109/16384` mismatches with matching
+  PTX/LLIR scaled-MMA opcodes. `FZ-0013` is broadened to cover A-scale and
+  B-scale descriptor views; no new independent bucket was assigned. Active
+  phase remains continuous discovery/cataloging with backend repairs deferred.

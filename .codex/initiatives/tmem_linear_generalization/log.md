@@ -28047,3 +28047,27 @@ Open after this slice:
 - Classification: no new bucket. Checked-in scaled-MMAv5 descriptor,
   scale-descriptor, B-scale descriptor-view/rematerialization, indexed
   accumulator, and accumulator-subslice coverage stayed green.
+
+## 2026-04-21 11:11 UTC: Round 14 Lane AG FZ-0013 scaled descriptor minimization
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_fz0013_min_round14.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary probe `/tmp/tmem_scaled_fz0013_min_round14_probe.py` py-compiled
+  and ran a `33`-row fresh-subprocess matrix across GPUs 0-3 with stable
+  caches.
+- Raw classification: `19` runtime miscompiles, `5` passes, `2` clean
+  unsupported diagnostics, `1` explicit narrow-N unsupported diagnostic
+  followed by `PassManager::run failed`, and `6`
+  parser/setup/unsupported-view limitations.
+- Smallest stable row: local 1CTA non-FPSAN `N=128,K=128`, linear
+  accumulator, B-scale `reshape -> trans -> reshape`, unpadded scale storage,
+  no extra user. It repeated `3/3` fresh subprocesses with `16109/16384`
+  mismatches and matching PTX/LLIR scaled-MMA opcodes.
+- Classification: no new independent `FZ-*`. `FZ-20260421-0013` is broadened
+  from B-scale-only to a scaled-MMAv5 scale descriptor-view wrong-result
+  bucket covering A-scale and B-scale descriptor views across
+  padded/unpadded storage, `N=128/256`, `use_acc`, and probed format
+  combinations.

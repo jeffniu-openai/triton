@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:11 UTC Round 14 Lane AG minimized and broadened
+  `FZ-20260421-0013`. Report:
+  `agents/fuzz_scaled_fz0013_min_round14.md`. Required `make -j8` was a
+  no-op. Temporary probe `/tmp/tmem_scaled_fz0013_min_round14_probe.py`
+  py-compiled and ran a `33`-row fresh-subprocess matrix across GPUs 0-3 with
+  stable caches `/tmp/triton-cache-gpu{0,1,2,3}`. Raw classification:
+  `19` runtime miscompiles, `5` passes, `2` clean unsupported diagnostics,
+  `1` explicit narrow-N unsupported diagnostic followed by `PassManager::run
+  failed`, and `6` parser/setup/unsupported-view limitations. The smallest
+  stable row is now local 1CTA non-FPSAN `N=128,K=128`, linear accumulator,
+  B-scale `reshape -> trans -> reshape`, unpadded storage, no extra user; it
+  repeated `3/3` fresh subprocesses with `16109/16384` mismatches and matching
+  PTX/LLIR scaled-MMA opcodes. `FZ-0013` is broadened from B-scale only to a
+  scaled-MMAv5 scale descriptor-view wrong-result bucket covering A-scale and
+  B-scale descriptor views. No new independent `FZ-*` bucket was assigned.
+
 - Latest: 2026-04-21 local Round 14 scaled-MMAv5 descriptor/accumulator
   selector stayed green while Lane AG minimized `FZ-20260421-0013`. Report:
   `agents/fuzz_local_scaled_descriptor_acc_round14.md`. Required `make -j8`
