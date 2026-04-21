@@ -7,7 +7,29 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 20:37 UTC repaired the checked-in
+Latest repair checkpoint: 2026-04-21 21:18 UTC repaired three more
+checked-in structural buckets: `FZ-20260421-0005`, `FZ-20260421-0008`, and
+`FZ-20260421-0009`. Allocation sizing now recognizes lifted rank>2 expanded
+separable linear layouts as compact 128-row physical TMEM images instead of
+allocating the logical 256 rows or multiplying the lifted rank twice. Linear
+layout composition now checks out-dim/in-dim compatibility before composing,
+turning the 2CTA row/col versus row/col/block mismatch from an LLVM abort into
+a planned fallback. Full-view replay now distinguishes descriptor-order loads,
+axis-sensitive reduction loads, external stores into replayed views, and
+load-store roundtrips, so the 2CTA row-chain `ld.red` sentinel runs correctly
+as a software reduction while existing descriptor-view load/store positives
+stay green. Promoted positives: the 256-row lifted parent `ld/st` sentinel,
+the 2CTA row/col indexed `ld.red` optimizer-crash sentinel, and the 1CTA
+256x32 direct-index `ld.red` allocator sentinel. Validation: required
+`make -j8`; exact promoted rows `3 passed`; full structural fuzzer split-4
+`33 passed, 3 xfailed`; targeted lit `tmem_layouts.mlir` and
+`interleave_tmem.mlir` `2 passed`; `py_compile` and `git diff --check`
+passed. Remaining checked-in structural xfails are down to three: `FZ-0006`
+frontend layout inference for rotate/transpose/slice `ld.red`, `R5-C`
+loop-carried memdesc-view chain0 wrong result, and `FZ-0007` scaled-MMAv5
+dynamic-if low-subslice wrong result.
+
+Previous repair checkpoint: 2026-04-21 20:37 UTC repaired the checked-in
 `FZ-20260421-0004` `ld.red` opcode-loss/software-reduce fallback bucket.
 Reduction-load layout selection now uses the same support-query-aware planner
 as descriptor-view replay, and the Gluon frontend asks the backend whether a

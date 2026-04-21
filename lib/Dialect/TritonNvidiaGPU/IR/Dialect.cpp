@@ -2058,6 +2058,50 @@ static bool hasPurePowerOfTwoBasisSet(const LinearLayout &layout,
   return llvm::equal(*order, expected);
 }
 
+static bool hasPackedNonRowBasisSet(const LinearLayout &layout,
+                                    StringAttr inDim, unsigned rowOutIdx) {
+  if (!layout.hasInDim(inDim))
+    return false;
+
+  DenseMap<unsigned, SmallVector<int32_t>> basesByOutDim;
+  for (unsigned idx = 0; idx < layout.getInDimSizeLog2(inDim); ++idx) {
+    auto basis = layout.getBasis(inDim, idx);
+    if (basis.size() != static_cast<size_t>(layout.getNumOutDims()) ||
+        basis[rowOutIdx] != 0)
+      return false;
+
+    std::optional<unsigned> activeOutIdx;
+    int32_t activeValue = 0;
+    for (auto [coordIdx, coord] : llvm::enumerate(basis)) {
+      if (coordIdx == rowOutIdx)
+        continue;
+      if (coord == 0)
+        continue;
+      if (activeOutIdx || coord <= 0 || !llvm::isPowerOf2_32(coord))
+        return false;
+      activeOutIdx = coordIdx;
+      activeValue = coord;
+    }
+    if (!activeOutIdx)
+      return false;
+    basesByOutDim[*activeOutIdx].push_back(activeValue);
+  }
+
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  for (auto [outIdx, outDim] : llvm::enumerate(outDims)) {
+    if (outIdx == rowOutIdx)
+      continue;
+    SmallVector<int32_t> expected;
+    for (int64_t bit = 1; bit < layout.getOutDimSize(outDim); bit <<= 1)
+      expected.push_back(static_cast<int32_t>(bit));
+    auto actual = basesByOutDim.lookup(outIdx);
+    llvm::sort(actual);
+    if (!llvm::equal(actual, expected))
+      return false;
+  }
+  return true;
+}
+
 LinearLayout completeTensorMemorySubviewRowBasesForAnalysis(
     ArrayRef<int64_t> shape, LinearLayout layout) {
   // A row-preserving column subview can keep the parent logical row extent in
@@ -2112,17 +2156,20 @@ LinearLayout completeTensorMemorySubviewRowBasesForAnalysis(
 
 static std::optional<TMemAllocation>
 getExpandedSeparableLinearTMemAllocSizes(const LinearLayout &layout,
-                                         unsigned preferredColStride) {
-  if (preferredColStride != 1 || layout.getNumOutDims() != 2)
+                                         unsigned preferredColStride,
+                                         bool *coversExtraRank = nullptr) {
+  if (coversExtraRank)
+    *coversExtraRank = false;
+  if (preferredColStride != 1 || layout.getNumOutDims() < 2)
     return std::nullopt;
 
   auto *ctx = (*layout.getOutDimNames().begin()).getContext();
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
-  auto dims = standardOutDimNames(ctx, 2);
-  auto outDims = llvm::to_vector(layout.getOutDimNames());
-  if (!llvm::is_contained(outDims, dims[0]) ||
-      !llvm::is_contained(outDims, dims[1]))
+  auto dims = standardOutDimNames(ctx, layout.getNumOutDims());
+  StringAttr rowOutDim = dims[dims.size() - 2];
+  StringAttr colOutDim = dims.back();
+  if (!layout.hasOutDim(rowOutDim) || !layout.hasOutDim(colOutDim))
     return std::nullopt;
   if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol))
     return std::nullopt;
@@ -2132,22 +2179,30 @@ getExpandedSeparableLinearTMemAllocSizes(const LinearLayout &layout,
       !llvm::isPowerOf2_64(logicalRows))
     return std::nullopt;
 
-  int64_t logicalCols = layout.getInDimSize(kCol);
-  if (logicalCols < 1 || !llvm::isPowerOf2_64(logicalCols))
+  int64_t physicalColumnSelectors = layout.getInDimSize(kCol);
+  if (physicalColumnSelectors < 1 ||
+      physicalColumnSelectors % preferredColStride != 0 ||
+      !llvm::isPowerOf2_64(physicalColumnSelectors))
     return std::nullopt;
 
-  unsigned rowOutIdx = layout.getOutDimIndex(dims[0]);
-  unsigned colOutIdx = layout.getOutDimIndex(dims[1]);
-  if (!hasPurePowerOfTwoBasisSet(layout, kRow, rowOutIdx, logicalRows) ||
-      !hasPurePowerOfTwoBasisSet(layout, kCol, colOutIdx, logicalCols))
+  if (layout.getOutDimSize(rowOutDim) != logicalRows)
     return std::nullopt;
+
+  unsigned rowOutIdx = layout.getOutDimIndex(rowOutDim);
+  if (!hasPurePowerOfTwoBasisSet(layout, kRow, rowOutIdx, logicalRows) ||
+      !hasPackedNonRowBasisSet(layout, kCol, rowOutIdx))
+    return std::nullopt;
+
+  if (coversExtraRank && layout.getNumOutDims() > 2)
+    *coversExtraRank = true;
 
   // TMEM has 128 physical rows. A separable linear layout with more logical
   // row bits is still a compact physical image: selectors above row 127 choose
   // another column tile, independent of the order of the row basis bits.
   return TMemAllocation{/*numRows=*/128,
-                        /*numCols=*/static_cast<int>(logicalCols *
-                                                     (logicalRows / 128))};
+                        /*numCols=*/static_cast<int>(
+                            (physicalColumnSelectors / preferredColStride) *
+                            (logicalRows / 128))};
 }
 
 TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
@@ -2172,9 +2227,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   unsigned preferredColStride = 32 / bitwidth;
   int nRow = ll.getInDimSize(kRow);
   int nCol = ll.getInDimSize(kCol) / preferredColStride;
+  bool allocationCoversExtraRank = false;
   if (!usesScaleFactorEncoding) {
-    if (auto compactAlloc =
-            getExpandedSeparableLinearTMemAllocSizes(ll, preferredColStride)) {
+    if (auto compactAlloc = getExpandedSeparableLinearTMemAllocSizes(
+            ll, preferredColStride, &allocationCoversExtraRank)) {
       nRow = compactAlloc->numRows;
       nCol = compactAlloc->numCols;
     }
@@ -2202,7 +2258,7 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
     nRow /= 2;
   }
   // If multibuffering is present, we need to allocate more cols
-  if (extraRank > 0) {
+  if (extraRank > 0 && !allocationCoversExtraRank) {
     nCol *= product<int64_t>(
         memDescType.getAllocShape().take_front(extraRank));
   }
@@ -2370,6 +2426,13 @@ LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
 
 static bool canComposeLinearLayouts(const LinearLayout &inner,
                                     const LinearLayout &outer) {
+  auto innerOutDims = llvm::to_vector(inner.getOutDimNames());
+  auto outerInDims = llvm::to_vector(outer.getInDimNames());
+  if (innerOutDims.size() != outerInDims.size() ||
+      llvm::any_of(innerOutDims, [&](StringAttr dim) {
+        return !llvm::is_contained(outerInDims, dim);
+      }))
+    return false;
   for (StringAttr outDim : inner.getOutDimNames()) {
     if (inner.getOutDimSize(outDim) > outer.getInDimSize(outDim))
       return false;

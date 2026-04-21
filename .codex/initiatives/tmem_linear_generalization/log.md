@@ -33335,3 +33335,53 @@ Open after this slice:
   `FZ-0004` rows gone. Next slice should inspect those remaining xfails and
   repair the next real backend support gap rather than treating strict xfails
   as permanent boundaries.
+
+## 2026-04-21 21:18 UTC: FZ-0005/FZ-0008/FZ-0009 allocation and replay repair
+
+- Branch/HEAD before this repair slice:
+  `6ebf96727 Fix TMEM ld.red descriptor-view replay`.
+- Dirty files at checkpoint:
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`,
+  `lib/Dialect/TritonNvidiaGPU/Transforms/OptimizeTMemLayouts.cpp`,
+  `python/test/gluon/test_tmem_structural_fuzzer.py`, plus initiative
+  documentation.
+- Root causes:
+  lifted rank>2 expanded separable linear layouts were treated as requiring
+  their logical 256 rows in `TensorMemoryAllocation`, even though TMEM has a
+  compact 128-row physical image and the extra row selector is represented as
+  a column tile. A 2CTA row/col chain could still reach `LinearLayout::compose`
+  with incompatible row/col versus row/col/block dimension sets and abort.
+  Full-view replay also needed direction-specific handling: normal descriptor
+  loads should preserve replay order, reduction loads need view transforms
+  before reducing along logical N, external stores into replayed views need
+  inverse transforms, and load-store roundtrips sourced from TMEM should not be
+  inverse-transformed again.
+- Completed implementation:
+  allocation sizing now recognizes rank>=2 expanded separable layouts with
+  packed non-row selectors, computes compact 128-row physical allocation
+  sizes, and avoids double-counting lifted prefix selectors. Layout composition
+  now checks matching dimension sets before composing. Full-view replay now
+  preserves requested layouts when the base can directly service them, applies
+  view transforms only for axis-sensitive reduction-load consumers, and uses a
+  TMEM-load provenance guard to avoid corrupting view roundtrips while still
+  fixing external stores into replayed views.
+- Promoted checked-in positives:
+  `test_tmem_structural_fuzzer_ldst_256row_lifted_parent_allocator_crash`,
+  `test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash`, and
+  `test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash`.
+  The two `ld.red` crash sentinels are currently correct software-reduction
+  fallbacks (`.ld.` plus `tt.reduce`), not hardware `ld.red` positives.
+- Validation evidence:
+  required `make -j8`; exact promoted rows `3 passed`; full structural fuzzer
+  split-4 ran as group1 `9 passed`, group2 `8 passed, 1 xfailed`, group3
+  `9 passed`, and group4 `7 passed, 2 xfailed`; targeted lit
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`; structural fuzzer
+  `py_compile` passed; `git diff --check` passed.
+- Remaining repair-plan frontier:
+  checked-in structural xfails are now down to `3`: `FZ-20260421-0006`
+  rotate/transpose/slice `ld.red` frontend layout inference,
+  `generic-pass-loop-carried-memdesc-view-chain0` (`R5-C`) wrong result, and
+  `FZ-20260421-0007` scaled-MMAv5 dynamic-if low-subslice wrong result. Next
+  slice should choose the highest-impact backend gap and keep all newly
+  promoted allocation, full-view replay, and `ld.red` positives green.

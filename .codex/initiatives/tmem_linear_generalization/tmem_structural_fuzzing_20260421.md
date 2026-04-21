@@ -4604,3 +4604,26 @@ remain family-specific and consume a bounded subset of the inventory.
   `FZ-20260421-0022`; clean unsupported boundaries stayed clean.
 - Classification:
   no new independent `FZ-*`; no repair attempted.
+
+### Repair slice 6: FZ-0005/FZ-0008/FZ-0009 promoted
+
+- Time: 2026-04-21 21:18 UTC
+- Scope:
+  checked-in structural fuzzer buckets for 256-row lifted-rank allocation,
+  2CTA row/col indexed `ld.red` optimizer abort, and 1CTA 256x32 direct-index
+  `ld.red` allocation abort.
+- Result:
+  promoted `test_tmem_structural_fuzzer_ldst_256row_lifted_parent_allocator_crash`,
+  `test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash`, and
+  `test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash` from
+  strict xfail to positive runtime tests. Exact promoted rows passed as
+  `3 passed`. Full structural fuzzer split-4 ran as group1 `9 passed`, group2
+  `8 passed, 1 xfailed`, group3 `9 passed`, and group4
+  `7 passed, 2 xfailed`.
+- Classification:
+  `FZ-0005` and `FZ-0009` were compact-allocation bugs for expanded/lifted
+  linear layouts. `FZ-0008` was both an unsafe layout-composition abort and a
+  full-view replay directionality bug for software reduction. The two `ld.red`
+  sentinels now execute correctly as software fallbacks (`.ld.` plus
+  `tt.reduce`) rather than hardware `.ld.red.` positives. Remaining checked-in
+  structural xfails: `FZ-0006`, `R5-C`, and `FZ-0007`.

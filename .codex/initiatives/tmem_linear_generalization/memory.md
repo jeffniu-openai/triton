@@ -1,6 +1,34 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 20:37 UTC repair slice 5 fixed the checked-in
+- Latest: 2026-04-21 21:18 UTC repair slice 6 fixed checked-in
+  `FZ-20260421-0005`, `FZ-20260421-0008`, and `FZ-20260421-0009`. Root
+  causes: lifted rank>2 expanded separable TMEM layouts were sized from their
+  logical row count instead of the compact 128-row physical image; layout
+  composition could still abort when a 2CTA row/col view was compared with a
+  row/col/block query; and full-view replay was treating descriptor-view
+  transforms as ordinary tensor transforms too broadly. Implementation:
+  allocation sizing now accepts rank>=2 expanded separable layouts with packed
+  non-row selectors, returns compact physical columns, and marks lifted-rank
+  selectors as already covered; `canComposeLinearLayouts` verifies matching
+  dimension sets before composition; replay full-view lowering keeps normal
+  descriptor-order loads unchanged, applies view transforms only for
+  axis-sensitive reduction loads, inverse-transforms external values stored
+  into replayed full views, and skips that inverse path for values already
+  loaded from the same TMEM backing descriptor. Promoted positives:
+  `ldst-fz20260421-0005-256row-lifted-parent`,
+  `test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash`, and
+  `test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash`.
+  The two narrow/expanded-row `ld.red` sentinels are correct software-reduce
+  fallbacks (`.ld.` plus `tt.reduce`), not hardware `ld.red` positives.
+  Validation: required `make -j8`; exact promoted rows `3 passed`; full
+  structural fuzzer split-4 `33 passed, 3 xfailed`; focused regressions for
+  FZ-0003 descriptor-view load, generic memdesc control-flow, and view
+  roundtrip stayed green; targeted lit `tmem_layouts.mlir` and
+  `interleave_tmem.mlir` `2 passed`; `py_compile` and `git diff --check`
+  passed. Next: checkpoint, then repair one of the three remaining structural
+  xfails (`FZ-0006`, `R5-C`, `FZ-0007`).
+
+- Previous: 2026-04-21 20:37 UTC repair slice 5 fixed the checked-in
   `FZ-20260421-0004` `ld.red` descriptor-chain/indexed opcode-loss bucket.
   Root cause: reduction-load support had been selected from the result tensor
   layout alone, so descriptor views that needed support-query replay either

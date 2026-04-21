@@ -492,6 +492,51 @@ static Value applyInverseTensorViewTransforms(
   return current;
 }
 
+static bool hasReductionAlongNUse(Value value) {
+  bool foundReductionAlongN = false;
+  auto filter = [&](Operation *op) {
+    if (isa<ttg::ConvertLayoutOp>(op) || op->hasTrait<OpTrait::Elementwise>())
+      return true;
+    if (auto reduce = dyn_cast<triton::ReduceOp>(op))
+      foundReductionAlongN |= reduce.getAxis() == 1;
+    return false;
+  };
+  ForwardSliceOptions fwdOpt;
+  fwdOpt.filter = filter;
+  SetVector<Operation *> fwdSlices;
+  getForwardSlice(value, &fwdSlices, fwdOpt);
+  return foundReductionAlongN;
+}
+
+static bool isDerivedFromTMemLoadOfBase(Value value, Value base) {
+  SmallVector<Value> worklist{value};
+  SmallPtrSet<Value, 8> seen;
+  while (!worklist.empty()) {
+    Value cur = worklist.pop_back_val();
+    if (!seen.insert(cur).second)
+      continue;
+
+    Operation *def = cur.getDefiningOp();
+    if (!def)
+      continue;
+
+    if (auto load = dyn_cast<TMEMLoadOp>(def)) {
+      if (load.getSrc() == base)
+        return true;
+      auto match = matchReplayableFullView(load.getSrc());
+      if (match && match->base == base)
+        return true;
+      continue;
+    }
+
+    if (isa<ttg::ConvertLayoutOp>(def) || def->hasTrait<OpTrait::Elementwise>()) {
+      llvm::append_range(worklist, def->getOperands());
+      continue;
+    }
+  }
+  return false;
+}
+
 static Value lowerLeadingSliceViewLoad(PatternRewriter &rewriter, Location loc,
                                        const TMemLeadingSliceViewMatch &match,
                                        Type resultTy, int numWarps) {
@@ -705,6 +750,11 @@ getReplayFullViewSupportTensorType(Value base, Value view,
     }
     return atoms;
   }();
+  if (baseTy && desiredAtom &&
+      llvm::equal(baseTy.getShape(), requestedTy.getShape()) &&
+      isSupportedByBase(requestedTy, *desiredAtom))
+    return requestedTy;
+
   auto tryQueryTypes = [&](Value querySource)
       -> std::optional<RankedTensorType> {
     if (!baseTy)
@@ -994,7 +1044,8 @@ static FailureOr<Value>
 lowerReplayFullViewValueLoad(PatternRewriter &rewriter, Location loc,
                              Value view, RankedTensorType resultTy,
                              const TMemReplayFullViewMatch &match,
-                             unsigned numWarps, int maxnreg) {
+                             unsigned numWarps, int maxnreg,
+                             bool applyViewTransforms) {
   auto maybeSupportTy = getReplayFullViewSupportTensorType(
       match.base, view, resultTy, numWarps, maxnreg);
   if (!maybeSupportTy)
@@ -1002,7 +1053,11 @@ lowerReplayFullViewValueLoad(PatternRewriter &rewriter, Location loc,
 
   RankedTensorType supportTy = *maybeSupportTy;
   Value support = TMEMLoadOp::create(rewriter, loc, supportTy, match.base);
-  return reshapeAndConvertToType(rewriter, loc, support, resultTy);
+  Value replacement = support;
+  if (applyViewTransforms && supportTy != resultTy)
+    replacement =
+        applyTensorViewTransforms(rewriter, loc, replacement, match.transforms);
+  return reshapeAndConvertToType(rewriter, loc, replacement, resultTy);
 }
 
 static FailureOr<Value>
@@ -1011,7 +1066,8 @@ lowerReplayFullViewLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp,
   return lowerReplayFullViewValueLoad(
       rewriter, loadOp.getLoc(), loadOp.getSrc(),
       cast<RankedTensorType>(loadOp.getType()), match,
-      ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp));
+      ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp),
+      hasReductionAlongNUse(loadOp.getResult()));
 }
 
 static LogicalResult
@@ -1030,6 +1086,11 @@ lowerReplayFullViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
 
   RankedTensorType supportTy = *maybeSupportTy;
   Value supportReplacement = storeOp.getSrc();
+  bool sourceAlreadyInReplayOrder =
+      isDerivedFromTMemLoadOfBase(supportReplacement, match.base);
+  if (!sourceAlreadyInReplayOrder && supportReplacement.getType() != supportTy)
+    supportReplacement = applyInverseTensorViewTransforms(
+        rewriter, storeOp.getLoc(), supportReplacement, match.transforms);
   supportReplacement = reshapeAndConvertToType(
       rewriter, storeOp.getLoc(), supportReplacement, supportTy);
   TMEMStoreOp::create(rewriter, storeOp.getLoc(), match.base,
@@ -1302,7 +1363,8 @@ public:
       rewriter.setInsertionPoint(yieldOp);
       FailureOr<Value> replacement = lowerReplayFullViewValueLoad(
           rewriter, loadOp.getLoc(), view, resultTy, match,
-          ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp));
+          ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp),
+          hasReductionAlongNUse(loadOp.getResult()));
       assert(succeeded(replacement) &&
              "prevalidated replayable full-view if yield failed to lower");
       yieldOp.setOperand(resultIndex, *replacement);

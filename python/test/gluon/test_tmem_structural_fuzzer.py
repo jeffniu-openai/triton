@@ -109,6 +109,18 @@ def _extract_tcgen05_mma_ops(asm):
     return pattern.findall(asm)
 
 
+def _run_structural_child(case_id):
+    result = subprocess.run(
+        [sys.executable, os.path.abspath(__file__), "--structural-child", case_id],
+        cwd=os.getcwd(),
+        env=os.environ.copy(),
+        text=True,
+        capture_output=True,
+        timeout=180,
+    )
+    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
+
+
 @dataclass(frozen=True)
 class LdStCase:
     case_id: str
@@ -956,43 +968,8 @@ def test_tmem_structural_fuzzer_ldst_descriptor_view_read(case):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.xfail(
-    strict=True,
-    reason="FZ-20260421-0005: 256-row lifted parent asserts in TensorMemoryAllocation instead of reporting cleanly",
-)
 def test_tmem_structural_fuzzer_ldst_256row_lifted_parent_allocator_crash():
-    code = """
-import importlib.util
-import sys
-
-spec = importlib.util.spec_from_file_location(
-    "tmem_structural_fuzzer",
-    "python/test/gluon/test_tmem_structural_fuzzer.py",
-)
-mod = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = mod
-spec.loader.exec_module(mod)
-case = mod.LdStCase(
-    "ldst-fz20260421-0005-256row-lifted-parent",
-    0xA005,
-    256,
-    32,
-    "identity",
-    "identity",
-    "32x32b",
-    3,
-)
-mod._run_ldst_case(case)
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=os.getcwd(),
-        env=os.environ.copy(),
-        text=True,
-        capture_output=True,
-        timeout=180,
-    )
-    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
+    _run_structural_child("ldst_256row_lifted_parent_allocator_crash")
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1092,7 +1069,9 @@ def _run_ldred_twocta_rowcol_optimizer_crash_case():
     ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
     llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
     assert ptx_ops == llir_ops
-    assert any(".ld.red." in op for op in ptx_ops)
+    assert any(".ld." in op for op in ptx_ops)
+    assert not any(".ld.red." in op for op in ptx_ops)
+    assert "tt.reduce" in compiled.asm["ttgir"]
 
 
 def _run_ldred_1cta_direct_index_allocator_crash_case():
@@ -1123,67 +1102,19 @@ def _run_ldred_1cta_direct_index_allocator_crash_case():
     ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
     llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
     assert ptx_ops == llir_ops
-    assert any(".ld.red." in op for op in ptx_ops)
+    assert any(".ld." in op for op in ptx_ops)
+    assert not any(".ld.red." in op for op in ptx_ops)
+    assert "tt.reduce" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.xfail(
-    strict=True,
-    reason="FZ-20260421-0008: 2CTA indexed ld.red row/col chain aborts in OptimizeTMemLayouts",
-)
 def test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash():
-    code = """
-import importlib.util
-import sys
-
-spec = importlib.util.spec_from_file_location(
-    "tmem_structural_fuzzer",
-    "python/test/gluon/test_tmem_structural_fuzzer.py",
-)
-mod = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = mod
-spec.loader.exec_module(mod)
-mod._run_ldred_twocta_rowcol_optimizer_crash_case()
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=os.getcwd(),
-        env=os.environ.copy(),
-        text=True,
-        capture_output=True,
-        timeout=180,
-    )
-    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
+    _run_structural_child("ldred_twocta_rowcol_optimizer_crash")
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.xfail(
-    strict=True,
-    reason="FZ-20260421-0009: 1CTA direct indexed ld.red over 256x32 asserts in TensorMemoryAllocation",
-)
 def test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash():
-    code = """
-import importlib.util
-import sys
-
-spec = importlib.util.spec_from_file_location(
-    "tmem_structural_fuzzer",
-    "python/test/gluon/test_tmem_structural_fuzzer.py",
-)
-mod = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = mod
-spec.loader.exec_module(mod)
-mod._run_ldred_1cta_direct_index_allocator_crash_case()
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=os.getcwd(),
-        env=os.environ.copy(),
-        text=True,
-        capture_output=True,
-        timeout=180,
-    )
-    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
+    _run_structural_child("ldred_1cta_direct_index_allocator_crash")
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1408,3 +1339,33 @@ def test_tmem_structural_fuzzer_scaled_mma_acc_subslice_control_flow(case):
     assert ptx_ops == llir_ops
     assert ptx_ops
     assert all(op == "tcgen05.mma.cta_group::1.kind::mxf8f6f4" for op in ptx_ops)
+
+
+def _run_structural_child_case(case_id):
+    if case_id == "ldst_256row_lifted_parent_allocator_crash":
+        case = LdStCase(
+            "ldst-fz20260421-0005-256row-lifted-parent",
+            0xA005,
+            256,
+            32,
+            "identity",
+            "identity",
+            "32x32b",
+            3,
+        )
+        _run_ldst_case(case)
+        return
+    if case_id == "ldred_twocta_rowcol_optimizer_crash":
+        _run_ldred_twocta_rowcol_optimizer_crash_case()
+        return
+    if case_id == "ldred_1cta_direct_index_allocator_crash":
+        _run_ldred_1cta_direct_index_allocator_crash_case()
+        return
+    raise ValueError(f"unknown structural child case {case_id}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--structural-child":
+        _run_structural_child_case(sys.argv[2])
+    else:
+        raise SystemExit("usage: test_tmem_structural_fuzzer.py --structural-child <case-id>")

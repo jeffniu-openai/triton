@@ -2,7 +2,23 @@
 
 Last updated: 2026-04-21
 
-Latest repair checkpoint: 2026-04-21 20:37 UTC checked-in
+Latest repair checkpoint: 2026-04-21 21:18 UTC checked-in
+`FZ-20260421-0005`, `FZ-20260421-0008`, and `FZ-20260421-0009` are repaired.
+Expanded separable lifted-rank allocations now use the compact 128-row TMEM
+physical image and do not double-count prefix selectors. Layout composition
+now rejects incompatible dimension sets instead of aborting. Full-view replay
+now treats descriptor-order loads, axis-sensitive reduction loads, external
+stores, and TMEM-load-sourced roundtrips separately. Promoted positives: the
+256-row lifted-parent `ld/st` sentinel, the 2CTA row/col indexed `ld.red`
+optimizer-crash sentinel, and the 1CTA 256x32 direct-index `ld.red` allocator
+sentinel. The two `ld.red` crash sentinels are currently correct software
+fallbacks (`.ld.` plus `tt.reduce`). Validation: required `make -j8`; exact
+promoted rows `3 passed`; full structural fuzzer split-4
+`33 passed, 3 xfailed`; targeted lit `2 passed`; `py_compile` and
+`git diff --check` passed. Remaining repair-plan frontier: the three checked-in
+structural xfails are `FZ-0006`, `R5-C`, and `FZ-0007`.
+
+Previous repair checkpoint: 2026-04-21 20:37 UTC checked-in
 `FZ-20260421-0004` `ld.red` opcode-loss rows are repaired. The reduction-load
 planner now uses support-query-aware descriptor planning, Gluon only emits a
 direct `ttng.tmem_load {redOp}` when the specific memdesc/result contract is
@@ -220,11 +236,13 @@ The project is complete when:
   direct full-view `ld/st` descriptor replay (`FZ-20260421-0003`), and
   generic-pass/control-flow full-view descriptor SSA replay
   (`FZ-20260421-0002`), and support-query-aware `ld.red`
-  descriptor-chain/indexed opcode selection (`FZ-20260421-0004`). Current next
-  unblocked slice after checkpoint: inspect the remaining `6` structural
-  xfails, pick the highest-impact backend bucket, and repair the underlying
-  backend gap without regressing the newly promoted full-view or `ld.red`
-  positives.
+  descriptor-chain/indexed opcode selection (`FZ-20260421-0004`), and
+  compact lifted-rank allocation plus full-view replay directionality
+  (`FZ-20260421-0005`, `FZ-20260421-0008`, `FZ-20260421-0009`). Current next
+  unblocked slice after checkpoint: inspect the remaining `3` structural
+  xfails (`FZ-0006`, `R5-C`, `FZ-0007`), pick the highest-impact backend
+  bucket, and repair the underlying backend gap without regressing the newly
+  promoted full-view, allocation, or `ld.red` positives.
 
 - Phase Z, 24-hour structural fuzzing campaign: active as of 2026-04-21
   08:18 UTC. Build a systematic deterministic Python/Gluon runtime fuzzer plus
