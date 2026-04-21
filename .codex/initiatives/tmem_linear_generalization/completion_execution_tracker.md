@@ -405,6 +405,14 @@ The project is complete when:
   `FZ-20260421-0004`, `14` `FZ-20260421-0008`, `13`
   `FZ-20260421-0005/0009`, and `6` clean TMEM OOR boundaries. Report:
   `agents/fuzz_ldred_rowcol_round12.md`.
+  2026-04-21 Round 12 Lane W completed generic descriptor-view pass fuzzing
+  without backend repairs. No new independent `FZ-*`. Checked-in generic-pass
+  rows stayed as `11 xfailed`; the temporary probe classified as `7` pass and
+  `2` known failures. Runtime `memdesc_index` remains `FZ-20260421-0001`;
+  chain0 generic-pass/control-flow wrong results remain `FZ-20260421-0002`.
+  The loop-carried checked-in row currently presents as an `8064/8192`
+  runtime mismatch, not the historical `R5-C` auto-layout crash. Report:
+  `agents/fuzz_generic_views_round12.md`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

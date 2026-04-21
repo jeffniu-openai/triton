@@ -14970,9 +14970,16 @@ rejection, not rescue
   no runtime miscompile across `94` rows: `42` pass, `19` `FZ-0004` opcode
   fallback, `14` `FZ-0008` optimizer abort, `13` `FZ-0005/0009`
   allocator/resource, and `6` clean TMEM OOR boundaries.
-- Next action remains continuous fuzzing: integrate Lane U/W reports when they
-  finish, commit/push every meaningful checkpoint, then launch the next
-  non-overlapping fuzz lane.
+- Lane W completed after Lane U. The report
+  `agents/fuzz_generic_views_round12.md` found no new independent `FZ-*`.
+  Checked-in generic-pass rows stayed as `11 xfailed`; a temporary probe
+  classified as `7` pass and `2` known failures. Runtime `memdesc_index`
+  remains `FZ-0001`, chain0 generic-pass/control-flow wrong results remain
+  `FZ-0002`, and the loop-carried checked-in row currently presents as an
+  `8064/8192` runtime mismatch rather than the historical `R5-C` auto-layout
+  crash.
+- Next action remains continuous fuzzing: commit/push every meaningful
+  checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 
 ## Current: 2026-04-21 08:50 UTC structural fuzzing Round 4 promoted sentinels
 

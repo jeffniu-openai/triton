@@ -27511,3 +27511,24 @@ Open after this slice:
 - Bucket evidence broadened existing ld.red coverage across 2CTA indexed and
   column-chain `min`/`max.abs.NaN`, row-chain permutations through `N=128`,
   and 1CTA `M=256` indexed/row-chain/column-chain reductions.
+
+## 2026-04-21: Round 12 Lane W generic descriptor-view pass fuzzing
+
+- Continued discovery-only structural fuzzing. No backend or compiler repairs
+  were attempted.
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_views_round12.md`.
+- Classification: no new independent `FZ-*` bucket.
+- Checked-in generic-pass selector collected `11/33` rows and split across
+  GPUs 0-3 as `11 xfailed`.
+- Temporary probe `/tmp/tmem_generic_views_round12_probe.py` collected `9`
+  rows and effectively classified as `7` pass and `2` known failures after one
+  temporary harness-call bug was excluded and the corrected direct-control row
+  reran green.
+- Runtime `memdesc_index` remains `FZ-20260421-0001`; chain0
+  generic-pass/control-flow/layout-pressure wrong results remain
+  `FZ-20260421-0002`.
+- Bucket refinement: on this head the checked-in
+  `generic-pass-loop-carried-memdesc-view-chain0` row reaches runtime and
+  mismatches `8064/8192`, so it currently behaves like `FZ-20260421-0002`
+  rather than the historical `R5-C` auto-layout crash.

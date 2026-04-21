@@ -1734,6 +1734,34 @@ remain family-specific and consume a bounded subset of the inventory.
   broadens `FZ-20260421-0008` through `N=128` and multiple row permutations,
   and broadens `FZ-20260421-0005/0009` across narrow and wide `N`.
 
+### Round 12 Lane W, generic descriptor-view pass fuzzing
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_views_round12.md`
+- Required build: `make -j8` no-op.
+- Checked-in generic-pass slice:
+  `python/test/gluon/test_tmem_structural_fuzzer.py -k 'generic_pass'`
+  collected `11/33` rows and passed as `11 xfailed` split across GPUs 0-3.
+- Temporary probe:
+  `/tmp/tmem_generic_views_round12_probe.py` collected `9` rows and, after
+  excluding one harness-call bug and rerunning the corrected direct-control
+  row, classified as `7` pass and `2` known failures.
+- Result: no new independent `FZ-*` bucket.
+- Classification:
+  - runtime `memdesc_index` through chain2 load/store remains
+    `FZ-20260421-0001`;
+  - chain0 generic-pass/control-flow/layout-pressure wrong results remain
+    `FZ-20260421-0002`;
+  - the checked-in loop-carried memdesc-view row currently reaches runtime and
+    mismatches `8064/8192`, so on this head it should be treated as
+    `FZ-20260421-0002` rather than the historical `R5-C` auto-layout crash;
+  - direct/static/constexpr and chain1/chain2 controls passed.
+- Promotion guidance: keep the checked-in strict xfail set; update the
+  loop-carried expected reason in the later repair/test-refresh phase only if
+  repeated reruns keep showing the runtime mismatch instead of the historical
+  crash.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S
