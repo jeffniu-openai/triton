@@ -2153,18 +2153,6 @@ signal handling:
   across ld/st, `ld.red`, no-scales copy, and scales-copy local 1CTA/2CTA
   layouts in 4/8/16 CTA contexts while high-CGA controls passed.
 
-- 2026-04-21 12:13 UTC: Lane BF compiler-only audit completed. Report:
-  `agents/fuzz_compiler_lit_round23.md`. New candidate `FZ-20260421-0016`:
-  `relayout_tritongpu.mlir` parse/verify crash for unencoded tensor operand
-  feeding TensorMemoryScales `ttng.tmem_alloc`. Existing compiler repros for
-  `FZ-0014`, `FZ-0008`, and `FZ-0009` still reproduce.
-
 - 2026-04-21 12:42 UTC: local multi-CTA guardrail completed. Report:
   `agents/fuzz_local_multicta_round23.md`. Selector collected `430/1615` and
   completed as `393 passed, 37 skipped`; no new bucket.
-
-- 2026-04-21 12:42 UTC: local multi-CTA TMEM guardrail completed. Report:
-  `agents/fuzz_local_multicta_round23.md`. Selector
-  `(twocta or multicast or cta or cga) and tmem and not reports` collected
-  `430/1615` and completed split-4 as `393 passed, 37 skipped`; no new
-  bucket.
