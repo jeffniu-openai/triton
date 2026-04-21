@@ -27532,3 +27532,12 @@ Open after this slice:
   `generic-pass-loop-carried-memdesc-view-chain0` row reaches runtime and
   mismatches `8064/8192`, so it currently behaves like `FZ-20260421-0002`
   rather than the historical `R5-C` auto-layout crash.
+
+## 2026-04-21: post Lane U/W structural fuzzer smoke gate
+
+- Reran the full checked-in structural fuzzer after integrating Lane U and
+  Lane W reports. No backend or compiler repairs were attempted.
+- Required `make -j8` was a no-op.
+- Command:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`
+- Result: `9 passed, 24 xfailed in 8.69s`.

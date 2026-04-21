@@ -413,6 +413,10 @@ The project is complete when:
   The loop-carried checked-in row currently presents as an `8064/8192`
   runtime mismatch, not the historical `R5-C` auto-layout crash. Report:
   `agents/fuzz_generic_views_round12.md`.
+  2026-04-21 post Lane U/W structural fuzzer smoke gate stayed stable after
+  required `make -j8` no-op:
+  `python/test/gluon/test_tmem_structural_fuzzer.py` reported
+  `9 passed, 24 xfailed in 8.69s`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

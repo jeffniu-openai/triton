@@ -14978,6 +14978,8 @@ rejection, not rescue
   `FZ-0002`, and the loop-carried checked-in row currently presents as an
   `8064/8192` runtime mismatch rather than the historical `R5-C` auto-layout
   crash.
+- Post Lane U/W structural-fuzzer smoke gate passed after required `make -j8`
+  no-op: `9 passed, 24 xfailed in 8.69s`.
 - Next action remains continuous fuzzing: commit/push every meaningful
   checkpoint and keep non-overlapping subagent/local fuzz lanes active.
 
