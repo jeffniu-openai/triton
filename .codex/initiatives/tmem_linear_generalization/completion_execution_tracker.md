@@ -60,6 +60,15 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:12 UTC Round 40 plain MMAv5 runtime guardrail completed.
+  Artifact: `agents/fuzz_mmav5_plain_guardrail_round40.md`. Required
+  `make -j8` reported `no work to do`. Selector
+  `(mma_plain_kinds_use_acc or mma_plain_kinds_with_linear_acc or
+  mma_twocta_plain_kinds_use_acc or mma_twocta_plain_kinds) and not scaled and
+  not reports and not resource` collected `52/19729` rows and passed split-4
+  as `52 passed` (`13/13/13/13`). No compiler crash, false unsupported
+  diagnostic, opcode absence, runtime miscompile, unexpected pass/fail
+  transition, or new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 14:05 UTC Round 39 MMAv5/TMA runtime guardrail completed.
   Artifact: `agents/fuzz_mmav5_tma_guardrail_round39.md`. Selector
   `mma_twocta_tma_tf32_b_transposed_descriptor or mma_twocta_indexed_acc_view or

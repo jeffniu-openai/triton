@@ -1,3 +1,17 @@
+## 2026-04-21 14:12 UTC: Round 40 plain MMAv5 runtime guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_mmav5_plain_guardrail_round40.md`.
+- Scope: discovery/cataloging only; no backend code modified.
+- Required `make -j8` reported `no work to do`.
+- Collection selector:
+  `(mma_plain_kinds_use_acc or mma_plain_kinds_with_linear_acc or mma_twocta_plain_kinds_use_acc or mma_twocta_plain_kinds) and not scaled and not reports and not resource`.
+- Collection/result: `52/19729` rows, split-4 as `52 passed`
+  (`13/13/13/13`).
+- Classification: no compiler crash, false unsupported diagnostic, opcode
+  absence, runtime miscompile, unexpected pass/fail transition, or new
+  independent `FZ-*`.
+
 ## 2026-04-21 14:05 UTC: Round 39 MMAv5/TMA runtime guardrail
 
 - Wrote
