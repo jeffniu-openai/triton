@@ -2730,6 +2730,18 @@ remain family-specific and consume a bounded subset of the inventory.
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*`.
 
+### Round 25 Lane BK FZ-0016 verifier code audit
+
+- Time: 2026-04-21 14:22 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0016_code_audit_round25.md`
+- Result:
+  broadened `FZ-20260421-0016` to shared `ttng.tmem_alloc`,
+  `ttng.tmem_load`, and `ttng.tmem_store` verifier crashes for unencoded
+  register tensors. Encoded controls parse cleanly or diagnose cleanly;
+  `ttng.tmem_copy` does not use this exact unencoded-register path.
+- Classification: no new independent `FZ-*`.
+
 ### Round 22 Lane BA scaled-MMAv5 dynamic scale descriptors
 
 - Time: 2026-04-21 12:58 UTC

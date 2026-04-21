@@ -2231,6 +2231,11 @@ signal handling:
   `agents/fuzz_local_cpscales_round25.md`. Selector collected `33/1615` and
   passed split-4 as `33 passed`; no new bucket.
 
+- 2026-04-21 14:22 UTC: Lane BK `FZ-0016` verifier code audit completed.
+  Report: `agents/fuzz_fz0016_code_audit_round25.md`. No new bucket; broadened
+  `FZ-0016` to shared alloc/load/store verifier crashes for unencoded register
+  tensors.
+
 - 2026-04-21 14:00 UTC: local structural crash repro guardrail completed.
   Report: `agents/fuzz_local_structural_crash_round24.md`. Selector
   `allocator_crash or optimizer_crash` completed as `3 xfailed`; no changed

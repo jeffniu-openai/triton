@@ -29024,6 +29024,30 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, unexpected
   unsupported diagnostic, or new independent `FZ-*` bucket.
 
+## 2026-04-21 14:22 UTC: Round 25 Lane BK FZ-0016 verifier code audit
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0016_code_audit_round25.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` and `ninja triton-opt` were no-ops in the subagent lane.
+- Code audit traced the shared path:
+  `verifyTMEMOperandPreconditions` allows unencoded tensors, then
+  `verifyTMEMOperand` still calls
+  `isDistributedLayoutTMemCompatible`/`computeTMemLdStEncodingInfo`, which
+  reaches `toLinearEncoding` on an unencoded ranked tensor and asserts.
+- Operation ownership broadened `FZ-20260421-0016` beyond alloc initializers:
+  unencoded register tensors also crash `ttng.tmem_load` result verification
+  and `ttng.tmem_store` source verification. `ttng.tmem_copy` is not part of
+  this exact unencoded-register crash because it verifies memdesc operands.
+- MLIR probes under `/tmp/tmem_fz0016_round25/` and
+  `/tmp/tmem_fz0016_round25_mod/` confirmed unencoded alloc/load/store rows
+  abort with exit `134`; encoded controls either parse cleanly with module
+  attrs or produce clean context diagnostics.
+- Classification: no new independent bucket; broaden `FZ-0016` to
+  `ttng.tmem_alloc`, `ttng.tmem_load`, and `ttng.tmem_store` verifier crashes
+  for unencoded register tensors.
+
 ## 2026-04-21 13:55 UTC: Round 24 Lane BH mixed scaled-MMAv5 operands
 
 - Wrote

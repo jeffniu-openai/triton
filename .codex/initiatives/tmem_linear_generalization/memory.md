@@ -15830,6 +15830,17 @@ rejection, not rescue
   `cp_scales and not reports` collected `33/1615` rows and completed split-4
   as `33 passed` (`9/9/9/6`). No new bucket.
 
+- Round 25 Lane BK wrote `agents/fuzz_fz0016_code_audit_round25.md`. No new
+  independent bucket; it broadens `FZ-20260421-0016` from alloc initializers to
+  the shared `verifyTMEMOperand` path for `ttng.tmem_alloc`,
+  `ttng.tmem_load`, and `ttng.tmem_store`. `verifyTMEMOperandPreconditions`
+  permits unencoded tensors, but `verifyTMEMOperand` continues into TMEM
+  compatibility planning and `toLinearEncoding`, which asserts on the missing
+  encoding. MLIR probes confirmed unencoded alloc/load/store rows abort while
+  encoded controls parse cleanly with module attrs or produce clean context
+  diagnostics. `ttng.tmem_copy` is not affected by this exact unencoded
+  register-tensor path because it verifies memdesc operands.
+
 - Round 22 Lane BA wrote
   `agents/fuzz_scaled_dynamic_scales_round22.md`. No new independent `FZ-*`.
   Temporary probe `/tmp/tmem_scaled_dynamic_scales_round22_probe.py` ran
