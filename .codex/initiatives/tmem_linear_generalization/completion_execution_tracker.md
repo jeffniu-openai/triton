@@ -381,6 +381,11 @@ The project is complete when:
   2026-04-21 local high-CGA MMA contrast controls stayed green after required
   `make -j8` no-op: `test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]`
   and `[True-ctas_per_cga2]` reported `2 passed in 3.05s`.
+  2026-04-21 local Round 12 `cp_scales` non-report selector stayed green.
+  Collect-only selected `33/1615` for `cp_scales and not reports`; split-4
+  across GPUs 0-3 selected `9/9/9/6` tests and reported aggregate
+  `33 passed`. Durations were stored at
+  `/tmp/tmem_local_r12_cp_scales_nonreports_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

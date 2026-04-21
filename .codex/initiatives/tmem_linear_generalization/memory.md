@@ -5,6 +5,13 @@
   `python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]`
   and `[True-ctas_per_cga2]` passed `2/2` in `3.05s`.
 
+- Latest: 2026-04-21 local Round 12 `cp_scales` non-report selector stayed
+  green. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and not reports'`
+  selected `33/1615` tests. Split-4 execution across GPUs 0-3 selected
+  `9`, `9`, `9`, and `6` tests; aggregate result `33 passed`. Durations were
+  stored at `/tmp/tmem_local_r12_cp_scales_nonreports_durations.json`.
+
 - Latest: 2026-04-21 local post-report structural-fuzzer smoke gate stayed
   green. Required `make -j8` reported no work to do. Command:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short python/test/gluon/test_tmem_structural_fuzzer.py`.

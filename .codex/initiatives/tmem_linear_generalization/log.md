@@ -27436,3 +27436,20 @@ Open after this slice:
 - Command:
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short 'python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[False-ctas_per_cga1]' 'python/test/gluon/test_core.py::test_tcgen05_mma_multicast_commit[True-ctas_per_cga2]'`
 - Result: `2 passed in 3.05s`.
+
+## 2026-04-21: Round 12 local cp_scales non-report slice
+
+- Ran checked-in `cp_scales` runtime-matrix coverage while Lane V probed copy
+  descriptor/addressing behavior. No backend or compiler repairs were
+  attempted.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and not reports'`
+  selected `33 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r12_cp_scales_nonreports_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and not reports'`
+- Result:
+  - group 1/GPU 0: `9 passed, 1606 deselected in 4.51s`;
+  - group 2/GPU 1: `9 passed, 1606 deselected in 5.89s`;
+  - group 3/GPU 2: `9 passed, 1606 deselected in 6.38s`;
+  - group 4/GPU 3: `6 passed, 1609 deselected in 5.16s`.
+- Aggregate: `33 passed`. No new bucket was found.
