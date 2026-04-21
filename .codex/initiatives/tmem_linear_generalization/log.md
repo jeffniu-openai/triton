@@ -31927,3 +31927,37 @@ Open after this slice:
 - Ranked future promotion order: dynamic copy xfail, sequential mbarrier xfail,
   unencoded TMEM verifier clean-negative, unit-rank half-column xfail, and
   nearby compact positives.
+
+## 2026-04-21: Round 49 TMEM numeric/layout shape extremes
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_shape_extremes_round49.md`.
+- Required `make -j8` was a no-op.
+- Broad shape-extreme runtime selector:
+  `316/1615` collected and `286 passed, 24 skipped, 6 failed`.
+- All six runtime failures are existing `FZ-20260421-0012` M64 f32 `ld.red`
+  destination-layout planner rows.
+- Clean diagnostic/resource selector:
+  `83/1615` collected and `83 passed`.
+- Structural descriptor/`ld.red`/allocator subset:
+  `19/33` collected and `7 passed, 12 xfailed`.
+- Compiler-only 64-bit contrast reproduced existing
+  `FZ-20260421-0017`, while non-f32 `ld.red` stayed clean and 64-bit copy
+  still lowered to `tcgen05.cp`.
+- No new independent `FZ-*`.
+
+## 2026-04-21: Round 49 TMA descriptor/TMEM consumer interactions
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_tma_descriptor_interactions_round49.md`.
+- Required `make -j8` was a no-op.
+- Core TMA/shared-input selector:
+  `232/18114` collected and `184 passed, 48 skipped`.
+- Runtime-matrix TMA descriptor interactions:
+  `17/1615` collected and `17 passed`.
+- Runtime-matrix descriptor-consumer expansion:
+  `61/1615` collected and `61 passed`.
+- Basic TMA descriptor/mbarrier and scaled-copy controls:
+  `8 passed`.
+- Classification: no new `FZ-20260421-0010`,
+  `FZ-20260421-0014`, scaled descriptor-consumer leak, or independent `FZ-*`.

@@ -3416,3 +3416,24 @@ discovery.
   `FZ-20260421-0016` lit `1 failed`; unit-rank half-column expected
   `FZ-20260421-0021` process abort; positives `3 passed`, proxy-fence lit
   `1 passed`, and rank-5 half-row worker passed. No new independent `FZ-*`.
+
+- 2026-04-21: Round 49 TMEM numeric/layout shape extremes completed. Report:
+  `agents/fuzz_shape_extremes_round49.md`. Required `make -j8` was a no-op.
+  Broad shape-extreme runtime selector collected `316/1615` and completed as
+  `286 passed, 24 skipped, 6 failed`, with all six failures matching existing
+  `FZ-20260421-0012`; clean diagnostic/resource selector collected `83/1615`
+  and passed as `83 passed`; structural subset collected `19/33` and ran as
+  `7 passed, 12 xfailed`. Compiler-only 64-bit contrast reproduced existing
+  `FZ-20260421-0017`; 64-bit copy still lowered successfully. No new
+  independent `FZ-*`.
+
+- 2026-04-21: Round 49 TMA descriptor/TMEM consumer interactions completed.
+  Report: `agents/fuzz_tma_descriptor_interactions_round49.md`. Required
+  `make -j8` was a no-op. Core TMA/shared-input selector collected
+  `232/18114` and completed split-4 as `184 passed, 48 skipped`;
+  runtime-matrix TMA descriptor interactions collected `17/1615` and passed as
+  `17 passed`; descriptor-consumer expansion collected `61/1615` and passed as
+  `61 passed`; basic TMA descriptor/mbarrier and scaled-copy controls passed
+  as `8 passed`. No new evidence for `FZ-20260421-0010`,
+  `FZ-20260421-0014`, or descriptor-consumer buckets; no new independent
+  `FZ-*`.
