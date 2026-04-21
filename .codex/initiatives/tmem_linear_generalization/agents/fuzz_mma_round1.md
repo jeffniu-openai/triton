@@ -82,9 +82,29 @@ Coverage notes:
 
 - Scaled two-CTA accumulator subslice views covered direct and `use_acc` paths, N=32/64/128, K=128/256, slice starts 0/32/64/128, multicast true/false, and mxfp8/mxfp4/nvfp4 format mixes.
 
+## Probe Set C4: Plain MMAv5 Indexed and Two-CTA Accumulator Views
+
+- Collected: `67/1615` selected.
+- Command:
+  `PYTHONPATH=.:./python pytest --collect-only -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k '(mma_indexed_acc_view or mma_twocta_indexed_acc_view or mma_twocta_acc_subslice_view_plain_kinds)'`
+
+Runtime commands:
+
+- `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group 1 python/test/gluon/test_tmem_runtime_matrix.py -k '(mma_indexed_acc_view or mma_twocta_indexed_acc_view or mma_twocta_acc_subslice_view_plain_kinds)'`
+  - Result: `17 passed, 1598 deselected in 20.39s`.
+- Same command with `CUDA_VISIBLE_DEVICES=1`, `TRITON_CACHE_DIR=/tmp/triton-cache-gpu1`, `--group 2`.
+  - Result: `17 passed, 1598 deselected in 18.33s`.
+- Same command with `CUDA_VISIBLE_DEVICES=2`, `TRITON_CACHE_DIR=/tmp/triton-cache-gpu2`, `--group 3`.
+  - Result: `17 passed, 1598 deselected in 17.61s`.
+- Same command with `CUDA_VISIBLE_DEVICES=3`, `TRITON_CACHE_DIR=/tmp/triton-cache-gpu3`, `--group 4`.
+  - Result: `16 passed, 1599 deselected in 11.14s`.
+
+Coverage notes:
+
+- Plain MMAv5 indexed accumulator views and two-CTA indexed/subslice accumulator views covered direct and `use_acc` paths, legacy and linear parent layouts, unit-parent linear views, N=32/64/128/256, K=32/64/128, and f16/tf32/bf16/f8 variants where covered by existing rows.
+
 ## Suggested Next Lane C Cases
 
 - Add an ad-hoc B-scale descriptor-view/rematerialization variant with K=256, because current B-scale descriptor-view rows are strongest at K=128 while other scaled-MMA rows cover K=256.
 - Add a two-CTA plain-MMAv5 runtime probe with K=128/256 and accumulator view chains; the current FPSAN two-CTA plain path uses smaller K while one-CTA runtime-matrix rows cover broader K.
 - Add scaled-MMAv5 B-scale descriptor-view cases combined with two-CTA accumulator subslice views, if the frontend can express the scale descriptor view without turning the test into a copy-family probe.
-- Add a plain-MMAv5 indexed accumulator view with `use_acc=True` and narrow N=32/64 to mirror the scaled indexed-accumulator coverage.
