@@ -7,7 +7,17 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 Round 37 `ld.red` positive guardrail
+Latest fuzzing checkpoint: 2026-04-21 Round 37 subword and 64-bit boundary
+subagent lane integrated. Report:
+`agents/fuzz_subword_i64_boundaries_round37.md`. Checked-in subword/copy/
+diagnostic selector collected `123/1648` and passed split-4 as `123 passed`.
+Temporary subprocess matrix broadened existing `FZ-20260421-0017` to unit-rank
+`i64`/`f64` descriptor-view non-reduction load/store rows; matching `i32` and
+`f16` unit-rank controls passed. `triton-opt` confirmed non-f32 `ld.red` keeps
+a clean f32-only diagnostic and pure `i64`/`f64` copy lowers through LLVM. No
+new independent `FZ-*`.
+
+Previous fuzzing checkpoint: 2026-04-21 Round 37 `ld.red` positive guardrail
 completed. Report: `agents/fuzz_ldred_positive_guardrail_round37.md`.
 Selector `ld_red and not reports and not resource and not m64 and not non_f32`
 collected `160/1615` and passed split-4 as `160 passed`. No new independent

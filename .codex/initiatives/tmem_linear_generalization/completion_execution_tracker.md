@@ -60,6 +60,14 @@ The project is complete when:
   - periodic checkpoint commits pushed to `origin/codex/tmem`.
   Backend fixes are intentionally deferred during this campaign while new
   failures are still appearing.
+  2026-04-21 14:16 UTC Round 37 subword and 64-bit boundary subagent lane
+  integrated. Artifact: `agents/fuzz_subword_i64_boundaries_round37.md`.
+  Checked-in selector collected `123/1648` and passed split-4 as `123 passed`.
+  Temporary subprocess matrix expanded existing `FZ-20260421-0017` to
+  unit-rank 1CTA/2CTA `i64`/`f64` descriptor-view non-reduction load/store
+  rows; matching `i32` and `f16` controls passed. Non-f32 `ld.red` remains a
+  clean f32-only diagnostic and pure `i64`/`f64` shared-to-TMEM copy lowers
+  through LLVM. No new independent `FZ-*`; backend repair remains deferred.
   2026-04-21 14:12 UTC Round 37 `ld.red` positive guardrail completed.
   Artifact: `agents/fuzz_ldred_positive_guardrail_round37.md`. Selector
   `ld_red and not reports and not resource and not m64 and not non_f32`

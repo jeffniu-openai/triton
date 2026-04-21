@@ -30766,6 +30766,26 @@ Open after this slice:
   mismatch, runtime miscompile, clean-boundary drift, or new independent
   `FZ-*` bucket.
 
+## 2026-04-21 14:16 UTC: Round 37 subword and 64-bit boundary subagent lane integrated
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_subword_i64_boundaries_round37.md`.
+- Required `make -j8` was a no-op in the subagent lane.
+- Checked-in selector over `python/test/gluon/test_tmem_runtime_matrix.py` and
+  `python/test/gluon/test_tmem_structural_fuzzer.py` collected `123/1648`
+  rows and passed split-4 as `123 passed` (`31/31/31/30`).
+- Temporary probe:
+  `/tmp/tmem_round37_probe.py`; subprocess artifacts under
+  `/tmp/tmem_round37_subword_i64/`.
+- Existing `FZ-20260421-0017` expanded to unit-rank 1CTA/2CTA `i64`/`f64`
+  descriptor-view non-reduction load/store rows; matching `i32` and `f16`
+  unit-rank controls passed.
+- Compiler-only contrasts:
+  non-f32 `ld.red` reports the clean f32-only diagnostic; pure `i64`/`f64`
+  shared-to-TMEM copy lowers through LLVM.
+- Classification: no new independent `FZ-*`; subword, pure copy, and non-f32
+  reduction boundaries stayed clean/green.
+
 ## 2026-04-21 14:12 UTC: Round 37 ld.red positive guardrail
 
 - Wrote

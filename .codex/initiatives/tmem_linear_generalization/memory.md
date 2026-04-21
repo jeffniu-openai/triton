@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 14:16 UTC Round 37 subword and 64-bit TMEM boundary
+  subagent lane integrated. Report:
+  `agents/fuzz_subword_i64_boundaries_round37.md`. Required `make -j8` was a
+  no-op. Checked-in selector over subword `ld/st`, exact-width copy, 2CTA
+  subword descriptor copy, clean subword-copy diagnostics, non-f32 `ld.red`,
+  and structural subword cases collected `123/1648` and passed split-4 as
+  `123 passed` (`31/31/31/30`). Temporary probe
+  `/tmp/tmem_round37_probe.py` broadened existing `FZ-20260421-0017` with
+  unit-rank 1CTA/2CTA `i64`/`f64` descriptor-view non-reduction load/store
+  assertions; matching `i32` and `f16` unit-rank controls passed. Compiler-only
+  contrasts confirmed non-f32 `ld.red` keeps a clean f32-only diagnostic and
+  pure `i64`/`f64` shared-to-TMEM copy lowers through LLVM. No new independent
+  `FZ-*`.
+
 - Latest: 2026-04-21 14:12 UTC Round 37 `ld.red` positive guardrail
   completed. Report: `agents/fuzz_ldred_positive_guardrail_round37.md`.
   Selector
