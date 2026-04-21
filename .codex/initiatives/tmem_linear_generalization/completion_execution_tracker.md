@@ -1859,7 +1859,7 @@ signal handling:
   `python/test/gluon/test_tmem_structural_fuzzer.py` reported
   `9 passed, 24 xfailed`; no new bucket.
 
-- 2026-04-21 11:48 UTC: integrated Round 15 Lane AK generic
+- 2026-04-21 11:30 UTC: integrated Round 15 Lane AK generic
   memdesc/control-flow fuzzing in discovery-only mode. Report:
   `agents/fuzz_generic_memdesc_control_round15.md`. Required `make -j8` was a
   no-op. Temporary probes classified branch/helper-selected memdesc values
@@ -1870,7 +1870,7 @@ signal handling:
   loop-carried `ld/st` controls passed and chain0 copy/MMAv5 controls produced
   clean unsupported diagnostics. No new independent bucket was assigned.
 
-- 2026-04-21 11:48 UTC: integrated Round 15 Lane AM scaled multi-MMA
+- 2026-04-21 11:30 UTC: integrated Round 15 Lane AM scaled multi-MMA
   composition fuzzing. Report:
   `agents/fuzz_scaled_multi_mma_round15.md`. Temporary probe collected `12`
   rows and final run reported `7 passed, 5 failed`. Green controls covered
@@ -1882,7 +1882,7 @@ signal handling:
   PTX/LLIR scaled-MMA opcodes match, but selector `0/1` produce
   `16381/16384` and `16380/16384` mismatches with `96` NaNs.
 
-- 2026-04-21 11:48 UTC: local twoCTA/high-CGA runtime selector wrote
+- 2026-04-21 11:30 UTC: local twoCTA/high-CGA runtime selector wrote
   `agents/fuzz_local_twocta_highcga_round15.md`. Selector
   `(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
   collected `331/1615` and passed split-4 as `294 passed, 37 skipped`; no new

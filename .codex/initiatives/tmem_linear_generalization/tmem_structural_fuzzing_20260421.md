@@ -2215,7 +2215,7 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ### Round 15 Lane AK generic memdesc/control-flow fuzzing
 
-- Time: 2026-04-21 11:45 UTC
+- Time: 2026-04-21 11:30 UTC
 - Report:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_memdesc_control_round15.md`
 - Required build: `make -j8` no-op.
@@ -2236,7 +2236,7 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ### Round 15 Lane AM scaled-MMAv5 multi-op and dynamic scale fuzzing
 
-- Time: 2026-04-21 11:47 UTC
+- Time: 2026-04-21 11:30 UTC
 - Report:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_multi_mma_round15.md`
 - Required build: `make -j8` no-op.
@@ -2259,7 +2259,7 @@ remain family-specific and consume a bounded subset of the inventory.
 
 ### Round 15 local twoCTA/high-CGA selector
 
-- Time: 2026-04-21 11:48 UTC
+- Time: 2026-04-21 11:30 UTC
 - Report:
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_twocta_highcga_round15.md`
 - Selector:

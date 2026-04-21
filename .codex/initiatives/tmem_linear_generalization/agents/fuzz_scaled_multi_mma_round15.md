@@ -95,6 +95,16 @@ CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 \
 Result: `2 passed`.
 
 ```bash
+CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 \
+  PYTHONPATH=.:./python:./python/test/gluon \
+  pytest -q -s --tb=short \
+  /tmp/tmem_scaled_multi_mma_round15_probe.py::test_am_branch_contained_bscale_mma \
+  2>&1 | tee /tmp/tmem_scaled_multi_mma_round15_branch_contained_bscale_mma.log
+```
+
+Result: `2 passed`.
+
+```bash
 CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 \
   PYTHONPATH=.:./python:./python/test/gluon \
   pytest -q -s --tb=short \
@@ -121,6 +131,7 @@ scaled-MMA opcode checks:
 | `static two B-scale descriptors, use first` | Allocates and populates two B-scale TMEM descriptors, but passes one statically to MMA | passed |
 | `dynamic A-scale descriptor selection, selectors 0/1` | Runtime-selects between two identical A-scale TMEM descriptors | passed |
 | `dynamic B-scale same-object selection, selectors 0/1` | Runtime branch assigns the same B-scale TMEM descriptor object from both arms | passed |
+| `branch-contained B-scale MMA, selectors 0/1` | Calls scaled MMA inside the runtime branch with distinct B-scale descriptor operands, avoiding a merged B-scale memdesc value | passed |
 
 These controls confirm that multiple scaled MMAv5 operations in one kernel,
 scale descriptor reuse, static accumulator subslices, and `use_acc` sequencing
@@ -208,6 +219,9 @@ Additional discriminator after the initial report body:
 - `test_am_dynamic_bscale_same_object_selection` passed for selectors `0` and
   `1`; runtime assignment alone is not sufficient. The failing rows require
   selection between distinct B-scale TMEM descriptor objects.
+- `test_am_branch_contained_bscale_mma` passed for selectors `0` and `1`;
+  control flow around scaled MMA is not sufficient. The failing rows require a
+  merged runtime B-scale descriptor value feeding one scaled MMA op.
 
 ## Logs
 
@@ -230,3 +244,4 @@ Relevant temporary logs:
 - `/tmp/tmem_scaled_multi_mma_round15_dynamic_bscale_both_after_static.log`
 - `/tmp/tmem_scaled_multi_mma_round15_dynamic_ascale.log`
 - `/tmp/tmem_scaled_multi_mma_round15_dynamic_bscale_same_object.log`
+- `/tmp/tmem_scaled_multi_mma_round15_branch_contained_bscale_mma.log`

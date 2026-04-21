@@ -28229,7 +28229,7 @@ Open after this slice:
 - Classification: no new independent compiler crash, runtime wrong-result, or
   false unsupported/verifier-too-strict candidate was found.
 
-## 2026-04-21 11:45 UTC: Round 15 Lane AK generic memdesc/control fuzzing
+## 2026-04-21 11:30 UTC: Round 15 Lane AK generic memdesc/control fuzzing
 
 - Wrote
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_memdesc_control_round15.md`.
@@ -28253,7 +28253,7 @@ Open after this slice:
 - Checked-in generic-pass selector remained stable as `11 xfailed`.
 - No new independent `FZ-*` bucket was assigned.
 
-## 2026-04-21 11:47 UTC: Round 15 Lane AM scaled multi-MMA fuzzing
+## 2026-04-21 11:30 UTC: Round 15 Lane AM scaled multi-MMA fuzzing
 
 - Integrated report
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_scaled_multi_mma_round15.md`.
@@ -28276,7 +28276,7 @@ Open after this slice:
   - selector `1`: `16380/16384` mismatches and `96` output NaNs.
 - Next discovery slice should minimize `FZ-0015` before any backend repair.
 
-## 2026-04-21 11:48 UTC: Round 15 local twoCTA/high-CGA runtime sweep
+## 2026-04-21 11:30 UTC: Round 15 local twoCTA/high-CGA runtime sweep
 
 - Wrote
   `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_twocta_highcga_round15.md`.

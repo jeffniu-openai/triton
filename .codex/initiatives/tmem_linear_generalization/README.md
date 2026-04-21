@@ -7,7 +7,7 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:48 UTC Round 15 generic/scaled and
+Latest fuzzing checkpoint: 2026-04-21 11:30 UTC Round 15 generic/scaled and
 twoCTA/high-CGA checkpoint. Reports:
 `agents/fuzz_generic_memdesc_control_round15.md`,
 `agents/fuzz_scaled_multi_mma_round15.md`, and
