@@ -17202,3 +17202,31 @@ rejection, not rescue
   linear/legacy and multiple dtypes, two-CTA `128x128b` no-scale copy codegen,
   and minimal scaled-MMAv5. No new independent `FZ-*`; backend repair remains
   deferred.
+
+- Round 60 local frontend tensor-memory lane wrote
+  `agents/fuzz_round60_local_frontend_tmem_lane.md`. Required `make -j8` was
+  a no-op. Focused selector `tensor_memory or tmem_` collected `29/225` and
+  ran as `28 passed, 1 failed`; exact rerun of
+  `test_tmem_subslice_reg_layout_constexpr` reproduced the same inline
+  `expecttest` mismatch. Candidate `FZ-20260421-0023`: frontend TMEM
+  subslice register-layout expectation drift, where actual `#linear` register
+  basis includes `[0, 32]`, `[0, 64]`, and `[0, 128]` beyond the checked-in
+  expected text. No backend repair or expectation update attempted.
+
+- Round 60 examples breadth lane A wrote
+  `agents/fuzz_round60_examples_breadth_lane.md`. Required `make -j8` was a
+  no-op. Broad collection over attention, matmul-multicta, 2CTA block-scale
+  matmul, MoE fused gather, and LoRA fusion discovered `974` tests; focused
+  exact selector collected `12` and ran split-4 as `11 passed, 1 skipped`.
+  The skip is the existing fp4 packed descriptor `K` multiple-of-128 example
+  guard. No compiler crash, verifier drift, false unsupported diagnostic,
+  runtime miscompile, hang, example-level correctness regression, or new
+  independent `FZ-*`.
+
+- Round 60 random runtime-matrix lane C wrote
+  `agents/fuzz_round60_random_runtime_matrix_lane.md`. Required `make -j8`
+  was a no-op. Full collection found `1615` nodeids; seed `6042160` selected
+  `64` exact nodeids across `ld/st`, copy, `ld.red`, plain MMAv5, and scaled
+  MMAv5. Split-4 runtime ran as `56 passed, 8 skipped`; skips are the known
+  lifted descriptor roundtrip Blackwell TMEM allocation-limit guard. No new
+  independent `FZ-*`; backend repair remains deferred.

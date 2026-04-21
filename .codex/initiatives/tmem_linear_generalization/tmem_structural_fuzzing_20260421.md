@@ -4344,3 +4344,56 @@ remain family-specific and consume a bounded subset of the inventory.
   no compiler crash, verifier drift, opcode/codegen assertion drift, false
   unsupported diagnostic, runtime miscompile, hang, or new independent
   `FZ-*`.
+
+### Round 60 local frontend tensor-memory lane
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round60_local_frontend_tmem_lane.md`
+- Scope:
+  frontend tensor-memory construction, IR, and diagnostics in
+  `python/test/gluon/test_frontend.py`.
+- Result:
+  focused selector `tensor_memory or tmem_` collected `29/225` and ran as
+  `28 passed, 1 failed`; exact rerun of
+  `test_tmem_subslice_reg_layout_constexpr` reproduced the same inline
+  expecttest mismatch.
+- Classification:
+  candidate `FZ-20260421-0023`, frontend TMEM subslice register-layout
+  expectation drift. Actual register basis includes `[0, 32]`, `[0, 64]`,
+  and `[0, 128]` beyond the checked-in expected text.
+
+### Round 60 examples breadth lane A
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round60_examples_breadth_lane.md`
+- Scope:
+  attention, matmul-multicta, 2CTA block-scale matmul, MoE fused gather, and
+  LoRA fusion examples beyond the Round 59 focused examples lane.
+- Result:
+  broad collection found `974` tests; focused exact selector collected `12`
+  and ran split-4 as `11 passed, 1 skipped`.
+- Classification:
+  skip is the existing fp4 packed descriptor `K` multiple-of-128 guard; no
+  compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, example-level correctness regression, or new independent
+  `FZ-*`.
+
+### Round 60 random runtime-matrix lane C
+
+- Time: 2026-04-21
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round60_random_runtime_matrix_lane.md`
+- Scope:
+  seed-selected runtime-matrix rows across `ld/st`, no-scale copy, `ld.red`,
+  plain MMAv5, and scaled MMAv5.
+- Result:
+  full collection found `1615` nodeids; seed `6042160` selected `64` exact
+  nodeids from `1116` eligible rows and ran split-4 as
+  `56 passed, 8 skipped`.
+- Classification:
+  skips are known lifted descriptor roundtrip Blackwell TMEM allocation-limit
+  guards; no compiler crash, verifier drift, false unsupported diagnostic,
+  runtime miscompile, hang, unexpected skip/fail transition, or new
+  independent `FZ-*`.

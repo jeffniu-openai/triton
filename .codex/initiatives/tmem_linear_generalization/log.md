@@ -32942,3 +32942,63 @@ Open after this slice:
 - Classification:
   no compiler crash, verifier drift, invalid-diagnostic drift, PassManager
   failure, TMEM allocation/lifetime failure, conversion failure, NVWS hoisting
+  failure, reproduced existing `FZ-*`, or new independent `FZ-*`.
+
+## 2026-04-21: Round 60 local frontend tensor-memory lane
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round60_local_frontend_tmem_lane.md`.
+- Required `make -j8` was a no-op.
+- Broad frontend selector
+  `tmem or tensor_memory or descriptor or layout` collected `97/225`, then was
+  narrowed to explicit tensor-memory names.
+- Focused selector `tensor_memory or tmem_` collected `29/225` and ran as
+  `28 passed, 1 failed`.
+- Exact rerun:
+  `python/test/gluon/test_frontend.py::test_tmem_subslice_reg_layout_constexpr`
+  failed with the same inline `expecttest` mismatch.
+- New candidate:
+  `FZ-20260421-0023`, frontend TMEM subslice register-layout expectation
+  drift. Actual `#linear` register basis includes `[0, 32]`, `[0, 64]`, and
+  `[0, 128]` beyond the checked-in expected text.
+- Classification:
+  stable frontend expectation drift; no backend repair or expectation update
+  attempted during fuzzing.
+
+## 2026-04-21: Round 60 examples breadth lane A
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round60_examples_breadth_lane.md`.
+- Required `make -j8` was a no-op.
+- Broad collection over attention, matmul-multicta, 2CTA block-scale matmul,
+  MoE fused gather, and LoRA fusion discovered `974` tests.
+- Focused exact selector collected `12` tests.
+- Split-4 runtime result:
+  `11 passed, 1 skipped` (`3 passed`, `2 passed/1 skipped`, `3 passed`,
+  `3 passed`).
+- The skipped row was
+  `04-2cta-block-scale-matmul.py::test_mma_scaled_warp_specialized[2-256-256-4-mxfp8-mxfp4-500-600-640]`,
+  with the existing example guard:
+  `fp4 packed tensor descriptor requires K to be a multiple of 128`.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, example-level correctness regression, or new independent
+  `FZ-*`.
+
+## 2026-04-21: Round 60 random runtime-matrix lane C
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_round60_random_runtime_matrix_lane.md`.
+- Required `make -j8` was a no-op.
+- Full runtime-matrix collection found `1615` nodeids.
+- Seed `6042160` selected `64` exact nodeids from `1116` eligible rows:
+  `20` `ld/st`, `12` no-scale copy, `14` `ld.red`, `10` plain MMAv5, and
+  `8` scaled MMAv5.
+- Split-4 runtime result:
+  `56 passed, 8 skipped`.
+- Skip reason:
+  known lifted descriptor roundtrip Blackwell TMEM allocation-limit guard.
+- Classification:
+  no compiler crash, verifier drift, false unsupported diagnostic, runtime
+  miscompile, hang, unexpected skip/fail transition, or new independent
+  `FZ-*`.

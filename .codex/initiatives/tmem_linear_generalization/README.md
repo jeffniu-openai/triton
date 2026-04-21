@@ -6469,7 +6469,30 @@ When resuming the initiative:
   rows `123 passed, 74 skipped`, and the checked-in structural fuzzer stayed
   stable as `9 passed, 24 xfailed`.
 
-## Latest: 2026-04-21 Round 55 dynamic two-CTA green controls
+## Latest: 2026-04-21 Round 60 frontend, examples, and random runtime fuzzing
+
+- Local frontend tensor-memory lane wrote
+  `agents/fuzz_round60_local_frontend_tmem_lane.md`. Focused selector
+  `tensor_memory or tmem_` collected `29/225` and ran as
+  `28 passed, 1 failed`; exact rerun of
+  `test_tmem_subslice_reg_layout_constexpr` reproduced the same inline
+  expecttest mismatch. Candidate `FZ-20260421-0023`: frontend TMEM subslice
+  register-layout expectation drift. No backend repair or expectation update
+  attempted.
+- Examples breadth lane wrote
+  `agents/fuzz_round60_examples_breadth_lane.md`. Attention,
+  matmul-multicta, 2CTA block-scale matmul, MoE fused gather, and LoRA fusion
+  collected `974` broad tests; the focused exact selector collected `12` and
+  ran split-4 as `11 passed, 1 skipped`. The skip is the existing fp4 packed
+  descriptor `K` multiple-of-128 example guard.
+- Random runtime-matrix lane wrote
+  `agents/fuzz_round60_random_runtime_matrix_lane.md`. Seed `6042160`
+  selected `64` exact nodeids from `1615` collected rows across `ld/st`,
+  copy, `ld.red`, plain MMAv5, and scaled MMAv5. Split-4 runtime result:
+  `56 passed, 8 skipped`; skips are the known lifted descriptor roundtrip
+  Blackwell allocation-limit guard. No new independent `FZ-*`.
+
+## Previous: 2026-04-21 Round 55 dynamic two-CTA green controls
 
 - Lane A completed `agents/fuzz_round55_dynamic_2cta_green_controls_lane.md`.
   No backend repair was attempted.

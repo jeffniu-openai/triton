@@ -3993,3 +3993,27 @@ discovery.
   and minimal scaled-MMAv5. No compiler crash, verifier drift, opcode/codegen
   assertion drift, false unsupported diagnostic, runtime miscompile, hang, or
   new independent `FZ-*`.
+
+- 2026-04-21: Round 60 local frontend tensor-memory lane completed. Report:
+  `agents/fuzz_round60_local_frontend_tmem_lane.md`. Required `make -j8` was
+  a no-op. Focused frontend selector `tensor_memory or tmem_` collected
+  `29/225` and ran as `28 passed, 1 failed`; exact rerun of
+  `test_tmem_subslice_reg_layout_constexpr` reproduced the same inline
+  expecttest mismatch. Candidate `FZ-20260421-0023`: frontend TMEM subslice
+  register-layout expectation drift. No backend repair or expectation update
+  attempted.
+
+- 2026-04-21: Round 60 examples breadth lane A completed. Report:
+  `agents/fuzz_round60_examples_breadth_lane.md`. Required `make -j8` was a
+  no-op. Broad collection over five `python/examples/gluon` files discovered
+  `974` tests; focused selector collected `12` and ran split-4 as
+  `11 passed, 1 skipped`. The skip is the existing fp4 packed descriptor
+  `K` multiple-of-128 example guard. No new independent `FZ-*`.
+
+- 2026-04-21: Round 60 random runtime-matrix lane C completed. Report:
+  `agents/fuzz_round60_random_runtime_matrix_lane.md`. Required `make -j8`
+  was a no-op. Seed `6042160` selected `64` exact nodeids from `1615`
+  collected rows across `ld/st`, copy, `ld.red`, plain MMAv5, and scaled
+  MMAv5. Split-4 runtime result: `56 passed, 8 skipped`; skips are known
+  lifted descriptor roundtrip Blackwell allocation-limit guards. No new
+  independent `FZ-*`.
