@@ -32003,3 +32003,19 @@ Open after this slice:
 - Classification: no compiler crash, false unsupported diagnostic, runtime
   miscompile, skip drift beyond known checked-in skips, or new independent
   `FZ-*`.
+
+## 2026-04-21: Round 50 grouped runtime breadth sweep
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_runtime_grouped_breadth_round50.md`.
+- Required `make -j8` was a no-op.
+- Positive breadth:
+  `175/1615` collected and `175 passed`.
+- Clean-boundary diagnostics:
+  `149/1615` collected and `149 passed`.
+- Known-red diagnostics:
+  `25/1615` collected and `19 passed, 6 failed`.
+- All six failures were existing `FZ-20260421-0012` M64 f32 `ld.red`
+  destination-layout planner rows.
+- Classification: no compiler crash, verifier drift, wrong result, diagnostic
+  drift, resource-boundary drift, or new independent `FZ-*`.

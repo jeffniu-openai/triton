@@ -3463,3 +3463,12 @@ discovery.
   checked-in allocation/resource skips. No compiler crash, false unsupported
   diagnostic, runtime miscompile, skip drift beyond known skips, or new
   independent `FZ-*`.
+
+- 2026-04-21: Round 50 grouped runtime breadth sweep completed. Report:
+  `agents/fuzz_runtime_grouped_breadth_round50.md`. Required `make -j8` was a
+  no-op. Positive breadth selector collected `175/1615` and passed as
+  `175 passed`; clean-boundary selector collected `149/1615` and passed as
+  `149 passed`; known-red selector collected `25/1615` and completed as
+  `19 passed, 6 failed`, with all six failures matching existing
+  `FZ-20260421-0012`. No compiler crash, verifier drift, wrong result,
+  diagnostic drift, or new independent `FZ-*`.
