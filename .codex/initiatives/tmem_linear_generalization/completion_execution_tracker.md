@@ -2,6 +2,28 @@
 
 Last updated: 2026-04-21
 
+Latest repair checkpoint: 2026-04-21 18:56 UTC direct `ld/st` full-view
+descriptor replay repair landed locally for checked-in `FZ-20260421-0003`
+coverage. Code changes preserve TMEM descriptor-view provenance through
+`memdesc_trans`, replay full-view loads/stores through a requested-packet-aware
+support layout that is validated against the base descriptor, handle M64
+non-family raw row plans for non-split packets, normalize rank-5 support-query
+out-dim names, and let scaled-MMAv5 B-scale rematerialization find stores
+through descriptor-view alias chains. Promoted positives:
+`ldst-fz20260421-0003-chain1-64x32-32x32b`,
+`ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b`,
+`ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b`,
+`generic-pass-dynamic-index-chain0`,
+`generic-pass-layout-conversion-pressure-chain0`, and
+`generic-pass-layout-conversion-pressure-chain0-16x128b`. Validation:
+required `make -j8`; exact scales CGA `9 passed`; exact rank-5 unit-parent
+`9 passed`; descriptor/higher-rank runtime split groups green as
+`56 passed, 32 skipped`, `42 passed, 46 skipped`,
+`68 passed, 20 skipped`, and `85 passed`; full structural fuzzer split-4
+`20 passed, 16 xfailed`. Remaining repair-plan frontier:
+`FZ-20260421-0002` dynamic/control-flow/capture-carried descriptor SSA wrong
+results, plus the older cataloged non-`FZ-0003` buckets.
+
 Latest fuzzing checkpoint: 2026-04-21 16:15 UTC Round 60 lit compiler breadth
 lane B completed. Report:
 `agents/fuzz_round60_lit_compiler_breadth_lane.md`. Required `make -j8` and
@@ -158,6 +180,16 @@ The project is complete when:
   progress.
 
 ## Active Phase Board
+
+- Phase R, systematic repair-plan execution: active as of 2026-04-21 16:59
+  UTC, superseding the Round 62 stop condition and the catalog-only fuzzing
+  campaign. Completed slices: dynamic encoded `memdesc_index` lowering
+  (`FZ-20260421-0001`), broader dynamic copy/`ld.red` consumer positives, and
+  direct full-view `ld/st` descriptor replay (`FZ-20260421-0003`). Current next
+  unblocked slice after checkpoint: isolate and repair the remaining
+  `FZ-20260421-0002` dynamic/control-flow/capture-carried descriptor SSA
+  wrong-result rows without regressing the newly promoted static/full-view
+  positives.
 
 - Phase Z, 24-hour structural fuzzing campaign: active as of 2026-04-21
   08:18 UTC. Build a systematic deterministic Python/Gluon runtime fuzzer plus

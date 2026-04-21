@@ -266,6 +266,25 @@ getTMemLdStCandidateLayoutsForQuery(Value memDesc, MemDescType queryTy,
   if (!rowPlan)
     return candidates;
 
+  std::optional<TMemLdStRowPlan> rawM64NonFamilyPlan;
+  if (queryTy.getRank() == 2 && queryTy.getShape()[0] == 64) {
+    std::string queryError;
+    auto maybeQueryLayout = inferStandaloneTMemLdStQueryLayout(
+        memDesc, /*preserveNonCanonicalView=*/true, &queryError);
+    if (succeeded(maybeQueryLayout)) {
+      auto *ctx = memDesc.getContext();
+      auto kBlock = StringAttr::get(ctx, "block");
+      bool hasFamilyBlock =
+          maybeQueryLayout->layout.hasInDim(kBlock) &&
+          maybeQueryLayout->layout.getInDimSize(kBlock) > 1;
+      auto layoutPlan = getTMemLdStRowPlan(maybeQueryLayout->layout);
+      if (!hasFamilyBlock && layoutPlan && layoutPlan->rowSpan == 64 &&
+          layoutPlan->rowSpan < rowPlan->rowSpan) {
+        rawM64NonFamilyPlan = layoutPlan;
+      }
+    }
+  }
+
   bool useExactViewLinearPlanner =
       shouldUseExactTMemLdStViewLayoutForM64DirectView(memDesc, queryTy,
                                                        atomName);
@@ -274,15 +293,22 @@ getTMemLdStCandidateLayoutsForQuery(Value memDesc, MemDescType queryTy,
           ? std::optional<LinearLayout>(toLinearLayout(queryTy))
           : std::nullopt;
   for (TMemAccessAtom atom : getTMemLdStAtomSearchOrder(std::nullopt)) {
+    auto atomRowPlan = rowPlan;
+    if (rawM64NonFamilyPlan &&
+        (atom == TMemAccessAtom::I16x64b ||
+         atom == TMemAccessAtom::I16x128b ||
+         atom == TMemAccessAtom::I16x256b)) {
+      atomRowPlan = rawM64NonFamilyPlan;
+    }
     std::optional<LinearLayout> layout;
     if (exactViewLayout && (atom == TMemAccessAtom::I32x32b ||
                             atom == TMemAccessAtom::I16x32bx2)) {
       layout = getDistributedLayoutForTmemLdSt(
           *exactViewLayout, atom, numWarps, queryTy.getElementTypeBitWidth(),
-          *rowPlan, /*allowSplitNFastPath=*/false);
+          *atomRowPlan, /*allowSplitNFastPath=*/false);
     } else {
       layout = getDistributedLayoutForTmemLdSt(queryTy, atom, numWarps,
-                                               rowPlan);
+                                               atomRowPlan);
     }
     if (layout)
       candidates.push_back(TMemLdStCandidateLayout{atom, std::move(*layout)});
@@ -3863,6 +3889,13 @@ static bool shouldPreferBackingRowPlanForPureOuterIndexView(
   // When that tile is rooted in a producer-owned larger row-plan contract
   // (for example MMAv5 accumulator roots), keep the backing plan as long as
   // the unchanged raw TMEM view can still materialize those anchors.
+  //
+  // Ordinary lifted linear layouts do not have that family/block contract:
+  // inheriting the parent's wider row plan makes 64-row views address the wrong
+  // half of the backing tile for packed split-N load/store messages.
+  auto kBlock = StringAttr::get(memDesc.getContext(), "block");
+  if (!rawLayout.hasInDim(kBlock) || rawLayout.getInDimSize(kBlock) <= 1)
+    return false;
   return getLogicalRowAnchorBasis(rawLayout, backingPlan->warpRow0) &&
          getLogicalRowAnchorBasis(rawLayout, backingPlan->warpRow1);
 }
@@ -4732,16 +4765,25 @@ getGenericTMemLdStReshapedSupportQueryLayout(Value memDesc,
     return std::nullopt;
 
   auto *ctx = queryTy.getContext();
+  auto srcQuery = *maybeSrcQuery;
+  auto outDimNames = standardOutDimNames(ctx, srcQuery.layout.getNumOutDims());
+  SmallVector<std::pair<StringAttr, int32_t>> outDims;
+  outDims.reserve(srcQuery.layout.getNumOutDims());
+  for (auto [idx, size] : llvm::enumerate(srcQuery.layout.getOutDimSizes()))
+    outDims.emplace_back(outDimNames[idx], static_cast<int32_t>(size));
+  srcQuery.layout = LinearLayout(srcQuery.layout.getBases(), std::move(outDims),
+                                 srcQuery.layout.isSurjective());
+
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
 
   auto normalizedSrcLayout =
-      normalizeTensorMemoryLinearLayoutForAnalysis(maybeSrcQuery->layout);
+      normalizeTensorMemoryLinearLayoutForAnalysis(srcQuery.layout);
   if (!normalizedSrcLayout.hasInDim(kRow) || !normalizedSrcLayout.hasInDim(kCol))
     return std::nullopt;
   auto normalizedSrcQuery = TMemLdStQueryLayout{
-      normalizedSrcLayout, maybeSrcQuery->twoCTAs,
-      remapTMemLdStQueryOrigin(*maybeSrcQuery, normalizedSrcLayout,
+      normalizedSrcLayout, srcQuery.twoCTAs,
+      remapTMemLdStQueryOrigin(srcQuery, normalizedSrcLayout,
                                /*deltaCoords=*/{})};
 
   int64_t logicalRows = queryTy.getShape()[0];

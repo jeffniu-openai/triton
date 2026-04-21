@@ -273,6 +273,29 @@ static SmallVector<Operation *> getAlloc(Value value) {
   return allocs;
 }
 
+static SmallVector<Value> getMemDescViewAliasChain(Value value) {
+  SmallVector<Value> aliases;
+  DenseSet<Value> seen;
+  Value current = value;
+  while (current && seen.insert(current).second) {
+    aliases.push_back(current);
+    Operation *defOp = current.getDefiningOp();
+    if (!defOp || !defOp->hasTrait<OpTrait::MemDescViewTrait>() ||
+        defOp->getNumOperands() == 0)
+      break;
+    current = defOp->getOperand(0);
+  }
+  return aliases;
+}
+
+static bool isAliasViewChainEdge(Operation *user,
+                                 const DenseSet<Value> &aliases) {
+  if (!user->hasTrait<OpTrait::MemDescViewTrait>() ||
+      user->getNumResults() != 1)
+    return false;
+  return aliases.contains(user->getResult(0));
+}
+
 class MaterializeSharedMMAScalesToTMem
     : public OpRewritePattern<TCGen5MMAScaledOp> {
 public:
@@ -383,25 +406,37 @@ public:
     if (!rematerializedShape)
       return failure();
 
+    SmallVector<Value> bScaleAliases = getMemDescViewAliasChain(bScale);
+    DenseSet<Value> bScaleAliasSet;
+    for (Value alias : bScaleAliases)
+      bScaleAliasSet.insert(alias);
+
     TMEMStoreOp storeOp;
-    bool hasOtherBScaleUsers = false;
-    for (Operation *user : llvm::make_early_inc_range(bScale.getUsers())) {
-      if (user == mmaOp.getOperation())
-        continue;
-      auto candidate = dyn_cast<TMEMStoreOp>(user);
-      if (candidate && candidate.getDst() == bScale) {
+    for (Value alias : bScaleAliases) {
+      for (Operation *user : alias.getUsers()) {
+        auto candidate = dyn_cast<TMEMStoreOp>(user);
+        if (!candidate || candidate.getDst() != alias)
+          continue;
         if (storeOp)
           return failure();
         storeOp = candidate;
-        continue;
       }
-      hasOtherBScaleUsers = true;
     }
     if (!storeOp)
       return failure();
     if (storeOp->getBlock() != mmaOp->getBlock() ||
         !storeOp->isBeforeInBlock(mmaOp.getOperation()))
       return failure();
+
+    bool hasOtherBScaleUsers = false;
+    for (Value alias : bScaleAliases) {
+      for (Operation *user : llvm::make_early_inc_range(alias.getUsers())) {
+        if (user == mmaOp.getOperation() || user == storeOp.getOperation() ||
+            isAliasViewChainEdge(user, bScaleAliasSet))
+          continue;
+        hasOtherBScaleUsers = true;
+      }
+    }
 
     auto storedType = dyn_cast<RankedTensorType>(storeOp.getSrc().getType());
     if (!storedType || storedType.getShape() != bScaleType.getShape() ||

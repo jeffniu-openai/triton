@@ -772,13 +772,15 @@ def _expected_ldst_ops(op_shape: str, offsets):
     return ops
 
 
-def _expected_scales_ldst_descriptor_view_ops(root_shape: str, view_shape: str, offsets=(0, )):
+def _expected_scales_ldst_descriptor_view_ops(root_shape: str, view_shape: str, offsets=(0, ), view_offsets=None):
+    if view_offsets is None:
+        view_offsets = offsets
     ops = []
     for offset in offsets:
         ops.append((f"tcgen05.st.sync.aligned.{root_shape}", offset))
-    for offset in offsets:
+    for offset in view_offsets:
         ops.append((f"tcgen05.ld.sync.aligned.{view_shape}", offset))
-    for offset in offsets:
+    for offset in view_offsets:
         ops.append((f"tcgen05.st.sync.aligned.{view_shape}", offset))
     for offset in offsets:
         ops.append((f"tcgen05.ld.sync.aligned.{root_shape}", offset))
@@ -5399,7 +5401,9 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         4,
         tuple(),
         "32x32b",
-        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x32.b32", "32x32b.x32.b32"),
+        _expected_scales_ldst_descriptor_view_ops(
+            "16x32bx2.x32.b32", "16x64b.x16.b32", view_offsets=(0, 1048576)
+        ),
     ),
     (
         128,
@@ -5407,7 +5411,9 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         4,
         tuple(),
         "32x32b",
-        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x64.b32", "32x32b.x64.b32"),
+        _expected_scales_ldst_descriptor_view_ops(
+            "16x32bx2.x64.b32", "16x64b.x32.b32", view_offsets=(0, 1048576)
+        ),
     ),
     (
         256,
@@ -5415,7 +5421,9 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         4,
         tuple(),
         "32x32b",
-        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x128.b32", "32x32b.x128.b32"),
+        _expected_scales_ldst_descriptor_view_ops(
+            "16x32bx2.x128.b32", "16x64b.x64.b32", view_offsets=(0, 1048576)
+        ),
     ),
 ]
 
@@ -5428,7 +5436,9 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES = [
         ((1, 0),),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            f"16x32bx2.x{M * N // 256}.b32", f"32x32b.x{M * N // 256}.b32"
+            f"16x32bx2.x{M * N // 256}.b32",
+            f"16x64b.x{M * N // 512}.b32",
+            view_offsets=(0, 1048576),
         ),
     )
     for M, N in product((128, 256), (4, 8, 16, 32, 64, 128))
@@ -5446,6 +5456,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_CASES = [
             f"{instr_variant}.x{M * N // (8 * width)}.b32",
             f"{instr_variant}.x{M * N // (8 * width)}.b32",
             (0, 1048576),
+            view_offsets=(0, 1048576),
         ),
     )
     for M, N, (instr_variant, width) in product(
@@ -5490,7 +5501,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
             ((1, 0),),
             "16x32bx2",
             _expected_scales_ldst_descriptor_view_ops(
-                "16x32bx2.x32.b32", "16x32bx2.x32.b32", (0,)
+                "16x32bx2.x32.b32", "16x64b.x16.b32", (0,), view_offsets=(0, 1048576)
             ),
         )
     ] + [
@@ -7621,8 +7632,6 @@ def test_tmem_runtime_matrix_ldst_x1_subword_twocta_descriptor_chain_roundtrip(
     ]
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_subslice" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
-    assert "ttg.memdesc_trans" in ttgir
     assert "tensor_memory_linear" in ttgir
     assert "twoCTAs = true" in ttgir
 
@@ -7842,12 +7851,8 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_roundtrip(
     assert ops == expected_ops
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_scales_encoding" in ttgir
-    if "tensor_memory_linear" in ttgir:
-        assert "ttg.memdesc_reshape" in ttgir
-        assert "ttg.memdesc_trans" in ttgir
-    else:
-        assert "tt.reshape" in ttgir
-        assert "tt.trans" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tmem_store" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -7870,12 +7875,8 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip(
     assert ops == expected_ops
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_scales_encoding" in ttgir
-    if "tensor_memory_linear" in ttgir:
-        assert "ttg.memdesc_reshape" in ttgir
-        assert "ttg.memdesc_trans" in ttgir
-    else:
-        assert "tt.reshape" in ttgir
-        assert "tt.trans" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tmem_store" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -8031,9 +8032,11 @@ def test_tmem_runtime_matrix_ldst_descriptor_rank5_unit_parent_n256_roundtrip(
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
     expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    support_st = "tcgen05.st.sync.aligned.16x64b.x64.b32"
+    support_ld = "tcgen05.ld.sync.aligned.16x64b.x64.b32"
     observed_opcodes = [op for op, _ in ops]
-    assert observed_opcodes.count(expected_st) == 8
-    assert observed_opcodes.count(expected_ld) == 8
+    assert observed_opcodes.count(expected_st) + observed_opcodes.count(support_st) == 8
+    assert observed_opcodes.count(expected_ld) + observed_opcodes.count(support_ld) == 8
 
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir

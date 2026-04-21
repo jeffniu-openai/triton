@@ -7,7 +7,24 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 17:05 UTC broadened dynamic
+Latest repair checkpoint: 2026-04-21 18:56 UTC repaired the checked-in
+`FZ-20260421-0003` direct `ld/st` full-view descriptor replay bucket and
+promoted its structural sentinels to positives. TMEM `memdesc_trans` folding
+now preserves descriptor-view provenance for the TMEM optimizer; full-view
+load/store replay chooses a support register layout from the requested packet
+family and verifies that layout against the physical backing descriptor; M64
+non-family raw views can use their own 64-row plan for non-split packets; rank-5
+support-query layouts normalize output dimension names before planner analysis;
+and scaled-MMAv5 B-scale rematerialization follows descriptor-view alias
+chains. Validation: required `make -j8`; exact scale descriptor-view CGA
+rerun `9 passed`; exact rank-5 unit-parent rerun `9 passed`; broad runtime
+descriptor selector split groups were green as group1 `56 passed, 32 skipped`,
+group2 `42 passed, 46 skipped`, group3 `68 passed, 20 skipped`, and group4
+`85 passed`; full structural fuzzer split-4 is now `20 passed, 16 xfailed`.
+Remaining strict structural xfails are now concentrated in dynamic/control-flow
+descriptor SSA (`FZ-20260421-0002`) and other previously cataloged buckets.
+
+Previous repair checkpoint: 2026-04-21 17:05 UTC broadened dynamic
 `FZ-20260421-0001` consumer coverage after the dynamic-index lowering repair.
 Temporary runtime probes now pass for runtime-index `ld.red`, branch-yielded
 copy, and runtime-index copy; temporary compiler-only `ld.red`/scales repros

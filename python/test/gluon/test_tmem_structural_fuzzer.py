@@ -211,55 +211,37 @@ LDST_CASES = [
     LdStCase("ldst-view-col-rotate-16x128b", 0x104, 128, 128, "identity", "rotate1", "16x128b", 1),
 ]
 
-LDST_DESCRIPTOR_VIEW_XFAIL_CASES = [
-    pytest.param(
-        LdStCase(
-            "ldst-fz20260421-0003-chain1-64x32-32x32b",
-            0xA003,
-            64,
-            32,
-            "identity",
-            "identity",
-            "32x32b",
-            1,
-        ),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0003: ld/st descriptor-view chain1 miscompiles",
-        ),
+LDST_DESCRIPTOR_VIEW_CASES = [
+    LdStCase(
+        "ldst-fz20260421-0003-chain1-64x32-32x32b",
+        0xA003,
+        64,
+        32,
+        "identity",
+        "identity",
+        "32x32b",
+        1,
     ),
-    pytest.param(
-        LdStCase(
-            "ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b",
-            0xA013,
-            64,
-            32,
-            "identity",
-            "reverse",
-            "16x64b",
-            2,
-        ),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0003: ld/st descriptor-view chain2 col-reverse packet mapping miscompiles",
-        ),
+    LdStCase(
+        "ldst-fz20260421-0003-chain2-col-reverse-64x32-16x64b",
+        0xA013,
+        64,
+        32,
+        "identity",
+        "reverse",
+        "16x64b",
+        2,
     ),
-    pytest.param(
-        LdStCase(
-            "ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b",
-            0xA023,
-            64,
-            32,
-            "identity",
-            "identity",
-            "16x64b",
-            2,
-            "f16",
-        ),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0003: f16 subword chain2 identity descriptor-view read miscompiles",
-        ),
+    LdStCase(
+        "ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b",
+        0xA023,
+        64,
+        32,
+        "identity",
+        "identity",
+        "16x64b",
+        2,
+        "f16",
     ),
 ]
 
@@ -336,13 +318,7 @@ DYNAMIC_LDRED_CASES = [
 ]
 
 GENERIC_PASS_MEMDESC_CASES = [
-    pytest.param(
-        GenericPassMemdescCase("generic-pass-dynamic-index-chain0", 0xE001, 0, 1, "dynamic_index"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0003: dynamic TMEM index now lowers; chain0 descriptor-view mapping still miscompiles",
-        ),
-    ),
+    GenericPassMemdescCase("generic-pass-dynamic-index-chain0", 0xE001, 0, 1, "dynamic_index"),
     GenericPassMemdescCase("generic-pass-dynamic-index-chain1", 0xE011, 1, 0, "dynamic_index"),
     pytest.param(
         GenericPassMemdescCase("generic-pass-dynamic-if-chain0-true", 0xE001, 0, 1, "dynamic_if"),
@@ -382,20 +358,8 @@ GENERIC_PASS_MEMDESC_CASES = [
 ]
 
 GENERIC_PASS_LAYOUT_PRESSURE_CASES = [
-    pytest.param(
-        GenericPassLayoutPressureCase("generic-pass-layout-conversion-pressure-chain0", 0xE100, 0),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0002: helper-returned TMEM view miscompiles under layout-conversion pressure",
-        ),
-    ),
-    pytest.param(
-        GenericPassLayoutPressureCase("generic-pass-layout-conversion-pressure-chain0-16x128b", 0xE128, 0, "16x128b"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0002: layout-conversion pressure miscompiles for chain0 16x128b",
-        ),
-    ),
+    GenericPassLayoutPressureCase("generic-pass-layout-conversion-pressure-chain0", 0xE100, 0),
+    GenericPassLayoutPressureCase("generic-pass-layout-conversion-pressure-chain0-16x128b", 0xE128, 0, "16x128b"),
 ]
 
 GENERIC_PASS_LOOP_CARRIED_CASES = [
@@ -1030,7 +994,7 @@ def test_tmem_structural_fuzzer_ldst_view_roundtrip(case):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("case", LDST_DESCRIPTOR_VIEW_XFAIL_CASES, ids=lambda case: case.case_id)
+@pytest.mark.parametrize("case", LDST_DESCRIPTOR_VIEW_CASES, ids=lambda case: case.case_id)
 def test_tmem_structural_fuzzer_ldst_descriptor_view_read(case):
     torch.manual_seed(case.seed)
     layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)

@@ -1461,6 +1461,17 @@ remain family-specific and consume a bounded subset of the inventory.
     generic-pass root;
   - report:
     `.codex/initiatives/tmem_linear_generalization/agents/fuzz_generic_pass_round8.md`.
+- 2026-04-21 repair update:
+  - direct/static full-view descriptor replay and layout-conversion-pressure
+    chain0 rows are now repaired by the shared full-view replay support-layout
+    planner;
+  - `generic-pass-layout-conversion-pressure-chain0` and
+    `generic-pass-layout-conversion-pressure-chain0-16x128b` are checked-in
+    positives;
+  - the remaining checked-in `FZ-20260421-0002` rows are dynamic-if,
+    mixed-capture, and tuple/capture-carried descriptor SSA cases. Treat the
+    next repair as a control-flow/provenance problem, not the static
+    descriptor-view packet mapping fixed for `FZ-20260421-0003`.
 
 ### FZ-20260421-0003: ld/st descriptor-view chains miscompile
 
@@ -1503,6 +1514,17 @@ remain family-specific and consume a bounded subset of the inventory.
     indexed views pass;
   - added checked-in strict xfail:
     `test_tmem_structural_fuzzer_ldst_descriptor_view_read[ldst-fz20260421-0003-f16-chain2-identity-64x32-16x64b]`.
+- 2026-04-21 repair update:
+  - this checked-in direct `ld/st` full-view descriptor replay bucket is
+    repaired and its three structural sentinels are now positives;
+  - the fix preserves TMEM descriptor-view provenance, chooses replay support
+    layouts by requested packet family, validates them against the base
+    descriptor, and uses the raw 64-row plan for M64 non-family non-split
+    packet requests;
+  - validation after promotion: full structural fuzzer split-4
+    `20 passed, 16 xfailed`, exact scales CGA `9 passed`, exact rank-5
+    unit-parent `9 passed`, and the descriptor/higher-rank runtime selector
+    split groups all green.
 
 ### FZ-20260421-0007: scaled-MMAv5 `use_acc` subslice accumulator miscompiles through dynamic `if`
 

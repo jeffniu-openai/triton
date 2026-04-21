@@ -1,5 +1,30 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 18:56 UTC repair slice 3 fixed the checked-in
+  `FZ-20260421-0003` direct `ld/st` full-view descriptor replay failures and
+  promoted their structural sentinels to positives. Root cause:
+  descriptor-view provenance was being folded away or replayed through a
+  generic physical support layout that did not preserve the requested packet
+  family/row plan, so full-view `ld/st` could address the wrong packet family
+  even though the physical backing tile was otherwise reachable.
+  Implementation: TMEM `memdesc_trans` folding now defers to the TMEM
+  optimizer; full-view replay selects support register layouts by requested
+  atom and verifies them against the backing descriptor; M64 non-family raw
+  views can use a raw 64-row plan for `16x64b`/`16x128b`/`16x256b`; rank-5
+  support queries standardize output dimensions before normalization;
+  scaled-MMAv5 B-scale rematerialization walks descriptor-view alias chains;
+  and Gluon frontend layout inference no longer returns an arbitrary blocked
+  fallback for replayable non-split full-view requests. Checked-in positives
+  now include the old static descriptor-view `FZ-0003` sentinels,
+  `generic-pass-dynamic-index-chain0`, and the layout-conversion-pressure
+  chain0 rows. Validation: required `make -j8`; exact scales CGA `9 passed`;
+  exact rank-5 unit-parent `9 passed`; runtime descriptor selector split
+  groups are green as `56 passed, 32 skipped`, `42 passed, 46 skipped`,
+  `68 passed, 20 skipped`, and `85 passed`; full structural fuzzer split-4 is
+  `20 passed, 16 xfailed`. Next: checkpoint this slice, then continue with the
+  remaining `FZ-20260421-0002` dynamic/control-flow descriptor SSA wrong
+  results.
+
 - Latest: 2026-04-21 17:05 UTC dynamic `FZ-20260421-0001` consumer coverage
   was broadened after commit `b794ab686`. The prior temporary compiler-only
   `ld.red` and scales dynamic-index MLIR repros no longer fail on illegal

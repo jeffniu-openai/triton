@@ -1776,17 +1776,26 @@ void init_gluon_ir(py::module &&m) {
               }
             }
             if (ttng::isTMemLdStReplayableFullView(queryMemDesc)) {
-              auto fallbackLayouts = getBlockedFallbackLayouts(
-                  queryMemDescTy, queryMemDescTy.getShape());
-              if (!fallbackLayouts.empty()) {
-                return layoutToGluon(fallbackLayouts.front());
+              if (atomName == "32x32b" || atomName == "32x32b_splitn" ||
+                  atomName == "16x32bx2") {
+                auto fallbackLayouts = getBlockedFallbackLayouts(
+                    queryMemDescTy, queryMemDescTy.getShape());
+                if (!fallbackLayouts.empty()) {
+                  return layoutToGluon(fallbackLayouts.front());
+                }
               }
+              // Full-view replay preserves semantics by reloading/storing the
+              // physical backing tile and converting to the requested layout.
+              // Keep searching for a layout that matches the requested packet
+              // family; an arbitrary blocked fallback can survive later view
+              // canonicalization as a direct TMEM access with the wrong atom.
+            } else {
+              if (debug && !unsupportedDescriptorViewError.empty()) {
+                debugLog << "[tmem-reg-layout] unsupported descriptor view: "
+                         << unsupportedDescriptorViewError << "\n";
+              }
+              return py::none();
             }
-            if (debug && !unsupportedDescriptorViewError.empty()) {
-              debugLog << "[tmem-reg-layout] unsupported descriptor view: "
-                       << unsupportedDescriptorViewError << "\n";
-            }
-            return py::none();
           }
           bool isViewLikeMemDesc =
               ttng::isExplicitTMemLdStViewProducer(queryMemDesc);

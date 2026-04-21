@@ -33221,3 +33221,31 @@ Open after this slice:
 - Next repair target:
   `FZ-20260421-0003` descriptor-view packet/layout mapping, because dynamic
   `chain0` now lowers and fails only as a wrong-result descriptor-view case.
+
+## 2026-04-21 18:56 UTC: FZ-0003 full-view descriptor replay repair
+
+- Branch/HEAD before this repair slice:
+  `b5d9b392d Broaden dynamic TMEM descriptor consumers`.
+- Implementation:
+  TMEM `memdesc_trans` no longer folds away descriptor-view provenance needed by
+  the TMEM optimizer; `OptimizeTMemLayouts` now replays full-view loads/stores
+  through a requested-atom-aware support tensor type and validates the candidate
+  against the backing descriptor; M64 non-family raw query layouts can use a
+  64-row non-split row plan; rank-5 support-query analysis standardizes output
+  dimensions before normalization; scaled-MMAv5 B-scale rematerialization walks
+  descriptor-view alias chains; and Gluon register-layout inference preserves
+  non-split full-view packet requests instead of returning an arbitrary blocked
+  fallback.
+- Test changes:
+  promoted the previous static descriptor-view `FZ-0003` xfails,
+  `generic-pass-dynamic-index-chain0`, and the two layout-conversion-pressure
+  chain0 rows to positives.
+- Validation:
+  required `make -j8`; exact scales CGA `9 passed`; exact rank-5 unit-parent
+  `9 passed`; broad descriptor/higher-rank runtime selector split groups green
+  as `56 passed, 32 skipped`, `42 passed, 46 skipped`,
+  `68 passed, 20 skipped`, and `85 passed`; full structural fuzzer split-4
+  `20 passed, 16 xfailed`; `py_compile` for the edited test files passed.
+- Remaining repair-plan frontier:
+  dynamic/control-flow/capture-carried descriptor SSA (`FZ-20260421-0002`),
+  not the direct full-view replay mapping fixed in this slice.

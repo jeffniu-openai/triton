@@ -415,9 +415,6 @@ matchReplayableFullView(Value memDesc) {
   if (reverseTransforms.empty())
     return std::nullopt;
 
-  if (!isUnsupportedDirectTMemLdStDescriptorView(memDesc, /*error=*/nullptr))
-    return std::nullopt;
-
   SmallVector<TMemTensorViewTransform> transforms(reverseTransforms.rbegin(),
                                                   reverseTransforms.rend());
   return TMemReplayFullViewMatch{cur, std::move(transforms)};
@@ -530,6 +527,279 @@ static Value reshapeAndConvertToType(PatternRewriter &rewriter, Location loc,
   if (currentTy != targetTy)
     current = ttg::ConvertLayoutOp::create(rewriter, loc, targetTy, current);
   return current;
+}
+
+static bool haveSameOutDimsIgnoringOrder(const LinearLayout &lhs,
+                                         const LinearLayout &rhs) {
+  auto lhsDims = llvm::to_vector(lhs.getOutDimNames());
+  auto rhsDims = llvm::to_vector(rhs.getOutDimNames());
+  if (lhsDims.size() != rhsDims.size())
+    return false;
+  for (StringAttr lhsDim : lhsDims) {
+    if (!rhs.hasOutDim(lhsDim) ||
+        lhs.getOutDimSize(lhsDim) != rhs.getOutDimSize(lhsDim))
+      return false;
+  }
+  return true;
+}
+
+static std::optional<LinearLayout> getRegisterLinearLayout(RankedTensorType ty) {
+  auto linear = dyn_cast<gpu::LinearEncodingAttr>(ty.getEncoding());
+  if (!linear)
+    return std::nullopt;
+  return linear.getLinearLayout();
+}
+
+static bool canComputeTMemLdStEncodingInfo(RankedTensorType regTy,
+                                           ttg::MemDescType memTy) {
+  auto regLayout = getRegisterLinearLayout(regTy);
+  return regLayout && haveSameOutDimsIgnoringOrder(*regLayout,
+                                                   gpu::toLinearLayout(memTy));
+}
+
+static bool canComputeTMemLdStEncodingInfo(RankedTensorType regTy,
+                                           const TMemLdStQueryLayout &query) {
+  auto regLayout = getRegisterLinearLayout(regTy);
+  return regLayout &&
+         haveSameOutDimsIgnoringOrder(*regLayout, query.layout);
+}
+
+static bool queryLayoutOutDimsMatchMemDesc(ttg::MemDescType memTy,
+                                           const TMemLdStQueryLayout &query) {
+  return haveSameOutDimsIgnoringOrder(gpu::toLinearLayout(memTy), query.layout);
+}
+
+static std::optional<TMemAccessAtom>
+getRequestedTMemLdStAtom(Value memDesc, RankedTensorType regTy, int maxnreg) {
+  auto memTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+  if (!memTy)
+    return std::nullopt;
+
+  auto tryInfo = [](FailureOr<TMemLdStEncodingInfo> maybeInfo)
+      -> std::optional<TMemAccessAtom> {
+    if (failed(maybeInfo))
+      return std::nullopt;
+    return maybeInfo->atom;
+  };
+
+  if (auto rowPlan = getTMemLdStRowPlanForQuery(memDesc, memTy)) {
+    if (canComputeTMemLdStEncodingInfo(regTy, memTy))
+      if (auto atom = tryInfo(computeTMemLdStEncodingInfo(
+              regTy, memTy, maxnreg, /*emitError=*/{}, rowPlan)))
+        return atom;
+  }
+
+  auto tryQueryInfo = [&](const TMemLdStQueryLayout &queryLayout,
+                          std::optional<TMemLdStRowPlan> rowPlan)
+      -> std::optional<TMemAccessAtom> {
+    if (!canComputeTMemLdStEncodingInfo(regTy, queryLayout))
+      return std::nullopt;
+    return tryInfo(computeTMemLdStEncodingInfo(
+        regTy, memTy, queryLayout, maxnreg, /*emitError=*/{}, rowPlan));
+  };
+
+  std::string rawError;
+  if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+          memDesc, /*preserveNonCanonicalView=*/true, &rawError);
+      succeeded(rawQuery)) {
+    auto rowPlan = getTMemLdStRowPlanForRawQuery(memDesc, memTy, *rawQuery);
+    if (auto atom = tryQueryInfo(*rawQuery, rowPlan))
+      return atom;
+  }
+
+  std::string supportError;
+  if (auto supportPlan = getTMemLdStSupportQueryPlan(memDesc, &supportError)) {
+    auto rowPlan = getTMemLdStRowPlanForSupportQuery(
+        memDesc, memTy, supportPlan->query, supportPlan->rowPlan);
+    if (auto atom = tryQueryInfo(supportPlan->query, rowPlan))
+      return atom;
+  }
+
+  for (ttg::MemDescType queryTy : getTMemLdStQueryTypes(memDesc)) {
+    if (!canComputeTMemLdStEncodingInfo(regTy, queryTy))
+      continue;
+    auto rowPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
+    if (auto atom = tryInfo(computeTMemLdStEncodingInfo(
+            regTy, queryTy, maxnreg, /*emitError=*/{}, rowPlan)))
+      return atom;
+  }
+  return std::nullopt;
+}
+
+static std::optional<RankedTensorType>
+getReplayFullViewSupportTensorType(Value base, Value view,
+                                   RankedTensorType requestedTy,
+                                   unsigned numWarps, int maxnreg) {
+  auto baseTy = dyn_cast<ttg::MemDescType>(base.getType());
+  auto desiredAtom = getRequestedTMemLdStAtom(view, requestedTy, maxnreg);
+  if (!desiredAtom && view != base)
+    desiredAtom = getRequestedTMemLdStAtom(base, requestedTy, maxnreg);
+  auto isSupportedByBase = [&](RankedTensorType regTy,
+                               TMemAccessAtom atom) -> bool {
+    if (!baseTy)
+      return false;
+    auto hasAtom = [&](FailureOr<TMemLdStEncodingInfo> maybeInfo) {
+      return succeeded(maybeInfo) &&
+             isTMemAccessAtomCompatibleWithRequest(baseTy, atom,
+                                                   maybeInfo->atom);
+    };
+
+    if (canComputeTMemLdStEncodingInfo(regTy, baseTy)) {
+      auto rowPlan = getTMemLdStRowPlanForQuery(base, baseTy);
+      if (hasAtom(computeTMemLdStEncodingInfo(regTy, baseTy, maxnreg,
+                                              /*emitError=*/{}, rowPlan)))
+        return true;
+    }
+
+    std::string rawError;
+    if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+            base, /*preserveNonCanonicalView=*/true, &rawError);
+        succeeded(rawQuery) && canComputeTMemLdStEncodingInfo(regTy, *rawQuery)) {
+      auto rowPlan = getTMemLdStRowPlanForRawQuery(base, baseTy, *rawQuery);
+      if (hasAtom(computeTMemLdStEncodingInfo(
+              regTy, baseTy, *rawQuery, maxnreg, /*emitError=*/{}, rowPlan)))
+        return true;
+    }
+
+    std::string supportError;
+    if (auto supportPlan = getTMemLdStSupportQueryPlan(base, &supportError)) {
+      if (canComputeTMemLdStEncodingInfo(regTy, supportPlan->query)) {
+        auto rowPlan = getTMemLdStRowPlanForSupportQuery(
+            base, baseTy, supportPlan->query, supportPlan->rowPlan);
+        if (hasAtom(computeTMemLdStEncodingInfo(
+                regTy, baseTy, supportPlan->query, maxnreg,
+                /*emitError=*/{}, rowPlan)))
+          return true;
+      }
+    }
+
+    for (ttg::MemDescType queryTy : getTMemLdStQueryTypes(base)) {
+      if (!canComputeTMemLdStEncodingInfo(regTy, queryTy))
+        continue;
+      auto rowPlan = getTMemLdStRowPlanForQuery(base, queryTy);
+      if (hasAtom(computeTMemLdStEncodingInfo(
+              regTy, queryTy, maxnreg, /*emitError=*/{}, rowPlan)))
+        return true;
+    }
+    return false;
+  };
+  auto replayAtomOrder = [&]() {
+    SmallVector<TMemAccessAtom> atoms;
+    auto push = [&](TMemAccessAtom atom) {
+      if (!llvm::is_contained(atoms, atom))
+        atoms.push_back(atom);
+    };
+    if (desiredAtom) {
+      if (*desiredAtom == TMemAccessAtom::I32x32b)
+        push(TMemAccessAtom::I16x32bx2);
+      push(*desiredAtom);
+    }
+    for (TMemAccessAtom atom :
+         {TMemAccessAtom::I16x64b, TMemAccessAtom::I32x32b,
+          TMemAccessAtom::I16x128b, TMemAccessAtom::I16x256b,
+          TMemAccessAtom::I16x32bx2}) {
+      push(atom);
+    }
+    return atoms;
+  }();
+  auto tryQueryTypes = [&](Value querySource)
+      -> std::optional<RankedTensorType> {
+    if (!baseTy)
+      return std::nullopt;
+    for (ttg::MemDescType queryTy : getTMemLdStQueryTypes(querySource)) {
+      if (!canComputeTMemLdStEncodingInfo(requestedTy, queryTy))
+        continue;
+      auto rowPlan = getTMemLdStRowPlanForQuery(querySource, queryTy);
+      if (!rowPlan)
+        rowPlan = getBackingTMemLdStRowPlan(querySource);
+      for (TMemAccessAtom atom : replayAtomOrder) {
+        auto layout =
+            getDistributedLayoutForTmemLdSt(queryTy, atom, numWarps, rowPlan);
+        if (!layout)
+          continue;
+        Attribute encoding =
+            gpu::LinearEncodingAttr::get(baseTy.getContext(), std::move(*layout));
+        auto regTy = RankedTensorType::get(
+            baseTy.getShape(), baseTy.getElementType(), encoding);
+        auto info = computeTMemLdStEncodingInfo(regTy, queryTy, maxnreg,
+                                                /*emitError=*/{}, rowPlan);
+        if (succeeded(info) &&
+            isTMemAccessAtomCompatibleWithRequest(queryTy, atom, info->atom) &&
+            isSupportedByBase(regTy, atom))
+          return regTy;
+      }
+    }
+    return std::nullopt;
+  };
+  if (baseTy) {
+    if (auto queryTypeSupport = tryQueryTypes(view))
+      return queryTypeSupport;
+    if (view != base)
+      if (auto queryTypeSupport = tryQueryTypes(base))
+        return queryTypeSupport;
+  }
+
+  if (!baseTy || !desiredAtom)
+    return getTMemLdStDirectSupportTensorType(base, numWarps);
+
+  auto makeType = [&](const LinearLayout &layout) -> RankedTensorType {
+    Attribute encoding =
+        gpu::LinearEncodingAttr::get(baseTy.getContext(), layout);
+    return RankedTensorType::get(baseTy.getShape(), baseTy.getElementType(),
+                                 encoding);
+  };
+  auto tryQuery = [&](const TMemLdStQueryLayout *queryLayout,
+                      std::optional<TMemLdStRowPlan> rowPlan)
+      -> std::optional<RankedTensorType> {
+    if (queryLayout && !queryLayoutOutDimsMatchMemDesc(baseTy, *queryLayout))
+      return std::nullopt;
+    std::optional<LinearLayout> queryOverride;
+    if (queryLayout)
+      queryOverride = queryLayout->layout;
+    auto layout = getDistributedLayoutForTmemLdSt(
+        baseTy, *desiredAtom, numWarps, rowPlan, queryOverride);
+    if (!layout)
+      return std::nullopt;
+    RankedTensorType candidateTy = makeType(*layout);
+    if (!isSupportedByBase(candidateTy, *desiredAtom))
+      return std::nullopt;
+    if (queryLayout && !canComputeTMemLdStEncodingInfo(candidateTy, *queryLayout))
+      return std::nullopt;
+    if (!queryLayout && !canComputeTMemLdStEncodingInfo(candidateTy, baseTy))
+      return std::nullopt;
+    FailureOr<TMemLdStEncodingInfo> info =
+        queryLayout ? computeTMemLdStEncodingInfo(
+                          candidateTy, baseTy, *queryLayout, maxnreg,
+                          /*emitError=*/{}, rowPlan)
+                    : computeTMemLdStEncodingInfo(candidateTy, baseTy, maxnreg,
+                                                  /*emitError=*/{}, rowPlan);
+    if (failed(info) || info->atom != *desiredAtom)
+      return std::nullopt;
+    return candidateTy;
+  };
+
+  std::string rawError;
+  if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+          base, /*preserveNonCanonicalView=*/true, &rawError);
+      succeeded(rawQuery)) {
+    auto rowPlan = getTMemLdStRowPlanForRawQuery(base, baseTy, *rawQuery);
+    if (auto candidate = tryQuery(&*rawQuery, rowPlan))
+      return candidate;
+  }
+
+  std::string supportError;
+  if (auto supportPlan = getTMemLdStSupportQueryPlan(base, &supportError)) {
+    auto rowPlan = getTMemLdStRowPlanForSupportQuery(
+        base, baseTy, supportPlan->query, supportPlan->rowPlan);
+    if (auto candidate = tryQuery(&supportPlan->query, rowPlan))
+      return candidate;
+  }
+
+  auto rowPlan = getTMemLdStRowPlanForQuery(base, baseTy);
+  if (auto candidate = tryQuery(/*queryLayout=*/nullptr, rowPlan))
+    return candidate;
+
+  return getTMemLdStDirectSupportTensorType(base, numWarps);
 }
 
 static SmallVector<int64_t>
@@ -721,17 +991,17 @@ static FailureOr<Value>
 lowerReplayFullViewLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp,
                         const TMemReplayFullViewMatch &match) {
   int numWarps = ttg::lookupNumWarps(loadOp);
-  auto maybeSupportTy = getTMemLdStDirectSupportTensorType(match.base, numWarps);
+  auto maybeSupportTy = getReplayFullViewSupportTensorType(
+      match.base, loadOp.getSrc(), cast<RankedTensorType>(loadOp.getType()),
+      numWarps, getContextualMaxNReg(loadOp));
   if (!maybeSupportTy)
     return failure();
 
   RankedTensorType supportTy = *maybeSupportTy;
   Value support =
       TMEMLoadOp::create(rewriter, loadOp.getLoc(), supportTy, match.base);
-  Value projected = applyTensorViewTransforms(rewriter, loadOp.getLoc(),
-                                              support, match.transforms);
   return reshapeAndConvertToType(
-      rewriter, loadOp.getLoc(), projected,
+      rewriter, loadOp.getLoc(), support,
       cast<RankedTensorType>(loadOp.getType()));
 }
 
@@ -742,13 +1012,15 @@ lowerReplayFullViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
     return failure();
 
   int numWarps = ttg::lookupNumWarps(storeOp);
-  auto maybeSupportTy = getTMemLdStDirectSupportTensorType(match.base, numWarps);
+  auto maybeSupportTy = getReplayFullViewSupportTensorType(
+      match.base, storeOp.getDst(),
+      cast<RankedTensorType>(storeOp.getSrc().getType()), numWarps,
+      getContextualMaxNReg(storeOp));
   if (!maybeSupportTy)
     return failure();
 
   RankedTensorType supportTy = *maybeSupportTy;
-  Value supportReplacement = applyInverseTensorViewTransforms(
-      rewriter, storeOp.getLoc(), storeOp.getSrc(), match.transforms);
+  Value supportReplacement = storeOp.getSrc();
   supportReplacement = reshapeAndConvertToType(
       rewriter, storeOp.getLoc(), supportReplacement, supportTy);
   TMEMStoreOp::create(rewriter, storeOp.getLoc(), match.base,

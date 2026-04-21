@@ -581,6 +581,17 @@ void Fp4ToFpOp::build(OpBuilder &builder, OperationState &state,
 }
 
 OpFoldResult MemDescTransOp::fold(FoldAdaptor adaptor) {
+  auto isTensorMemoryMemDesc = [](Value value) {
+    auto ty = dyn_cast<MemDescType>(value.getType());
+    return ty && ty.getEncoding() &&
+           triton::nvidia_gpu::isTensorMemoryEncoding(ty.getEncoding());
+  };
+  // TMEM descriptor-view chains carry support-query provenance that direct
+  // load/store replay needs even when the composed view is type-identical to
+  // the source. Let the TMEM optimizer replay those chains explicitly.
+  if (isTensorMemoryMemDesc(getSrc()))
+    return {};
+
   // transpose(x, order=[0, 1, ...]) -> x
   if (isIota(getOrder())) {
     return getSrc();
