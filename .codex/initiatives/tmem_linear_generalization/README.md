@@ -7,7 +7,27 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 19:39 UTC repaired the checked-in
+Latest repair checkpoint: 2026-04-21 20:37 UTC repaired the checked-in
+`FZ-20260421-0004` `ld.red` opcode-loss/software-reduce fallback bucket.
+Reduction-load layout selection now uses the same support-query-aware planner
+as descriptor-view replay, and the Gluon frontend asks the backend whether a
+direct reduction load is legal for the specific memdesc before emitting a
+hardware `ttng.tmem_load {redOp}`. Unsupported descriptor views initially enter
+as plain load plus software reduce, then `OptimizeTMemLayouts` fuses the
+replayable pattern back into hardware `tcgen05.ld.red` when the backend can
+prove the queried layout. M64 descriptor-view row planning now preserves
+canonical 128-row backing layouts while using the active 64-row plan for
+noncanonical split-N views. Promoted positives: the five checked-in
+`ldred-fz20260421-0004-*` sentinels. Validation: required `make -j8`; exact
+promoted sentinels `5 passed`; full structural fuzzer split-4
+`30 passed, 6 xfailed`; broad `ld_red` runtime selector over M64,
+descriptor-chain, explicit-compatible, non-f32, scales/software, and
+N-sharded rows `145 passed`; targeted M64 permuted controls `6 passed`;
+targeted lit `tmem_layouts.mlir` and `memdesc-subview-split.mlir` `2 passed`;
+`py_compile` and `git diff --check` passed. The remaining structural xfails
+no longer include `FZ-0004`.
+
+Previous repair checkpoint: 2026-04-21 19:39 UTC repaired the checked-in
 `FZ-20260421-0002` generic-pass/control-flow descriptor SSA wrong-result
 bucket. The TMEM optimizer now sinks replayable full-view TMEM loads through
 `scf.if` results when both branches yield replayable full-view descriptors,

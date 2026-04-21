@@ -2126,6 +2126,75 @@ void init_gluon_ir(py::module &&m) {
         rankedTy, ttg::toLinearLayout(rankedTy)));
   });
 
+  m.def("is_tmem_load_reduction_memdesc_supported",
+        [](Value memDesc, Type resultTy) {
+          auto rankedTy = dyn_cast<RankedTensorType>(resultTy);
+          if (!rankedTy)
+            throw std::invalid_argument("expected a ranked tensor result type");
+          auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+          if (!memDescTy)
+            throw std::invalid_argument("expected a memdesc value");
+          if (!ttng::getTmemLoadReductionLayoutSupport(
+                  rankedTy, ttg::toLinearLayout(rankedTy))) {
+            return false;
+          }
+          if (ttng::isUnsupportedDirectTMemLdStDescriptorView(
+                  memDesc, /*reason=*/nullptr)) {
+            return false;
+          }
+
+          constexpr int maxnreg = 256;
+          auto isCompatible =
+              [](FailureOr<ttng::TMemLdStEncodingInfo> info) {
+                return succeeded(info) &&
+                       ttng::isTMemLdStReductionCompatible(*info);
+              };
+          if (ttng::isReductionFriendlyTmemSourceLayout(memDescTy)) {
+            auto rowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, memDescTy);
+            if (isCompatible(ttng::computeTMemLdStEncodingInfo(
+                    rankedTy, memDescTy, maxnreg, /*emitError=*/{}, rowPlan))) {
+              return true;
+            }
+          }
+          for (ttg::MemDescType queryTy :
+               ttng::getTMemLdStQueryTypes(memDesc)) {
+            if (!ttng::isReductionFriendlyTmemSourceLayout(queryTy))
+              continue;
+            auto rowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, queryTy);
+            if (isCompatible(ttng::computeTMemLdStEncodingInfo(
+                    rankedTy, queryTy, maxnreg, /*emitError=*/{}, rowPlan))) {
+              return true;
+            }
+          }
+          if (auto supportPlan =
+                  ttng::getTMemLdStSupportQueryPlan(memDesc,
+                                                    /*error=*/nullptr)) {
+            auto rowPlan = supportPlan->rowPlan;
+            if (!rowPlan)
+              rowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, memDescTy);
+            if (!rowPlan)
+              rowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
+            if (isCompatible(ttng::computeTMemLdStEncodingInfo(
+                    rankedTy, memDescTy, supportPlan->query, maxnreg,
+                    /*emitError=*/{}, rowPlan))) {
+              return true;
+            }
+          }
+          if (auto rawQuery = ttng::inferStandaloneTMemLdStQueryLayout(
+                  memDesc, /*preserveNonCanonicalView=*/true,
+                  /*error=*/nullptr);
+              succeeded(rawQuery)) {
+            auto rowPlan = ttng::getTMemLdStRowPlanForRawQuery(
+                memDesc, memDescTy, *rawQuery);
+            if (isCompatible(ttng::computeTMemLdStEncodingInfo(
+                    rankedTy, memDescTy, *rawQuery, maxnreg,
+                    /*emitError=*/{}, rowPlan))) {
+              return true;
+            }
+          }
+          return false;
+        });
+
   m.def(
       "make_cga_layout",
       [](std::vector<unsigned> ctasPerCga, std::vector<unsigned> ctaSplitNum,

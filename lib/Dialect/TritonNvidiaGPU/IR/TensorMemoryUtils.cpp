@@ -2619,6 +2619,28 @@ getFullShapeM64TMemRowPlan(MemDescType memTy) {
     return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
                            /*rowSpan=*/128};
   }
+  auto kRow = StringAttr::get(memTy.getContext(), "row");
+  if (memLayout.hasInDim(kRow) && memLayout.getInDimSize(kRow) == 128) {
+    constexpr std::array<int32_t, 7> canonicalRows = {1,  2,  4, 8,
+                                                      0, 16, 32};
+    bool canonicalM64Rows = memLayout.getInDimSizeLog2(kRow) ==
+                                canonicalRows.size() &&
+                            llvm::all_of(llvm::enumerate(canonicalRows),
+                                         [&](auto indexed) {
+                                           auto [idx, expected] = indexed;
+                                           auto basis =
+                                               memLayout.getBasis(kRow, idx);
+                                           return basis.size() >= 2 &&
+                                                  basis[0] == expected &&
+                                                  basis[1] == 0;
+                                         });
+    auto activeRows = memLayout.removeZeroBasesAlongDim(kRow);
+    if (!canonicalM64Rows && activeRows.hasInDim(kRow) &&
+        activeRows.getInDimSize(kRow) == 64) {
+      return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
+                             /*rowSpan=*/64};
+    }
+  }
   return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
                          /*rowSpan=*/128};
 }
@@ -3351,7 +3373,10 @@ static bool isSimpleM64SplitNRawQueryLayout(const LinearLayout &layout,
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
   if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
-      layout.getInDimSize(kRow) != 128 || layout.getInDimSize(kCol) != n)
+      layout.getInDimSize(kCol) != n)
+    return false;
+  int64_t physicalRows = layout.getInDimSize(kRow);
+  if (physicalRows != 64 && physicalRows != 128)
     return false;
   auto outDims = llvm::to_vector(layout.getOutDimNames());
   if (layout.getOutDimSize(outDims[0]) != m ||
@@ -3377,7 +3402,9 @@ static bool isSimpleM64SplitNRawQueryLayout(const LinearLayout &layout,
       return false;
     seenRows[rowBit] = true;
   }
-  if (zeroRows != 1 || !llvm::all_of(seenRows, [](bool seen) { return seen; }))
+  unsigned expectedZeroRows = physicalRows == 128 ? 1 : 0;
+  if (zeroRows != expectedZeroRows ||
+      !llvm::all_of(seenRows, [](bool seen) { return seen; }))
     return false;
 
   SmallVector<bool> seenCols(layout.getInDimSizeLog2(kCol), false);
@@ -3594,11 +3621,85 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
     return isTMemLdStReductionCompatible(*info);
   };
 
+  auto tryLayoutWithQuery =
+      [&](gpu::DistributedEncodingTrait layout,
+          const TMemLdStQueryLayout &queryLayout,
+          std::optional<TMemLdStRowPlan> rowPlan)
+      -> std::optional<gpu::DistributedEncodingTrait> {
+    auto regTy = RankedTensorType::get(shape, elementType, layout);
+    if (!isReductionFriendlyTmemLoadLayout(tensorTy, toLinearLayout(regTy)))
+      return std::nullopt;
+    if (isReductionCompatible(computeTMemLdStEncodingInfo(
+            regTy, memDescTy, queryLayout, /*maxnreg=*/256,
+            /*emitError=*/{}, rowPlan))) {
+      return layout;
+    }
+    return std::nullopt;
+  };
+
+  auto trySupportReductionLayout =
+      [&]() -> std::optional<gpu::DistributedEncodingTrait> {
+    std::string supportError;
+    auto supportPlan = getTMemLdStSupportQueryPlan(memDesc, &supportError);
+    if (!supportPlan)
+      return std::nullopt;
+
+    auto supportRowPlan = supportPlan->rowPlan;
+    if (!supportRowPlan) {
+      supportRowPlan = getTMemLdStRowPlanForSupportQuery(
+          memDesc, memDescTy, supportPlan->query, supportPlan->rowPlan);
+    }
+    if (!supportRowPlan)
+      supportRowPlan =
+          getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy,
+                                           supportPlan->query);
+    if (!supportRowPlan)
+      supportRowPlan = getBackingTMemLdStRowPlan(memDesc);
+
+    SmallVector<gpu::DistributedEncodingTrait> layouts;
+    auto addLinearLayout = [&](std::optional<LinearLayout> layout) {
+      if (!layout)
+        return;
+      auto attr = LinearEncodingAttr::get(ctx, std::move(*layout));
+      if (llvm::none_of(layouts, [&](gpu::DistributedEncodingTrait existing) {
+            return cast<Attribute>(existing) == cast<Attribute>(attr);
+          })) {
+        layouts.push_back(attr);
+      }
+    };
+
+    for (TMemAccessAtom atom : getTMemLdStAtomSearchOrder(std::nullopt)) {
+      addLinearLayout(getDistributedLayoutForTmemLdSt(
+          memDescTy, atom, numWarps, supportRowPlan,
+          supportPlan->query.layout));
+    }
+    if (auto splitLongM =
+            getTmemLoadLayoutSplitLongM(tensorTy, memDescTy, numWarps)) {
+      if (llvm::none_of(layouts, [&](gpu::DistributedEncodingTrait existing) {
+            return cast<Attribute>(existing) ==
+                   cast<Attribute>(*splitLongM);
+          })) {
+        layouts.push_back(*splitLongM);
+      }
+    }
+
+    for (gpu::DistributedEncodingTrait layout : layouts) {
+      if (auto valid =
+              tryLayoutWithQuery(layout, supportPlan->query, supportRowPlan)) {
+        return valid;
+      }
+    }
+    return std::nullopt;
+  };
+
   auto tryReductionLayout =
       [&](MemDescType queryTy) -> std::optional<gpu::DistributedEncodingTrait> {
     auto maybeLayout = getTmemLoadReductionLayout(tensorTy, queryTy, numWarps);
-    if (!maybeLayout)
+    if (!maybeLayout) {
+      if (auto supportLayout = trySupportReductionLayout())
+        return supportLayout;
       return tryRawQueryCompatibleM64Layout();
+    }
 
     auto regTy = RankedTensorType::get(shape, elementType, *maybeLayout);
     if (!isReductionFriendlyTmemLoadLayout(tensorTy, toLinearLayout(regTy)))
@@ -3608,19 +3709,29 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
     if (!queryRowPlan)
       queryRowPlan = getBackingTMemLdStRowPlan(memDesc);
 
+    if (rawQueryLayout && isViewLikeMemDesc) {
+      if (auto supportLayout = trySupportReductionLayout())
+        return supportLayout;
+    }
+
     if (rawQueryLayout &&
         isReductionCompatible(computeTMemLdStEncodingInfo(
             regTy, memDescTy, *rawQueryLayout, /*maxnreg=*/256,
             /*emitError=*/{}, rawRowPlan))) {
       return *maybeLayout;
     }
-    if (rawQueryLayout && isViewLikeMemDesc)
+    if (rawQueryLayout && isViewLikeMemDesc) {
+      if (auto supportLayout = trySupportReductionLayout())
+        return supportLayout;
       return std::nullopt;
+    }
     if (isReductionCompatible(computeTMemLdStEncodingInfo(
             regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
             queryRowPlan))) {
       return *maybeLayout;
     }
+    if (auto supportLayout = trySupportReductionLayout())
+      return supportLayout;
     return std::nullopt;
   };
 

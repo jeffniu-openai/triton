@@ -1,3 +1,5 @@
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Matchers.h"
@@ -1495,7 +1497,8 @@ public:
 // reduce across warps.
 class TMemLoadReducePattern : public OpRewritePattern<TMEMLoadOp> {
 public:
-  using OpRewritePattern::OpRewritePattern;
+  TMemLoadReducePattern(MLIRContext *context)
+      : OpRewritePattern<TMEMLoadOp>(context, /*benefit=*/2) {}
 
   LogicalResult matchAndRewrite(TMEMLoadOp tmemLoadOp,
                                 PatternRewriter &rewriter) const override {
@@ -1530,8 +1533,11 @@ public:
     // warp 7 gets M = 112
     RankedTensorType oldType = tmemLoadOp.getType();
     std::optional<gpu::DistributedEncodingTrait> newLayout =
-        getTmemLoadLayoutSplitLongM(oldType, tmemLoadOp.getSrc().getType(),
-                                    numWarps);
+        getTMemLoadReductionLayoutForMemDesc(tmemLoadOp.getSrc(), numWarps);
+    if (!newLayout) {
+      newLayout = getTmemLoadLayoutSplitLongM(
+          oldType, tmemLoadOp.getSrc().getType(), numWarps);
+    }
     if (!newLayout)
       return failure();
     if (newLayout.value() == oldType.getEncoding())
@@ -1544,6 +1550,177 @@ public:
     auto cvt = ttg::ConvertLayoutOp::create(builder, tmemLoadOp.getLoc(),
                                             oldType, tmemLoadOp.getResult());
     tmemLoadOp.getResult().replaceAllUsesExcept(cvt.getResult(), cvt);
+    return success();
+  }
+};
+
+class TMemFuseLoadReducePattern : public OpRewritePattern<TMEMLoadOp> {
+public:
+  TMemFuseLoadReducePattern(MLIRContext *context)
+      : OpRewritePattern<TMEMLoadOp>(context, /*benefit=*/1) {}
+
+  LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
+                                PatternRewriter &rewriter) const override {
+    if (!loadOp || loadOp.getRedOp() || loadOp.getToken())
+      return failure();
+
+    auto loadTy = dyn_cast<RankedTensorType>(loadOp.getType());
+    auto srcTy = dyn_cast<ttg::MemDescType>(loadOp.getSrc().getType());
+    if (!loadTy || !srcTy || loadTy.getElementType().isF32() == false ||
+        srcTy.getElementType().isF32() == false ||
+        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding()))
+      return failure();
+
+    struct ReduceMatch {
+      triton::ReduceOp reduceOp;
+      math::AbsFOp absOp;
+      TMEMLoadReduceModifier modifier;
+    };
+    auto matchReduce = [&](Value value) -> std::optional<ReduceMatch> {
+      bool useAbs = false;
+      math::AbsFOp absOp;
+      Value reduceInput = value;
+      if (absOp = value.getDefiningOp<math::AbsFOp>()) {
+        if (absOp.getOperand() != loadOp.getResult())
+          return std::nullopt;
+        useAbs = true;
+        reduceInput = absOp.getResult();
+      }
+
+      for (Operation *user : reduceInput.getUsers()) {
+        auto reduceOp = dyn_cast<triton::ReduceOp>(user);
+        if (!reduceOp || reduceOp.getAxis() != 1 ||
+            reduceOp.getNumOperands() != 1 || reduceOp.getNumResults() != 1 ||
+            reduceOp.getOperand(0) != reduceInput) {
+          continue;
+        }
+
+        Operation *combiner = reduceOp.getSingleCombiner();
+        if (!combiner)
+          continue;
+
+        std::optional<TMEMLoadReduceModifier> modifier;
+        if (isa<arith::MinNumFOp>(combiner))
+          modifier = TMEMLoadReduceModifier::MIN;
+        else if (isa<arith::MaxNumFOp>(combiner))
+          modifier = TMEMLoadReduceModifier::MAX;
+        else
+          continue;
+        return ReduceMatch{reduceOp, useAbs ? absOp : math::AbsFOp(),
+                           *modifier};
+      }
+      return std::nullopt;
+    };
+
+    std::optional<ReduceMatch> match = matchReduce(loadOp.getResult());
+    if (!match) {
+      for (Operation *user : loadOp.getResult().getUsers()) {
+        auto cvt = dyn_cast<ttg::ConvertLayoutOp>(user);
+        if (!cvt)
+          continue;
+        match = matchReduce(cvt.getResult());
+        if (match)
+          break;
+      }
+    }
+    if (!match)
+      return failure();
+
+    auto isReductionCompatible =
+        [](FailureOr<TMemLdStEncodingInfo> info) -> bool {
+      return succeeded(info) && isTMemLdStReductionCompatible(*info);
+    };
+    int maxnreg = getContextualMaxNReg(loadOp);
+    auto canLowerType = [&](RankedTensorType candidateTy) {
+      auto support = getTmemLoadReductionLayoutSupport(
+          candidateTy, ttg::toLinearLayout(candidateTy));
+      if (!support)
+        return false;
+
+      if (isReductionFriendlyTmemSourceLayout(srcTy)) {
+        auto rowPlan = getTMemLdStRowPlanForQuery(loadOp.getSrc(), srcTy);
+        if (isReductionCompatible(computeTMemLdStEncodingInfo(
+                candidateTy, srcTy, maxnreg, /*emitError=*/{}, rowPlan))) {
+          return true;
+        }
+      }
+
+      std::string supportError;
+      if (auto supportPlan =
+              getTMemLdStSupportQueryPlan(loadOp.getSrc(), &supportError)) {
+        auto rowPlan = supportPlan->rowPlan;
+        if (!rowPlan)
+          rowPlan = getTMemLdStRowPlanForQueryLayout(
+              loadOp.getSrc(), srcTy, supportPlan->query);
+        if (!rowPlan)
+          rowPlan = getBackingTMemLdStRowPlan(loadOp.getSrc());
+        if (isReductionCompatible(computeTMemLdStEncodingInfo(
+                candidateTy, srcTy, supportPlan->query, maxnreg,
+                /*emitError=*/{}, rowPlan))) {
+          return true;
+        }
+      }
+
+      std::string rawError;
+      if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+              loadOp.getSrc(), /*preserveNonCanonicalView=*/true, &rawError);
+          succeeded(rawQuery)) {
+        auto rowPlan =
+            getTMemLdStRowPlanForQueryLayout(loadOp.getSrc(), srcTy, *rawQuery);
+        if (!rowPlan)
+          rowPlan = getBackingTMemLdStRowPlan(loadOp.getSrc());
+        if (isReductionCompatible(computeTMemLdStEncodingInfo(
+                candidateTy, srcTy, *rawQuery, maxnreg, /*emitError=*/{},
+                rowPlan))) {
+          return true;
+        }
+      }
+
+      for (ttg::MemDescType queryTy : getTMemLdStQueryTypes(loadOp.getSrc())) {
+        auto rowPlan = getTMemLdStRowPlanForQuery(loadOp.getSrc(), queryTy);
+        if (isReductionCompatible(computeTMemLdStEncodingInfo(
+                candidateTy, queryTy, maxnreg, /*emitError=*/{}, rowPlan))) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    RankedTensorType fusedTy = loadTy;
+    if (auto plannedLayout = getTMemLoadReductionLayoutForMemDesc(
+            loadOp.getSrc(), ttg::lookupNumWarps(loadOp))) {
+      auto plannedTy = loadTy.cloneWithEncoding(*plannedLayout);
+      if (canLowerType(plannedTy))
+        fusedTy = plannedTy;
+    }
+    if (!canLowerType(fusedTy))
+      return failure();
+
+    auto redOpAttr = TMEMLoadReduceModifierAttr::get(rewriter.getContext(),
+                                                     match->modifier);
+    BoolAttr absAttr =
+        match->absOp ? rewriter.getBoolAttr(true) : BoolAttr(nullptr);
+    auto fusedLoad = TMEMLoadOp::create(
+        rewriter, loadOp.getLoc(), fusedTy, /*token=*/Type(), loadOp.getSrc(),
+        /*dep=*/Value(), redOpAttr, absAttr, /*NaN=*/nullptr);
+
+    Value red = fusedLoad.getRed();
+    auto reduceTy =
+        cast<RankedTensorType>(match->reduceOp.getResult().front().getType());
+    if (red.getType() != reduceTy)
+      red = reshapeAndConvertToType(rewriter, match->reduceOp.getLoc(), red,
+                                    reduceTy);
+
+    Value loaded = fusedLoad.getResult();
+    if (loaded.getType() != loadTy)
+      loaded = reshapeAndConvertToType(rewriter, loadOp.getLoc(), loaded,
+                                       loadTy);
+
+    rewriter.replaceOp(match->reduceOp, red);
+    loadOp.getResult().replaceAllUsesWith(loaded);
+    if (match->absOp && match->absOp->use_empty())
+      rewriter.eraseOp(match->absOp);
+    rewriter.eraseOp(loadOp);
     return success();
   }
 };
@@ -1746,7 +1923,8 @@ public:
              TMemReplayFullViewIfLoadPattern, TMemStoreJoinPattern,
              TMemLeadingSliceStorePattern, TMemReplayHalfSliceStorePattern,
              TMemReplayFullViewStorePattern, TMemLoadReducePattern,
-             TMemFromSharedMemPattern, TMemToSharedMemPattern>(context);
+             TMemFuseLoadReducePattern, TMemFromSharedMemPattern,
+             TMemToSharedMemPattern>(context);
     if (failed(applyPatternsGreedily(m, std::move(patterns))))
       signalPassFailure();
   }

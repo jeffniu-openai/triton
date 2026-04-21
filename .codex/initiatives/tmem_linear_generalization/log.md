@@ -33286,3 +33286,52 @@ Open after this slice:
   checked-in structural xfails are now down to `11`, none from the promoted
   `FZ-0002` memdesc-control rows. Next slice should inspect those remaining
   xfails and choose the highest-impact backend bucket.
+
+## 2026-04-21 20:37 UTC: FZ-0004 ld.red support-query replay repair
+
+- Branch/HEAD before this repair slice:
+  `979f0af5b`.
+- Dirty files at checkpoint:
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+  `lib/Dialect/TritonNvidiaGPU/Transforms/OptimizeTMemLayouts.cpp`,
+  `python/src/gluon_ir.cc`,
+  `python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`,
+  `python/test/gluon/test_tmem_structural_fuzzer.py`, plus initiative
+  documentation.
+- Root cause:
+  `ld.red` layout support was selected primarily from the result tensor layout.
+  Descriptor-view chains that needed the support-query replay planner either
+  reached codegen as unsupported direct red loads or remained as plain
+  `tmem_load` plus software min/max reduce, even when the hardware packet
+  family and row plan were legal.
+- Completed implementation:
+  `TensorMemoryUtils` now derives reduction-load support layouts through the
+  descriptor support-query planner and validates candidates with
+  `computeTMemLdStEncodingInfo` plus reduction compatibility. The Gluon bridge
+  exposes a memdesc-aware reduction support predicate so the frontend falls
+  back to plain load plus software reduce only when direct red-op emission is
+  not verifier-legal. `OptimizeTMemLayouts` then fuses replayable plain-load
+  plus min/max reductions, including the tested abs path, back into hardware
+  `ttng.tmem_load {redOp}` after layout replay. M64 row planning now keeps
+  canonical contiguous M64 views on the 128-row backing contract and uses the
+  active 64-row plan for noncanonical split-N descriptor views.
+- Promoted checked-in positives:
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min`,
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max`,
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs`,
+  `ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan`, and
+  `ldred-fz20260421-0004-chain1-64x32-min`.
+- Validation evidence:
+  required `make -j8`; exact promoted structural rows passed as `5 passed`;
+  full structural fuzzer split-4 ran as `30 passed, 6 xfailed`; broad
+  `ld_red` runtime selector over M64, descriptor-chain, explicit-compatible,
+  non-f32, scales/software, and N-sharded rows passed as `145 passed`;
+  direct permuted M64 controls passed as `6 passed`; targeted lit
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonGPU/memdesc-subview-split.mlir` passed `2/2`; edited Python
+  files passed `py_compile`; `git diff --check` passed.
+- Remaining repair-plan frontier:
+  checked-in structural xfails are now down to `6`, with the promoted
+  `FZ-0004` rows gone. Next slice should inspect those remaining xfails and
+  repair the next real backend support gap rather than treating strict xfails
+  as permanent boundaries.

@@ -24,6 +24,20 @@ campaign requested on 2026-04-21.
 - Completion tracker: `completion_execution_tracker.md`
 - Handoff log: `handoff_2026-04-09.md`
 
+## Latest Repair Checkpoint: FZ-20260421-0004
+
+- Time: 2026-04-21 20:37 UTC.
+- Scope: repair the checked-in `ld.red` descriptor-chain/indexed opcode-loss
+  bucket instead of leaving it as strict xfail evidence.
+- Result: support-query-aware reduction-load planning, memdesc-aware frontend
+  direct-red validation, optimizer fusion from replayable plain load plus
+  min/max reduce back to hardware `ld.red`, and active-row M64 split-N row
+  planning promoted all five checked-in `ldred-fz20260421-0004-*` sentinels.
+- Validation: required `make -j8`; exact promoted rows `5 passed`; full
+  structural fuzzer split-4 `30 passed, 6 xfailed`; broad `ld_red` runtime
+  selector `145 passed`; direct permuted M64 controls `6 passed`; targeted lit
+  `2 passed`; `py_compile` and `git diff --check` passed.
+
 ## Latest Round 55 FZ-0003 Boundary Lane B
 
 - Report: `agents/fuzz_round55_fz0003_boundary_lane.md`.
@@ -1699,6 +1713,9 @@ remain family-specific and consume a bounded subset of the inventory.
 
 - Source: Lane A finding `A2`.
 - Failure class: `opcode_mismatch`.
+- Status as of 2026-04-21 20:37 UTC: checked-in sentinels repaired and
+  promoted. Historical fuzz evidence below remains useful for coverage, but
+  the structural fuzzer no longer carries `FZ-0004` strict xfails.
 - Family: `ldred`.
 - Minimal shape: parent `[2, 64, 32]`, indexed view `[64, 32]`.
 - View chain:

@@ -1,5 +1,28 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 20:37 UTC repair slice 5 fixed the checked-in
+  `FZ-20260421-0004` `ld.red` descriptor-chain/indexed opcode-loss bucket.
+  Root cause: reduction-load support had been selected from the result tensor
+  layout alone, so descriptor views that needed support-query replay either
+  entered as unsupported direct `ttng.tmem_load {redOp}` or stayed as plain
+  load plus software reduce even when the hardware could issue
+  `tcgen05.ld.red`. Implementation: `TensorMemoryUtils` now chooses
+  reduction layouts with support-query-aware descriptor planning and validates
+  them against reduction compatibility; the frontend binding checks the
+  memdesc-specific reduction contract before direct red-op emission;
+  `OptimizeTMemLayouts` can fuse replayable plain-load-plus-min/max-reduce
+  patterns back into hardware `ld.red`; and M64 row planning distinguishes
+  canonical 128-row backing contracts from active 64-row noncanonical split-N
+  views. Promoted positives: the five `ldred-fz20260421-0004-*` structural
+  sentinels, covering 2CTA indexed min/max/min-abs/min-nan and chain1 M64
+  min. Validation: required `make -j8`; exact promoted rows `5 passed`; full
+  structural fuzzer split-4 `30 passed, 6 xfailed`; broad `ld_red` selector
+  over M64, descriptor-chain, explicit-compatible, non-f32, scales/software,
+  and N-sharded cases `145 passed`; direct permuted M64 controls `6 passed`;
+  targeted lit `2 passed`; `py_compile` and `git diff --check` passed. Next:
+  checkpoint this slice, then inspect the remaining `6` structural xfails and
+  choose the next backend bucket.
+
 - Latest: 2026-04-21 19:39 UTC repair slice 4 fixed the checked-in
   `FZ-20260421-0002` generic-pass/control-flow descriptor SSA wrong-result
   rows. Root cause: full-view replay could repair direct descriptor chains, but

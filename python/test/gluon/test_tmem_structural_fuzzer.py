@@ -249,41 +249,11 @@ LDRED_CASES = [
     LdRedCase("ldred-direct-128x64", 0x201, 128, 64, False, 0),
     LdRedCase("ldred-view-128x64", 0x202, 128, 64, False, 1),
     LdRedCase("ldred-twocta-lifted-256x64", 0x203, 256, 64, True, 0),
-    pytest.param(
-        LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min", 0xA014, 256, 32, True, 1),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0004: resource-valid 2CTA indexed view emits plain ld instead of ld.red",
-        ),
-    ),
-    pytest.param(
-        LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max", 0xA024, 256, 32, True, 1, op="max"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0004: 2CTA indexed load_max emits plain ld instead of ld.red",
-        ),
-    ),
-    pytest.param(
-        LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs", 0xA025, 256, 32, True, 1, op="min_abs"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0004: 2CTA indexed load_min(abs=True) emits plain ld instead of ld.red",
-        ),
-    ),
-    pytest.param(
-        LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan", 0xA026, 256, 32, True, 1, op="min_nan"),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0004: 2CTA indexed NaN-propagating load_min emits plain ld instead of ld.red",
-        ),
-    ),
-    pytest.param(
-        LdRedCase("ldred-fz20260421-0004-chain1-64x32-min", 0xA004, 64, 32, False, 2),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="FZ-20260421-0004: ld.red descriptor-view chain emits plain ld plus software reduce",
-        ),
-    ),
+    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min", 0xA014, 256, 32, True, 1),
+    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max", 0xA024, 256, 32, True, 1, op="max"),
+    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs", 0xA025, 256, 32, True, 1, op="min_abs"),
+    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan", 0xA026, 256, 32, True, 1, op="min_nan"),
+    LdRedCase("ldred-fz20260421-0004-chain1-64x32-min", 0xA004, 64, 32, False, 2),
     pytest.param(
         LdRedCase(
             "ldred-fz20260421-0006-rotate1-transpose-slice-max",

@@ -2,6 +2,22 @@
 
 Last updated: 2026-04-21
 
+Latest repair checkpoint: 2026-04-21 20:37 UTC checked-in
+`FZ-20260421-0004` `ld.red` opcode-loss rows are repaired. The reduction-load
+planner now uses support-query-aware descriptor planning, Gluon only emits a
+direct `ttng.tmem_load {redOp}` when the specific memdesc/result contract is
+backend-legal, and `OptimizeTMemLayouts` fuses replayable plain-load plus
+min/max reductions back into hardware `tcgen05.ld.red` after layout replay.
+M64 row planning now preserves canonical 128-row backing layouts while using
+active 64-row row plans for noncanonical split-N descriptor views. Promoted
+positives: the five `ldred-fz20260421-0004-*` structural sentinels. Validation:
+required `make -j8`; exact promoted rows `5 passed`; full structural fuzzer
+split-4 `30 passed, 6 xfailed`; broad `ld_red` runtime selector `145 passed`;
+direct M64 permuted controls `6 passed`; targeted lit `2 passed`;
+`py_compile` and `git diff --check` passed. Remaining repair-plan frontier:
+inspect the remaining `6` structural xfails and pick the highest-impact
+backend bucket that is still a true support gap.
+
 Latest repair checkpoint: 2026-04-21 19:39 UTC checked-in
 `FZ-20260421-0002` generic-pass/control-flow descriptor SSA rows are repaired.
 `OptimizeTMemLayouts` now sinks replayable full-view TMEM loads through
@@ -203,10 +219,12 @@ The project is complete when:
   (`FZ-20260421-0001`), broader dynamic copy/`ld.red` consumer positives, and
   direct full-view `ld/st` descriptor replay (`FZ-20260421-0003`), and
   generic-pass/control-flow full-view descriptor SSA replay
-  (`FZ-20260421-0002`). Current next unblocked slice after checkpoint: inspect
-  the remaining `11` structural xfails, pick the highest-impact non-`FZ-0002`
-  bucket, and repair the underlying backend gap without regressing the newly
-  promoted full-view positives.
+  (`FZ-20260421-0002`), and support-query-aware `ld.red`
+  descriptor-chain/indexed opcode selection (`FZ-20260421-0004`). Current next
+  unblocked slice after checkpoint: inspect the remaining `6` structural
+  xfails, pick the highest-impact backend bucket, and repair the underlying
+  backend gap without regressing the newly promoted full-view or `ld.red`
+  positives.
 
 - Phase Z, 24-hour structural fuzzing campaign: active as of 2026-04-21
   08:18 UTC. Build a systematic deterministic Python/Gluon runtime fuzzer plus

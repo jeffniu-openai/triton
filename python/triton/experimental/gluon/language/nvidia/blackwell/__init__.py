@@ -706,7 +706,7 @@ class tensor_memory_descriptor(base_value):
             return result, reduced
 
         if not isinstance(self.layout, TensorMemoryScalesLayout):
-            if not gluon_ir.is_tmem_load_reduction_reg_layout_supported(ret_ty.to_ir(builder)):
+            if not gluon_ir.is_tmem_load_reduction_memdesc_supported(self.handle, ret_ty.to_ir(builder)):
                 result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
                 reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
                 reduced = ttgl.reduce(
