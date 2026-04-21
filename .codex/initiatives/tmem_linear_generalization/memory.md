@@ -13,6 +13,13 @@
   Durations were stored at
   `/tmp/tmem_local_r12_ldred_nonf32_descriptor_durations.json`.
 
+- Latest: 2026-04-21 local Round 12 scaled-MMA accumulator-subslice selector
+  stayed green. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and acc_subslice_view and not reports'`
+  selected `74/1615` tests. Split-4 execution across GPUs 0-3 selected
+  `19`, `19`, `19`, and `17` tests; aggregate result `74 passed`. Durations
+  were stored at `/tmp/tmem_local_r12_scaled_acc_subslice_durations.json`.
+
 - Latest: 2026-04-21 completed Round 10 Lane N MMAv5/scaled-MMAv5 dynamic
   descriptor-selection fuzzing. Report: `agents/fuzz_mma_dynamic_round10.md`.
   New report-only bucket candidate `FZ-20260421-0011`: plain MMAv5

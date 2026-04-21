@@ -351,6 +351,11 @@ The project is complete when:
   across GPUs 0-3 selected `5/5/5/5` tests and reported aggregate
   `20 passed`. Durations were stored at
   `/tmp/tmem_local_r12_ldred_nonf32_descriptor_durations.json`.
+  2026-04-21 local Round 12 scaled-MMA accumulator-subslice selector stayed
+  green. Collect-only selected `74/1615` for
+  `mma_scaled and acc_subslice_view and not reports`; split-4 across GPUs 0-3
+  selected `19/19/19/17` tests and reported aggregate `74 passed`. Durations
+  were stored at `/tmp/tmem_local_r12_scaled_acc_subslice_durations.json`.
 - Phase A, rebaseline and classify: done for this branch. The current
   clean-negative/error surface is stable at `145/1615`; unsupported-only
   collect-only is `92/1615`. Every bucket below is classified as positive

@@ -27349,3 +27349,20 @@ Open after this slice:
   - group 3/GPU 2: `5 passed, 1610 deselected in 7.98s`;
   - group 4/GPU 3: `5 passed, 1610 deselected in 4.40s`.
 - Aggregate: `20 passed`. No new bucket was found.
+
+## 2026-04-21: Round 12 local scaled-MMA accumulator-subslice slice
+
+- Ran adjacent checked-in runtime-matrix coverage around scaled-MMA
+  accumulator subslices while Round 12 subagent lanes were active. No backend
+  or compiler repairs were attempted.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and acc_subslice_view and not reports'`
+  selected `74 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r12_scaled_acc_subslice_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and acc_subslice_view and not reports'`
+- Result:
+  - group 1/GPU 0: `19 passed, 1596 deselected in 5.08s`;
+  - group 2/GPU 1: `19 passed, 1596 deselected in 5.06s`;
+  - group 3/GPU 2: `19 passed, 1596 deselected in 10.58s`;
+  - group 4/GPU 3: `17 passed, 1598 deselected in 5.04s`.
+- Aggregate: `74 passed`. No new bucket was found.
