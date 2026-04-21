@@ -1070,6 +1070,82 @@ lowerReplayFullViewLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp,
       hasReductionAlongNUse(loadOp.getResult()));
 }
 
+static bool
+canMaterializeReplayFullViewValue(Value value, RankedTensorType resultTy,
+                                  const SmallPtrSetImpl<Value> &carriedValues,
+                                  unsigned numWarps, int maxnreg) {
+  if (value.getType() == resultTy || carriedValues.contains(value))
+    return true;
+
+  if (auto match = matchReplayableFullView(value)) {
+    return static_cast<bool>(getReplayFullViewSupportTensorType(
+        match->base, value, resultTy, numWarps, maxnreg));
+  }
+
+  auto opResult = dyn_cast<OpResult>(value);
+  if (!opResult || !opResult.hasOneUse())
+    return false;
+
+  auto ifOp = dyn_cast<scf::IfOp>(opResult.getOwner());
+  if (!ifOp)
+    return false;
+
+  unsigned resultIndex = opResult.getResultNumber();
+  if (resultIndex >= ifOp.thenYield().getNumOperands() ||
+      resultIndex >= ifOp.elseYield().getNumOperands())
+    return false;
+  return canMaterializeReplayFullViewValue(
+             ifOp.thenYield().getOperand(resultIndex), resultTy, carriedValues,
+             numWarps, maxnreg) &&
+         canMaterializeReplayFullViewValue(
+             ifOp.elseYield().getOperand(resultIndex), resultTy, carriedValues,
+             numWarps, maxnreg);
+}
+
+static FailureOr<Value> materializeReplayFullViewValue(
+    PatternRewriter &rewriter, Location loc, Value value,
+    RankedTensorType resultTy, const DenseMap<Value, Value> &carriedValues,
+    unsigned numWarps, int maxnreg, bool applyViewTransforms) {
+  if (value.getType() == resultTy)
+    return value;
+  if (auto it = carriedValues.find(value); it != carriedValues.end())
+    return it->second;
+
+  if (auto match = matchReplayableFullView(value)) {
+    return lowerReplayFullViewValueLoad(rewriter, loc, value, resultTy, *match,
+                                        numWarps, maxnreg,
+                                        applyViewTransforms);
+  }
+
+  auto opResult = dyn_cast<OpResult>(value);
+  if (!opResult || !opResult.hasOneUse())
+    return failure();
+
+  auto ifOp = dyn_cast<scf::IfOp>(opResult.getOwner());
+  if (!ifOp)
+    return failure();
+
+  unsigned resultIndex = opResult.getResultNumber();
+  if (resultIndex >= ifOp.thenYield().getNumOperands() ||
+      resultIndex >= ifOp.elseYield().getNumOperands())
+    return failure();
+  auto rewriteYield = [&](scf::YieldOp yieldOp) -> LogicalResult {
+    rewriter.setInsertionPoint(yieldOp);
+    FailureOr<Value> replacement = materializeReplayFullViewValue(
+        rewriter, loc, yieldOp.getOperand(resultIndex), resultTy,
+        carriedValues, numWarps, maxnreg, applyViewTransforms);
+    if (failed(replacement))
+      return failure();
+    yieldOp.setOperand(resultIndex, *replacement);
+    return success();
+  };
+  if (failed(rewriteYield(ifOp.thenYield())) ||
+      failed(rewriteYield(ifOp.elseYield())))
+    return failure();
+  ifOp.getResult(resultIndex).setType(resultTy);
+  return ifOp.getResult(resultIndex);
+}
+
 static LogicalResult
 lowerReplayFullViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
                          const TMemReplayFullViewMatch &match) {
@@ -1379,6 +1455,81 @@ public:
       ifOp.getResult(i).replaceAllUsesWith(newIf.getResult(i));
     }
     rewriter.eraseOp(ifOp);
+    return success();
+  }
+};
+
+class TMemReplayFullViewForLoadPattern : public OpRewritePattern<TMEMLoadOp> {
+public:
+  TMemReplayFullViewForLoadPattern(MLIRContext *context)
+      : OpRewritePattern<TMEMLoadOp>(context, /*benefit=*/2) {}
+
+  LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
+                                PatternRewriter &rewriter) const override {
+    auto resultTy = dyn_cast<RankedTensorType>(loadOp.getType());
+    if (!resultTy)
+      return failure();
+
+    auto srcResult = dyn_cast<OpResult>(loadOp.getSrc());
+    if (!srcResult || !srcResult.hasOneUse())
+      return failure();
+
+    auto forOp = dyn_cast<scf::ForOp>(srcResult.getOwner());
+    if (!forOp)
+      return failure();
+
+    unsigned resultIndex = srcResult.getResultNumber();
+    if (resultIndex >= forOp.getNumResults() ||
+        resultIndex >= forOp.getInitArgs().size() ||
+        resultIndex >= forOp.getRegionIterArgs().size())
+      return failure();
+
+    BlockArgument regionArg = forOp.getRegionIterArgs()[resultIndex];
+    if (llvm::any_of(regionArg.getUsers(), [](Operation *user) {
+          return !isa<scf::YieldOp>(user);
+        }))
+      return failure();
+
+    auto yieldOp = cast<scf::YieldOp>(forOp.getBody()->getTerminator());
+    unsigned numWarps = ttg::lookupNumWarps(loadOp);
+    int maxnreg = getContextualMaxNReg(loadOp);
+
+    SmallPtrSet<Value, 4> carriedValues;
+    carriedValues.insert(regionArg);
+    if (!canMaterializeReplayFullViewValue(forOp.getInitArgs()[resultIndex],
+                                           resultTy, carriedValues, numWarps,
+                                           maxnreg) ||
+        !canMaterializeReplayFullViewValue(yieldOp.getOperand(resultIndex),
+                                           resultTy, carriedValues, numWarps,
+                                           maxnreg))
+      return failure();
+
+    bool applyViewTransforms = hasReductionAlongNUse(loadOp.getResult());
+    DenseMap<Value, Value> noCarriedValues;
+    rewriter.setInsertionPoint(forOp);
+    FailureOr<Value> initReplacement = materializeReplayFullViewValue(
+        rewriter, loadOp.getLoc(), forOp.getInitArgs()[resultIndex], resultTy,
+        noCarriedValues, numWarps, maxnreg, applyViewTransforms);
+    if (failed(initReplacement))
+      return failure();
+
+    OpOperand &initOperand =
+        forOp->getOpOperand(resultIndex + forOp.getNumControlOperands());
+    initOperand.set(*initReplacement);
+    regionArg.setType(resultTy);
+    forOp.getResult(resultIndex).setType(resultTy);
+
+    DenseMap<Value, Value> carriedReplacements;
+    carriedReplacements[regionArg] = regionArg;
+    rewriter.setInsertionPoint(yieldOp);
+    FailureOr<Value> yieldReplacement = materializeReplayFullViewValue(
+        rewriter, loadOp.getLoc(), yieldOp.getOperand(resultIndex), resultTy,
+        carriedReplacements, numWarps, maxnreg, applyViewTransforms);
+    if (failed(yieldReplacement))
+      return failure();
+    yieldOp.setOperand(resultIndex, *yieldReplacement);
+
+    rewriter.replaceOp(loadOp, forOp.getResult(resultIndex));
     return success();
   }
 };
@@ -1982,9 +2133,10 @@ public:
     patterns
         .add<TMemSplitLoadPattern, TMemLeadingSliceLoadPattern,
              TMemReplayHalfSliceLoadPattern, TMemReplayFullViewLoadPattern,
-             TMemReplayFullViewIfLoadPattern, TMemStoreJoinPattern,
-             TMemLeadingSliceStorePattern, TMemReplayHalfSliceStorePattern,
-             TMemReplayFullViewStorePattern, TMemLoadReducePattern,
+             TMemReplayFullViewIfLoadPattern, TMemReplayFullViewForLoadPattern,
+             TMemStoreJoinPattern, TMemLeadingSliceStorePattern,
+             TMemReplayHalfSliceStorePattern, TMemReplayFullViewStorePattern,
+             TMemLoadReducePattern,
              TMemFuseLoadReducePattern, TMemFromSharedMemPattern,
              TMemToSharedMemPattern>(context);
     if (failed(applyPatternsGreedily(m, std::move(patterns))))

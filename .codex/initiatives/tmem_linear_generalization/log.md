@@ -33385,3 +33385,40 @@ Open after this slice:
   `FZ-20260421-0007` scaled-MMAv5 dynamic-if low-subslice wrong result. Next
   slice should choose the highest-impact backend gap and keep all newly
   promoted allocation, full-view replay, and `ld.red` positives green.
+
+## 2026-04-21 21:29 UTC: R5-C loop-carried full-view replay repair
+
+- Branch/HEAD before this repair slice:
+  `ea22ebe62 Fix TMEM lifted allocation and replay direction`.
+- Dirty files at checkpoint:
+  `lib/Dialect/TritonNvidiaGPU/Transforms/OptimizeTMemLayouts.cpp`,
+  `python/test/gluon/test_tmem_structural_fuzzer.py`, plus initiative
+  documentation.
+- Root cause:
+  `generic-pass-loop-carried-memdesc-view-chain0` carried a replayable
+  full-view descriptor through `scf.for`. The final load saw the loop result's
+  transformed memdesc type rather than the branch-local descriptor chain, so
+  it lowered as a direct load from the merged descriptor and reproduced the
+  8064/8192 wrong-result pattern previously fixed for `scf.if`.
+- Completed implementation:
+  `OptimizeTMemLayouts` now materializes eligible loop-carried full-view
+  memdesc values as tensors. The pattern rewrites the affected `scf.for`
+  carried init operand, region iter arg, result, and yield operand from memdesc
+  to tensor; materializes replayable full-view init/yield descriptors with the
+  existing replay loader; recursively rewrites nested `scf.if` yields; and
+  maps pass-through carried values to the tensor iter arg. It only applies when
+  the loop-carried region arg is used by yields, keeping the mutation scoped to
+  provenance-only loop-carried descriptors.
+- Promoted checked-in positive:
+  `generic-pass-loop-carried-memdesc-view-chain0`.
+- Validation evidence:
+  required `make -j8`; exact promoted row `1 passed`; nearby control-flow
+  replay guard `2 passed`; full structural fuzzer split-4 ran as group1
+  `9 passed`, group2 `8 passed, 1 xfailed`, group3 `9 passed`, and group4
+  `8 passed, 1 xfailed`; targeted lit `test/TritonNvidiaGPU/tmem_layouts.mlir`
+  and `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`; structural
+  fuzzer `py_compile` passed; `git diff --check` passed.
+- Remaining repair-plan frontier:
+  checked-in structural xfails are now down to `2`: `FZ-20260421-0006`
+  rotate/transpose/slice `ld.red` frontend layout inference and
+  `FZ-20260421-0007` scaled-MMAv5 dynamic-if low-subslice wrong result.

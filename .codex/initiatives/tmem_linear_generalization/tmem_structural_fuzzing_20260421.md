@@ -4627,3 +4627,22 @@ remain family-specific and consume a bounded subset of the inventory.
   sentinels now execute correctly as software fallbacks (`.ld.` plus
   `tt.reduce`) rather than hardware `.ld.red.` positives. Remaining checked-in
   structural xfails: `FZ-0006`, `R5-C`, and `FZ-0007`.
+
+### Repair slice 7: R5-C loop-carried full-view replay promoted
+
+- Time: 2026-04-21 21:29 UTC
+- Scope:
+  checked-in structural fuzzer bucket
+  `generic-pass-loop-carried-memdesc-view-chain0`.
+- Result:
+  promoted the loop-carried memdesc-view chain0 row from strict xfail to a
+  positive runtime test. Exact promoted row passed as `1 passed`; full
+  structural fuzzer split-4 ran as group1 `9 passed`, group2
+  `8 passed, 1 xfailed`, group3 `9 passed`, and group4
+  `8 passed, 1 xfailed`.
+- Classification:
+  `R5-C` was a loop-carried full-view descriptor provenance bug in
+  `OptimizeTMemLayouts`, not a frontend auto-layout boundary. The final load
+  from the `scf.for` result now carries the replayed tensor through the loop
+  instead of loading directly from a merged transformed memdesc. Remaining
+  checked-in structural xfails: `FZ-0006` and `FZ-0007`.

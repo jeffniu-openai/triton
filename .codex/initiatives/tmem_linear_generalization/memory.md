@@ -1,6 +1,25 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 21:18 UTC repair slice 6 fixed checked-in
+- Latest: 2026-04-21 21:29 UTC repair slice 7 fixed `R5-C`, the
+  `generic-pass-loop-carried-memdesc-view-chain0` wrong-result row. Root
+  cause: after a full-view descriptor passed through `scf.for` loop-carried
+  state, the final `ttng.tmem_load` saw only the merged transformed memdesc
+  result and could not recover the original base descriptor for full-view
+  replay. Implementation: `OptimizeTMemLayouts` now has a loop-carried
+  full-view load rewrite that changes the affected loop-carried memdesc result
+  to a tensor result, materializes the init value from its original replayable
+  full-view descriptor, recursively rewrites nested `scf.if` yields, and uses
+  the tensor iter arg for passthrough carried values. The rewrite is restricted
+  to cases where the carried region arg is only used by yields, avoiding
+  general memdesc-in-loop mutation. Promoted positive:
+  `generic-pass-loop-carried-memdesc-view-chain0`. Validation: required
+  `make -j8`; exact promoted row `1 passed`; nearby control-flow replay guard
+  `2 passed`; full structural fuzzer split-4 `34 passed, 2 xfailed`;
+  targeted lit `tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`;
+  `py_compile` and `git diff --check` passed. Next: repair one of the two
+  remaining structural xfails (`FZ-0006`, `FZ-0007`).
+
+- Previous: 2026-04-21 21:18 UTC repair slice 6 fixed checked-in
   `FZ-20260421-0005`, `FZ-20260421-0008`, and `FZ-20260421-0009`. Root
   causes: lifted rank>2 expanded separable TMEM layouts were sized from their
   logical row count instead of the compact 128-row physical image; layout

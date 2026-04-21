@@ -7,7 +7,25 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest repair checkpoint: 2026-04-21 21:18 UTC repaired three more
+Latest repair checkpoint: 2026-04-21 21:29 UTC repaired the remaining
+loop-carried descriptor-view structural bucket, `R5-C`
+(`generic-pass-loop-carried-memdesc-view-chain0`). The final `tmem_load` was
+loading from the merged `scf.for` memdesc result, which had lost the
+branch-local full-view provenance needed by descriptor replay. The TMEM
+optimizer now materializes replayable full-view memdesc values as tensors
+through loop-carried state: the loop init and yield values are replay-loaded
+from their original full-view descriptors, nested `scf.if` yields are rewritten
+recursively, and passthrough loop-carried values reuse the tensor iter arg.
+Promoted positive: `generic-pass-loop-carried-memdesc-view-chain0`.
+Validation: required `make -j8`; exact promoted row `1 passed`; nearby
+control-flow replay guard `2 passed`; full structural fuzzer split-4
+`34 passed, 2 xfailed`; targeted lit `tmem_layouts.mlir` and
+`interleave_tmem.mlir` `2 passed`; `py_compile` and `git diff --check`
+passed. Remaining checked-in structural xfails are `FZ-0006` frontend layout
+inference for rotate/transpose/slice `ld.red` and `FZ-0007` scaled-MMAv5
+dynamic-if low-subslice wrong result.
+
+Previous repair checkpoint: 2026-04-21 21:18 UTC repaired three more
 checked-in structural buckets: `FZ-20260421-0005`, `FZ-20260421-0008`, and
 `FZ-20260421-0009`. Allocation sizing now recognizes lifted rank>2 expanded
 separable linear layouts as compact 128-row physical TMEM images instead of

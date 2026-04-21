@@ -2,7 +2,19 @@
 
 Last updated: 2026-04-21
 
-Latest repair checkpoint: 2026-04-21 21:18 UTC checked-in
+Latest repair checkpoint: 2026-04-21 21:29 UTC checked-in `R5-C`
+(`generic-pass-loop-carried-memdesc-view-chain0`) is repaired.
+`OptimizeTMemLayouts` now rewrites eligible loop-carried full-view memdesc
+loads by carrying the replayed tensor through `scf.for`: the loop init and
+yield descriptors are materialized from their original full-view chains,
+nested `scf.if` yields are rewritten recursively, and pass-through carried
+values reuse the tensor iter arg. Validation: required `make -j8`; exact
+promoted row `1 passed`; nearby control-flow replay guard `2 passed`; full
+structural fuzzer split-4 `34 passed, 2 xfailed`; targeted lit `2 passed`;
+`py_compile` and `git diff --check` passed. Remaining repair-plan frontier:
+the two checked-in structural xfails are `FZ-0006` and `FZ-0007`.
+
+Previous repair checkpoint: 2026-04-21 21:18 UTC checked-in
 `FZ-20260421-0005`, `FZ-20260421-0008`, and `FZ-20260421-0009` are repaired.
 Expanded separable lifted-rank allocations now use the compact 128-row TMEM
 physical image and do not double-count prefix selectors. Layout composition
@@ -238,9 +250,10 @@ The project is complete when:
   (`FZ-20260421-0002`), and support-query-aware `ld.red`
   descriptor-chain/indexed opcode selection (`FZ-20260421-0004`), and
   compact lifted-rank allocation plus full-view replay directionality
-  (`FZ-20260421-0005`, `FZ-20260421-0008`, `FZ-20260421-0009`). Current next
-  unblocked slice after checkpoint: inspect the remaining `3` structural
-  xfails (`FZ-0006`, `R5-C`, `FZ-0007`), pick the highest-impact backend
+  (`FZ-20260421-0005`, `FZ-20260421-0008`, `FZ-20260421-0009`), and
+  loop-carried full-view replay (`R5-C`). Current next unblocked slice after
+  checkpoint: inspect the remaining `2` structural xfails (`FZ-0006`,
+  `FZ-0007`), pick the highest-impact backend
   bucket, and repair the underlying backend gap without regressing the newly
   promoted full-view, allocation, or `ld.red` positives.
 

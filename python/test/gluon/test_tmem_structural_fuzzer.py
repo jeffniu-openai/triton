@@ -317,13 +317,7 @@ GENERIC_PASS_LAYOUT_PRESSURE_CASES = [
 ]
 
 GENERIC_PASS_LOOP_CARRIED_CASES = [
-    pytest.param(
-        GenericPassLoopCarriedCase("generic-pass-loop-carried-memdesc-view-chain0", 0x5C01, 0, 1, 2),
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="R5-C: loop-carried TMEM view fails auto-layout inference in GluonResolveAutoEncodingsPass",
-        ),
-    ),
+    GenericPassLoopCarriedCase("generic-pass-loop-carried-memdesc-view-chain0", 0x5C01, 0, 1, 2),
 ]
 
 SCALED_MMA_CONTROL_FLOW_CASES = [
