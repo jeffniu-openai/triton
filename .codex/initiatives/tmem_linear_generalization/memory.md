@@ -16182,6 +16182,13 @@ rejection, not rescue
   stayed green as `184 passed`; `lit -v test/TritonNvidiaGPU/invalid.mlir`
   passed.
 
+- Round 29 bitwidth runtime follow-up wrote
+  `agents/fuzz_bitwidth_runtime_round29.md`. No new bucket beyond
+  `FZ-20260421-0017`. Subprocess-isolated Python/Gluon probes showed
+  `float64` and `int64` both abort with `ASSERT_BITWIDTH_32` for roundtrip,
+  store-only, and load-only TMEM access. This proves both store and load sides
+  of `lowerTMemLdSt` need a clean 64-bit policy.
+
 - Round 29 memdesc-index lane wrote
   `agents/fuzz_memdesc_index_round29.md`. No new bucket, but it broadens
   `FZ-20260421-0001`: runtime `parent.index(ttgl.load(selector))` leaves

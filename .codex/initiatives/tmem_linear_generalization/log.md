@@ -30039,3 +30039,16 @@ Open after this slice:
   miscompile under existing descriptor-view semantic buckets; descriptor-chain
   stores roundtrip; descriptor-chain copy rows produce clean unsupported copy
   planner diagnostics.
+
+## 2026-04-21: Round 29 Python runtime bitwidth follow-up
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_bitwidth_runtime_round29.md`.
+- Temporary probe:
+  `/tmp/tmem_bitwidth_runtime_round29_probe.py`.
+- Result: no new independent `FZ-*` beyond `FZ-20260421-0017`. Subprocess-
+  isolated Python/Gluon probes for `float64` and `int64` roundtrip, store-only,
+  and load-only TMEM access all abort with `ASSERT_BITWIDTH_32`.
+- Classification: both store and load sides of `lowerTMemLdSt` need a clean
+  64-bit policy; the crash is not limited to initialized allocation lowering
+  or roundtrip composition.

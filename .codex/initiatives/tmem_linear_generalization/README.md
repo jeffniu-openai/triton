@@ -47,7 +47,9 @@ and abort in `lowerTMemLdSt` on `bitwidth == 32` instead of producing a clean
 diagnostic or supported lowering. The same assertion is reachable from
 ordinary Gluon `torch.float64`/`torch.int64` TMEM round-trip kernels during JIT;
 initialized alloc, standalone store, and standalone load crash, while dead
-uninitialized alloc is eliminated.
+uninitialized alloc is eliminated. A subprocess runtime follow-up confirmed
+`float64` and `int64` roundtrip, store-only, and load-only probes all abort on
+the same assertion.
 Round 29 memdesc-index fuzzing broadened `FZ-20260421-0001`: runtime
 `parent.index(ttgl.load(selector))` leaves illegal `ttg.memdesc_index` for
 direct load, store, copy, `ld.red`, and mixed consumers, and direct

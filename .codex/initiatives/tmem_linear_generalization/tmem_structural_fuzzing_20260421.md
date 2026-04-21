@@ -3570,3 +3570,12 @@ remain family-specific and consume a bounded subset of the inventory.
   `ttg.memdesc_index`, while direct branch load/store/`ld.red` controls pass.
   Descriptor-chain read/reduction miscompiles remain existing descriptor-view
   semantic buckets; descriptor-chain copy rows are clean unsupported.
+
+### Round 29 Python runtime bitwidth follow-up
+
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_bitwidth_runtime_round29.md`
+- Result:
+  no new independent `FZ-*` beyond `FZ-0017`; subprocess-isolated Gluon
+  `float64` and `int64` roundtrip, store-only, and load-only TMEM probes all
+  abort with `ASSERT_BITWIDTH_32`.

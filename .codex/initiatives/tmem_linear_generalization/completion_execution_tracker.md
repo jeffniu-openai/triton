@@ -2395,6 +2395,13 @@ signal handling:
   existing descriptor-view semantic buckets; descriptor-chain copy rows are
   clean unsupported diagnostics.
 
+- 2026-04-21: Round 29 Python runtime bitwidth follow-up completed. Report:
+  `agents/fuzz_bitwidth_runtime_round29.md`. No new bucket beyond
+  `FZ-20260421-0017`. Subprocess-isolated Gluon probes show `float64` and
+  `int64` roundtrip, store-only, and load-only TMEM access all abort with
+  `ASSERT_BITWIDTH_32`, so both store and load sides need a clean 64-bit
+  policy.
+
 - 2026-04-21: Round 26 dynamic descriptor SSA lane completed. Report:
   `agents/fuzz_dynamic_ssa_round26.md`. No new bucket. Runtime-index `ld.red`
   and branch-yielded copy descriptors sharpen existing `FZ-20260421-0001`;
