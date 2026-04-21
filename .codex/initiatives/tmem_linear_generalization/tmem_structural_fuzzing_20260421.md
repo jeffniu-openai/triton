@@ -439,6 +439,35 @@ Every structural fuzz case records:
   - full structural fuzzer reported `9 passed, 20 xfailed`;
   - `git diff --check` passed.
 
+### Lane R5-B Round 5, Copy / ld.red Descriptor-View Interactions
+
+- Time: 2026-04-21 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_ldred_interactions_round5.md`
+- Scope: combined copy plus readback probes not already covered by standalone
+  copy or standalone ld/st and ld.red lanes. The lane copied into
+  descriptor-indexed and subslice TMEM parents, then forced TMEM `ld/st` or
+  `ld.red` readback; it also covered single-CTA and two-CTA `warpx2`
+  descriptor views, two-CTA `warpx2::02_13` clean diagnostics, and larger-CGA
+  two-CTA-layout diagnostics.
+- Result: no new backend compiler crash, false unsupported diagnostic, opcode
+  mismatch, or runtime miscompile found.
+- Validation:
+  - required `make -j8` reported no work to do;
+  - temporary probe collected `9` nodeids;
+  - four-GPU split sweep passed as `3 passed`, `3 passed`, `3 passed`, and
+    `0 selected`;
+  - opcode summary confirmed `copy -> indexed view -> ld/st` emits
+    `tcgen05.cp.cta_group::1.128x256b` plus TMEM `ld/st`;
+  - `copy -> subslice view -> ld.red` emits
+    `tcgen05.ld.red.sync.aligned.32x32b.x128.min.f32`;
+  - `warpx2::01_23` and `warpx2::02_13` single-CTA indexed descriptor-view
+    readback passed, two-CTA `warpx2::01_23` indexed readback passed, and
+    two-CTA `warpx2::02_13` indexed view remained a clean unsupported
+    diagnostic;
+  - `num_ctas=4/8/16` larger-CGA contexts for a two-CTA indexed copy parent
+    reported clean layout-context diagnostics without assertions.
+
 ## Failure Catalog
 
 ### FZ-20260421-0001: dynamic TMEM memdesc_index reaches LLVM conversion
