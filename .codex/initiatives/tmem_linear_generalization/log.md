@@ -26988,3 +26988,19 @@ Open after this slice:
   - group 3/GPU 2: `20 passed, 1595 deselected in 8.80s`;
   - group 4/GPU 3: `19 passed, 1596 deselected in 8.31s`.
 - Aggregate: `79 passed`. No backend repairs were attempted.
+
+## 2026-04-21: Round 10 scaled-MMA use_acc runtime slice
+
+- Collected and ran the scaled-MMA `use_acc` runtime selector across all four
+  GPUs with stable per-GPU caches.
+- Collect-only:
+  `PYTHONPATH=.:./python pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and use_acc'`
+  selected `83 / 1615` tests.
+- Runtime command pattern:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=.:./python pytest -s --tb=short --splits 4 --group <group> --store-durations --durations-path /tmp/tmem_local_r10_scaled_use_acc_durations.json python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and use_acc'`
+- Result:
+  - group 1/GPU 0: `21 passed, 1594 deselected in 4.68s`;
+  - group 2/GPU 1: `21 passed, 1594 deselected in 4.66s`;
+  - group 3/GPU 2: `21 passed, 1594 deselected in 6.91s`;
+  - group 4/GPU 3: `20 passed, 1595 deselected in 14.45s`.
+- Aggregate: `83 passed`. No backend repairs were attempted.

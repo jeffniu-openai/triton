@@ -24,6 +24,14 @@
   Groups selected `20`, `20`, `20`, and `19` tests; aggregate result
   `79 passed`.
 
+- Latest: 2026-04-21 local Round 10 scaled-MMA `use_acc` runtime slice is
+  green. Collect-only for
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and use_acc'`
+  selected `83/1615` tests. Split-4 execution across GPUs 0-3 with stable
+  caches selected `21`, `21`, `21`, and `20` tests; aggregate result
+  `83 passed`. Durations were stored at
+  `/tmp/tmem_local_r10_scaled_use_acc_durations.json`.
+
 - Latest: 2026-04-21 completed Round 9 Lane H validation logistics. Wrote
   `agents/fuzz_validation_logistics_round9.md`. No new `FZ-*` bucket was
   found. Current inventory: checked-in structural fuzzer collects `33`
