@@ -32156,3 +32156,23 @@ Open after this slice:
   exit code `1`, expected proxy-fence insertion diagnostic.
 - Classification: no checked-in proxy-fence lit drift, no `FZ-0014` signature
   drift, and no new independent `FZ-*`.
+
+## 2026-04-21: Round 51 core TMEM breadth fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_core_tmem_breadth_round51.md`.
+- Required `make -j8` was a no-op.
+- Exact `test_core.py` TMEM-bearing node list:
+  `641` tests collected.
+- Split-4 runtime result:
+  `585 passed, 56 skipped, 0 failed`.
+- Coverage included allocation, linear TMEM load/store, descriptor chains,
+  copy/no-scale copy, M64 layouts, `ld.red`, TMA, TMA+MMA shared-input paths,
+  proxy/mbarrier controls, plain MMAv5, scaled MMAv5, scale copy,
+  multicast/two-CTA controls, and clean-error diagnostics.
+- Classification: no compiler crash, verifier drift, unsupported-case
+  regression, clean-negative drift, runtime miscompile, or new independent
+  `FZ-*`.
+- Note: an initial over-broad `-k` attempt selected adjacent non-TMEM
+  `test_mma_shared_inputs[...]` wrong-result failures and was excluded from
+  this TMEM-bearing classification.

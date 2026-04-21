@@ -3550,3 +3550,13 @@ discovery.
   `FZ-20260421-0014` repro exited `1` with the expected proxy-fence insertion
   diagnostic. No checked-in proxy-fence lit drift, `FZ-0014` signature drift,
   or new independent `FZ-*`.
+
+- 2026-04-21: Round 51 core TMEM breadth fuzzing completed. Report:
+  `agents/fuzz_core_tmem_breadth_round51.md`. Required `make -j8` was a
+  no-op. Explicit `test_core.py` TMEM-bearing node list collected `641` tests
+  and completed split-4 as `585 passed, 56 skipped, 0 failed`. Coverage
+  included allocation, linear load/store, descriptor chains, copy, M64,
+  `ld.red`, TMA, TMA+MMA shared-input paths, proxy/mbarrier controls, plain
+  MMAv5, scaled MMAv5, scale copy, multicast/two-CTA controls, and clean-error
+  diagnostics. No compiler crash, verifier drift, unsupported-case regression,
+  clean-negative drift, runtime miscompile, or new independent `FZ-*`.
