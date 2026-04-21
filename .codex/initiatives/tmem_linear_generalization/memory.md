@@ -17,6 +17,17 @@
   `tcgen05.cp.cta_group::1.128x256b`. No new independent `FZ-*`; no backend
   repair attempted.
 
+- Latest local: 2026-04-21 Round 54 scaled-MMAv5 LHS/tile/narrow lane
+  completed. Report:
+  `agents/fuzz_round54_local_scaled_lhs_tile_lane.md`. Selector over LHS
+  subslice, LHS tile-permuted, accumulator tile-permuted, and narrow
+  accumulator identity/tile rows collected `120/1615` and passed split-4 as
+  `120 passed`. Coverage included legacy and linear scale operands,
+  `mxfp8`/`mxfp4`/mixed/`nvfp4` formats, `use_acc`, mixed-fp4A clean
+  unsupported diagnostics, and narrow accumulator rows. No compiler crash,
+  verifier drift, false unsupported diagnostic, clean-boundary drift, runtime
+  miscompile, or new independent `FZ-*`.
+
 - Latest: 2026-04-21 15:21 UTC Round 54 opcode consistency lane C
   completed. Report: `agents/fuzz_round54_opcode_consistency_lane.md`.
   Required `make -j8` was a no-op. Focused runtime-matrix opcode selector

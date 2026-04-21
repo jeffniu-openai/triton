@@ -20,6 +20,14 @@ boundaries. `i64`/`f64` compiler-only contrast reproduced existing
 `FZ-20260421-0017`, while non-f32 `ld.red` and 64-bit copy contrasts stayed
 clean/green. No new independent `FZ-*`.
 
+Additional Round 54 local checkpoint: scaled-MMAv5 LHS/tile/narrow lane
+completed. Report: `agents/fuzz_round54_local_scaled_lhs_tile_lane.md`.
+Selector over LHS subslice, LHS tile-permuted, accumulator tile-permuted, and
+narrow accumulator identity/tile rows collected `120/1615` and passed split-4
+as `120 passed`. No compiler crash, verifier drift, false unsupported
+diagnostic, clean-boundary drift, runtime miscompile, or new independent
+`FZ-*`.
+
 Previous fuzzing checkpoint: 2026-04-21 Round 54 opcode consistency lane C
 completed. Report: `agents/fuzz_round54_opcode_consistency_lane.md`.
 Focused runtime-matrix opcode selector collected `172/1615` and passed

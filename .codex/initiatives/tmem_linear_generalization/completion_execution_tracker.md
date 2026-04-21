@@ -3722,3 +3722,14 @@ discovery.
   results, with `0` new independent `FZ-*`. No compiler crash, verifier
   strictness issue, false unsupported diagnostic, opcode mismatch, or process
   contamination was observed.
+
+- 2026-04-21: Round 54 local scaled-MMAv5 LHS/tile/narrow lane completed.
+  Report: `agents/fuzz_round54_local_scaled_lhs_tile_lane.md`. Selector over
+  LHS subslice, LHS tile-permuted, accumulator tile-permuted, and narrow
+  accumulator identity/tile rows collected `120/1615` and passed split-4 as
+  `120 passed`. Coverage included legacy and linear scale operands,
+  `mxfp8`, `mxfp4`, mixed `mxfp8/mxfp4`, `nvfp4`, `use_acc`, mixed-fp4A
+  clean unsupported diagnostics, accumulator tile-permuted 64-wide rows, and
+  narrow accumulator rows. No compiler crash, verifier drift, false
+  unsupported diagnostic, clean-boundary drift, runtime miscompile, hang, or
+  new independent `FZ-*`.
