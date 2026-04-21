@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:41 UTC Round 17 copy/ldst and clean-boundary
+  checkpoint stayed green. Reports:
+  `agents/fuzz_copy_ldst_mixed_round17.md`,
+  `agents/fuzz_clean_boundaries_round17.md`, and
+  `agents/fuzz_local_clean_boundaries_round17.md`. Lane AP temporary mixed
+  copy+ld/st probe passed `7/7`; `AP-007` reproduced existing
+  `FZ-20260421-0014`, while `AP-004`/`AP-006` are useful negative contrasts
+  showing two independent legal 2CTA copy regions can pass when mbarrier
+  wait/readback ordering differs. Adjacent checked-in copy/ldst selector passed
+  as `179 passed, 61 skipped`; no new `FZ-*`. Lane AQ clean-boundary inventory
+  selected `157/1615` checked-in rows and passed split-4; its focused
+  temporary probe passed descriptor-view, high-CGA, subword, non-f32 `ld.red`,
+  scale-shape, and parent-view subslice boundaries without late illegal ops.
+  Local clean-boundary selector collected `199/1615` rows and passed as
+  `199 passed`; no false unsupported diagnostics or runtime miscompiles were
+  observed.
+
 - Latest: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering audit completed.
   Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. `FZ-0015` remains
   distinct from `FZ-0013`: the minimized repro uses direct non-view B-scale

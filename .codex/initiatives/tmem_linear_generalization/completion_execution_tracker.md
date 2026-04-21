@@ -1944,3 +1944,19 @@ signal handling:
   `convertScaledDot` / `createScaledGen5MMA` in `MMAv5.cpp`, or an unmodeled
   SFB-address operand constraint. Keep backend repair deferred until active
   fuzz lanes stop yielding new evidence or the user pivots.
+
+- 2026-04-21 11:41 UTC: integrated Round 17 Lane AP copy/ldst mixed fuzzing
+  and local clean-boundary selector. Reports:
+  `agents/fuzz_copy_ldst_mixed_round17.md`,
+  `agents/fuzz_clean_boundaries_round17.md`, and
+  `agents/fuzz_local_clean_boundaries_round17.md`. AP temporary probe passed
+  `7/7`; adjacent copy/ldst checked-in selector passed as
+  `179 passed, 61 skipped`; local clean-boundary selector collected `199/1615`
+  and passed as `199 passed`. No new bucket. AP-007 reproduces existing
+  `FZ-0014`, while AP-004/AP-006 are negative contrasts: two independent 2CTA
+  copy regions can pass under different wait/readback ordering, so the
+  proxy-fence failure depends on exact mbarrier use interval/ordering rather
+  than simply region count. AQ clean-boundary inventory selected `157/1615`
+  checked-in rows and passed split-4, then its focused temporary probe passed
+  descriptor-view, high-CGA, subword, non-f32 `ld.red`, scale-shape, and
+  parent-view subslice boundaries without late illegal ops.

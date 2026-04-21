@@ -2364,6 +2364,54 @@ remain family-specific and consume a bounded subset of the inventory.
   `createScaledGen5MMA` in `MMAv5.cpp`, or an unmodeled SFB-address operand
   constraint.
 
+### Round 17 Lane AP copy/ldst mixed fuzzing
+
+- Time: 2026-04-21 11:41 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_ldst_mixed_round17.md`
+- Temporary probe:
+  `/tmp/tmem_copy_ldst_mixed_round17_probe.py`.
+- Result: final probe passed as `7 passed`; `AP-007` classified an existing
+  `FZ-20260421-0014` proxy-fence reproduction.
+- Adjacent checked-in selector:
+  `(cp_no_scales and (warpx2 or twocta) and not reports) or (ldst_descriptor and not reports)`
+  collected `240/1615` and passed split-4 as `179 passed, 61 skipped`.
+- Classification: no new independent `FZ-*` bucket and no runtime miscompile.
+  AP-004/AP-006 are negative contrasts for `FZ-20260421-0014`: two independent
+  2CTA copy regions passed under different wait/readback placement than the
+  reproducing AP-007 row.
+
+### Round 17 local clean-boundary selector
+
+- Time: 2026-04-21 11:41 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundaries_round17.md`
+- Selector:
+  `(reports_clean_unsupported or reports_clean_error or reports_tmem_oor or subword_dtypes_report_clean_error or non_f32_contract)`
+  collected `199/1615`.
+- Split-4 result:
+  `199 passed`.
+- Classification: no clean-boundary drift into late illegal ops, crashes,
+  false unsupported diagnostics, runtime miscompiles, or new `FZ-*` buckets.
+
+### Round 17 Lane AQ clean-boundary diagnostics
+
+- Time: 2026-04-21 11:42 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundaries_round17.md`
+- Checked-in selector:
+  `reports_clean_unsupported or reports_clean_error or reports_tmem_oor`
+  collected `157/1615` and passed split-4.
+- Focused temporary probe:
+  `/tmp/tmem_clean_boundaries_round17_probe.py`.
+- Result: descriptor-view, high-CGA, subword, non-f32 `ld.red`, scale-shape,
+  and parent-view subslice clean-boundary probes passed without late illegal
+  op signatures.
+- Classification: no new independent `FZ-*` bucket. Existing dynamic/generic
+  memdesc late failures remain `FZ-20260421-0001`; high-CGA clean diagnostics
+  remain associated with `FZ-20260421-0010` when otherwise-legal
+  instruction-local layouts are launched in incompatible CGA contexts.
+
 - Round 10 Lane N recommends a future strict runtime xfail under the
   report-only `FZ-20260421-0011` once the plain-MMAv5 runtime-selector-index
   miscompile can be minimized without changing failure mode. Round 12 Lane S

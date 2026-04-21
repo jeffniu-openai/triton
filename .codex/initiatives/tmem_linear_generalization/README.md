@@ -7,15 +7,27 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
+Latest fuzzing checkpoint: 2026-04-21 11:41 UTC Round 17 copy/ldst and
+clean-boundary checkpoint. Reports:
+`agents/fuzz_copy_ldst_mixed_round17.md` and
+`agents/fuzz_clean_boundaries_round17.md` plus the local companion
+`agents/fuzz_local_clean_boundaries_round17.md`. Lane AP found no new bucket:
+temporary mixed copy+ld/st probe passed `7/7`, with `AP-007` classified as an
+existing `FZ-20260421-0014` proxy-fence reproduction; adjacent checked-in
+copy/ldst selector passed as `179 passed, 61 skipped`; `AP-004`/`AP-006` are
+negative contrasts showing two independent 2CTA copy regions can pass when the
+mbarrier wait/readback ordering differs. Lane AQ clean-boundary inventory
+selected `157/1615` checked-in clean-negative/error rows and passed split-4,
+then a focused temporary probe passed descriptor-view, high-CGA, subword,
+non-f32 `ld.red`, scale-shape, and parent-view subslice boundaries without
+late illegal ops. Local clean-boundary selector collected `199/1615` rows and
+passed as `199 passed`. Backend repair remains deferred.
+
+Previous fuzzing checkpoint: 2026-04-21 11:39 UTC Round 17 `FZ-0015` lowering
 audit. Report: `agents/fuzz_fz0015_lowering_audit_round17.md`. The saved
 TTGIR is verifier-clean. Direct/constexpr/same-object B-scale and
 runtime-selected A-scale controls pass; runtime-selected distinct B-scale
-rows fail while preserving matching PTX/LLIR scaled-MMAv5 opcodes. LLVM/PTX
-show the dynamic B-scale memdesc survives as a scalar `select` / `selp.b32`
-used as the SFB address operand. Likely site is `convertScaledDot` /
-`createScaledGen5MMA` in `MMAv5.cpp`, or an unmodeled SFB-address operand
-constraint. Backend repair remains deferred.
+rows fail while preserving matching PTX/LLIR scaled-MMAv5 opcodes.
 
 Previous fuzzing checkpoint: 2026-04-21 11:35 UTC Round 16 `FZ-0015`
 minimization. Report: `agents/fuzz_fz0015_min_round16.md`. The smallest stable

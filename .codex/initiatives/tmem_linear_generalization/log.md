@@ -28421,6 +28421,78 @@ Open after this slice:
   `convertScaledDot` / `createScaledGen5MMA` in `MMAv5.cpp`, or an unmodeled
   SFB-address operand constraint.
 
+## 2026-04-21 11:41 UTC: Round 17 Lane AP copy/ldst mixed fuzzing
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_copy_ldst_mixed_round17.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Temporary mixed probe `/tmp/tmem_copy_ldst_mixed_round17_probe.py`
+  initially collected `5` rows and passed as `5 passed`; after the `FZ-0014`
+  wait/readback follow-up rows were added, it collected `7` rows and passed as
+  `7 passed`, with `AP-007` classified as existing `FZ-20260421-0014`.
+- Green rows covered direct 1CTA copy plus ld/st readback, descriptor-chain
+  copy plus descriptor-chain ld/st readback, legal 2CTA copy plus readback, and
+  two independent legal 2CTA copy regions with separate mbarriers and
+  readbacks.
+- One int8 subword row produced the expected clean frontend/shared-layout
+  diagnostic.
+- Adjacent checked-in selector
+  `(cp_no_scales and (warpx2 or twocta) and not reports) or (ldst_descriptor and not reports)`
+  collected `240/1615` rows and passed split-4 as
+  `179 passed, 61 skipped`.
+- Classification: no new independent `FZ-*`, runtime miscompile, or
+  unexpected unsupported diagnostic. `AP-007` reproduced existing
+  `FZ-20260421-0014`; `AP-004` and `AP-006` are negative contrasts showing two
+  independent 2CTA copy regions can pass when wait/readback ordering changes
+  the tracked mbarrier use interval.
+
+## 2026-04-21 11:41 UTC: Round 17 local clean-boundary selector
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_clean_boundaries_round17.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Runtime-matrix selector
+  `(reports_clean_unsupported or reports_clean_error or reports_tmem_oor or subword_dtypes_report_clean_error or non_f32_contract)`
+  collected `199/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `199 passed`:
+  - GPU 0 / group 1: `50 passed`;
+  - GPU 1 / group 2: `50 passed`;
+  - GPU 2 / group 3: `50 passed`;
+  - GPU 3 / group 4: `49 passed`.
+- Classification: no runtime miscompile, compiler crash, late illegal-op
+  failure, false unsupported diagnostic, or new independent `FZ-*` bucket was
+  found.
+
+## 2026-04-21 11:42 UTC: Round 17 Lane AQ clean-boundary diagnostics
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_clean_boundaries_round17.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op.
+- Checked-in clean-boundary inventory selector
+  `reports_clean_unsupported or reports_clean_error or reports_tmem_oor`
+  collected `157/1615` rows and passed split-4:
+  - GPU 0 / group 1: `40 passed`;
+  - GPU 1 / group 2: `40 passed`;
+  - GPU 2 / group 3: `40 passed`;
+  - GPU 3 / group 4: `37 passed`.
+- Focused temporary subprocess probe
+  `/tmp/tmem_clean_boundaries_round17_probe.py` passed descriptor views,
+  high-CGA CTA-count gates, subword copy boundaries, non-f32 `ld.red`
+  software-reduce paths, unsupported scale descriptor shapes, and parent-view
+  `memdesc_subslice` limitations.
+- Classification: no new independent `FZ-*`, no runtime miscompile, no
+  compiler crash, and no late illegal-op signature such as unconverted
+  `ttg.memdesc_index` or `ttg.memdesc_subslice`. High-CGA rows remain
+  categorized under existing `FZ-20260421-0010`; dynamic/generic memdesc SSA
+  late failures remain owned by existing `FZ-20260421-0001`.
+
 ## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
 
 - Wrote
