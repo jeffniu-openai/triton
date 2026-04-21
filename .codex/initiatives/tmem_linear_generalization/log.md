@@ -31741,3 +31741,14 @@ Open after this slice:
   scale descriptors passed and did not broaden that bucket.
 - No `FZ-20260421-0016` or `FZ-20260421-0017` evidence appeared, and no new
   independent `FZ-*` was needed.
+
+## 2026-04-21 14:41 UTC: Round 47 non-M64 ld.red positive guardrail
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_positive_round47.md`.
+- Required `make -j8` was a no-op.
+- Selector:
+  `(ld_red or load_red) and not m64 and not reports and not resource and not clean and not descriptor_chain`.
+- Result: `156 passed, 1459 deselected`.
+- Classification: no compiler crash, false unsupported diagnostic, runtime
+  miscompile, opcode absence, or new independent `FZ-*`.

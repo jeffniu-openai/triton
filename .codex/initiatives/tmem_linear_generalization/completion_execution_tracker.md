@@ -3303,3 +3303,11 @@ discovery.
   completed as `2 passed, 3 xfailed`. Temporary probes reproduced only
   existing `FZ-20260421-0007`, `FZ-20260421-0013`, and
   `FZ-20260421-0015`. No new independent `FZ-*`.
+
+- 2026-04-21 14:41 UTC: Round 47 non-M64 `ld.red` positive guardrail
+  completed. Report: `agents/fuzz_ldred_positive_round47.md`. Required
+  `make -j8` was a no-op. Selector
+  `(ld_red or load_red) and not m64 and not reports and not resource and not clean and not descriptor_chain`
+  produced `156 passed, 1459 deselected`. No compiler crash, false
+  unsupported diagnostic, runtime miscompile, opcode absence, or new
+  independent `FZ-*`.
