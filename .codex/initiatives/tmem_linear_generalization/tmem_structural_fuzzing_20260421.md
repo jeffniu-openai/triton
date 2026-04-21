@@ -2677,3 +2677,31 @@ remain family-specific and consume a bounded subset of the inventory.
   miscompile can be minimized without changing failure mode. Round 12 Lane S
   narrowed that to an FPSAN-pinned sentinel candidate; do not promote a
   non-FPSAN variant because it degenerates into `FZ-20260421-0001`.
+
+### Round 21 Lane AY FZ-0015 IR compare
+
+- Time: 2026-04-21 12:03 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_ir_compare_round21.md`
+- Artifacts:
+  `/tmp/tmem_fz0015_ir_compare_round21_probe.py`,
+  `/tmp/tmem_fz0015_ir_compare_round21_probe.log`, and
+  `/tmp/tmem_fz0015_ir_compare_round21/`.
+- Classification: no new independent `FZ-*`; this sharpens
+  `FZ-20260421-0015`. The selected B-scale SSA is preserved into
+  `ttng.tmem_load` and `ttng.tc_gen5_mma_scaled`, and the side-channel load is
+  correct in fail/pass rows. The failing scale-first row lowers scaled-MMAv5
+  operands to `base+0/4/8/12`, while passing controls separate accumulator and
+  B-scale operands by an accumulator-sized offset.
+
+### Round 21 Lane AZ M64 ld.red minimization
+
+- Time: 2026-04-21 12:03 UTC
+- Report:
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_m64_min_round21.md`
+- Classification: no new independent `FZ-*`; this sharpens
+  `FZ-20260421-0012`. M64 f32 `ld.red` rows with non-identity effective row
+  bases fail before runtime with `unsupported dst layout`. Column-only
+  permutations pass and emit hardware reductions. Explicit `auto`, `32x32b`,
+  `16x32bx2`, and `32x32b_splitn` requests do not rescue row-permuted M64
+  rows.

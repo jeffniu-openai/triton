@@ -2077,3 +2077,15 @@ signal handling:
 - 2026-04-21 12:47 UTC: local Round 21 higher-rank/multidim descriptor selector
   completed. Report: `agents/fuzz_local_higher_rank_round21.md`. Selector
   collected `102/1615` and completed as `82 passed, 20 skipped`; no new bucket.
+
+- 2026-04-21 12:03 UTC: Lane AY report
+  `agents/fuzz_fz0015_ir_compare_round21.md` integrated. It sharpens
+  `FZ-20260421-0015`: selected B-scale SSA and side-channel loads are correct;
+  the failing scaled-MMAv5 allocation-order row lowers acc/A-scale/B-scale
+  operands into the same low-offset neighborhood, unlike the passing controls.
+
+- 2026-04-21 12:03 UTC: Lane AZ report
+  `agents/fuzz_ldred_m64_min_round21.md` integrated. It sharpens
+  `FZ-20260421-0012`: M64 f32 row-permuted `ld.red` fails in destination
+  layout planning, column-only permutations pass, and explicit load variants
+  do not rescue row-permuted rows.

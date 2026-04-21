@@ -15610,3 +15610,30 @@ rejection, not rescue
     slice;
   - keep backend repairs deferred until discovery stops finding new bugs or the
     user pivots.
+
+## Current: 2026-04-21 Round 21 FZ-0015/FZ-0012 sharpening
+
+- Integrated Round 21 Lane AY report
+  `agents/fuzz_fz0015_ir_compare_round21.md`. No new independent `FZ-*`;
+  this sharpens `FZ-20260421-0015`. The failing selected-B-scale scaled-MMAv5
+  row and the two passing allocation-order controls all preserve the same
+  selected B-scale SSA into both `ttng.tmem_load` and
+  `ttng.tc_gen5_mma_scaled`, and every selected-scale side-channel load is
+  correct. The failure correlates with low-offset scaled-MMA operands:
+  accumulator `%base+4`, A-scale `%base+0`, and selected B-scale
+  `%base+8/%base+12` in the scale-first row. Passing rows separate the
+  accumulator and B-scale operands by an accumulator-sized offset (`128` in
+  the captured IR/PTX). Likely repair area after discovery ends:
+  `TensorMemoryAllocation.cpp::allocateTMem` plus
+  `MMAv5.cpp::convertScaledDot/createScaledGen5MMA` address contract.
+
+- Integrated Round 21 Lane AZ report
+  `agents/fuzz_ldred_m64_min_round21.md`. No new independent `FZ-*`; this
+  sharpens `FZ-20260421-0012` as an M64 f32 `tcgen05.ld.red`
+  destination-layout planner gap for non-identity effective row bases.
+  `row_reverse_n32` and `row_rotate_col_even_odd_n128` fail before runtime
+  with `unsupported dst layout`; `col_reverse_n32` passes and emits hardware
+  `.ld.red.`. Explicit `auto`, `32x32b`, `16x32bx2`, and
+  `32x32b_splitn` requests all fail for row-permuted M64 rows, so the gap is
+  row-basis recognition/canonicalization rather than a user-requested variant
+  choice.

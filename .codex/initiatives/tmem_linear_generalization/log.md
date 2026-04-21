@@ -28903,3 +28903,44 @@ Open after this slice:
   still failing through `--run-reproducer`.
 - No runtime wrong-result/miscompile and no new independent `FZ-*` bucket was
   found.
+
+## 2026-04-21 12:03 UTC: Round 21 Lane AY FZ-0015 IR compare
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_fz0015_ir_compare_round21.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op in the subagent lane.
+- Runtime comparison:
+  - scale-first allocation row: selected B-scale load `0/512` byte
+    mismatches; scaled-MMAv5 `16381/16384` mismatches with NaNs/Infs.
+  - accumulator-first row: selected B-scale load `0/512`; scaled-MMAv5
+    `0/16384` mismatches.
+  - A-scales-before-accumulator-before-B-scales row: selected B-scale load
+    `0/512`; scaled-MMAv5 `0/16384` mismatches.
+- Classification: no new independent `FZ-*`; this sharpens
+  `FZ-20260421-0015`. TTGIR preserves the selected B-scale SSA into both the
+  side-channel load and scaled-MMAv5. LLVM/PTX show the failing row placing
+  accumulator, A-scale, and selected B-scale operands in the same low-offset
+  neighborhood (`0/4/8/12`), while passing rows separate accumulator and
+  selected B-scale by an accumulator-sized offset.
+- Artifacts:
+  `/tmp/tmem_fz0015_ir_compare_round21_probe.py`,
+  `/tmp/tmem_fz0015_ir_compare_round21_probe.log`, and IR/PTX under
+  `/tmp/tmem_fz0015_ir_compare_round21/`.
+
+## 2026-04-21 12:03 UTC: Round 21 Lane AZ M64 ld.red minimization
+
+- Integrated
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_ldred_m64_min_round21.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op in the subagent lane.
+- Exact row-permuted M64 f32 `ld.red` rows reproduced as
+  `unsupported dst layout`; nearby `col_reverse_n32` controls passed.
+- Explicit variant probe showed `auto`, `32x32b`, `16x32bx2`, and
+  `32x32b_splitn` all fail for row-permuted M64 rows but pass for the
+  column-only control.
+- Classification: no new independent `FZ-*`; this sharpens
+  `FZ-20260421-0012` as an M64 f32 hardware-reduction destination-layout
+  planner gap for non-identity effective row bases.

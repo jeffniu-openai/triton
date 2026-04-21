@@ -5635,3 +5635,24 @@ When resuming the initiative:
 - Lane P completed clean-boundary adversarial fuzzing:
   `agents/fuzz_clean_boundary_round10.md`. It found no new independent bucket;
   `ld_red_identity_n512` overlaps existing `FZ-20260421-0005/0009`.
+
+## Latest: 2026-04-21 Round 21 FZ-0015 and FZ-0012 minimization
+
+- Lane AY completed `agents/fuzz_fz0015_ir_compare_round21.md`. No new
+  independent `FZ-*`; it sharpens `FZ-20260421-0015`. The selected B-scale
+  memdesc SSA and a side-channel `tmem_load` are correct in failing and
+  passing rows. The discriminator is scaled-MMAv5 address/offset lowering:
+  the failing scale-first allocation row passes accumulator, A-scale, and
+  selected B-scale operands in the same low-offset neighborhood
+  (`0/4/8/12`), while passing rows separate accumulator and B-scale operands
+  by an accumulator-sized offset.
+- Lane AZ completed `agents/fuzz_ldred_m64_min_round21.md`. No new
+  independent `FZ-*`; it sharpens `FZ-20260421-0012` as an M64 f32
+  `tcgen05.ld.red` destination-layout planner gap for non-identity effective
+  row bases. Column-only permutations pass and emit hardware reductions;
+  row-permuted M64 rows fail before runtime with `unsupported dst layout`, and
+  explicit `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` requests do not
+  rescue them.
+- Active campaign mode remains discovery-only. Backend repairs stay deferred
+  while new fuzzing findings continue to land; the next local slice is the
+  scaled-MMAv5 layout selector excluding known `FZ-0015` rows.
