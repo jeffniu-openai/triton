@@ -88,6 +88,13 @@ The project is complete when:
   `294 passed, 37 skipped`. Adjacent high-CGA `test_core.py` controls reported
   `3 passed`. No runtime miscompile, compiler crash, false unsupported
   diagnostic, or new independent `FZ-*` bucket was found.
+  2026-04-21 11:26 UTC local Round 15 higher-rank descriptor runtime sweep
+  stayed green. Report:
+  `agents/fuzz_local_higher_rank_descriptor_round15.md`. Runtime-matrix
+  selector `(higher_rank or multidim_slice or half_rows or rank5) and not reports`
+  collected `102/1615` rows and passed split-4 as `82 passed, 20 skipped`. No
+  runtime miscompile, compiler crash, false unsupported diagnostic, or new
+  independent `FZ-*` bucket was found.
   2026-04-21 08:30 UTC Lane E2 promoted FZ-20260421-0001 and
   FZ-20260421-0002 into checked-in strict xfail runtime coverage in
   `python/test/gluon/test_tmem_structural_fuzzer.py`, with exact fresh-process

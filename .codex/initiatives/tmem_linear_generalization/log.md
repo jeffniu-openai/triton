@@ -28188,6 +28188,25 @@ Open after this slice:
 - Classification: no runtime miscompile, compiler crash, false unsupported
   diagnostic, or new independent `FZ-*` bucket was found.
 
+## 2026-04-21 11:26 UTC: Round 15 local higher-rank descriptor runtime sweep
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/agents/fuzz_local_higher_rank_descriptor_round15.md`.
+- Continued discovery-only structural fuzzing; no backend or compiler repair
+  was attempted.
+- Required `make -j8` was a no-op from the immediately preceding local slice.
+- Runtime-matrix selector
+  `(higher_rank or multidim_slice or half_rows or rank5) and not reports`
+  collected `102/1615` rows.
+- Split-4 result with stable per-GPU caches:
+  `82 passed, 20 skipped`:
+  - GPU 0 / group 1: `26 passed`;
+  - GPU 1 / group 2: `26 passed`;
+  - GPU 2 / group 3: `7 passed, 19 skipped`;
+  - GPU 3 / group 4: `23 passed, 1 skipped`.
+- Classification: no runtime miscompile, compiler crash, false unsupported
+  diagnostic, or new independent `FZ-*` bucket was found.
+
 ## 2026-04-21 11:23 UTC: Round 14 Lane AJ high-CGA mixed ownership fuzzing
 
 - Wrote

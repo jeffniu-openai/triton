@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-21 11:26 UTC local Round 15 higher-rank descriptor runtime
+  sweep stayed green. Report:
+  `agents/fuzz_local_higher_rank_descriptor_round15.md`. Required `make -j8`
+  was a no-op from the preceding local slice. Runtime-matrix selector
+  `(higher_rank or multidim_slice or half_rows or rank5) and not reports`
+  collected `102/1615` rows and passed split-4 as `82 passed, 20 skipped`. No
+  runtime miscompile, compiler crash, false unsupported diagnostic, or new
+  independent `FZ-*` bucket was found.
+
 - Latest: 2026-04-21 11:24 UTC local Round 14 twoCTA/high-CGA runtime sweep
   stayed green. Report:
   `agents/fuzz_local_twocta_highcga_round14.md`. Required `make -j8` was a

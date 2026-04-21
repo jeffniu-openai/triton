@@ -7,15 +7,17 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest fuzzing checkpoint: 2026-04-21 11:24 UTC local Round 14
-twoCTA/high-CGA runtime sweep. Report:
-`agents/fuzz_local_twocta_highcga_round14.md`. Required `make -j8` was a
-no-op. Runtime-matrix selector
-`(twocta or cga_roundtrip or layout_in_4cta_context) and not reports`
-collected `331/1615` rows and passed split-4 as `294 passed, 37 skipped`.
-Adjacent high-CGA core controls in `test_core.py` reported `3 passed`. No
+Latest fuzzing checkpoint: 2026-04-21 11:26 UTC local Round 15 higher-rank
+descriptor runtime sweep. Report:
+`agents/fuzz_local_higher_rank_descriptor_round15.md`. Required `make -j8` was
+a no-op from the preceding local slice. Runtime-matrix selector
+`(higher_rank or multidim_slice or half_rows or rank5) and not reports`
+collected `102/1615` rows and passed split-4 as `82 passed, 20 skipped`. No
 runtime miscompile, compiler crash, false unsupported diagnostic, or new
 independent `FZ-*` bucket was found.
+
+Previous fuzzing checkpoint: 2026-04-21 11:24 UTC local Round 14
+twoCTA/high-CGA runtime sweep. Report:
 
 Previous fuzzing checkpoint: 2026-04-21 11:23 UTC Round 14 Lane AJ completed
 high-CGA mixed ownership fuzzing. Report:
