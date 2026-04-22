@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-22 23:06 UTC completed the first copy-planning slice of the
+  newer self-contained memdesc model. `selectTMemCopyPhysicalQuery` now records
+  type-local destination candidates and selects the type-local physical query
+  for active self-contained TMEM subviews: current shape differs from alloc
+  shape, and the current TMEM-linear layout canonicalizes against the active
+  shape. This moves those copy destinations off the producer-chain exact query
+  and makes the selected physical plan relative to the current destination
+  `taddr`. Direct roots and legacy parent-encoding views still use the
+  existing standalone/exact selection while the broader planner rewrite
+  continues. Validation: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused
+  `cp_no_scales` selector `63 passed, 1560 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
+  `57 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
+
 - Latest: 2026-04-22 22:05 UTC started implementation of the newer
   self-contained TMEM memdesc model. Active plan/checklist now lives in
   `tmem_memdesc_runtime_abstraction_20260422.md` and

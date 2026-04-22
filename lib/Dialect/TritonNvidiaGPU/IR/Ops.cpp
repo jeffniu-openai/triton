@@ -1876,6 +1876,10 @@ LogicalResult TMEMCopyOp::verify() {
   const TMemPhysicalQuery &supportDstQuery = *querySelection.query;
   auto tmemLl = supportDstQuery.layout;
   if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
+    if (!querySelection.typeLocal) {
+      llvm::errs() << "[tmem-copy] type-local destination query failed: "
+                   << querySelection.typeLocalError << "\n";
+    }
     if (!querySelection.standalone) {
       llvm::errs() << "[tmem-copy] standalone destination query failed: "
                    << querySelection.standaloneError << "\n";
@@ -1907,7 +1911,9 @@ LogicalResult TMEMCopyOp::verify() {
                     querySelection.exact->origin);
       }
     }
-    if (querySelection.usedExact) {
+    if (querySelection.usedTypeLocal) {
+      llvm::errs() << "[tmem-copy] using type-local destination query\n";
+    } else if (querySelection.usedExact) {
       llvm::errs() << "[tmem-copy] using exact destination query\n";
     } else {
       llvm::errs() << "[tmem-copy] using standalone destination query\n";

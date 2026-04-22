@@ -20,16 +20,35 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-22 22:54 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-22 23:06 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
 type-local physical-query scaffolding, DCE derisking for `subword_index`,
 active TMEM subslice result encodings, and active-subview load/store
-query-ordering for self-contained result layouts. Remaining work continues
-through type-local copy, ld/st, `ld.red`, MMAv5/scales, and helper API cleanup.
+query-ordering for self-contained result layouts. Copy planning now also uses
+the type-local destination physical query for active self-contained subviews.
+Remaining work continues through broader type-local ld/st, `ld.red`,
+MMAv5/scales, copy clean negatives, and helper API cleanup.
 
-Latest validation checkpoint: 2026-04-22 22:54 UTC completed the active
+Latest validation checkpoint: 2026-04-22 23:06 UTC completed the first
+copy-planning slice for active self-contained subviews. Destination copy
+planning now records type-local, standalone, and exact physical-query
+candidates, and selects the type-local query when the current memdesc type
+already describes an active subview layout relative to the current `taddr`.
+This removes the producer-chain exact query from that correctness path while
+leaving direct roots and legacy parent-encoding views on the existing
+standalone/exact selection. Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused
+`cp_no_scales` selector `63 passed, 1560 deselected`; 4-GPU
+`cp_no_scales and not reports` split passed as group1
+`54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
+`57 passed`; targeted lit set `ops.mlir`, `tmem_layouts.mlir`,
+`tritongpu_to_llvm_blackwell.mlir`, `test-buffer-region.mlir`,
+`invalid.mlir`, and `TritonGPU/invalid.mlir` passed `6/6`;
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-22 22:54 UTC completed the active
 subview load/store query-ordering slice. Active subviews whose current
 `MemDescType` shape differs from alloc shape but whose tensor-memory layout
 matches the active shape now try the standalone canonical load/store surrogate

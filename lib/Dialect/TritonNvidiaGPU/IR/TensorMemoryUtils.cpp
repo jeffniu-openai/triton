@@ -4272,6 +4272,24 @@ static bool shouldPreferDirectHalfRowsSubviewRowPlan(
     std::optional<TMemLdStRowPlan> queryPlan,
     std::optional<TMemLdStRowPlan> backingPlan);
 
+static bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy) {
+  if (!memTy || !isTensorMemoryEncoding(memTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    return false;
+  }
+  auto layoutRank =
+      static_cast<size_t>(cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank());
+  if (memTy.getShape().size() < layoutRank ||
+      memTy.getAllocShape().size() < layoutRank) {
+    return false;
+  }
+  if (memTy.getShape().take_back(layoutRank) ==
+      memTy.getAllocShape().take_back(layoutRank)) {
+    return false;
+  }
+  return getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr).has_value();
+}
+
 llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
   llvm::SmallVector<gpu::MemDescType> queryTypes;
   auto memTy = dyn_cast<gpu::MemDescType>(memDesc.getType());
@@ -4292,20 +4310,8 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
 
   bool memTyCanonical =
       getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr).has_value();
-  bool hasSelfContainedSubviewLayout = [&] {
-    if (!isTensorMemoryEncoding(memTy.getEncoding()) ||
-        isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
-      return false;
-    auto layoutRank =
-        static_cast<size_t>(cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank());
-    if (memTy.getShape().size() < layoutRank ||
-        memTy.getAllocShape().size() < layoutRank)
-      return false;
-    if (memTy.getShape().take_back(layoutRank) ==
-        memTy.getAllocShape().take_back(layoutRank))
-      return false;
-    return memTyCanonical;
-  }();
+  bool hasSelfContainedSubviewLayout =
+      hasSelfContainedTMemSubviewLayout(memTy);
 
   bool preferStandaloneBeforeRawType =
       isa_and_nonnull<TMEMSubSliceOp>(memDesc.getDefiningOp()) &&
@@ -6631,13 +6637,11 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
   if (succeeded(maybeExact))
     selection.exact = *maybeExact;
 
-  std::optional<TMemPhysicalQuery> typeLocal;
-  std::string typeLocalError;
   if (auto memTy = dyn_cast<MemDescType>(memDesc.getType())) {
     if (auto maybeTypeLocal =
-            inferTypeLocalTMemPhysicalQuery(memTy, &typeLocalError);
+            inferTypeLocalTMemPhysicalQuery(memTy, &selection.typeLocalError);
         succeeded(maybeTypeLocal)) {
-      typeLocal = *maybeTypeLocal;
+      selection.typeLocal = *maybeTypeLocal;
     }
   }
 
@@ -6645,22 +6649,22 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
     return succeeded(getTMemCopySourceConversion(query, shmemLl));
   };
   if (debug) {
-    if (typeLocal) {
+    if (selection.typeLocal) {
       llvm::errs() << "[tmem-copy] candidate type-local query canCompose="
-                   << canUseCopyQuery(*typeLocal) << "\n"
-                   << typeLocal->layout.toString() << "\n";
+                   << canUseCopyQuery(*selection.typeLocal) << "\n"
+                   << selection.typeLocal->layout.toString() << "\n";
       if (selection.exact) {
         if (auto difference =
-                getFirstTMemPhysicalQueryDifference(*typeLocal,
+                getFirstTMemPhysicalQueryDifference(*selection.typeLocal,
                                                     *selection.exact)) {
           llvm::errs() << "[tmem-copy] type-local/exact query divergence: "
                        << stringifyTMemPhysicalQueryDifference(*difference)
                        << "\n";
         }
       }
-    } else if (!typeLocalError.empty()) {
+    } else if (!selection.typeLocalError.empty()) {
       llvm::errs() << "[tmem-copy] candidate type-local query failed: "
-                   << typeLocalError << "\n";
+                   << selection.typeLocalError << "\n";
     }
     if (selection.standalone) {
       llvm::errs() << "[tmem-copy] candidate standalone query canCompose="
@@ -6679,7 +6683,8 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
                    << selection.exactError << "\n";
     }
   }
-  auto choose = [&](const TMemPhysicalQuery &query, bool usedExact)
+  auto choose = [&](const TMemPhysicalQuery &query, bool usedTypeLocal,
+                    bool usedExact)
       -> FailureOr<TMemCopyPhysicalQuerySelection> {
     std::string conversionError;
     if (failed(getTMemCopySourceConversion(query, shmemLl, &conversionError))) {
@@ -6688,26 +6693,38 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
       return failure();
     }
     selection.query = query;
+    selection.usedTypeLocal = usedTypeLocal;
     selection.usedExact = usedExact;
     return selection;
   };
+
+  auto memTy = dyn_cast<MemDescType>(memDesc.getType());
+  if (selection.typeLocal && memTy &&
+      hasSelfContainedTMemSubviewLayout(memTy) &&
+      canUseCopyQuery(*selection.typeLocal)) {
+    return choose(*selection.typeLocal, /*usedTypeLocal=*/true,
+                  /*usedExact=*/false);
+  }
 
   if (selection.standalone && selection.exact &&
       shouldUseExactTMemCopyPhysicalQuery(*selection.standalone,
                                           *selection.exact) &&
       canUseCopyQuery(*selection.exact)) {
-    return choose(*selection.exact, /*usedExact=*/true);
+    return choose(*selection.exact, /*usedTypeLocal=*/false,
+                  /*usedExact=*/true);
   }
 
   if (selection.standalone && canUseCopyQuery(*selection.standalone))
-    return choose(*selection.standalone, /*usedExact=*/false);
+    return choose(*selection.standalone, /*usedTypeLocal=*/false,
+                  /*usedExact=*/false);
 
   // Non-canonical linear TMEM roots and some descriptor views do not have a
   // standalone canonical spelling, but exact query algebra can still describe
   // the active physical image precisely. Use it only when there is no
   // standalone projection to disagree with.
   if (!selection.standalone && selection.exact)
-    return choose(*selection.exact, /*usedExact=*/true);
+    return choose(*selection.exact, /*usedTypeLocal=*/false,
+                  /*usedExact=*/true);
 
   if ((selection.standalone || selection.exact) && error) {
     *error = "unsupported tensor memory descriptor view for tcgen05.copy: the "

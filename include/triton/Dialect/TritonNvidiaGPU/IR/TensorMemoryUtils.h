@@ -114,10 +114,13 @@ struct TMemPhysicalQuery {
 
 struct TMemCopyPhysicalQuerySelection {
   std::optional<TMemPhysicalQuery> query;
+  std::optional<TMemPhysicalQuery> typeLocal;
   std::optional<TMemPhysicalQuery> standalone;
   std::optional<TMemPhysicalQuery> exact;
+  std::string typeLocalError;
   std::string standaloneError;
   std::string exactError;
+  bool usedTypeLocal = false;
   bool usedExact = false;
 };
 

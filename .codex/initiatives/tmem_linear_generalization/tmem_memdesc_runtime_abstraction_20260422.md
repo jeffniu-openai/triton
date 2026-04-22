@@ -583,7 +583,10 @@ Checklist state:
   layouts.
 - [ ] Migrate `ld.red` legality/layout selection to the type-local planner.
 - [ ] Migrate `tcgen05.copy` planning to destination-type-only analysis and add
-  too-small-copy clean negatives.
+  too-small-copy clean negatives. First partial slice complete: active
+  self-contained subview destinations select a type-local physical query;
+  direct roots and legacy parent-encoding views still use the old
+  standalone/exact selection.
 - [ ] Migrate MMAv5/scales address planning to current type/layout plus runtime
   `taddr`.
 - [ ] Split public helper APIs into lowering-facing type-local helpers and
@@ -795,3 +798,32 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `Conversion/tritongpu_to_llvm_blackwell.mlir`,
   `Analysis/test-buffer-region.mlir`, `TritonNvidiaGPU/invalid.mlir`, and
   `TritonGPU/invalid.mlir` passed `6/6`.
+
+### 2026-04-22 Active Subview Copy Query Slice
+
+- `selectTMemCopyPhysicalQuery` now keeps the type-local destination physical
+  query in `TMemCopyPhysicalQuerySelection`, along with debug diagnostics and a
+  `usedTypeLocal` flag. `TMEMCopyOp::verify` reports this under
+  `TRITON_DEBUG_TMEM_QUERY=1`.
+- Copy planning now selects the type-local destination query for active
+  self-contained TMEM subviews only. The type-local predicate is the same one
+  used by the load/store ordering bridge: trailing shape differs from trailing
+  alloc shape, and `getCanonicalTMemLinearEncoding(memTy)` proves the current
+  layout matches the active shape. For this descriptor class, the runtime
+  `taddr` already carries the subview origin, so the selected copy query should
+  be origin-zero and relative to the current descriptor.
+- The selection is deliberately narrow. Direct roots, raw parent-allocation
+  layouts, tile-selector rows, and legacy views whose result type still
+  preserves parent encoding continue to use the existing standalone/exact
+  selection. This preserves the broad `cp_no_scales` matrix while migrating the
+  active-layout correctness path away from producer-chain exact queries.
+- Validation after this slice: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused selector
+  `cp_no_scales and (indexed_view or linear_subslice_view or warpx2_candidate or 128x128)`
+  `63 passed, 1560 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1 `54 passed, 4 skipped`,
+  group2 `58 passed`, group3 `58 passed`, group4 `57 passed`; targeted lit set
+  `TritonNvidiaGPU/ops.mlir`, `TritonNvidiaGPU/tmem_layouts.mlir`,
+  `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+  `Analysis/test-buffer-region.mlir`, `TritonNvidiaGPU/invalid.mlir`, and
+  `TritonGPU/invalid.mlir` passed `6/6`; `git diff --check` passed.

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 22:54 UTC
+Last updated: 2026-04-22 23:06 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -22,7 +22,11 @@ Active implementation checklist:
   vertical slices with focused tests after each slice. First ld/st-facing
   completed slice: active self-contained subview layouts now try their
   standalone canonical load/store surrogate before raw parent-allocation query
-  types, using a type-local shape-vs-alloc/layout predicate.
+  types, using a type-local shape-vs-alloc/layout predicate. First
+  copy-planning slice: `selectTMemCopyPhysicalQuery` now selects the
+  type-local destination physical query for active self-contained subviews,
+  keeping legacy standalone/exact selection for direct roots and older
+  parent-encoding views.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
   and producer-chain matchers are optimizer-only.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
@@ -36,14 +40,13 @@ that are too small for any legal ISA atom, such as dense `128x1xf32` or
 Current implementation checkpoint: added explicit TMEM physical element-column
 helpers (`getTMemElementsPerWord`, `getTMemSubwordIndex`, and
 `getTMemAddressColumns`) plus `inferTypeLocalTMemPhysicalQuery(MemDescType)`.
-`selectTMemCopyPhysicalQuery` now prints a type-local candidate under
-`TRITON_DEBUG_TMEM_QUERY=1` for side-by-side comparison against the old
-standalone/exact chain-derived queries. This does not change default copy
-codegen yet; it is the derisking scaffold for switching copy planning to the
-current descriptor type. Build validation: `make -j8` passed. Runtime probes
-with debug enabled showed type-local copy query support for dense root,
-canonical indexed-view, and linear indexed-view copy cases with no
-type-local/exact divergence reported in the sampled rows.
+`selectTMemCopyPhysicalQuery` records type-local, standalone, and exact
+destination candidates for debug comparison. For active self-contained subviews
+whose current `MemDescType` shape differs from alloc shape and whose current
+TMEM-linear layout matches the active shape, copy planning now uses the
+type-local destination query directly. Direct roots and legacy parent-encoding
+views continue to use the existing standalone/exact selection while the broader
+planner migration proceeds.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but
@@ -93,6 +96,21 @@ group2 `58 passed`, group3 `58 passed`, group4 `57 passed`; targeted lit set
 `Conversion/tritongpu_to_llvm_blackwell.mlir`,
 `Analysis/test-buffer-region.mlir`, `TritonNvidiaGPU/invalid.mlir`, and
 `TritonGPU/invalid.mlir` passed `6/6`.
+
+Completed third implementation slice: active self-contained TMEM subview copy
+destinations now select the type-local physical query instead of the legacy
+exact producer-chain query. This makes the selected copy plan relative to the
+current destination `taddr` for the same active subview class fixed by the
+result-type and ld/st slices, while avoiding the earlier overbroad experiment
+that broke M=256 row-group, tile-selector, and raw-root rows. Validation:
+required `make -j8`; exact
+`test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_subslice_view_positive`
+`4 passed`; focused selector
+`cp_no_scales and (indexed_view or linear_subslice_view or warpx2_candidate or 128x128)`
+`63 passed, 1560 deselected`; 4-GPU
+`cp_no_scales and not reports` split passed as group1 `54 passed, 4 skipped`,
+group2 `58 passed`, group3 `58 passed`, group4 `57 passed`; targeted lit set
+passed `6/6`; `git diff --check` passed.
 
 Current prototype evidence: hand-written LLVM IR passed through
 `opt -S -O2` shows unused or statically zero subword-phase arithmetic is removed

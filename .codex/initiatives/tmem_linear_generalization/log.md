@@ -137,6 +137,48 @@
   with a copy-planning vertical slice only after preserving the current green
   active-subview coverage.
 
+## 2026-04-22 23:06 UTC: active subview copy query migration slice
+
+- Branch/HEAD before this implementation slice:
+  `93bcffa56 Advance TMEM memdesc model migration`.
+- Context:
+  the previous slices made active subslice result types self-contained and fixed
+  load/store query ordering for that active-layout class. Copy planning still
+  computed a type-local destination candidate only for debug output and then
+  selected through the old standalone/exact producer-chain stack.
+- Completed implementation:
+  `TMemCopyPhysicalQuerySelection` now records the type-local candidate, its
+  diagnostic, and whether it was selected. `selectTMemCopyPhysicalQuery`
+  selects the type-local destination physical query when the current
+  `MemDescType` is an active self-contained subview: trailing shape differs
+  from trailing alloc shape, and `getCanonicalTMemLinearEncoding(memTy)` proves
+  the current tensor-memory layout matches the active shape. Direct roots and
+  legacy parent-encoding views still use the existing standalone/exact
+  selection, which avoids the earlier overbroad type-local experiment that
+  broke M=256 row-group, tile-selector, and raw-root copy rows.
+- Debug evidence:
+  the exact `warpx2::01_23` two-CTA subslice row printed
+  `using type-local destination query` under `TRITON_DEBUG_TMEM_QUERY=1` and
+  passed runtime correctness.
+- Validation evidence:
+  required `make -j8`; exact
+  `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_subslice_view_positive`
+  ran as `4 passed`; focused selector
+  `cp_no_scales and (indexed_view or linear_subslice_view or warpx2_candidate or 128x128)`
+  ran as `63 passed, 1560 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
+  `57 passed`; targeted lit set
+  `TritonNvidiaGPU/ops.mlir`, `TritonNvidiaGPU/tmem_layouts.mlir`,
+  `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+  `Analysis/test-buffer-region.mlir`, `TritonNvidiaGPU/invalid.mlir`, and
+  `TritonGPU/invalid.mlir` passed `6/6`; `git diff --check` passed.
+- Remaining frontier:
+  copy planning is only type-local for active self-contained subviews. The
+  broader migration still needs type-local clean negatives for too-small copy
+  destinations, ld/st and `ld.red` semantic planning, MMAv5/scales address
+  planning, and helper API cleanup.
+
 ## 2026-04-22: TMEM memdesc runtime abstraction audit
 
 - Wrote
