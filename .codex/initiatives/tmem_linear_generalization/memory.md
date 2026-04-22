@@ -1,6 +1,23 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-22 02:09 UTC cleanup/generalization pass completed over the
+- Latest: 2026-04-22 02:28 UTC branch-diff refactor pass completed over the
+  TMEM backend surface in `origin/main...HEAD`. The total branch delta is over
+  a thousand files and includes unrelated upstream/AMD/proton/test work, so the
+  cleanup scope stayed on branch-owned TMEM backend code. Added shared packed
+  TMEM row/column offset helpers in `TensorMemoryUtils.h` and converted the
+  planner plus LLVM lowering to use them for row-base construction,
+  row/column packing/extraction, row-limit checks, and row scaling. Removed
+  duplicated local `packTMemBasisOffset` lambdas and raw `(row << 16) | col`
+  expressions from the direct ld/st planner and copy destination planning
+  where the value is a packed TMEM offset. Also unified physical-query and
+  ld/st-query origin base-offset construction through one helper. Validation:
+  required `make -j8`; exact prior `ld.red` descriptor-chain crash repro
+  `1 passed`; focused affected runtime selector `83 passed`; structural
+  fuzzer split-4 `9 + 9 + 9 + 9 = 36 passed`; targeted lit
+  `tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`;
+  runtime/structural `py_compile` and `git diff --check` passed.
+
+- Previous: 2026-04-22 02:09 UTC cleanup/generalization pass completed over the
   recent TMEM repair code. `OptimizeTMemLayouts` now centralizes the invariant
   for plain single-result TMEM loads in `isPlainSingleResultTMemLoad` and uses
   it across split-load, physical-support, full/half/leading replay,

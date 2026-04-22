@@ -7,7 +7,24 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest validation checkpoint: 2026-04-22 02:09 UTC completed a cleanup and
+Latest validation checkpoint: 2026-04-22 02:28 UTC completed a branch-diff
+refactor pass over the TMEM backend surface in the `origin/main...HEAD`
+delta. The full branch diff is very broad, so this pass targeted the
+branch-owned TMEM backend code rather than unrelated upstream/AMD/proton/test
+churn. `TensorMemoryUtils.h` now owns the shared packed row/column TMEM offset
+contract: row-base construction, row/column packing, row/column extraction,
+row-limit checks, and row scaling. `TensorMemoryUtils.cpp` and
+`TensorMemoryToLLVM.cpp` now use those helpers instead of local bit masks,
+local `packTMemBasisOffset` lambdas, and repeated `(row << 16) | col`
+expressions. Query-origin base-offset logic for physical queries and ld/st
+queries now also routes through a shared helper. Validation: required
+`make -j8`; exact prior `ld.red` descriptor-chain crash repro `1 passed`;
+focused affected runtime selector `83 passed`; structural fuzzer split-4
+`9 + 9 + 9 + 9 = 36 passed`; targeted lit `tmem_layouts.mlir` and
+`interleave_tmem.mlir` `2 passed`; runtime/structural `py_compile` and
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-22 02:09 UTC completed a cleanup and
 generalization pass over the recent TMEM repair code. `OptimizeTMemLayouts`
 now has a shared plain single-result TMEM-load predicate used by split-load,
 physical-support, full/half/leading replay, reduction-rewrite, fused

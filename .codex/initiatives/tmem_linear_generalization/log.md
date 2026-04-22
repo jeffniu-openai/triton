@@ -33578,6 +33578,26 @@ Open after this slice:
   temporary bucket reports are useful history, not live work, unless they
   reproduce on current head.
 
+## 2026-04-22 02:28 UTC: Branch-diff TMEM refactor checkpoint
+
+- Scope:
+  inspected the `origin/main...HEAD` delta. Because the full branch delta spans
+  over a thousand files and includes unrelated upstream/AMD/proton/test work,
+  the cleanup pass targeted reusable TMEM backend code rather than global
+  branch churn.
+- Source cleanup:
+  added shared packed TMEM row/column offset helpers to
+  `TensorMemoryUtils.h`. Replaced local planner/lowering bit twiddling,
+  duplicate `packTMemBasisOffset` lambdas, and raw packed-offset expressions
+  in `TensorMemoryUtils.cpp` and `TensorMemoryToLLVM.cpp`. Unified physical
+  and ld/st query-origin base-offset construction through one helper.
+- Validation:
+  required `make -j8`; exact prior `ld.red` descriptor-chain crash repro
+  `1 passed`; focused affected runtime selector `83 passed`; structural
+  fuzzer split-4 `36 passed`; targeted lit `tmem_layouts.mlir` and
+  `interleave_tmem.mlir` `2 passed`; runtime/structural `py_compile` and
+  `git diff --check` passed.
+
 ## 2026-04-21 23:56 UTC: rank-5 selected-parent full-view replay repair
 
 - Branch/HEAD before this repair slice:

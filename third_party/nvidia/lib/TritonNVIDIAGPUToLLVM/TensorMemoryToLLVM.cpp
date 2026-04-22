@@ -35,17 +35,6 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
-struct TMemPacketOffset {
-  uint32_t rowBaseOffset;
-  int colImmediate;
-};
-
-static TMemPacketOffset splitTMemPacketOffset(int packedOffset) {
-  uint32_t offset = static_cast<uint32_t>(packedOffset);
-  return {/*rowBaseOffset=*/offset & 0xffff0000u,
-          /*colImmediate=*/static_cast<int>(offset & 0xffffu)};
-}
-
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -443,22 +432,23 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
         col += (i / valsPerMessage) * 2;
       // Encode row into the base address and pass col as an immediate
       // colOffset.
-      staticOffset = col | (row << 16);
+      staticOffset = static_cast<int>(packTMemRowColOffset(row, col));
     }
-    TMemPacketOffset packetOffset = splitTMemPacketOffset(staticOffset);
+    uint32_t packetOffset = static_cast<uint32_t>(staticOffset);
+    uint32_t rowBaseOffset = getTMemPackedOffsetRowBaseOffset(packetOffset);
+    int colImmediate = static_cast<int>(getTMemPackedOffsetCol(packetOffset));
     Value packetBase = tmemBase;
-    if (packetOffset.rowBaseOffset != 0)
-      packetBase = b.add(packetBase, b.i32_val(packetOffset.rowBaseOffset));
+    if (rowBaseOffset != 0)
+      packetBase = b.add(packetBase, b.i32_val(rowBaseOffset));
 
     if (isStore) {
       auto chunk = to_vector(vals.slice(i, valsPerMessage));
-      createTensorMemoryStore(loc, packetBase,
-                              /*colOffset=*/packetOffset.colImmediate, chunk,
+      createTensorMemoryStore(loc, packetBase, /*colOffset=*/colImmediate, chunk,
                               /*secondHalfOffset=*/secondHalfOffset, pred,
                               /*unpacked=*/unpacked, atom, rewriter);
     } else {
       auto [outVals, redval] = createTensorMemoryLoad(
-          loc, ctx, packetBase, /*colOffset=*/packetOffset.colImmediate,
+          loc, ctx, packetBase, /*colOffset=*/colImmediate,
           /*secondHalfOffset=*/secondHalfOffset, /*unpacked=*/unpacked,
           /*numRegPerMessage=*/valsPerMessage, atom, redOp, useAbs, useNaN,
           llvmElemTy, rewriter);
@@ -980,7 +970,8 @@ struct TensorMemoryAllocOpConversion
     int rowOffset = cast<IntegerAttr>(op->getAttr("tensor_memory_row_offset"))
                         .getValue()
                         .getZExtValue();
-    Value allocAddress = b.add(baseInt, b.i32_val(colOffset | rowOffset << 16));
+    Value allocAddress =
+        b.add(baseInt, b.i32_val(packTMemRowColOffset(rowOffset, colOffset)));
     SmallVector<unsigned> order(op.getType().getRank());
     std::iota(order.begin(), order.end(), 0);
     std::reverse(order.begin(), order.end());

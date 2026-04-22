@@ -1,8 +1,25 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 02:09 UTC
+Last updated: 2026-04-22 02:28 UTC
 
-Latest validation checkpoint: 2026-04-22 02:09 UTC cleanup/generalization
+Latest validation checkpoint: 2026-04-22 02:28 UTC branch-diff refactor pass
+completed over the TMEM backend surface in `origin/main...HEAD`. The full
+branch delta is intentionally broad, so this pass avoided unrelated
+upstream/AMD/proton/test churn and focused on reusable TMEM backend
+generalization. Source cleanup: shared packed TMEM row/column offset helpers
+now live in `TensorMemoryUtils.h`; direct ld/st planning, copy destination
+planning, and LLVM lowering use them for row-base construction, row/column
+packing/extraction, row-limit checks, and row scaling. Query-origin base-offset
+construction for physical queries and ld/st queries now shares one helper.
+Validation: required `make -j8`; exact prior `ld.red` descriptor-chain crash
+repro `1 passed`; focused affected runtime selector `83 passed`; structural
+fuzzer split-4 `9 + 9 + 9 + 9 = 36 passed`; targeted lit
+`TritonNvidiaGPU/tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`;
+runtime/structural `py_compile` passed; `git diff --check` passed. Current
+next slice: from this green baseline, continue with current-head probes or
+the broader completion queue only if a live gap appears.
+
+Previous validation checkpoint: 2026-04-22 02:09 UTC cleanup/generalization
 pass completed over the recent TMEM repair code. Source cleanup:
 `OptimizeTMemLayouts` now has a shared `isPlainSingleResultTMemLoad` guard
 used by split-load, physical-support, full/half/leading replay,

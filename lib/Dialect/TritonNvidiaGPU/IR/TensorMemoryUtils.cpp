@@ -1407,6 +1407,39 @@ getTMemViewAnalysisLayout(ArrayRef<int64_t> shape, Attribute encoding,
                                                   0)};
 }
 
+static int32_t lookupTMemOrigin(ArrayRef<StringAttr> dims,
+                                ArrayRef<int32_t> origin, StringAttr dim) {
+  auto it = llvm::find(dims, dim);
+  if (it == dims.end())
+    return 0;
+  return origin[std::distance(dims.begin(), it)];
+}
+
+static int32_t lookupTMemLdStQueryOrigin(const TMemLdStQueryLayout &query,
+                                         StringAttr dim) {
+  return lookupTMemOrigin(llvm::to_vector(query.layout.getInDimNames()),
+                          query.origin, dim);
+}
+
+static uint32_t getTMemOriginBaseOffset(const LinearLayout &layout,
+                                        ArrayRef<int32_t> origin,
+                                        int bitwidth) {
+  auto inDims = llvm::to_vector(layout.getInDimNames());
+  if (inDims.empty())
+    return 0;
+  auto *ctx = inDims.front().getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  uint32_t offset = 0;
+  int32_t row = lookupTMemOrigin(inDims, origin, kRow);
+  if (row > 0)
+    offset += getTMemPackedOffsetRowBase(static_cast<uint32_t>(row));
+  int32_t col = lookupTMemOrigin(inDims, origin, kCol);
+  if (col > 0)
+    offset += static_cast<uint32_t>(col) * bitwidth / 32;
+  return offset;
+}
+
 static SmallVector<int32_t>
 remapTMemLdStQueryOrigin(const TMemLdStQueryLayout &srcQuery,
                          const LinearLayout &dstLayout,
@@ -1416,9 +1449,7 @@ remapTMemLdStQueryOrigin(const TMemLdStQueryLayout &srcQuery,
   auto srcInDims = llvm::to_vector(srcQuery.layout.getInDimNames());
   for (StringAttr dim : dstLayout.getInDimNames()) {
     int32_t value = lookupLinearLayoutCoord(deltaCoords, dim);
-    auto it = llvm::find(srcInDims, dim);
-    if (it != srcInDims.end())
-      value += srcQuery.origin[std::distance(srcInDims.begin(), it)];
+    value += lookupTMemOrigin(srcInDims, srcQuery.origin, dim);
     origin.push_back(value);
   }
   return origin;
@@ -1457,7 +1488,7 @@ isTMemLdStQueryOriginRepresentable(const TMemLdStQueryLayout &query,
     auto it = llvm::find(queryInDims, dim);
     if (it == queryInDims.end())
       continue;
-    int32_t value = query.origin[std::distance(queryInDims.begin(), it)];
+    int32_t value = lookupTMemOrigin(queryInDims, query.origin, dim);
     if (value < 0 || value >= layout.getInDimSize(dim))
       return false;
   }
@@ -1485,7 +1516,7 @@ remapTMemPhysicalOriginForBitcast(const TMemLdStQueryLayout &srcQuery,
   if (srcColIt == srcInDims.end() || dstColIt == dstInDims.end())
     return dstOrigin;
 
-  int32_t srcCol = srcQuery.origin[std::distance(srcInDims.begin(), srcColIt)];
+  int32_t srcCol = lookupTMemOrigin(srcInDims, srcQuery.origin, kCol);
   int64_t dstColBits = static_cast<int64_t>(srcCol) * srcBitwidth;
   if (dstColBits % dstBitwidth != 0) {
     if (error)
@@ -4402,22 +4433,15 @@ static std::optional<uint32_t> getTMemLdStQueryOriginDeltaBaseOffset(
   auto srcInDims = llvm::to_vector(srcQuery.layout.getInDimNames());
   auto dstInDims = llvm::to_vector(dstQuery.layout.getInDimNames());
 
-  auto lookupOrigin = [](ArrayRef<StringAttr> dims, ArrayRef<int32_t> origin,
-                         StringAttr dim) -> int32_t {
-    auto it = llvm::find(dims, dim);
-    if (it == dims.end())
-      return 0;
-    return origin[std::distance(dims.begin(), it)];
-  };
-
-  int32_t srcRow = lookupOrigin(srcInDims, srcQuery.origin, kRow);
-  int32_t srcCol = lookupOrigin(srcInDims, srcQuery.origin, kCol);
-  int32_t dstRow = lookupOrigin(dstInDims, dstQuery.origin, kRow);
-  int32_t dstCol = lookupOrigin(dstInDims, dstQuery.origin, kCol);
+  int32_t srcRow = lookupTMemOrigin(srcInDims, srcQuery.origin, kRow);
+  int32_t srcCol = lookupTMemOrigin(srcInDims, srcQuery.origin, kCol);
+  int32_t dstRow = lookupTMemOrigin(dstInDims, dstQuery.origin, kRow);
+  int32_t dstCol = lookupTMemOrigin(dstInDims, dstQuery.origin, kCol);
   if (dstRow < srcRow || dstCol < srcCol)
     return std::nullopt;
-  return (static_cast<uint32_t>(dstCol - srcCol) * bitwidth / 32) |
-         (static_cast<uint32_t>(dstRow - srcRow) << 16);
+  return packTMemRowColOffset(
+      static_cast<uint32_t>(dstRow - srcRow),
+      static_cast<uint32_t>(dstCol - srcCol) * bitwidth / 32);
 }
 
 static std::optional<uint32_t> getSurjectiveQuerySubviewBaseOffset(
@@ -4449,7 +4473,7 @@ uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
         rootTy.getShape()[1] == dstTy.getShape()[2]) {
       uint32_t packetRowOffset = static_cast<uint32_t>(
           dstTy.getShape()[1] * rootTy.getElementTypeBitWidth() / 128);
-      return packetRowOffset << 16;
+      return getTMemPackedOffsetRowBase(packetRowOffset);
     }
     SmallVector<int32_t> rootOffsets(rootTy.getRank(), 0);
     rootOffsets[0] = dstTy.getShape()[1];
@@ -6684,27 +6708,8 @@ StringRef stringifyTMemPhysicalQueryDifference(
 
 uint32_t
 getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query) {
-  auto *ctx = query.layout.getInDimNames().begin()->getContext();
-  auto kRow = StringAttr::get(ctx, "row");
-  auto kCol = StringAttr::get(ctx, "col");
-  uint32_t offset = 0;
-  auto inDims = llvm::to_vector(query.layout.getInDimNames());
-  auto accumulate = [&](StringAttr dim, unsigned shift) {
-    auto it = llvm::find(inDims, dim);
-    if (it == inDims.end())
-      return;
-    int32_t value = query.origin[std::distance(inDims.begin(), it)];
-    if (value <= 0)
-      return;
-    if (shift == 16) {
-      offset += static_cast<uint32_t>(value) << shift;
-    } else {
-      offset += static_cast<uint32_t>(value) * query.elementBitWidth / 32;
-    }
-  };
-  accumulate(kRow, 16);
-  accumulate(kCol, 0);
-  return offset;
+  return getTMemOriginBaseOffset(query.layout, query.origin,
+                                 query.elementBitWidth);
 }
 
 bool preserveTMemLdStSupportQueryBaseOffset(
@@ -7961,7 +7966,8 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
       // Find the last kLane basis and use it as secondHalfOffset
       auto row = reps.getBasis(kLane, 4, rowDim);
       auto col = reps.getBasis(kLane, 4, colDim);
-      std::optional<uint32_t> secondHalfOffset = (row << 16) | col;
+      std::optional<uint32_t> secondHalfOffset =
+          packTMemRowColOffset(row, col);
       // We "quotient it out", meaning we remove the last basis from reps
       auto basis = reps.getBases();
       basis[kLane][4] = {0, 0};
@@ -8501,11 +8507,6 @@ computeTMemLdStEncodingInfoImpl(
                    << " regsPerMsg=" << info->numRegsPerMessage << "\n";
     }
 
-    auto packTMemBasisOffset = [](ArrayRef<int32_t> basis) -> uint32_t {
-      assert(basis.size() == 2 && "TMEM warp bases must be 2D row/col vectors");
-      return (static_cast<uint32_t>(basis[0]) << 16) |
-             static_cast<uint32_t>(basis[1]);
-    };
     auto getStaticOffsetFromLayout = [&](const LinearLayout &layout,
                                          int32_t regIdx,
                                          int32_t colScale) -> int32_t {
@@ -8518,7 +8519,7 @@ computeTMemLdStEncodingInfoImpl(
         else if (dim == kCol)
           col = value;
       }
-      return (row << 16) | (col * colScale);
+      return static_cast<int32_t>(packTMemRowColOffset(row, col * colScale));
     };
     auto getPackedStaticOffset = [&](int32_t regIdx, int32_t colScale) -> int32_t {
       return getStaticOffsetFromLayout(packedCvt, regIdx, colScale);
@@ -8627,9 +8628,9 @@ computeTMemLdStEncodingInfoImpl(
       if (info->packetOffsets.empty())
         info->secondHalfOffset = *info->secondHalfOffset * 2;
       info->warpBaseOffset0 =
-          packTMemBasisOffset({rowPlan->warpRow0, /*col=*/0});
+          packTMemRowColOffset(rowPlan->warpRow0, /*col=*/0);
       info->warpBaseOffset1 =
-          packTMemBasisOffset({rowPlan->warpRow1, /*col=*/0});
+          packTMemRowColOffset(rowPlan->warpRow1, /*col=*/0);
       info->warpRow0 = rowPlan->warpRow0;
       info->warpRow1 = rowPlan->warpRow1;
     } else {
@@ -9015,11 +9016,6 @@ computeTMemLdStEncodingInfoImpl(
     }
     return failure();
   }
-  auto packTMemBasisOffset = [](ArrayRef<int32_t> basis) -> uint32_t {
-    assert(basis.size() == 2 && "TMEM warp bases must be 2D row/col vectors");
-    return (static_cast<uint32_t>(basis[0]) << 16) |
-           static_cast<uint32_t>(basis[1]);
-  };
   auto getRowAnchorBasis =
       [&](int32_t logicalRow) -> std::optional<SmallVector<int32_t>> {
     return getLogicalRowAnchorBasis(directPlanningMemLayout, logicalRow);
@@ -9283,9 +9279,6 @@ computeTMemLdStEncodingInfoImpl(
   info->warpRow1 = warpBasis1.empty() ? 0 : warpBasis1.front();
   info->baseOffset = rowPlan->baseOffset;
 
-  auto packedOffsetAddressesInvalidTMemRow = [](uint32_t packedOffset) {
-    return (packedOffset >> 16) >= 128;
-  };
   auto layoutAddressesInvalidTMemRow = [&](const LinearLayout &layout) {
     std::optional<StringAttr> physicalRowDim;
     if (layout.hasOutDim(kRow)) {
@@ -9306,16 +9299,17 @@ computeTMemLdStEncodingInfoImpl(
     return false;
   };
   bool hasInvalidDirectRowAddress =
-      packedOffsetAddressesInvalidTMemRow(info->baseOffset) ||
-      packedOffsetAddressesInvalidTMemRow(info->warpBaseOffset0) ||
-      packedOffsetAddressesInvalidTMemRow(info->warpBaseOffset1) ||
+      tmemPackedOffsetAddressesRow(info->baseOffset, /*rowLimit=*/128) ||
+      tmemPackedOffsetAddressesRow(info->warpBaseOffset0, /*rowLimit=*/128) ||
+      tmemPackedOffsetAddressesRow(info->warpBaseOffset1, /*rowLimit=*/128) ||
       (info->secondHalfOffset &&
-       packedOffsetAddressesInvalidTMemRow(*info->secondHalfOffset)) ||
+       tmemPackedOffsetAddressesRow(*info->secondHalfOffset,
+                                    /*rowLimit=*/128)) ||
       layoutAddressesInvalidTMemRow(info->reps);
   if (!hasInvalidDirectRowAddress) {
     for (int32_t packetOffset : info->packetOffsets) {
-      if (packedOffsetAddressesInvalidTMemRow(
-              static_cast<uint32_t>(packetOffset))) {
+      if (tmemPackedOffsetAddressesRow(static_cast<uint32_t>(packetOffset),
+                                       /*rowLimit=*/128)) {
         hasInvalidDirectRowAddress = true;
         break;
       }
@@ -9331,20 +9325,17 @@ computeTMemLdStEncodingInfoImpl(
     return failure();
   }
 
-  auto halvePackedTMemRowOffset = [](uint32_t packedOffset) {
-    uint32_t row = packedOffset >> 16;
-    uint32_t col = packedOffset & 0xffffu;
-    return ((row / 2) << 16) | col;
-  };
   bool isI32RowZeroM64DirectView =
       bitwidth == 32 && logicalRows == 64 && logicalCols == physicalCols &&
       physicalRows == 128 && hasZeroBasisAlong(originalMemLayout, kRow) &&
       !hasZeroBasisAlong(originalMemLayout, kCol);
   if (isI32RowZeroM64DirectView && info->atom == TMemAccessAtom::I32x32b &&
-      info->warpBaseOffset0 == (32u << 16) &&
-      info->warpBaseOffset1 == (64u << 16)) {
-    info->warpBaseOffset0 = halvePackedTMemRowOffset(info->warpBaseOffset0);
-    info->warpBaseOffset1 = halvePackedTMemRowOffset(info->warpBaseOffset1);
+      info->warpBaseOffset0 == getTMemPackedOffsetRowBase(32u) &&
+      info->warpBaseOffset1 == getTMemPackedOffsetRowBase(64u)) {
+    info->warpBaseOffset0 =
+        divideTMemPackedOffsetRow(info->warpBaseOffset0, /*divisor=*/2);
+    info->warpBaseOffset1 =
+        divideTMemPackedOffsetRow(info->warpBaseOffset1, /*divisor=*/2);
     info->warpRow0 /= 2;
     info->warpRow1 /= 2;
   }
@@ -9355,10 +9346,12 @@ computeTMemLdStEncodingInfoImpl(
       hasZeroBasisAlong(originalMemLayout, kCol);
   if (isI16PackedRowZeroM64DirectView &&
       info->atom == TMemAccessAtom::I16x32bx2 &&
-      info->warpBaseOffset0 == (32u << 16) &&
-      info->warpBaseOffset1 == (64u << 16)) {
-    info->warpBaseOffset0 = halvePackedTMemRowOffset(info->warpBaseOffset0);
-    info->warpBaseOffset1 = halvePackedTMemRowOffset(info->warpBaseOffset1);
+      info->warpBaseOffset0 == getTMemPackedOffsetRowBase(32u) &&
+      info->warpBaseOffset1 == getTMemPackedOffsetRowBase(64u)) {
+    info->warpBaseOffset0 =
+        divideTMemPackedOffsetRow(info->warpBaseOffset0, /*divisor=*/2);
+    info->warpBaseOffset1 =
+        divideTMemPackedOffsetRow(info->warpBaseOffset1, /*divisor=*/2);
     info->warpRow0 /= 2;
     info->warpRow1 /= 2;
   }
@@ -9480,27 +9473,7 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
 
 static uint32_t getTMemLdStQueryOriginBaseOffset(const TMemLdStQueryLayout &query,
                                                  int bitwidth) {
-  auto *ctx = query.layout.getInDimNames().begin()->getContext();
-  auto kRow = StringAttr::get(ctx, "row");
-  auto kCol = StringAttr::get(ctx, "col");
-  uint32_t offset = 0;
-  auto inDims = llvm::to_vector(query.layout.getInDimNames());
-  auto accumulate = [&](StringAttr dim, unsigned shift) {
-    auto it = llvm::find(inDims, dim);
-    if (it == inDims.end())
-      return;
-    int32_t value = query.origin[std::distance(inDims.begin(), it)];
-    if (value <= 0)
-      return;
-    if (shift == 16) {
-      offset += static_cast<uint32_t>(value) << shift;
-    } else {
-      offset += static_cast<uint32_t>(value) * bitwidth / 32;
-    }
-  };
-  accumulate(kRow, 16);
-  accumulate(kCol, 0);
-  return offset;
+  return getTMemOriginBaseOffset(query.layout, query.origin, bitwidth);
 }
 
 static bool needsScalarized32x32QueryInfo(MemDescType memTy,
@@ -9542,14 +9515,8 @@ static bool needsScalarizedLiftedRowQueryInfo(
   if (physicalRows != memTy.getShape()[0] * 2 ||
       physicalCols != memTy.getShape()[1])
     return false;
-  auto inDims = llvm::to_vector(query.layout.getInDimNames());
-  auto getOrigin = [&](StringAttr dim) -> int32_t {
-    auto it = llvm::find(inDims, dim);
-    if (it == inDims.end())
-      return 0;
-    return query.origin[std::distance(inDims.begin(), it)];
-  };
-  return getOrigin(kRow) == memTy.getShape()[0] && getOrigin(kCol) == 0;
+  return lookupTMemLdStQueryOrigin(query, kRow) == memTy.getShape()[0] &&
+         lookupTMemLdStQueryOrigin(query, kCol) == 0;
 }
 
 static void adjustTMemLdStInfoForQueryLayout(
@@ -9598,13 +9565,6 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
   auto *ctx = regTy.getContext();
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
-  auto inDims = llvm::to_vector(queryLayout.layout.getInDimNames());
-  auto getOrigin = [&](StringAttr dim) -> int32_t {
-    auto it = llvm::find(inDims, dim);
-    if (it == inDims.end())
-      return 0;
-    return queryLayout.origin[std::distance(inDims.begin(), it)];
-  };
   info->baseOffset += getTMemLdStQueryOriginBaseOffset(
       queryLayout, memTy.getElementTypeBitWidth());
   // Projected row-half support queries on 32-bit 64x64 tiles can pick the
@@ -9613,8 +9573,9 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
   // window before the per-message column immediates are applied.
   if (info->atom == TMemAccessAtom::I16x32bx2 && memTy.getRank() == 2 &&
       memTy.getElementTypeBitWidth() == 32 && memTy.getShape()[0] == 64 &&
-      getOrigin(kRow) > 0 && getOrigin(kCol) == 0) {
-    info->baseOffset &= 0xffff0000u;
+      lookupTMemLdStQueryOrigin(queryLayout, kRow) > 0 &&
+      lookupTMemLdStQueryOrigin(queryLayout, kCol) == 0) {
+    info->baseOffset = getTMemPackedOffsetRowBaseOffset(info->baseOffset);
   }
   adjustTMemLdStInfoForQueryLayout(*info, regTy, memTy, queryLayout, maxnreg,
                                    rowPlanOverride);
@@ -10462,8 +10423,9 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
       ll, query.memTy.getContext(), logicalCol);
   if (!coord)
     return std::nullopt;
-  return (static_cast<uint32_t>(coord->first) << 16) |
-         (static_cast<uint32_t>(coord->second) * query.elementBitWidth / 32);
+  return packTMemRowColOffset(
+      static_cast<uint32_t>(coord->first),
+      static_cast<uint32_t>(coord->second) * query.elementBitWidth / 32);
 }
 
 static std::optional<TMemCopyDestinationFootprint>
@@ -11519,8 +11481,9 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
           "physical column aligned to the copy instruction width.");
     }
     uint32_t tileOffset =
-        (static_cast<uint32_t>(tileOrigin->first) << 16) |
-        (static_cast<uint32_t>(tileOrigin->second) * bitwidth / 32);
+        packTMemRowColOffset(static_cast<uint32_t>(tileOrigin->first),
+                             static_cast<uint32_t>(tileOrigin->second) *
+                                 bitwidth / 32);
     if (llvm::is_contained(visitedTileOffsets, tileOffset)) {
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::PhysicalQuery,

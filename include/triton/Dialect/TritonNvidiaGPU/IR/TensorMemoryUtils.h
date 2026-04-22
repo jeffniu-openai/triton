@@ -7,12 +7,54 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
 
 namespace mlir::triton::nvidia_gpu {
+
+constexpr uint32_t kTMemPackedOffsetRowShift = 16;
+constexpr uint32_t kTMemPackedOffsetColMask = 0xffffu;
+
+constexpr uint32_t getTMemPackedOffsetRowBase(uint32_t row) {
+  return row << kTMemPackedOffsetRowShift;
+}
+
+constexpr uint32_t packTMemRowColOffset(uint32_t row, uint32_t col) {
+  return getTMemPackedOffsetRowBase(row) | col;
+}
+
+inline uint32_t packTMemBasisOffset(ArrayRef<int32_t> basis) {
+  assert(basis.size() == 2 && "TMEM basis offsets must be 2D row/col vectors");
+  return packTMemRowColOffset(static_cast<uint32_t>(basis[0]),
+                              static_cast<uint32_t>(basis[1]));
+}
+
+constexpr uint32_t getTMemPackedOffsetRow(uint32_t packedOffset) {
+  return packedOffset >> kTMemPackedOffsetRowShift;
+}
+
+constexpr uint32_t getTMemPackedOffsetCol(uint32_t packedOffset) {
+  return packedOffset & kTMemPackedOffsetColMask;
+}
+
+constexpr uint32_t getTMemPackedOffsetRowBaseOffset(uint32_t packedOffset) {
+  return packedOffset & ~kTMemPackedOffsetColMask;
+}
+
+constexpr bool tmemPackedOffsetAddressesRow(uint32_t packedOffset,
+                                            uint32_t rowLimit) {
+  return getTMemPackedOffsetRow(packedOffset) >= rowLimit;
+}
+
+inline uint32_t divideTMemPackedOffsetRow(uint32_t packedOffset,
+                                          uint32_t divisor) {
+  assert(divisor != 0 && "TMEM row divisor must be non-zero");
+  return packTMemRowColOffset(getTMemPackedOffsetRow(packedOffset) / divisor,
+                              getTMemPackedOffsetCol(packedOffset));
+}
 
 // Get the maximum number of registers per thread based on the context. This is
 // by default 256, but it can be overridden by `ttg.maxnreg` set on the module
@@ -72,8 +114,8 @@ struct TMemLdStEncodingInfo {
   int numRegsPerMessage;
   std::optional<uint32_t> secondHalfOffset;
   uint32_t baseOffset = 0;
-  uint32_t warpBaseOffset0 = 32u << 16;
-  uint32_t warpBaseOffset1 = 64u << 16;
+  uint32_t warpBaseOffset0 = getTMemPackedOffsetRowBase(32u);
+  uint32_t warpBaseOffset1 = getTMemPackedOffsetRowBase(64u);
   int32_t warpRow0 = 32;
   int32_t warpRow1 = 64;
   std::optional<ColumnAction> broadcast = std::nullopt;
