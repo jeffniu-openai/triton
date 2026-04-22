@@ -3222,6 +3222,8 @@ bool isTMemLdStReductionCompatible(const TMemLdStEncodingInfo &info) {
   return !info.unpacked && getTMemLdStReductionRepeats(info) >= 2;
 }
 
+static bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy);
+
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
     // TMEM scales use logical broadcast row bases in their linear layout, but
@@ -4047,6 +4049,8 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
   auto queryPlan = getTMemLdStRowPlanForType(queryTy);
   if (!memDesc)
     return queryPlan;
+  if (hasSelfContainedTMemSubviewLayout(queryTy))
+    return queryPlan;
   auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
   if (!queryPlan)
     return backingPlan;
@@ -4151,6 +4155,8 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy || memTy != queryTy)
     return queryPlan;
+  if (hasSelfContainedTMemSubviewLayout(queryTy))
+    return queryPlan;
   if (auto backingPlan = getBackingTMemLdStRowPlan(memDesc)) {
     if (queryPlan && backingPlan->rowSpan > queryPlan->rowSpan &&
         isa_and_nonnull<gpu::MemDescReinterpretOp>(memDesc.getDefiningOp()) &&
@@ -4222,6 +4228,8 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForSupportQuery(
   auto rowPlan = supportRowPlan;
   if (!rowPlan)
     rowPlan = getTMemLdStRowPlanForQueryLayout(memDesc, queryTy, supportQuery);
+  if (hasSelfContainedTMemSubviewLayout(queryTy))
+    return rowPlan;
   if (!rowPlan)
     rowPlan = getBackingTMemLdStRowPlan(memDesc);
   return rowPlan;
@@ -4320,7 +4328,9 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
 
   std::string error;
   std::optional<gpu::MemDescType> standaloneTy;
-  auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
+  auto backingPlan = hasSelfContainedSubviewLayout
+                         ? getTMemLdStRowPlanForType(memTy)
+                         : getBackingTMemLdStRowPlan(memDesc);
   auto addCanonicalSurrogate = [&](gpu::MemDescType ty) {
     if (auto surrogate =
             getCanonicalTMemLdStSurrogateType(ty, backingPlan,

@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-22 23:31 UTC completed the first ld/st row-plan locality
+  slice for active self-contained TMEM subviews. `getTMemLdStRowPlanForQuery`,
+  `getTMemLdStRowPlanForQueryLayout`, and
+  `getTMemLdStRowPlanForSupportQuery` now return the current descriptor's
+  type-local row plan for that descriptor class instead of falling through to
+  parent backing-row analysis. `getTMemLdStQueryTypes` also uses the current
+  type row plan for canonical surrogate selection on active self-contained
+  subviews. Legacy views keep the existing backing-plan path. Validation:
+  required `make -j8`; exact warpx2 active-subview copy/load row `4 passed`;
+  focused ld/st selector `78 passed`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `88 passed`,
+  group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+  `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+  passed.
+
 - Latest: 2026-04-22 23:18 UTC completed the first too-small-copy
   clean-negative slice. `getTMemCopyAtomFailureMessage` now explains when copy
   atom classification fails because the current descriptor has too few logical

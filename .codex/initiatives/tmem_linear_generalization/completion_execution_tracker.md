@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 23:18 UTC
+Last updated: 2026-04-22 23:31 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -22,7 +22,9 @@ Active implementation checklist:
   vertical slices with focused tests after each slice. First ld/st-facing
   completed slice: active self-contained subview layouts now try their
   standalone canonical load/store surrogate before raw parent-allocation query
-  types, using a type-local shape-vs-alloc/layout predicate. First
+  types, using a type-local shape-vs-alloc/layout predicate. First ld/st
+  row-plan slice: active self-contained subviews now use the current
+  descriptor's type-local row plan instead of backing parent row plans. First
   copy-planning slice: `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
   keeping legacy standalone/exact selection for direct roots and older
@@ -126,6 +128,20 @@ required `make -j8`; new exact test `2 passed`; adjacent exact-width positive
 1560 deselected`; 4-GPU `cp_no_scales and not reports` split passed as group1
 `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
 `57 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
+
+Completed fifth implementation slice: active self-contained TMEM subviews now
+use local ld/st row planning. The row-plan helpers no longer fall through to
+`getBackingTMemLdStRowPlan` for this descriptor class, and
+`getTMemLdStQueryTypes` uses `getTMemLdStRowPlanForType(memTy)` for canonical
+surrogate generation instead of parent-chain backing plans. This keeps legacy
+views on existing rescue paths while removing one semantic parent-chain
+dependency from active-layout subviews. Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+selector `78 passed, 1547 deselected`; 4-GPU
+`ldst and not reports and not scales` split passed as group1 `88 passed`,
+group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+`67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+passed.
 
 Current prototype evidence: hand-written LLVM IR passed through
 `opt -S -O2` shows unused or statically zero subword-phase arithmetic is removed

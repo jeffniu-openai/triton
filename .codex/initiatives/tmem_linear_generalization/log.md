@@ -218,6 +218,42 @@
   it still owns most use-site dependence on support-query and backing-row
   rescue paths.
 
+## 2026-04-22 23:31 UTC: active subview ld/st row-plan locality slice
+
+- Branch/HEAD before this implementation slice:
+  `9e66a515e Report too-small TMEM copy destinations cleanly`.
+- Context:
+  active self-contained subviews had type-local result layouts and query-type
+  ordering, but ld/st row-plan helpers could still borrow a parent backing row
+  plan through `getBackingTMemLdStRowPlan(Value)`. That is a semantic
+  producer-chain dependency for descriptor classes whose current type already
+  describes the active physical layout relative to the current `taddr`.
+- Completed implementation:
+  `getTMemLdStRowPlanForQuery`,
+  `getTMemLdStRowPlanForQueryLayout`, and
+  `getTMemLdStRowPlanForSupportQuery` now return the current descriptor's
+  type-local row plan for active self-contained subviews instead of falling
+  through to backing-parent row plans. `getTMemLdStQueryTypes` uses
+  `getTMemLdStRowPlanForType(memTy)` for canonical surrogate construction for
+  the same descriptor class. Legacy descriptor views still use the existing
+  backing-plan rescue logic.
+- Validation evidence:
+  required `make -j8`; exact
+  `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_subslice_view_positive`
+  `4 passed`; focused ld/st selector
+  `ldst and (n32_linear_layout or descriptor_compositions or higher_rank_half_rows or direct_half_rows) and not reports`
+  `78 passed, 1547 deselected`; 4-GPU selector
+  `ldst and not reports and not scales` passed as group1 `88 passed`, group2
+  `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+  `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+  passed.
+- Remaining frontier:
+  lower/verifier code still calls `getTMemLdStQueryTypes(Value)`,
+  `inferStandaloneTMemLdStQueryLayout(Value)`, and support-query helpers for
+  many semantic decisions. The next slice should introduce an explicit
+  type-local query-plan API for active descriptors and route one verifier or
+  LLVM lowering path through it.
+
 ## 2026-04-22: TMEM memdesc runtime abstraction audit
 
 - Wrote

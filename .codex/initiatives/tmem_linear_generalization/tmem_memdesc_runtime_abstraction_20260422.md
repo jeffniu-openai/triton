@@ -579,6 +579,8 @@ Checklist state:
 - [ ] Fix TMEM view result type computation and source-type-only `taddr`
   lowering for origin-changing views.
 - [ ] Migrate ld/st planning to type-local analysis.
+  First row-plan slice complete: active self-contained subviews use the current
+  descriptor's row plan instead of parent backing-row plans.
 - [ ] Migrate subword pack/unpack handling for packed and unpacked sub-32-bit
   layouts.
 - [ ] Migrate `ld.red` legality/layout selection to the type-local planner.
@@ -853,3 +855,27 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `cp_no_scales and not reports` split passed as group1
   `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
   `57 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
+
+### 2026-04-22 Active Subview Load/Store Row-Plan Slice
+
+- Active self-contained TMEM subviews now use type-local row planning in the
+  ld/st row-plan helpers. `getTMemLdStRowPlanForQuery`,
+  `getTMemLdStRowPlanForQueryLayout`, and
+  `getTMemLdStRowPlanForSupportQuery` return the current descriptor's row plan
+  for this descriptor class and do not consult a parent backing plan.
+- `getTMemLdStQueryTypes` uses `getTMemLdStRowPlanForType(memTy)` when building
+  canonical surrogate types for active self-contained subviews. Legacy views
+  still use `getBackingTMemLdStRowPlan` until their result types are made
+  self-contained or an optimizer rewrite materializes an explicit supported
+  descriptor.
+- This is a row-planning slice, not the final ld/st planner. Verifier and LLVM
+  lowering still call value-taking query helpers; the next step is to introduce
+  an explicit type-local ld/st query-plan API and route one active descriptor
+  consumer path through it.
+- Validation after this slice: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+  selector `78 passed, 1547 deselected`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `88 passed`,
+  group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+  `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+  passed.
