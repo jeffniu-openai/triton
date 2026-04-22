@@ -1,3 +1,204 @@
+## 2026-04-22 22:05 UTC: newer TMEM memdesc model implementation kickoff
+
+- Active branch/HEAD:
+  `codex/tmem` at `2602983e8af22d7aa6befd40db42df7c94b6685b`.
+- Updated durable tracking:
+  `tmem_memdesc_runtime_abstraction_20260422.md` now has an execution
+  checklist and phased implementation plan; `completion_execution_tracker.md`
+  marks the newer memdesc-model migration as the active phase; `README.md`
+  points to the active checklist and plan.
+- Implementation invariant:
+  user-facing TMEM APIs stay unchanged. The only planned semantic tightening is
+  clean rejection of `tcgen05.copy` descriptors that are too small for any ISA
+  atom, such as dense `128x1xf32` or `128x2xf32`.
+- Next concrete work:
+  audit current TMEM `Value`-taking planner/lowering helper uses, classify each
+  as semantic-to-rewrite, optimizer-only, or allocation/effect-only, then start
+  the derisking prototypes for physical-element-column `taddr` lowering and
+  aligned-case `subword_index` DCE.
+- Validation:
+  documentation-only kickoff; no build or runtime tests were run.
+
+## 2026-04-22 22:35 UTC: type-local physical-query scaffold and DCE probe
+
+- Source scaffold:
+  added explicit physical element-column helpers in `TensorMemoryUtils.h`:
+  `getTMemElementsPerWord`, `getTMemSubwordIndex`, and
+  `getTMemAddressColumns`. Added
+  `inferTypeLocalTMemPhysicalQuery(MemDescType)` as the first type-local
+  physical-query builder for the new memdesc model.
+- Copy derisking:
+  `selectTMemCopyPhysicalQuery` now emits a type-local candidate under
+  `TRITON_DEBUG_TMEM_QUERY=1`, alongside the old standalone/exact
+  producer-chain-derived candidates. Default copy selection is unchanged in
+  this checkpoint.
+- Audit result:
+  semantic rewrite targets are `lowerTMemLdStFromTypes`, copy
+  verify/lowering, MMAv5 address planning, TMEM verifiers, and Gluon layout
+  selection. Optimizer/allocation chain walkers remain allowed only when they
+  rewrite IR or compute liveness/effects before lowering.
+- Prototype evidence:
+  hand-written LLVM IR through `opt -S -O2` removes unused `subword_index`
+  arithmetic for f32, folds unpacked f16/i8 phase consumers to zero, and keeps
+  packed f16/i8 phase arithmetic only when consumed by synthetic pack/unpack
+  logic.
+- Validation:
+  required `make -j8` passed. Debug runtime probes on GPU0 for dense root copy,
+  canonical indexed-view copy, and linear indexed-view copy completed
+  successfully and printed type-local copy candidates with no sampled
+  type-local/exact divergence.
+
+- Follow-up focused selector:
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=.:./python:./python/triton_kernels TRITON_DEBUG_TMEM_QUERY=1 pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and (indexed_view or linear_subslice_view or warpx2_candidate or 128x128)'`
+  passed as `63 passed, 1560 deselected`, but printed repeated
+  type-local/exact divergence on physical layout. The exact
+  `linear_subslice_view` sample showed a column subview result type still
+  carried the parent `128x256` TMEM-linear encoding, while the exact
+  chain-derived query recovered the active `128x128` layout with a `col=128`
+  origin. The next implementation slice is therefore to make TMEM subslice
+  result type inference prefer the active descriptor-relative layout before
+  preserving parent encodings.
+
+## 2026-04-22 22:25 UTC: active subslice result-type migration slice
+
+- Source change:
+  `inferTMemSubsliceOpEncoding` now tries the inferred active
+  descriptor-relative TMEM-linear layout before using parent-encoding
+  preservation as a fallback. This fixes the concrete `128x256 -> 128x128`
+  column subview issue where the result SSA value previously carried a
+  parent-width physical layout even though lowering had already advanced the
+  `taddr`.
+- Test expectation updates:
+  handwritten TMEM subslice results now use active-width encodings. Examples:
+  `128x64` results use six column bases, `128x32` results use five, and
+  `64x256` results drop the parent `512` column basis. Conversion checks that
+  observed row displacement in the PTX bracket immediate were updated to the
+  current lowering contract where row displacement is materialized in the base
+  register and the bracket immediate records the local column displacement.
+- Validation:
+  required `make -j8`; lit
+  `TritonNvidiaGPU/ops.mlir`, `TritonNvidiaGPU/tmem_layouts.mlir`,
+  `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+  `Analysis/test-buffer-region.mlir`, `TritonNvidiaGPU/invalid.mlir`, and
+  `TritonGPU/invalid.mlir` passed. Runtime exact repro
+  `test_tmem_runtime_matrix_cp_no_scales_linear_subslice_view[f32-...-128-128-32-16-tcgen05.cp.cta_group::1.128x256b]`
+  passed, and the focused copy selector passed as
+  `63 passed, 1560 deselected`.
+- Remaining semantic gap:
+  copy debug output still shows the legacy exact producer-chain query carrying
+  a non-zero origin and size-one block dimension while the type-local/current
+  descriptor query has origin zero. That is expected until copy selection is
+  migrated to the type-local query path and the remaining exact-query rescue
+  stack is retired.
+
+## 2026-04-22 22:54 UTC: active subview load/store query ordering repair
+
+- Branch/HEAD before this validation slice:
+  `2602983e8af22d7aa6befd40db42df7c94b6685b`.
+- Context:
+  after the active TMEM subslice result-type slice, the broad copy sweep still
+  exposed four `warpx2::01_23` two-CTA subslice rows. Debugging showed copy
+  planning selected the same physical destination query and
+  `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b` family as the direct
+  allocation. The wrong result came from the load side: `get_reg_layout()`
+  picked the raw narrowed copy-layout register mapping for the subview, while
+  the direct allocation uses a canonical standalone load/store surrogate.
+- Root cause:
+  active subviews with self-contained result encodings still allowed load/store
+  support and query ordering to prefer parent-allocation/raw query types before
+  the canonical standalone surrogate. That made a copy-family layout reachable
+  as a load layout even though the canonical direct load/store query is the
+  correct type-local view for the same active descriptor shape.
+- Completed implementation:
+  `getColumnSubviewTMemLdStSupportQueryPlan` now borrows the source support
+  image only for legacy views that preserve parent encodings. Active result
+  encodings are treated as self-contained. `getTMemLdStQueryTypes` now tries
+  the standalone canonical load/store surrogate before raw parent-allocation
+  query types when the current memdesc type is self-contained. The ordering
+  predicate is type-local: trailing shape differs from trailing alloc shape, and
+  the current tensor-memory layout matches the active shape via
+  `getCanonicalTMemLinearEncoding(memTy)`.
+- Validation evidence:
+  required `make -j8`; exact
+  `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_subslice_view_positive`
+  ran as `4 passed`; focused selector
+  `cp_no_scales and (indexed_view or linear_subslice_view or warpx2_candidate or 128x128)`
+  ran as `63 passed, 1560 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
+  `57 passed`; targeted lit set
+  `TritonNvidiaGPU/ops.mlir`, `TritonNvidiaGPU/tmem_layouts.mlir`,
+  `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+  `Analysis/test-buffer-region.mlir`, `TritonNvidiaGPU/invalid.mlir`, and
+  `TritonGPU/invalid.mlir` passed `6/6`.
+- Remaining frontier:
+  copy legal planning is still not switched to the type-local physical query;
+  the type-local copy query is currently a debug comparison scaffold. Continue
+  with a copy-planning vertical slice only after preserving the current green
+  active-subview coverage.
+
+## 2026-04-22: TMEM memdesc runtime abstraction audit
+
+- Wrote
+  `.codex/initiatives/tmem_linear_generalization/tmem_memdesc_runtime_abstraction_20260422.md`.
+- Scope: branch-diff audit of TMEM lowering/codegen paths that still recover
+  semantic state by walking memdesc producer chains.
+- Design conclusion: the runtime memdesc payload should remain one packed TMEM
+  `taddr` carrying the current row/physical-element-column origin; the current
+  `MemDescType` and tensor-memory layout must carry or derive all relative
+  layout, storage footprint, row-plan, copy, reduction, and MMAv5 legality
+  facts. LLVM/PTX lowering and semantic verifiers should not inspect parent
+  operations.
+- Catalogue: identified disallowed chain-dependent lowering/verifier/front-end
+  sites in `TensorMemoryUtils.cpp`, `TensorMemoryToLLVM.cpp`, `MMAv5.cpp`,
+  `Ops.cpp`, and `python/src/gluon_ir.cc`; separately catalogued allowed
+  optimizer/allocation uses in `OptimizeTMemLayouts.cpp`,
+  `TensorMemoryAllocation.cpp`, fence insertion, and scale materialization.
+- Follow-up clarification: the first underlying issue to fix is TMEM view-op
+  state maintenance. Each view op must compute an exact result `MemDescType`
+  layout/shape/storage state relative to the result's current `taddr`, and its
+  lowering must either advance `taddr` for physical-origin changes or leave it
+  unchanged for layout-only views. Consumer lowering should not need parent-chain
+  recovery, "already adjusted" offset subtraction, or non-zero query origins.
+- Column-coordinate clarification: the descriptor `LinearLayout` `col`
+  dimension should represent physical element slots, including for sub-32-bit
+  dtypes. Packed and unpacked storage are represented by layout bases/column
+  stride: packed f16/f8 use stride 1, unpacked f16 uses stride 2, and unpacked
+  f8/i8 uses stride 4. Codegen converts physical element slots to hardware word
+  columns at the `tcgen05` emission boundary and handles subword
+  packing/unpacking locally. This removes `addressMode` as a desired type field;
+  if a dynamic subword phase is not realizable for a given instruction family,
+  diagnose it from current type/layout and operation semantics, not
+  parent-chain provenance.
+- Valid-lowering clarification: basic memdesc identity is already in
+  `MemDescType`; CTA/CGA ownership belongs in the tensor-memory layout; support
+  footprint must be derived from the current descriptor layout and
+  allocation/storage shape relative to the current `taddr`; and row-plan,
+  packetization, copy, reduction, and MMAv5 legality must be derived directly
+  from type/layout. Producer-chain peepholes may choose among already-valid
+  lowering plans for performance, but must not expand the legal set.
+- Copy-footprint clarification: too-small `tcgen05.copy` memdescs are clean
+  negatives. For example, dense copy has no `128x32b` or `128x64b` atom, so
+  `128x1xf32` and `128x2xf32` destinations should be rejected unless the
+  current descriptor layout itself represents a legal copy family. Lowering
+  should not copy extra columns from a hidden parent allocation to make an
+  otherwise illegal copy shape codegenable.
+- Subword-index codegen clarification: lowering may pessimistically materialize
+  a local `subword_index = physical_element_col % elements_per_word` SSA value.
+  If the selected instruction path does not consume it, or dtype/alignment
+  proves it irrelevant, ordinary MLIR/LLVM DCE and constant folding should
+  remove it.
+  `subword_index` must stay local to pack/unpack, lane-selection,
+  read/modify/write, or diagnostics; it must not become a parent-chain
+  provenance substitute.
+- Required prototype gate before implementation: hand-write small MLIR/LLVM IR
+  examples for f32, hardware-column-aligned f16/i8, and unaligned f16/i8
+  physical-element-column origins, run them through the remaining compiler
+  pipeline, and inspect reduced IR/PTX to prove unused `subword_index`
+  computations are removed or folded before relying on the pattern in
+  production TMEM lowering.
+- Validation: documentation-only analysis; no build or runtime tests were run.
+
 ## 2026-04-21 15:34 UTC: Round 55 lit negative-boundary lane C
 
 - Wrote

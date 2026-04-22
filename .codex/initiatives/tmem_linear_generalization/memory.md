@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-22 22:05 UTC started implementation of the newer
+  self-contained TMEM memdesc model. Active plan/checklist now lives in
+  `tmem_memdesc_runtime_abstraction_20260422.md` and
+  `completion_execution_tracker.md`. The implementation invariant is that
+  semantic verifiers and LLVM/PTX lowering derive valid lowerings from the
+  current runtime `taddr`, current `MemDescType`/tensor-memory layout, and
+  explicit operation semantics only. Producer-chain walking remains allowed for
+  optimizer/allocation rewrites, but not for legality. User-facing APIs must
+  stay stable except for clean rejection of `tcgen05.copy` descriptors too
+  small for any ISA atom, such as dense `128x1xf32` or `128x2xf32`.
+
 - Latest: 2026-04-22 03:13 UTC merged `codex/tmem` with upstream Triton main
   `37c9a4b569a0` and pushed merge checkpoint `b96231ec8`. Conflicts were in
   TritonGPU/TritonNvidiaGPU dialect files and MMAv5 lowering; resolutions kept
@@ -17694,3 +17705,29 @@ rejection, not rescue
   `FZ-20260421-0015`, `FZ-20260421-0020`, and `FZ-20260421-0022`; clean
   unsupported boundaries stayed clean. No new independent `FZ-*`; backend
   repair remains deferred.
+
+- 2026-04-22 newer memdesc-model implementation started. The active design is
+  self-contained TMEM memdesc SSA values: runtime payload is the current packed
+  `taddr`, the tensor-memory `LinearLayout` describes descriptor-relative
+  physical element-slot layout, and semantic verifier/lowering code must not
+  walk producer chains to recover legality. Added type-local physical-query
+  scaffolding and DCE probes for subword-index arithmetic. First implementation
+  slice changed TMEM subslice result encoding inference to prefer active
+  descriptor-relative layouts before preserving parent encodings, fixing the
+  concrete parent-width `128x256 -> 128x128` copy/debug divergence. Validation:
+  required `make -j8`; targeted lit for TMEM ops/layouts/Blackwell conversion
+  and related invalid/analysis tests passed; exact copy runtime repro and the
+  focused `cp_no_scales` copy selector passed.
+
+- 2026-04-22 active-subview load/store query slice completed. The
+  `warpx2::01_23` two-CTA subslice rows showed that copy planning was already
+  selecting the same physical destination family as direct allocation, but
+  `tmem.get_reg_layout()` chose a raw narrowed copy-layout register mapping for
+  the subview. Active self-contained subviews now avoid borrowing source support
+  images and try their standalone canonical load/store surrogate before raw
+  parent-allocation query types. The ordering predicate is type-local
+  shape-vs-alloc plus active-layout match, not source-op provenance.
+  Validation: required `make -j8`; exact `warpx2` subview rows `4 passed`;
+  focused `cp_no_scales` selector `63 passed`; 4-GPU
+  `cp_no_scales and not reports` split passed as `54 passed, 4 skipped`,
+  `58 passed`, `58 passed`, `57 passed`; targeted lit set passed `6/6`.

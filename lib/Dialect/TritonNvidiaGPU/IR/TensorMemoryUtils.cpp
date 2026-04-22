@@ -4292,19 +4292,45 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
 
   bool memTyCanonical =
       getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr).has_value();
+  bool hasSelfContainedSubviewLayout = [&] {
+    if (!isTensorMemoryEncoding(memTy.getEncoding()) ||
+        isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
+      return false;
+    auto layoutRank =
+        static_cast<size_t>(cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank());
+    if (memTy.getShape().size() < layoutRank ||
+        memTy.getAllocShape().size() < layoutRank)
+      return false;
+    if (memTy.getShape().take_back(layoutRank) ==
+        memTy.getAllocShape().take_back(layoutRank))
+      return false;
+    return memTyCanonical;
+  }();
 
   bool preferStandaloneBeforeRawType =
       isa_and_nonnull<TMEMSubSliceOp>(memDesc.getDefiningOp()) &&
       memTy.getElementTypeBitWidth() < 32;
+  preferStandaloneBeforeRawType |= hasSelfContainedSubviewLayout;
 
   std::string error;
   std::optional<gpu::MemDescType> standaloneTy;
+  auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
+  auto addCanonicalSurrogate = [&](gpu::MemDescType ty) {
+    if (auto surrogate =
+            getCanonicalTMemLdStSurrogateType(ty, backingPlan,
+                                              /*error=*/nullptr)) {
+      add(*surrogate);
+    }
+  };
   if (auto maybeStandalone = inferStandaloneTMemRegLayoutQueryType(
           memDesc, &error);
       succeeded(maybeStandalone)) {
     standaloneTy = *maybeStandalone;
-    if (preferStandaloneBeforeRawType && *maybeStandalone != memTy)
-      add(*maybeStandalone);
+    if (preferStandaloneBeforeRawType) {
+      if (*maybeStandalone != memTy)
+        add(*maybeStandalone);
+      addCanonicalSurrogate(*maybeStandalone);
+    }
   }
   if (explicitViewProducer)
     add(memTy);
@@ -4313,13 +4339,8 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
   if (standaloneTy && !preferStandaloneBeforeRawType && *standaloneTy != memTy)
     add(*standaloneTy);
 
-  auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
   if (standaloneTy) {
-    if (auto surrogate =
-            getCanonicalTMemLdStSurrogateType(*standaloneTy, backingPlan,
-                                              /*error=*/nullptr)) {
-      add(*surrogate);
-    }
+    addCanonicalSurrogate(*standaloneTy);
   }
   if (auto surrogate =
           getCanonicalTMemLdStSurrogateType(memTy, backingPlan,
@@ -6051,6 +6072,13 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
       isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding())) {
     return std::nullopt;
   }
+  if (srcTy.getEncoding() != queryTy.getEncoding()) {
+    // A column subview with its own result encoding is self-contained: its
+    // runtime taddr carries the origin and its type describes the active layout.
+    // Borrow the source support image only for legacy views that still preserve
+    // the parent encoding.
+    return std::nullopt;
+  }
 
   auto maybeSrcSupport = getSourceSupport(subslice.getSrc());
   if (!maybeSrcSupport)
@@ -6464,6 +6492,36 @@ inferStandaloneTMemPhysicalQuery(Value memDesc, std::string *error) {
 }
 
 FailureOr<TMemPhysicalQuery>
+inferTypeLocalTMemPhysicalQuery(MemDescType memTy, std::string *error) {
+  if (!memTy ||
+      memTy.getMemorySpace() != TensorMemorySpaceAttr::get(memTy.getContext())) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+  auto encoding = memTy.getEncoding();
+  if (!isTensorMemoryEncoding(encoding)) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+
+  auto maybeQuery =
+      getTMemViewAnalysisLayout(memTy.getShape(), encoding, error);
+  if (!maybeQuery)
+    return failure();
+
+  return TMemPhysicalQuery{
+      memTy,
+      llvm::to_vector(memTy.getShape()),
+      llvm::to_vector(memTy.getAllocShape()),
+      static_cast<unsigned>(memTy.getElementTypeBitWidth()),
+      maybeQuery->layout,
+      maybeQuery->twoCTAs,
+      SmallVector<int32_t>(maybeQuery->layout.getNumInDims(), 0)};
+}
+
+FailureOr<TMemPhysicalQuery>
 inferExactTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
                             std::string *error) {
   auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
@@ -6573,10 +6631,37 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
   if (succeeded(maybeExact))
     selection.exact = *maybeExact;
 
+  std::optional<TMemPhysicalQuery> typeLocal;
+  std::string typeLocalError;
+  if (auto memTy = dyn_cast<MemDescType>(memDesc.getType())) {
+    if (auto maybeTypeLocal =
+            inferTypeLocalTMemPhysicalQuery(memTy, &typeLocalError);
+        succeeded(maybeTypeLocal)) {
+      typeLocal = *maybeTypeLocal;
+    }
+  }
+
   auto canUseCopyQuery = [&](const TMemPhysicalQuery &query) {
     return succeeded(getTMemCopySourceConversion(query, shmemLl));
   };
   if (debug) {
+    if (typeLocal) {
+      llvm::errs() << "[tmem-copy] candidate type-local query canCompose="
+                   << canUseCopyQuery(*typeLocal) << "\n"
+                   << typeLocal->layout.toString() << "\n";
+      if (selection.exact) {
+        if (auto difference =
+                getFirstTMemPhysicalQueryDifference(*typeLocal,
+                                                    *selection.exact)) {
+          llvm::errs() << "[tmem-copy] type-local/exact query divergence: "
+                       << stringifyTMemPhysicalQueryDifference(*difference)
+                       << "\n";
+        }
+      }
+    } else if (!typeLocalError.empty()) {
+      llvm::errs() << "[tmem-copy] candidate type-local query failed: "
+                   << typeLocalError << "\n";
+    }
     if (selection.standalone) {
       llvm::errs() << "[tmem-copy] candidate standalone query canCompose="
                    << canUseCopyQuery(*selection.standalone) << "\n"
@@ -7146,24 +7231,6 @@ LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
       }
     }
   }
-  if (auto preserved = tryPreserveExactTMemViewEncoding(
-          ctx, dstShape, srcAllocShape, srcEncoding, /*error=*/nullptr)) {
-    dstEncoding = *preserved;
-    return success();
-  }
-  if (isTensorMemoryEncoding(srcEncoding) &&
-      !isa<TensorMemoryScalesEncodingAttr>(srcEncoding)) {
-    auto layoutRank = cast<LayoutEncodingTrait>(srcEncoding).getRank();
-    if (srcShape.take_back(layoutRank) != dstShape.take_back(layoutRank)) {
-      std::string preservedError;
-      if (succeeded(preserveTMemViewEncodingIfValid(
-              ctx, srcShape, dstShape, srcAllocShape, srcEncoding, dstEncoding,
-              loc,
-              &preservedError))) {
-        return success();
-      }
-    }
-  }
   std::string error;
   auto result =
       inferTMemSubsliceEncoding(srcShape, srcEncoding, dstShape, offsets,
@@ -7173,6 +7240,17 @@ LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
     dstEncoding = *result;
     return success();
   }
+
+  // Preserving the parent encoding is a compatibility fallback for views that
+  // are valid pointer transformations but cannot yet be represented as an
+  // active descriptor-relative TMEM-linear layout. Prefer the inferred active
+  // layout whenever possible so the result type is self-contained.
+  if (auto preserved = tryPreserveExactTMemViewEncoding(
+          ctx, dstShape, srcAllocShape, srcEncoding, /*error=*/nullptr)) {
+    dstEncoding = *preserved;
+    return success();
+  }
+
   return preserveTMemViewEncodingIfValid(ctx, srcShape, dstShape, srcAllocShape,
                                          srcEncoding, dstEncoding, loc,
                                          &error);

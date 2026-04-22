@@ -7,7 +7,46 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest validation checkpoint: 2026-04-22 03:13 UTC merged `codex/tmem` with
+Current design note: `tmem_memdesc_runtime_abstraction_20260422.md` records the
+2026-04-22 audit of branch-local TMEM producer-chain dependence and the proposed
+self-contained memdesc runtime abstraction. The intended invariant is that
+LLVM/PTX lowering uses the runtime `taddr`, the current `MemDescType` and
+tensor-memory layout, and the operation semantics only. The layout `col`
+dimension is the physical element-slot coordinate, so packed and unpacked
+sub-32-bit storage are represented by layout bases/column stride. Producer-chain
+walking is reserved for optimizer heuristics and allocation transforms that
+rewrite IR before lowering; it may rank or choose among already-legal lowerings,
+but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
+destinations are clean negatives unless the current descriptor layout itself
+represents a legal copy family.
+
+Active execution plan: as of 2026-04-22 22:54 UTC, the newer memdesc-model
+migration is executing first vertical slices. The checklist lives in
+`completion_execution_tracker.md` and the detailed migration plan lives in
+`tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
+type-local physical-query scaffolding, DCE derisking for `subword_index`,
+active TMEM subslice result encodings, and active-subview load/store
+query-ordering for self-contained result layouts. Remaining work continues
+through type-local copy, ld/st, `ld.red`, MMAv5/scales, and helper API cleanup.
+
+Latest validation checkpoint: 2026-04-22 22:54 UTC completed the active
+subview load/store query-ordering slice. Active subviews whose current
+`MemDescType` shape differs from alloc shape but whose tensor-memory layout
+matches the active shape now try the standalone canonical load/store surrogate
+before raw parent-allocation query types. This fixes the two-CTA
+`warpx2::01_23` subslice copy/load row without borrowing a parent support image:
+copy planning already selected the same physical destination family as direct
+allocation, and `get_reg_layout()` now chooses the same canonical direct
+load/store layout. Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused
+`cp_no_scales` selector `63 passed, 1560 deselected`; 4-GPU
+`cp_no_scales and not reports` split passed as group1 `54 passed, 4 skipped`,
+group2 `58 passed`, group3 `58 passed`, group4 `57 passed`; targeted lit set
+`ops.mlir`, `tmem_layouts.mlir`, `tritongpu_to_llvm_blackwell.mlir`,
+`test-buffer-region.mlir`, `invalid.mlir`, and `TritonGPU/invalid.mlir`
+passed `6/6`.
+
+Previous validation checkpoint: 2026-04-22 03:13 UTC merged `codex/tmem` with
 upstream Triton main `37c9a4b569a0`, resolved the four TMEM-related conflicts,
 and pushed the merge checkpoint `b96231ec8`. A post-merge refactor pass then
 kept the branch-owned TMEM address arithmetic on the shared helper path:

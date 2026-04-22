@@ -31,6 +31,29 @@ constexpr uint32_t getTMemWordColumn(uint32_t elementColumn,
   return elementColumn * elementBitWidth / 32;
 }
 
+constexpr uint32_t getTMemElementsPerWord(uint32_t elementBitWidth) {
+  assert(elementBitWidth > 0 && elementBitWidth <= 32 &&
+         "TMEM element bitwidth must fit in one 32-bit word");
+  return elementBitWidth >= 32 ? 1 : 32 / elementBitWidth;
+}
+
+constexpr uint32_t getTMemSubwordIndex(uint32_t elementColumn,
+                                       uint32_t elementBitWidth) {
+  return elementColumn % getTMemElementsPerWord(elementBitWidth);
+}
+
+struct TMemAddressColumns {
+  uint32_t wordColumn;
+  uint32_t subwordIndex;
+};
+
+constexpr TMemAddressColumns
+getTMemAddressColumns(uint32_t elementColumn, uint32_t elementBitWidth) {
+  return TMemAddressColumns{
+      getTMemWordColumn(elementColumn, elementBitWidth),
+      getTMemSubwordIndex(elementColumn, elementBitWidth)};
+}
+
 inline uint32_t packTMemBasisOffset(ArrayRef<int32_t> basis) {
   assert(basis.size() == 2 && "TMEM basis offsets must be 2D row/col vectors");
   return packTMemRowColOffset(static_cast<uint32_t>(basis[0]),
@@ -632,6 +655,10 @@ inferStandaloneTMemPhysicalQuery(Value memDesc, std::string *error = nullptr);
 FailureOr<TMemPhysicalQuery>
 inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
                                  std::string *error);
+
+FailureOr<TMemPhysicalQuery>
+inferTypeLocalTMemPhysicalQuery(gpu::MemDescType memTy,
+                                std::string *error = nullptr);
 
 FailureOr<TMemPhysicalQuery>
 inferExactTMemPhysicalQuery(Value memDesc, std::string *error = nullptr);

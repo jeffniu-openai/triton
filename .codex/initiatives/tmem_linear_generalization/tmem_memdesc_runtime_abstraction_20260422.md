@@ -1,0 +1,797 @@
+# TMEM Memdesc Runtime Abstraction
+
+Date: 2026-04-22
+
+Branch: `codex/tmem`
+
+HEAD at analysis time: `2602983e8af22d7aa6befd40db42df7c94b6685b`
+
+Merge-base used for branch-diff orientation: `11ee1144a737006921231bbd3386c187812c38e1`
+
+## Problem Statement
+
+TMEM lowering and codegen must not recover semantic state by walking the
+producer chain of a memdesc SSA value. A valid TTGIR program must remain valid
+if a tensor-memory descriptor is forwarded through a block argument, selected
+with `arith.select`, returned from `scf.if`, passed through a helper function, or
+otherwise loses a visible local chain of `memdesc_subslice` / `memdesc_index` /
+`memdesc_reshape` / `memdesc_trans` / `memdesc_reinterpret` operations.
+
+Optimization passes may still walk producer chains to recognize peephole
+patterns and rewrite IR. After such rewrites, however, the resulting TTGIR must
+be self-contained: lowering to LLVM/PTX must use only the memdesc SSA value's
+runtime contents, the memdesc result type, and explicit operation attributes.
+
+## Current Lowering Contract
+
+Current LLVM lowering already treats a tensor-memory memdesc runtime value as a
+single tensor-memory address:
+
+- `ttng.tmem_alloc` lowers to an address-space-3 pointer whose integer payload is
+  the hardware TMEM base address plus the allocation's packed row/column offset.
+- TMEM `memdesc_subslice`, `ttng.tmem_subslice`, and `memdesc_index` lower by
+  adding a packed physical offset to that pointer.
+- TMEM `memdesc_reshape`, `memdesc_trans`, and `memdesc_reinterpret` lower as
+  runtime no-ops.
+- TMEM `ttng.tmem_load`, `ttng.tmem_store`, `ttng.tmem_copy`, and MMAv5 lowering
+  consume the pointer by `ptrtoint` and issue `tcgen05.*` instructions from the
+  resulting address.
+
+The runtime payload is therefore effectively:
+
+```text
+taddr : i32
+  high bits: physical TMEM row base
+  low bits:  TMEM column base
+```
+
+This payload is enough for dynamic origin selection. For example, two
+same-typed descriptors that differ only by origin can be selected dynamically:
+
+```mlir
+%view = arith.select %pred, %origin, %offset
+%x = ttng.tmem_load %view : !ttg.memdesc<64x32xf32, ...> -> tensor<64x32xf32, ...>
+```
+
+The selected runtime value carries the current row/physical-element-column base.
+The memdesc type carries the static access pattern.
+
+## Proposed Invariant
+
+A tensor-memory memdesc SSA value is a pair of:
+
+1. Runtime state:
+   - one `taddr` value, lowered as `ptr addrspace(3)` or `i32`;
+   - this is the current row/physical-element-column origin of the descriptor.
+2. Static state:
+   - the `!ttg.memdesc` result type;
+   - its tensor-memory encoding describes the complete relative physical access
+     layout of the descriptor from that current origin;
+   - explicit operation attributes describe requested instruction variants,
+     reduction modifiers, copy barriers, MMA shape, etc.
+
+No lowering or verifier code may require the producer chain to discover:
+
+- the root allocation;
+- prior view offsets;
+- whether the value came from a subslice, index, reshape, trans, or reinterpret;
+- whether a reinterpret was a special physical bitcast;
+- a parent row plan or wider support image;
+- a query origin that is still relative to a root descriptor.
+
+If any of those facts are needed for correct lowering, they must be represented
+in the current memdesc type or in an explicit operation attribute. If they are
+only useful for optimization, a pass may use producer-chain analysis before
+lowering and then rewrite to self-contained IR.
+
+## Is Raw `taddr` Enough?
+
+One packed `taddr` is enough as the runtime representation of the current
+row/physical-element-column origin. It is not enough as the whole descriptor
+abstraction.
+
+Correct codegen needs both:
+
+```text
+runtime:  current row/physical-element-column base taddr
+static:   current MemDescType + tensor-memory layout
+```
+
+The static part must answer these locally from the current memdesc type and its
+tensor-memory layout:
+
+- logical result shape, element type/bitwidth, memory space, mutability, and
+  allocation/storage shape; these are already `MemDescType` responsibilities;
+- exact relative mapping from logical coordinates to TMEM row and physical
+  element slot;
+- `cta_group` / two-CTA ownership from the tensor-memory encoding/layout;
+- storage footprint or support-image information from the current descriptor's
+  allocation/storage shape and layout, relative to the current `taddr`;
+- the complete set of semantically valid instruction lowerings derivable from
+  the current descriptor layout and the operation being lowered.
+
+Instruction-selection heuristics may inspect producer/view chains as peephole
+optimization context, but only to choose among lowerings already proven valid
+from the current type/layout. The set of valid lowerings must not depend on the
+IR chain.
+
+The runtime state should not grow a parent pointer, a root base, a chain id, or a
+side table entry. Those would still make the codegen result depend on dynamic
+provenance rather than the SSA value and its type.
+
+## Column Coordinate Convention
+
+The tensor-memory `LinearLayout` `col` dimension should represent physical
+element slots, not raw 32-bit word columns.
+
+That is the more natural descriptor model:
+
+- memdesc shapes are expressed in elements;
+- view algebra composes in element-slot coordinates;
+- layout bases encode the storage stride from logical elements to physical
+  element slots;
+- f16/i8/f8 layouts do not need a second "address mode" convention;
+- codegen is responsible for translating element slots into the hardware word
+  address and for packing/unpacking sub-32-bit elements.
+
+With this convention, a separate static `addressMode` field is not part of the
+target abstraction. The element type and exact element-slot layout are the
+static facts. A consumer that needs a PTX hardware address computes:
+
+```text
+elements_per_word = 32 / element_bitwidth
+word_col          = floor(physical_element_col / elements_per_word)
+subword_phase     = physical_element_col % elements_per_word
+```
+
+The hardware `tcgen05` address uses `word_col`; register packing, unpacking,
+lane shifts, widened packets, or read/modify/write handling use
+`subword_phase` when the ISA path supports it.
+
+Packing is represented by the layout's column stride:
+
+```text
+packed f16:    logical col +1 -> physical element col +1
+unpacked f16:  logical col +1 -> physical element col +2
+packed f8/i8:  logical col +1 -> physical element col +1
+unpacked f8/i8 logical col +1 -> physical element col +4
+```
+
+In the unpacked f16/f8/i8 cases, every logical element starts at
+`subword_phase == 0` even though the dtype is sub-32-bit. The pack/unpack logic
+then degenerates to extension/truncation around the 32-bit hardware slot rather
+than bit shifting and masking/oring within a packed slot.
+
+This also clarifies the runtime `taddr` contract. If the lowered memdesc value
+were always the raw hardware row/word-column address, it could not represent an
+odd packed-f16 column or a non-4-aligned packed-i8 column without losing the
+subword phase.
+The preferred single-payload model is therefore:
+
+```text
+compiler memdesc taddr = packed row + physical-element-column origin
+PTX tcgen05 address    = packed row + hardware word-column origin
+```
+
+The conversion from compiler `taddr` to PTX address happens at the instruction
+emission boundary. This still keeps the runtime memdesc to one scalar value and
+preserves dynamic control-flow joins for descriptors with the same type. If a
+dynamic subword phase cannot be realized for a particular instruction family,
+that is a local ISA/codegen limitation to diagnose from the current type and
+operation semantics, not from the producer chain.
+
+The lowering helper may compute the subword phase pessimistically for
+sub-32-bit element types:
+
+```text
+subword_index = physical_element_col % elements_per_word
+```
+
+That value should be ordinary SSA. When the selected instruction path only needs
+the hardware word address, or when dtype/alignment makes the phase statically
+irrelevant, MLIR/LLVM DCE and constant folding can remove the computation. The
+important constraint is that uses of `subword_index` are local to pack/unpack,
+lane-selection, read/modify/write, or diagnostic codegen. It should not become a
+second provenance channel for recovering parent view state.
+
+Before implementing this in the TMEM lowering, prototype the SSA shape directly
+in MLIR/LLVM IR and run it through the remaining compiler pipeline. The
+prototype must prove the performance-sensitive cases:
+
+- 32-bit element types do not leave a live `subword_index` computation.
+- Sub-32-bit element types with statically hardware-column-aligned accesses fold
+  `subword_index` to zero and remove unused phase logic.
+- Sub-32-bit unaligned accesses keep only the phase computation actually
+  consumed by pack/unpack or diagnostics.
+
+Do not rely on this cleanup by assumption. Capture the reduced IR/PTX evidence
+before wiring the pattern into production lowering.
+
+## View Operation Semantics
+
+Each TMEM view operation should update exactly one side of the abstraction:
+
+- `memdesc_subslice`, `ttng.tmem_subslice`, and encoded `memdesc_index`:
+  - update the runtime `taddr` by adding the view's
+    row/physical-element-column origin delta;
+  - produce a result type whose layout is relative to the new current origin.
+- Dynamic `memdesc_index`:
+  - computes a dynamic packed row/physical-element-column delta from the source
+    type's relative layout;
+  - advances the runtime `taddr`;
+  - the result type still describes the post-index relative layout.
+- `memdesc_reshape`, `memdesc_trans`, and layout-preserving
+  `memdesc_reinterpret`:
+  - do not change runtime `taddr`;
+  - produce a result type whose relative layout has been composed with the view.
+- Bitwidth-changing or physical reinterpret:
+  - still has no extra runtime payload unless it changes origin;
+  - any special raw-word consumer behavior must be derived from the physical
+    element-slot layout and element type, or be explicit on the consumer op, not
+    discovered by checking that the defining op was `memdesc_reinterpret`.
+
+After this rule, use-site lowering should never need a `TMemLdStQueryLayout`
+with non-zero `origin`. Non-zero origins are an intermediate type-inference
+device only; before LLVM lowering, the origin delta should have been folded into
+the runtime `taddr`, and the static layout should be expressed relative to
+zero.
+
+## Static Descriptor Shape
+
+The branch already has most of the raw material:
+
+- `TensorMemoryLinearEncodingAttr` and `TensorMemoryScalesEncodingAttr` carry
+  tensor-memory layout state.
+- `MemDescType` carries shape, element type, memory space, mutability, and
+  allocation shape.
+- `LinearLayout` can describe non-canonical physical mappings.
+- `TMemLdStRowPlan`, `TMemLdStQueryLayout`, and `TMemPhysicalQuery` describe the
+  missing codegen concepts, but today they are mostly reconstructed from a
+  `Value` by producer-chain analysis.
+
+The intended destination is a type-local descriptor analysis, for example:
+
+```c++
+struct TMemDescriptorPlan {
+  gpu::MemDescType memTy;
+  LinearLayout relativeLayout;
+  unsigned elementBitWidth;
+  bool twoCTAs;
+  std::optional<TMemLdStRowPlan> rowPlan;
+  SmallVector<TMemInstructionPlan> legalInstructionPlans;
+};
+```
+
+This structure should be constructible from the current `MemDescType`, its
+layout, and the semantic operation kind being lowered. It should not accept a
+`Value` unless that value is used only to fetch its type. Operation attributes
+may describe the operation itself, such as reduction kind or barrier operands,
+but they must not be required to prove descriptor-layout legality.
+
+If a descriptor is too small for a hardware instruction footprint, lowering
+should reject it cleanly. For example, `tcgen05.copy` has no dense `128x32b` or
+`128x64b` destination atom; a `128x1xf32` or `128x2xf32` destination memdesc is
+therefore not codegenable as a dense copy unless the current descriptor layout
+itself represents one of the legal copy families. The compiler should not copy
+extra columns just because a hidden parent allocation happens to contain them.
+
+If a view needs a different descriptor image to use a legal instruction, there
+are only two acceptable representations:
+
+- the current descriptor type's layout explicitly describes that legal image
+  relative to the current `taddr`; or
+- an optimization pass rewrites the IR to an explicit supported descriptor and
+  consumer before lowering.
+
+There should not be a third path where LLVM lowering walks from the consumer's
+operand back to a parent descriptor to borrow a hidden support image. A useful
+counterexample is a dynamic join between two same-shaped views at different
+offsets in a root allocation: if a widened support footprint is legal for one
+origin but not the other, the selected descriptor cannot rely on root provenance
+to decide legality. Either the current result type represents the legal
+instruction image directly, or the lowering is not semantically valid for that
+descriptor type.
+
+## Current Disallowed Chain-Walking Sites
+
+These sites currently use parent operations to decide semantic verifier,
+lowering, or codegen behavior. They should be migrated to type-local analysis or
+to pre-lowering canonicalization.
+
+### `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+
+- `getTMemScalesRootEncoding(Value)` follows view and forwarding chains to find
+  a scales root encoding.
+  - This should become a type-local property. A descriptor that is semantically
+    a scales descriptor should have scales encoding on its current type.
+- `inferStandaloneTMemLdStQueryLayoutImpl(Value, ...)` recursively walks
+  `memdesc_subslice`, `ttng.tmem_subslice`, `memdesc_index`, `memdesc_reshape`,
+  `memdesc_trans`, and `memdesc_reinterpret`.
+  - This is the central violation. Its output is used by verifiers, Gluon
+    frontend helpers, layout optimization, LLVM lowering, copy planning, and
+    MMAv5 lowering.
+  - The lowering-facing replacement should compute a zero-origin relative query
+    from `MemDescType` only.
+- `isTMemPhysicalBitcast(Value)` checks whether the defining op is a
+  `memdesc_reinterpret` with `tmem_physical_bitcast`.
+  - If this affects codegen, it must be represented in result type/encoding or
+    explicit consumer attributes.
+- `getMMAv5TMemAddressLayout(MemDescType, Value)` and
+  `getMMAv5TMemViewOffsetForLowering(Value, MemDescType, offsets)` use the value
+  chain to choose MMAv5 address layout and tile order.
+  - MMAv5 lowering should use a type-local address layout plus the runtime
+    `taddr`.
+- `getBackingTMemLdStRowPlan(Value)` walks through forwarding sources and view
+  ops to borrow a wider parent row plan.
+  - Any required row plan must be derivable from the current descriptor layout or
+    encoded as static descriptor metadata.
+- `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery`,
+  `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery`,
+  `shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout`,
+  `shouldUseExactTMemLdStViewLayoutForM64DirectView`,
+  `disallowTMemLdStRawQueryRowPlanOverride`, and
+  `disallowTMemLdStQueryTypeRescue` make codegen choices based on producer
+  shape.
+  - These should collapse into type-local layout and row-plan predicates.
+- `getTMemLoadReductionLayoutForMemDesc(Value, ...)` and
+  `canonicalizeTMemLoadReductionType(..., Value, ...)` select reduction layouts
+  using raw/support query reconstruction from the chain.
+  - Reduction legality and layout should be determined from the descriptor type
+    and requested reduction operation.
+- `getTMemLdStQueryTypes(Value)` uses the producer chain and standalone view
+  inference to build fallback query types.
+  - Fallback query types should either be type-local derived plans or an
+    optimizer rewrite before lowering.
+- `isPureOuterTMemIndexView`, `isHigherRankHalfRowsSubview`,
+  `isDirectHalfRowsSubview`, and related half-row predicates match specific
+  producer chains.
+  - These may remain optimizer matchers, but must not gate verifier/lowering
+    legality.
+- `disallowTMemLdStTypeOnlyFallback(Value, ...)` uses the chain to reject
+  fallbacks.
+  - A true hardware-negative should be expressible from current type/layout and
+    requested atom.
+- `getTMemViewOffsetForLowering(Value, offsets)` and
+  `getTMemSubviewOffsetForLowering(memdesc_subslice)` compute origin deltas by
+  reconstructing source and destination queries from the chain.
+  - View lowering should compute the delta from the source type/layout and the
+    view op's explicit offsets. It should not ask how the source was produced.
+- `getAlreadyAdjustedTMemSubviewBaseOffset(Value)` and
+  `getTMemSubviewRelativeBaseOffset(Value, baseOffset)` subtract already-lowered
+  view offsets recovered from the chain.
+  - These functions are symptoms of split state. In the target model,
+    already-applied origin deltas live only in runtime `taddr`, and use-site
+    static base offsets are relative to that `taddr`.
+- `inferStandaloneTMemViewTypeImpl(Value, ...)`,
+  `inferStandaloneTMemRegLayoutQueryType(Value, ...)`,
+  `inferStandaloneTMemViewType(Value, ...)`,
+  `inferStandaloneTMemPhysicalQuery(Value, ...)`, and
+  `inferExactTMemPhysicalQuery(Value, ...)` reconstruct type/query state from a
+  producer chain.
+  - The type-inference logic belongs on the view ops themselves or in an
+    optimizer/canonicalizer that materializes a self-contained result type.
+- `getTMemLdStSupportQueryPlan(Value, ...)` and helpers such as
+  `getHalfRowsTMemLdStSupportQueryLayout`,
+  `getDirectHalfRowsTMemLdStSupportQueryPlan`,
+  `getColumnSubviewTMemLdStSupportQueryPlan`,
+  `getOuterIndexTMemLdStSupportQueryPlan`, and
+  `getGenericTMemLdStReshapedSupportQueryPlan` derive hidden support images from
+  the chain.
+  - Support images must either be encoded in the current descriptor's static
+    layout/plan or produced by an optimizer rewrite.
+- `isUnsupportedDirectTMemLdStDescriptorView(Value, ...)`,
+  `getUnsupportedDirectTMemLdStVariantReason(Value, ...)`, and helper checks
+  decide true hardware legality using chain-derived queries.
+  - Hardware negatives should be local: current type/layout + requested atom.
+- `selectTMemCopyPhysicalQuery(Value, ...)` chooses between standalone and exact
+  physical queries by walking the destination chain.
+  - `ttng.tmem_copy` lowering should consume one explicit destination physical
+    query derived from the destination type, or an optimizer should rewrite the
+    copy into a supported explicit schedule.
+
+### `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+
+- `lowerTMemLdStFromTypes(...)` accepts both `MemDescType` and `Value
+  memDescValue`, then calls the chain-dependent query, support, row-plan, and
+  base-offset helpers.
+  - The target signature should not need `memDescValue` except for diagnostics.
+    It should accept `MemDescType`, current `taddr`, the register type, and a
+    type-local instruction plan.
+- `TensorMemoryLoadOpConversion`, `TensorMemoryStoreOpConversion`, and initialized
+  `TensorMemoryAllocOpConversion` pass the original memdesc operand/result value
+  into `lowerTMemLdStFromTypes`.
+  - This should become type-only planning plus runtime pointer use.
+- `copySharedToTmem(...)` calls `selectTMemCopyPhysicalQuery(op.getDst(), ...)`
+  and then subtracts `getTMemSubviewRelativeBaseOffset(op.getDst(), ...)`.
+  - This should use one type-local copy destination plan relative to the current
+    destination `taddr`.
+- The Nvidia-local `MemDescIndexOpConversion` duplicates the generic
+  tensor-memory index lowering and rejects some non-leading dynamic index cases.
+  - This does not itself walk parents, but it should be unified with the generic
+    source-type-only view lowering so dynamic origin updates are consistent.
+
+### `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+
+- `DotOpMmaV5TmemLoader::build(...)` calls
+  `getMMAv5TMemAddressLayout(memTy, memDescValue)`.
+- `getSortedTMemTileOrder(...)` calls
+  `getMMAv5TMemViewOffsetForLowering(memDescValue, memTy, offsets)`.
+
+Both should become type-local. MMAv5 lowering should use current `taddr` plus
+the current descriptor's static address layout.
+
+### `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+
+- `verifyTMEMOperandPreconditions` and `verifyTMEMOperand` call
+  `isUnsupportedDirectTMemLdStDescriptorView`,
+  `getTMemLdStQueryTypes`, `inferStandaloneTMemLdStQueryLayout`,
+  `getTMemLdStSupportQueryPlan`, `inferStandaloneTMemViewType`, and row-plan
+  helpers.
+- `TMEMLoadOp::verify` repeats the same pattern for `ld.red`.
+
+Verifiers are not LLVM lowering, but they define which TTGIR is valid. Validity
+must not depend on local producer-chain visibility. These checks should use the
+same type-local descriptor plan as LLVM lowering.
+
+### `python/src/gluon_ir.cc`
+
+The Gluon bindings call the same chain-dependent helpers for auto-layout and
+legality:
+
+- `canonicalizeTMemLoadReductionType`
+- `inferStandaloneTMemRegLayoutQueryType`
+- `getTMemLdStSupportQueryPlan`
+- `inferStandaloneTMemLdStQueryLayout`
+- `inferStandaloneTMemViewType`
+- `isUnsupportedDirectTMemLdStDescriptorView`
+- `getTMemLdStQueryTypes`
+- `getTMemLoadReductionLayoutForMemDesc`
+
+The frontend may still run optimization-time peepholes, but the legality and
+layout-selection contract exposed to TTGIR should be type-local. Otherwise a
+Gluon helper boundary or control-flow join can change whether the backend can
+compile the same semantic descriptor.
+
+### Public Headers
+
+`include/triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h` exposes many
+`Value`-taking planning APIs. The API surface should be split:
+
+- lowering/verifier APIs: type-local, no producer-chain walk;
+- optimizer analysis APIs: explicitly named as view-chain matchers and used only
+  from transforms.
+
+## Allowed Chain-Walking Sites
+
+These sites may walk producers because their role is optimization, liveness, or
+IR rewriting. The constraint is that their output must be self-contained before
+LLVM lowering.
+
+### `lib/Dialect/TritonNvidiaGPU/Transforms/OptimizeTMemLayouts.cpp`
+
+Allowed uses include:
+
+- matching split-load, half-slice, leading-slice, and full-view replay patterns;
+- recognizing reshape/trans/subslice chains and replacing them with explicit
+  TMEM loads/stores/subslices;
+- choosing profitable load-reduction rewrites;
+- fusing load+reduce forms when a local peephole proves the rewrite.
+
+This pass may call current chain-dependent helpers while it is still a
+pre-lowering optimization. The migration goal is that any plan it relies on is
+materialized in the rewritten IR or in result types before LLVM conversion.
+
+### `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`
+
+Allowed uses include:
+
+- tracing aliases through memdesc view ops, `arith.select`, `scf.if`, `scf.for`,
+  `scf.while`, and warp-specialization captures to find root `ttng.tmem_alloc`
+  ops;
+- conservative liveness extension for aliasing tensor-memory descriptors;
+- rematerializing shared MMA scales into TMEM storage;
+- cleaning up dead scale alias chains.
+
+This is allocation and liveness analysis. It may reason about roots and aliases,
+but it must not be the only place where semantic view offsets or instruction
+layouts are represented.
+
+### `lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp`
+
+Walking users through `MemDescViewTrait` for fence placement is an effect and
+alias analysis concern. It is allowed as long as it does not compute PTX address
+operands or instruction legality.
+
+### Scale Materialization Helpers
+
+`getMMAv5ScaledBScaleStorageTypeThroughViews` in
+`lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` and the similar helper in
+`TensorMemoryAllocation.cpp` walk view chains to discover scale storage during a
+materialization transform. That is acceptable as a transform-time convenience.
+Final scaled-MMAv5 codegen should still see a self-contained scale memdesc type.
+
+## First Underlying Issue To Fix
+
+The first repair target is the TMEM view operations themselves.
+
+For every tensor-memory memdesc view op, fix both sides of the memdesc state:
+
+1. Result type computation.
+   - The result `MemDescType` must have the right shape, allocation/storage
+     shape, element type, tensor-memory encoding, and exact relative
+     `LinearLayout` for the view.
+   - The result layout must describe TMEM row/physical-element-column
+     displacements
+     relative to the result descriptor's own current `taddr`, not relative to a
+     root allocation or parent descriptor.
+   - A view op should preserve the source encoding only when that encoding is
+     exactly correct for the result view. Otherwise it must compose/project the
+     layout algebraically or reject the view before lowering.
+
+2. Runtime `taddr` lowering.
+   - View ops that change physical origin, such as `memdesc_subslice`,
+     `ttng.tmem_subslice`, and encoded `memdesc_index`, must update the lowered
+     `taddr` using only the source `MemDescType`, the explicit view offsets, and
+     any dynamic index value.
+   - View ops that only reinterpret the relative layout, such as reshape,
+     transpose, and layout-only reinterpret, must leave the lowered `taddr`
+     unchanged.
+   - After a view op is lowered, no later consumer should need to subtract an
+     "already adjusted" offset or recover a non-zero query origin from the parent
+     chain.
+
+This is the root issue behind the current producer-chain dependence. Once view
+ops maintain this invariant, a consumer can lower from:
+
+```text
+current taddr + current MemDescType/layout + operation semantics
+```
+
+without reconstructing:
+
+```text
+root descriptor + parent view chain + accumulated offsets
+```
+
+## Migration Plan
+
+### Execution Checklist Started 2026-04-22 22:05 UTC
+
+Active branch: `codex/tmem`
+
+Active HEAD at checklist start:
+`2602983e8af22d7aa6befd40db42df7c94b6685b`
+
+Execution rule for this migration: do not change user-facing TMEM APIs. The
+only planned semantic tightening is that `tcgen05.copy` destinations that are
+too small for any ISA atom, such as dense `128x1xf32` or `128x2xf32`, should
+be rejected cleanly instead of borrowing hidden parent columns.
+
+Checklist state:
+
+- [x] Record the memdesc model and migration plan in durable initiative docs.
+- [ ] Audit every current TMEM `Value`-taking planning/lowering helper and
+  classify it as semantic-to-rewrite, optimizer-only, or allocation/effect-only.
+- [ ] Add prototype evidence for physical-element-column `taddr` lowering and
+  `subword_index` DCE in aligned/common cases before wiring production lowering.
+- [ ] Introduce type-local descriptor-planning helpers beside the existing
+  chain-dependent helpers.
+- [ ] Fix TMEM view result type computation and source-type-only `taddr`
+  lowering for origin-changing views.
+- [ ] Migrate ld/st planning to type-local analysis.
+- [ ] Migrate subword pack/unpack handling for packed and unpacked sub-32-bit
+  layouts.
+- [ ] Migrate `ld.red` legality/layout selection to the type-local planner.
+- [ ] Migrate `tcgen05.copy` planning to destination-type-only analysis and add
+  too-small-copy clean negatives.
+- [ ] Migrate MMAv5/scales address planning to current type/layout plus runtime
+  `taddr`.
+- [ ] Split public helper APIs into lowering-facing type-local helpers and
+  optimizer-only producer-chain matchers.
+- [ ] Delete or quarantine obsolete support-query, backing-row, and
+  already-adjusted-offset rescue paths after coverage is green.
+- [ ] Run staged lit, focused pytest, full 4-GPU runtime matrix, structural
+  fuzzer, and example performance validation.
+
+### Audit Classification Started 2026-04-22 22:05 UTC
+
+Semantic paths that must be rewritten to type-local planning:
+
+- `lowerTMemLdStFromTypes` in Nvidia LLVM lowering. It currently receives
+  `Value memDescValue` and uses descriptor provenance to choose query types,
+  raw/support query layouts, row plans, base offsets, and rescue ordering.
+- `TMEMCopyOp::verify` and `copySharedToTmem`. They currently call
+  `selectTMemCopyPhysicalQuery(Value, ...)`, which compares standalone and exact
+  physical queries reconstructed from the destination chain, then subtracts
+  already-lowered view offsets.
+- MMAv5 TMEM address planning. `getMMAv5TMemAddressLayout(MemDescType, Value)`
+  and `getMMAv5TMemViewOffsetForLowering(Value, ...)` still use
+  `isTMemPhysicalBitcast(Value)` and raw query reconstruction.
+- TMEM op verifiers in `Ops.cpp`. `verifyTMEMOperand` and `TMEMLoadOp::verify`
+  use `getTMemLdStQueryTypes(Value)`, support queries, raw queries, backing row
+  plans, and optimizer-replayability to decide whether TTGIR is valid.
+- Gluon layout selection in `python/src/gluon_ir.cc`. The frontend uses the same
+  chain-dependent helpers to pick register layouts and reduction layouts.
+
+Producer-chain utilities that may survive only as optimizer/allocation helpers:
+
+- Replay recognizers in `OptimizeTMemLayouts.cpp`, including half/full/leading
+  descriptor-view matchers and reduction peepholes. Their output must be
+  rewritten IR with self-contained result types before LLVM lowering.
+- Alias/liveness walks in `TensorMemoryAllocation.cpp`, including memdesc alias
+  tracing through `arith.select`, `scf.if`, `scf.for`, and scale
+  rematerialization. These may reason about roots but must not be required for
+  codegen legality.
+- Fence insertion user walks and scale-materialization discovery helpers. These
+  are effect/transform analyses, not instruction planners.
+
+High-priority hacks and debt to remove after replacement coverage exists:
+
+- `inferStandaloneTMemLdStQueryLayoutImpl(Value, ...)` as a semantic source of
+  truth. It is the central producer-chain reconstruction stack.
+- `getBackingTMemLdStRowPlan(Value)` and support-query row borrowing. These
+  borrow hidden parent row footprint and conflict with dynamic descriptor joins.
+- `getAlreadyAdjustedTMemSubviewBaseOffset` and
+  `getTMemSubviewRelativeBaseOffset`. These exist because origin state is split
+  between lowered `taddr` and reconstructed query origins.
+- `isTMemPhysicalBitcast(Value)`. If physical reinterpret behavior affects
+  codegen, the result type/layout or explicit consumer semantics must carry it.
+- Query rescue/preference helpers such as
+  `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery`,
+  `disallowTMemLdStRawQueryRowPlanOverride`, and
+  `disallowTMemLdStQueryTypeRescue`. These should collapse into type-local
+  predicates plus optimizer-only performance rewrites.
+- Exact-copy scheduling notes that depend on differences between standalone and
+  exact chain-derived physical queries. Under the target model, copy legality
+  comes from the current destination descriptor only.
+
+### Phased Implementation Plan
+
+1. Prototype and derisk before broad rewrites.
+   - Hand-write small MLIR/LLVM probes for f32, packed/unpacked fp16, and
+     packed/unpacked fp8/i8 physical-element-column origins.
+   - Run them through the remaining lowering pipeline and inspect reduced
+     IR/PTX to prove that f32 and statically aligned sub-32-bit cases do not
+     leave live `subword_index` arithmetic.
+   - Establish branch-local PTX/SASS and benchmark baselines for examples
+     `01-attention-forward` and `05-fused-gather-bmm1`, plus representative
+     ld/st, copy, `ld.red`, MMAv5, and scales rows.
+   - Build a temporary type-local planner mirror and compare its decisions with
+     the current planner across runtime-matrix shapes before switching codegen.
+
+2. Fix TMEM view type inference and view lowering together.
+   - Audit `memdesc_subslice`, `ttng.tmem_subslice`, `memdesc_index`,
+     `memdesc_reshape`, `memdesc_trans`, and `memdesc_reinterpret`.
+   - Ensure each result type's shape/layout/storage facts exactly describe the
+     resulting descriptor relative to its own current `taddr`.
+   - Ensure origin-changing views advance the lowered `taddr` from the source
+     type/layout and explicit/dynamic offsets only.
+   - Remove the need for `TMemLdStQueryLayout.origin` in use-site lowering.
+
+3. Introduce a type-local TMEM descriptor planner.
+   - Inputs: `MemDescType`, tensor-memory layout, operand/result types, and the
+     semantic operation kind.
+   - Outputs: relative physical-element-column layout, row plan, the set of
+     legal atom/packet plans, packet offsets, physical element-column stride,
+     subword packing/unpacking requirements, and clean hardware-negative
+     diagnostics.
+   - Performance heuristics may choose among the legal plans and may use
+     producer-chain peepholes for that choice, but they may not expand the legal
+     set.
+   - No `Value` input except optional debug naming.
+
+4. Make view lowering source-type-only.
+   - `memdesc_subslice` and `memdesc_index` lowering should compute the packed
+     origin delta from the source `MemDescType` and explicit/dynamic offsets.
+   - Remove `getTMemSubviewRelativeBaseOffset` and
+     `getAlreadyAdjustedTMemSubviewBaseOffset`.
+
+5. Replace ld/st lowering planning.
+   - Remove `Value memDescValue` from `lowerTMemLdStFromTypes`.
+   - Use the type-local descriptor planner for direct, reduction, and support
+     variants.
+   - If a support path is not derivable from the current descriptor layout,
+     require an optimizer rewrite before lowering.
+
+6. Replace copy and MMAv5 planning.
+   - `ttng.tmem_copy` should use a destination physical query from the destination
+     type only.
+   - MMAv5 accumulator/LHS/scale address layouts should be derived from operand
+     types and layouts only.
+
+7. Split helper APIs.
+   - Rename or move producer-chain matchers into optimizer-only utilities.
+   - Keep `TensorMemoryUtils.h` lowering-facing APIs type-local.
+   - Add assertions in LLVM conversion that no lowering planner calls a
+     chain-walking API.
+
+8. Add compositional tests.
+   - `arith.select` between two same-typed TMEM views with different origins,
+     followed by `ttng.tmem_load`, `ttng.tmem_store`, `ttng.tmem_copy`, `ld.red`,
+     and MMAv5 where legal.
+   - `scf.if` and `scf.for` carrying same-typed TMEM descriptors through block
+     arguments.
+   - Helper-function returned TMEM descriptors with no local producer chain at
+     the consumer.
+   - Negative tests where two branches have different descriptor layouts and
+     therefore cannot join at the same memdesc type.
+
+## Review Conclusions
+
+- The runtime memdesc payload should remain one packed scalar address. Adding
+  parent pointers, root descriptors, or side metadata is not necessary for the
+  current model and would make control-flow joins harder.
+- The layout column convention should be physical element slots. Codegen
+  converts to hardware word columns and handles subword packing/unpacking at the
+  instruction boundary.
+- Raw `taddr` alone is not sufficient for codegen. The current descriptor type
+  and layout must carry or derive all static layout and instruction-planning
+  facts; no additional address-mode field is part of the target model.
+- Valid lowering sets must be derived directly from the current type/layout and
+  operation semantics. Producer-chain analysis is optimizer-only context for
+  ranking or rewriting among already-valid choices.
+- The branch currently still has substantial semantic dependence on producer
+  chains for ld/st, ld.red, copy, MMAv5, verifier, and Gluon layout selection.
+- The right direction is not to make parent-chain walking more robust. It is to
+  make view ops update runtime `taddr` and result types exactly, then make all
+  lowering-facing planners type-local.
+
+## Implementation Notes
+
+### 2026-04-22 First Subslice Type Slice
+
+- Added a type-local physical-query scaffold:
+  `inferTypeLocalTMemPhysicalQuery(MemDescType)`. It is currently used only for
+  debug comparison under `TRITON_DEBUG_TMEM_QUERY=1`; default copy lowering is
+  still unchanged.
+- Added explicit physical element-column helpers:
+  `getTMemElementsPerWord`, `getTMemSubwordIndex`, and
+  `getTMemAddressColumns`. The DCE prototype showed unused/static-zero
+  subword-index arithmetic is removed for f32 and aligned/unpacked cases.
+- Changed `inferTMemSubsliceOpEncoding` to prefer active inferred
+  descriptor-relative TMEM-linear layouts before preserving parent encodings.
+  This fixes the immediate bug where a `128x256 -> 128x128` column subview's
+  result type still described the parent-width physical layout.
+- Updated lit expectations so handwritten subslice result types spell the
+  active layout. Existing lowering already advances `taddr` with a source-type
+  offset; the active result layout makes the SSA value self-contained for the
+  common column-subview case.
+- Remaining gap: copy selection still prefers the old exact producer-chain
+  query in some cases, so debug output can show a non-zero exact origin even
+  when the current type-local query composes. The next copy slice should switch
+  legal planning to the type-local query where available and keep exact
+  producer-chain logic as an optimizer/debug fallback only until retired.
+
+### 2026-04-22 Active Subview Load/Store Query Slice
+
+- The first active-layout subslice fix exposed a load-side weakness in the
+  `warpx2::01_23` two-CTA copy rows. Copy planning selected the same physical
+  destination query and `tcgen05.cp` family as the direct allocation, but
+  `tmem.get_reg_layout()` selected a raw narrowed copy-layout register mapping
+  for the subview. Direct allocation instead uses the canonical standalone
+  load/store surrogate layout.
+- Active subviews with self-contained result layouts now do two things:
+  - `getColumnSubviewTMemLdStSupportQueryPlan` refuses to borrow the source
+    support image when the result encoding already differs from the source
+    encoding. That source borrowing is now reserved for legacy views that still
+    preserve parent encodings.
+  - `getTMemLdStQueryTypes` tries the standalone canonical load/store surrogate
+    before raw parent-allocation query types when the current memdesc type is
+    self-contained. The predicate is type-local: trailing shape differs from
+    trailing alloc shape, and `getCanonicalTMemLinearEncoding(memTy)` proves the
+    current layout matches the active shape.
+- This is still an incremental bridge, not the final planner. The use site
+  still accepts `Value` and still has chain-dependent fallbacks, but the fixed
+  correctness path no longer needs to inspect the source descriptor to decide
+  that the active subview has an active layout or a canonical load/store
+  surrogate.
+- Validation after this slice: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused selector
+  `cp_no_scales and (indexed_view or linear_subslice_view or warpx2_candidate or 128x128)`
+  `63 passed, 1560 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1 `54 passed, 4 skipped`,
+  group2 `58 passed`, group3 `58 passed`, group4 `57 passed`; targeted lit set
+  `TritonNvidiaGPU/ops.mlir`, `TritonNvidiaGPU/tmem_layouts.mlir`,
+  `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+  `Analysis/test-buffer-region.mlir`, `TritonNvidiaGPU/invalid.mlir`, and
+  `TritonGPU/invalid.mlir` passed `6/6`.
