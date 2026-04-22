@@ -1087,9 +1087,12 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
   auto copyPlans = getTMemCopyPlans(cvt, bitwidth);
   if (copyPlans.empty()) {
-    return op->emitOpError("failed to classify tcgen05.copy family from "
-                           "shared memory descriptor ")
-           << srcTy << " to tensor memory descriptor " << dstTy;
+    auto diag = op->emitOpError("failed to classify tcgen05.copy family from "
+                                "shared memory descriptor ")
+                << srcTy << " to tensor memory descriptor " << dstTy;
+    if (auto atomFailure = getTMemCopyAtomFailureMessage(cvt, bitwidth))
+      diag.attachNote() << *atomFailure;
+    return failure();
   }
   // Get shmem ptr
   Type elemTy = typeConverter->convertType(srcTy.getElementType());

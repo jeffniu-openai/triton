@@ -10478,6 +10478,30 @@ def test_tmem_runtime_matrix_cp_128x128_subword_exact_width(dtype_name, torch_dt
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("N", (1, 2))
+def test_tmem_runtime_matrix_cp_no_scales_too_small_destination_reports_clean_error(N, capfd):
+    M = 128
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout(M, N)
+    shared_layout = _make_tmem_copy_dense_shared_layout(M, N)
+
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
+        tmem_copy_128x128_subword_exact_kernel[(1, )](
+            inp, out, N, layout, shared_layout, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "does not match any recognized tcgen05.copy family" in text
+    assert "requires at least 128 bits of logical columns" in text
+    assert f"got {N * 32} bits from {N} columns x 32-bit elements" in text
+    assert "cannot borrow hidden parent columns" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tmem_runtime_matrix_cp_scales_warpx4():
     smem_h, smem_w = 64, 16
     inp = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8, device="cuda")

@@ -179,6 +179,45 @@
   destinations, ld/st and `ld.red` semantic planning, MMAv5/scales address
   planning, and helper API cleanup.
 
+## 2026-04-22 23:18 UTC: too-small copy clean-negative slice
+
+- Branch/HEAD before this implementation slice:
+  `a4006c68e Use type-local copy query for active TMEM subviews`.
+- Context:
+  the design permits user-facing API behavior to tighten only where a TMEM copy
+  destination is truly too small for any legal hardware atom. The existing
+  backend already rejected `128x1xf32` and `128x2xf32` when the test reached
+  `ttng.tmem_copy`, but the diagnostic was a generic family-classification
+  failure and did not explain the hardware boundary.
+- Completed implementation:
+  added `getTMemCopyAtomFailureMessage(const LinearLayout &, int)` next to copy
+  atom classification. When the current source-to-destination projection has
+  four rows but fewer than `256` column bits, or 128 rows but fewer than `128`
+  column bits, the helper reports the required atom width, the actual
+  `columns x element-bitwidth` count, and that the compiler cannot borrow
+  hidden parent columns for a narrower current descriptor. `TMEMCopyOp::verify`
+  and late LLVM copy lowering both attach this note when no copy family can be
+  classified.
+- New runtime coverage:
+  `test_tmem_runtime_matrix_cp_no_scales_too_small_destination_reports_clean_error`
+  covers `N=1` and `N=2` f32 destinations with a linear shared layout, so the
+  failure is specifically at `tcgen05_copy(smem, tmem)` rather than at
+  `NVMMASharedLayout` construction.
+- Validation evidence:
+  required `make -j8`; new exact clean-negative test `2 passed`; adjacent
+  exact-width positive `test_tmem_runtime_matrix_cp_128x128_subword_exact_width`
+  `2 passed`; focused selector
+  `cp_no_scales and (too_small_destination or 128x128_subword_exact_width or indexed_view or linear_subslice_view or warpx2_candidate or 128x128)`
+  `65 passed, 1560 deselected`; 4-GPU `cp_no_scales and not reports` split
+  passed as group1 `54 passed, 4 skipped`, group2 `58 passed`, group3
+  `58 passed`, group4 `57 passed`; targeted lit set passed `6/6`;
+  `git diff --check` passed.
+- Remaining frontier:
+  continue migrating semantic planning away from value-chain APIs. The next
+  highest-value slice is ld/st verifier/lowering type-local planning, because
+  it still owns most use-site dependence on support-query and backing-row
+  rescue paths.
+
 ## 2026-04-22: TMEM memdesc runtime abstraction audit
 
 - Wrote

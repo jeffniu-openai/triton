@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 23:06 UTC
+Last updated: 2026-04-22 23:18 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -26,7 +26,9 @@ Active implementation checklist:
   copy-planning slice: `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
   keeping legacy standalone/exact selection for direct roots and older
-  parent-encoding views.
+  parent-encoding views. First clean-negative copy slice: too-narrow current
+  descriptors such as `128x1xf32` and `128x2xf32` now report an explicit
+  hardware copy-atom boundary.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
   and producer-chain matchers are optimizer-only.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
@@ -111,6 +113,19 @@ required `make -j8`; exact
 `cp_no_scales and not reports` split passed as group1 `54 passed, 4 skipped`,
 group2 `58 passed`, group3 `58 passed`, group4 `57 passed`; targeted lit set
 passed `6/6`; `git diff --check` passed.
+
+Completed fourth implementation slice: too-small copy destinations now have an
+explicit clean-negative diagnostic. `getTMemCopyAtomFailureMessage` describes
+the current descriptor's logical column bits and the minimum legal hardware
+copy atom width, and both `TMEMCopyOp::verify` and late LLVM copy lowering
+attach the note if copy family classification fails. New runtime coverage uses
+linear shared layouts for `128x1xf32` and `128x2xf32` so the failure reaches
+`ttng.tmem_copy` rather than shared-memory layout construction. Validation:
+required `make -j8`; new exact test `2 passed`; adjacent exact-width positive
+`2 passed`; focused selector including the new negatives `65 passed,
+1560 deselected`; 4-GPU `cp_no_scales and not reports` split passed as group1
+`54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
+`57 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
 
 Current prototype evidence: hand-written LLVM IR passed through
 `opt -S -O2` shows unused or statically zero subword-phase arithmetic is removed

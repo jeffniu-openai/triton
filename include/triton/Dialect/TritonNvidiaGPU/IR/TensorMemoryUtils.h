@@ -907,6 +907,9 @@ getDirectTMemCopySeedDescriptorImm(gpu::MemDescType srcTy,
 std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
                                             int bitwidth);
 
+std::optional<std::string>
+getTMemCopyAtomFailureMessage(const LinearLayout &cvt, int bitwidth);
+
 llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
                                                     int bitwidth);
 

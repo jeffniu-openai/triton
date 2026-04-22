@@ -1946,6 +1946,8 @@ LogicalResult TMEMCopyOp::verify() {
     auto diag = emitOpError(
         "The source shared layout does not match any recognized "
         "tcgen05.copy family.");
+    if (auto atomFailure = getTMemCopyAtomFailureMessage(cvt, bitwidth))
+      diag.attachNote() << *atomFailure;
     if (cvt.hasInDim(kRow) && cvt.getInDimSize(kRow) > 128) {
       diag.attachNote()
           << "This projection has " << cvt.getInDimSize(kRow)

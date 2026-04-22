@@ -586,7 +586,9 @@ Checklist state:
   too-small-copy clean negatives. First partial slice complete: active
   self-contained subview destinations select a type-local physical query;
   direct roots and legacy parent-encoding views still use the old
-  standalone/exact selection.
+  standalone/exact selection. First clean-negative slice complete:
+  `128x1xf32` and `128x2xf32` current descriptors report an explicit hardware
+  copy-atom boundary.
 - [ ] Migrate MMAv5/scales address planning to current type/layout plus runtime
   `taddr`.
 - [ ] Split public helper APIs into lowering-facing type-local helpers and
@@ -827,3 +829,27 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `Conversion/tritongpu_to_llvm_blackwell.mlir`,
   `Analysis/test-buffer-region.mlir`, `TritonNvidiaGPU/invalid.mlir`, and
   `TritonGPU/invalid.mlir` passed `6/6`; `git diff --check` passed.
+
+### 2026-04-22 Too-Small Copy Clean-Negative Slice
+
+- Added `getTMemCopyAtomFailureMessage(const LinearLayout &, int)` as the
+  diagnostic counterpart to `getTMemCopyAtom`. It does not expand or change the
+  recognized atom set. It only explains a true hardware boundary when the
+  current source-to-destination projection has four rows with fewer than
+  `256` logical column bits, or 128 rows with fewer than `128` logical column
+  bits.
+- `TMEMCopyOp::verify` and late LLVM copy lowering both attach this note when
+  no copy family can be classified. The note reports the actual
+  `columns x element-bitwidth` width and states that lowering cannot borrow
+  hidden parent columns for a narrower current descriptor.
+- New runtime coverage:
+  `test_tmem_runtime_matrix_cp_no_scales_too_small_destination_reports_clean_error`
+  covers `128x1xf32` and `128x2xf32` with a linear shared layout. This avoids
+  the unrelated `NVMMASharedLayout` minimum-contiguous-width failure and proves
+  the clean negative happens at `ttng.tmem_copy`.
+- Validation after this slice: required `make -j8`; new exact clean-negative
+  test `2 passed`; adjacent exact-width copy positive `2 passed`; focused copy
+  selector including the new negatives `65 passed, 1560 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
+  `57 passed`; targeted lit set passed `6/6`; `git diff --check` passed.

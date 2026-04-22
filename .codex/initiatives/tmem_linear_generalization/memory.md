@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-22 23:18 UTC completed the first too-small-copy
+  clean-negative slice. `getTMemCopyAtomFailureMessage` now explains when copy
+  atom classification fails because the current descriptor has too few logical
+  column bits for a legal hardware atom, and both verifier and LLVM lowering
+  attach that note. Runtime coverage now exercises `128x1xf32` and
+  `128x2xf32` with a linear shared layout that reaches `ttng.tmem_copy`,
+  asserting the clean error says the compiler cannot borrow hidden parent
+  columns. Validation: required `make -j8`; new exact test `2 passed`;
+  adjacent exact-width positive `2 passed`; focused copy selector `65 passed,
+  1560 deselected`; 4-GPU `cp_no_scales and not reports` split passed as
+  group1 `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`,
+  group4 `57 passed`; targeted lit set passed `6/6`; `git diff --check`
+  passed.
+
 - Latest: 2026-04-22 23:06 UTC completed the first copy-planning slice of the
   newer self-contained memdesc model. `selectTMemCopyPhysicalQuery` now records
   type-local destination candidates and selects the type-local physical query

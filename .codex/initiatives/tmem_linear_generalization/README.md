@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-22 23:06 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-22 23:18 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -28,10 +28,24 @@ type-local physical-query scaffolding, DCE derisking for `subword_index`,
 active TMEM subslice result encodings, and active-subview load/store
 query-ordering for self-contained result layouts. Copy planning now also uses
 the type-local destination physical query for active self-contained subviews.
-Remaining work continues through broader type-local ld/st, `ld.red`,
-MMAv5/scales, copy clean negatives, and helper API cleanup.
+The first too-small-copy clean negatives are now covered for `128x1xf32` and
+`128x2xf32`. Remaining work continues through broader type-local ld/st,
+`ld.red`, MMAv5/scales, and helper API cleanup.
 
-Latest validation checkpoint: 2026-04-22 23:06 UTC completed the first
+Latest validation checkpoint: 2026-04-22 23:18 UTC completed the first
+too-small-copy clean-negative slice. Copy atom classification now attaches a
+hardware-width note when the current destination descriptor has too few logical
+column bits for any legal `tcgen05.copy` atom, explicitly saying the compiler
+cannot borrow hidden parent columns. New runtime coverage exercises
+`128x1xf32` and `128x2xf32` with a linear shared layout so the failure reaches
+`ttng.tmem_copy`. Validation: required `make -j8`; new exact test
+`2 passed`; adjacent exact-width copy positive `2 passed`; focused
+`cp_no_scales` selector including the new negatives `65 passed,
+1560 deselected`; 4-GPU `cp_no_scales and not reports` split passed as group1
+`54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
+`57 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-22 23:06 UTC completed the first
 copy-planning slice for active self-contained subviews. Destination copy
 planning now records type-local, standalone, and exact physical-query
 candidates, and selects the type-local query when the current memdesc type

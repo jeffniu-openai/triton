@@ -9900,6 +9900,41 @@ std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
   return std::nullopt;
 }
 
+std::optional<std::string>
+getTMemCopyAtomFailureMessage(const LinearLayout &cvt, int bitwidth) {
+  auto inDims = cvt.getInDimNames();
+  if (inDims.empty())
+    return std::nullopt;
+  auto *ctx = inDims.begin()->getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kOffset = StringAttr::get(ctx, "offset");
+  if (!cvt.hasInDim(kRow) || !cvt.hasInDim(kCol) ||
+      !cvt.hasOutDim(kOffset))
+    return std::nullopt;
+
+  int rows = cvt.getInDimSize(kRow);
+  int cols = cvt.getInDimSize(kCol);
+  int totalBits = cols * bitwidth;
+  auto makeTooNarrowMessage = [&](int requiredBits, StringRef atom) {
+    std::string message;
+    llvm::raw_string_ostream os(message);
+    os << atom << " requires at least " << requiredBits
+       << " bits of logical columns in the current tensor-memory descriptor; "
+       << "got " << totalBits << " bits from " << cols << " columns x "
+       << bitwidth << "-bit elements. This is a hardware copy-atom boundary: "
+       << "the compiler cannot borrow hidden parent columns for a narrower "
+       << "current descriptor.";
+    return std::string(os.str());
+  };
+
+  if (rows == 4 && totalBits < 256)
+    return makeTooNarrowMessage(256, "tcgen05.copy.4x256b");
+  if (rows == 128 && totalBits < 128)
+    return makeTooNarrowMessage(128, "tcgen05.copy");
+  return std::nullopt;
+}
+
 TMemCopyFamily getTMemCopyFamily(const TMemCopyAtom &atom) {
   if (atom.multicast == 1)
     return TMemCopyFamily::Warpx2_01_23_64x128b;
