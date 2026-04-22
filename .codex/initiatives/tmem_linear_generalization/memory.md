@@ -1,6 +1,30 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-21 23:56 UTC repair slice fixed the live rank-5
+- Latest: 2026-04-22 00:30 UTC validation/repair slice fixed the broad
+  runtime-matrix fallout after the rank-5 selected-parent replay repair. The
+  full-file split first showed two current-head issues. The real backend bug:
+  generic full-view replay patterns in `OptimizeTMemLayouts` matched
+  `ttng.tmem_load` operations with `redOp` or token results, then attempted to
+  replace a two-result op with a one-result replay load. The fix is to leave
+  reduction/token loads out of those generic one-result replay patterns; the
+  reduction-specific paths continue to own `ld.red` behavior. The expectation
+  drift: after the rank-5 lowering fix, row displacement is represented by
+  advancing the TMEM base register while the `tcgen05` bracket immediate is
+  column-only, so old `1 << 20` row offsets in tests now appear as `0`, and
+  row-plus-column offsets retain only the column component. Runtime-matrix
+  offset expectations were updated accordingly, and marker assertions were
+  relaxed only where canonicalized no-op descriptor shape views can disappear;
+  runtime correctness, exact opcode families/counts, software/hardware
+  reduction checks, `tensor_memory_linear`, indexing, and `twoCTAs` checks
+  remain. Validation: required `make -j8`; exact `ld.red` crash repro
+  `1 passed`; focused affected selector `83 passed`; full runtime matrix
+  split-4 passed as group1 `308 passed, 98 skipped`, group2
+  `402 passed, 4 skipped`, group3 `406 passed`, and group4 `405 passed`;
+  structural fuzzer split-4 `36 passed`; targeted lit `2 passed`;
+  runtime/structural `py_compile` and `git diff --check` passed. Remaining
+  checked-in structural xfails: none.
+
+- Previous: 2026-04-21 23:56 UTC repair slice fixed the live rank-5
   selected-parent `ld/st` backend gap after the broad MMAv5 refresh. The
   remaining small rank-5 rows were real compiler/backend coverage gaps, not
   just stale markers: full-view replay could choose a descriptor rooted in

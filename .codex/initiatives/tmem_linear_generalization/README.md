@@ -7,7 +7,28 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest validation checkpoint: 2026-04-21 23:56 UTC repaired the rank-5
+Latest validation checkpoint: 2026-04-22 00:30 UTC repaired the full
+runtime-matrix fallout from the rank-5 selected-parent replay checkpoint. A
+full-file split first exposed one real optimizer crash and several stale
+opcode/marker expectations: generic full-view replay patterns tried to replace
+two-result `ttng.tmem_load {redOp}` operations with one-value replay loads, and
+tests still expected row displacement to appear in the `tcgen05` bracket
+immediate even though lowering now carries rows in the TMEM base register.
+`OptimizeTMemLayouts` now leaves reduction/token TMEM loads out of the generic
+one-result full-view replay patterns. Runtime-matrix expectations now treat the
+instruction bracket immediate as column-only and allow canonicalized no-op
+descriptor shape views to disappear in the affected `ld.red`, scales, x1
+subword, and multidim slice checks while preserving runtime correctness,
+software/hardware reduction checks, and exact opcode streams. Validation:
+required `make -j8`; exact `ld.red` crash repro `1 passed`; focused affected
+selector `83 passed`; full runtime matrix split-4 passed as group1
+`308 passed, 98 skipped`, group2 `402 passed, 4 skipped`, group3
+`406 passed`, and group4 `405 passed`; structural fuzzer split-4 passed
+`9 + 9 + 9 + 9`; targeted lit `tmem_layouts.mlir` and
+`interleave_tmem.mlir` `2 passed`; runtime/structural `py_compile` and
+`git diff --check` passed. Remaining checked-in structural xfails: none.
+
+Previous validation checkpoint: 2026-04-21 23:56 UTC repaired the rank-5
 selected-parent `ld/st` backend gap exposed after the broad MMAv5 refresh.
 The remaining small rank-5 descriptor rows were not test-only failures: a
 replayable full-view chain rooted at `memdesc_index(memdesc_subslice(...))`

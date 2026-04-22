@@ -33603,6 +33603,50 @@ Open after this slice:
   families, heuristic cleanup, copy/scales boundaries if new current-head
   probes reproduce, and eventual long-running broad validation.
 
+## 2026-04-22 00:30 UTC: full runtime-matrix fallout repair
+
+- Branch/HEAD before this repair slice:
+  `f2c2233db Fix rank5 selected-parent TMEM replay`.
+- Initial full runtime-matrix split after the rank-5 checkpoint:
+  group3 and group4 were green, but group1 and group2 exposed a real
+  `TritonNvidiaGPUOptimizeTMemLayoutsPass` crash in `ld.red` descriptor-chain
+  rows plus stale opcode/marker expectations from the new row/column offset
+  lowering contract.
+- Root cause:
+  generic full-view replay load patterns assumed one-result `ttng.tmem_load`
+  operations. They matched reduction/token loads and then called
+  `rewriter.replaceOp(loadOp, *replacement)`, which asserts when the original
+  op has two results. This was not a valid replay path for `ld.red`; reduction
+  loads need to stay with the reduction-specific planner/fusion paths.
+- Completed implementation:
+  `TMemReplayFullViewLoadPattern`, `TMemReplayFullViewIfLoadPattern`, and
+  `TMemReplayFullViewForLoadPattern` now immediately reject TMEM loads with
+  `redOp` or token results.
+- Test expectation cleanup:
+  `python/test/gluon/test_tmem_runtime_matrix.py` now expects `tcgen05`
+  bracket immediates to be column-only after row displacement is moved into the
+  TMEM base register. Row-only packed offsets changed from `1048576` to `0`,
+  and row-plus-column offsets changed to their column component. The affected
+  scales, multidim slice, x1 two-CTA subword, and software-reduction
+  descriptor-chain tests no longer require canonicalized no-op descriptor
+  shape views to remain visible in TTGIR. Semantic runtime checks and exact
+  opcode-family/order checks remain.
+- Validation evidence:
+  required `make -j8`; exact `ld.red` crash repro passed; focused affected
+  selector passed `83/83`; full runtime matrix split-4 passed as group1
+  `308 passed, 98 skipped`, group2 `402 passed, 4 skipped`, group3
+  `406 passed`, and group4 `405 passed`; targeted lit
+  `test/TritonNvidiaGPU/tmem_layouts.mlir` and
+  `test/TritonNvidiaGPU/interleave_tmem.mlir` passed `2/2`; full structural
+  fuzzer split-4 passed `9 + 9 + 9 + 9`; runtime/structural `py_compile`
+  passed; `git diff --check` passed.
+- Remaining repair-plan frontier:
+  no checked-in structural xfails remain. The full runtime-matrix file is green
+  on current head, so the next implementation frontier should resume the
+  remaining completion queue from a clean baseline: broader MMAv5 reachable
+  families, heuristic cleanup, copy/scales boundaries if new probes reproduce,
+  and staged broad validation.
+
 ## 2026-04-21 22:50 UTC: FZ-0016 verifier and FZ-0023 frontend drift repair
 
 - Branch/HEAD before this repair slice:

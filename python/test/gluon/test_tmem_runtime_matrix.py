@@ -800,7 +800,7 @@ def _scales_ldst_n_sharded_min_elements(instr_variant: str):
 
 def _expected_scales_ldst_n_sharded_ops(m: int, n: int, instr_variant: str):
     count = (m * n) // _scales_ldst_n_sharded_min_elements(instr_variant)
-    return _expected_ldst_ops(f"{instr_variant}.x{count}.b32", [0, 1048576])
+    return _expected_ldst_ops(f"{instr_variant}.x{count}.b32", [0, 0])
 
 
 @gluon.jit
@@ -5486,18 +5486,18 @@ SCALES_LDST_AUTO_VARIANT_CASES = [
     (16, 4, 4, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (16, 8, 8, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (32, 4, 8, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
-    (64, 4, 4, "auto", _expected_ldst_ops("16x64b.x1.b32", [0, 1048576])),
-    (64, 8, 4, "auto", _expected_ldst_ops("16x128b.x1.b32", [0, 1048576])),
-    (64, 16, 4, "auto", _expected_ldst_ops("16x256b.x1.b32", [0, 1048576])),
+    (64, 4, 4, "auto", _expected_ldst_ops("16x64b.x1.b32", [0, 0])),
+    (64, 8, 4, "auto", _expected_ldst_ops("16x128b.x1.b32", [0, 0])),
+    (64, 16, 4, "auto", _expected_ldst_ops("16x256b.x1.b32", [0, 0])),
     (64, 16, 8, "auto", _expected_ldst_ops("32x32b.x4.b32", [0])),
-    (64, 32, 4, "auto", _expected_ldst_ops("16x256b.x2.b32", [0, 1048576])),
+    (64, 32, 4, "auto", _expected_ldst_ops("16x256b.x2.b32", [0, 0])),
     (64, 32, 8, "auto", _expected_ldst_ops("32x32b.x8.b32", [0])),
-    (128, 4, 4, "auto", _expected_ldst_ops("16x128b.x1.b32", [0, 1048576])),
-    (128, 8, 4, "auto", _expected_ldst_ops("16x256b.x1.b32", [0, 1048576])),
+    (128, 4, 4, "auto", _expected_ldst_ops("16x128b.x1.b32", [0, 0])),
+    (128, 8, 4, "auto", _expected_ldst_ops("16x256b.x1.b32", [0, 0])),
     (128, 8, 8, "auto", _expected_ldst_ops("32x32b.x4.b32", [0])),
-    (128, 16, 4, "auto", _expected_ldst_ops("16x256b.x2.b32", [0, 1048576])),
+    (128, 16, 4, "auto", _expected_ldst_ops("16x256b.x2.b32", [0, 0])),
     (128, 16, 8, "auto", _expected_ldst_ops("32x32b.x8.b32", [0])),
-    (128, 32, 4, "auto", _expected_ldst_ops("16x256b.x4.b32", [0, 1048576])),
+    (128, 32, 4, "auto", _expected_ldst_ops("16x256b.x4.b32", [0, 0])),
     (128, 32, 8, "auto", _expected_ldst_ops("32x32b.x16.b32", [0])),
     (16, 8, 4, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (16, 16, 4, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
@@ -5578,7 +5578,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x32.b32", "16x64b.x16.b32", view_offsets=(0, 1048576)
+            "16x32bx2.x32.b32", "16x64b.x16.b32", view_offsets=(0, 0)
         ),
     ),
     (
@@ -5588,7 +5588,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x64.b32", "16x64b.x32.b32", view_offsets=(0, 1048576)
+            "16x32bx2.x64.b32", "16x64b.x32.b32", view_offsets=(0, 0)
         ),
     ),
     (
@@ -5598,7 +5598,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x128.b32", "16x64b.x64.b32", view_offsets=(0, 1048576)
+            "16x32bx2.x128.b32", "16x64b.x64.b32", view_offsets=(0, 0)
         ),
     ),
 ]
@@ -5614,7 +5614,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES = [
         _expected_scales_ldst_descriptor_view_ops(
             f"16x32bx2.x{M * N // 256}.b32",
             f"16x64b.x{M * N // 512}.b32",
-            view_offsets=(0, 1048576),
+            view_offsets=(0, 0),
         ),
     )
     for M, N in product((128, 256), (4, 8, 16, 32, 64, 128))
@@ -5631,8 +5631,8 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_CASES = [
         _expected_scales_ldst_descriptor_view_ops(
             f"{instr_variant}.x{M * N // (8 * width)}.b32",
             f"{instr_variant}.x{M * N // (8 * width)}.b32",
-            (0, 1048576),
-            view_offsets=(0, 1048576),
+            (0, 0),
+            view_offsets=(0, 0),
         ),
     )
     for M, N, (instr_variant, width) in product(
@@ -5677,7 +5677,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
             ((1, 0),),
             "16x32bx2",
             _expected_scales_ldst_descriptor_view_ops(
-                "16x32bx2.x32.b32", "16x64b.x16.b32", (0,), view_offsets=(0, 1048576)
+                "16x32bx2.x32.b32", "16x64b.x16.b32", (0,), view_offsets=(0, 0)
             ),
         )
     ] + [
@@ -6249,32 +6249,32 @@ LDST_EXPECTED_OFFSETS_128x256 = {
     "16x64b": [
         ("tcgen05.st.sync.aligned.16x64b.x64.b32", 0),
         ("tcgen05.st.sync.aligned.16x64b.x64.b32", 128),
-        ("tcgen05.st.sync.aligned.16x64b.x64.b32", 1048576),
-        ("tcgen05.st.sync.aligned.16x64b.x64.b32", 1048704),
+        ("tcgen05.st.sync.aligned.16x64b.x64.b32", 0),
+        ("tcgen05.st.sync.aligned.16x64b.x64.b32", 128),
         ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 0),
         ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 128),
-        ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 1048576),
-        ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 1048704),
+        ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 0),
+        ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 128),
     ],
     "16x128b": [
         ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
         ("tcgen05.st.sync.aligned.16x128b.x32.b32", 128),
-        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048576),
-        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048704),
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 128),
         ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
         ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 128),
-        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048576),
-        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048704),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 128),
     ],
     "16x256b": [
         ("tcgen05.st.sync.aligned.16x256b.x16.b32", 0),
         ("tcgen05.st.sync.aligned.16x256b.x16.b32", 128),
-        ("tcgen05.st.sync.aligned.16x256b.x16.b32", 1048576),
-        ("tcgen05.st.sync.aligned.16x256b.x16.b32", 1048704),
+        ("tcgen05.st.sync.aligned.16x256b.x16.b32", 0),
+        ("tcgen05.st.sync.aligned.16x256b.x16.b32", 128),
         ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 0),
         ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 128),
-        ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 1048576),
-        ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 1048704),
+        ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 0),
+        ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 128),
     ],
 }
 
@@ -7124,7 +7124,7 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive(layout_name
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     assert ops == [
         ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
-        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048576),
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
         ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
         ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 4),
         ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 8),
@@ -7142,7 +7142,7 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive(layout_name
         ("tcgen05.st.sync.aligned.32x32b.x1.b32", 24),
         ("tcgen05.st.sync.aligned.32x32b.x1.b32", 28),
         ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
-        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048576),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
     ]
 
     ttgir = compiled.asm["ttgir"]
@@ -7807,7 +7807,6 @@ def test_tmem_runtime_matrix_ldst_x1_subword_twocta_descriptor_chain_roundtrip(
         ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
     ]
     ttgir = compiled.asm["ttgir"]
-    assert "ttg.memdesc_subslice" in ttgir
     assert "tensor_memory_linear" in ttgir
     assert "twoCTAs = true" in ttgir
 
@@ -8427,8 +8426,6 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -8468,8 +8465,6 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -8681,8 +8676,6 @@ def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_uses_software_reduc
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

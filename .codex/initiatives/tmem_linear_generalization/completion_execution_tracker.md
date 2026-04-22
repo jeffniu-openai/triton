@@ -1,8 +1,35 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-21 23:56 UTC
+Last updated: 2026-04-22 00:30 UTC
 
-Latest repair checkpoint: 2026-04-21 23:56 UTC rank-5 selected-parent `ld/st`
+Latest validation checkpoint: 2026-04-22 00:30 UTC full runtime-matrix fallout
+from the rank-5 selected-parent replay checkpoint is repaired. The first
+full-file split after commit `f2c2233db` found one real optimizer crash and
+stale expectation rows. Root cause for the crash: generic full-view replay
+patterns matched `ttng.tmem_load` with `redOp`/token results and tried to
+replace the two-result reduction load with one replay value. Implementation:
+`OptimizeTMemLayouts` now skips those generic replay patterns for reduction or
+token TMEM loads, leaving reduction-specific lowering/fusion paths in charge.
+Expectation cleanup: runtime matrix opcode assertions now follow the new
+lowering contract where row displacement advances the TMEM base register and
+the `tcgen05` bracket immediate records only column displacement. Old row-only
+`1048576` offsets become `0`, and row+column offsets retain only the column
+component. Marker checks were relaxed only for no-op descriptor shape views
+that canonicalization can now remove; runtime correctness, exact opcode
+families/counts, software/hardware reduction checks, `tensor_memory_linear`,
+descriptor indexing, and `twoCTAs` checks remain. Validation: required
+`make -j8`; exact reduction crash repro `1 passed`; affected selector
+`83 passed`; full runtime matrix split-4 passed as group1
+`308 passed, 98 skipped`, group2 `402 passed, 4 skipped`, group3
+`406 passed`, group4 `405 passed`; structural fuzzer split-4 `36 passed`;
+targeted lit `TritonNvidiaGPU/tmem_layouts.mlir` and `interleave_tmem.mlir`
+`2 passed`; runtime/structural `py_compile` passed; `git diff --check`
+passed. Remaining checked-in structural xfails: none. Next frontier: continue
+the remaining completion queue from a green full runtime-matrix baseline:
+broader MMAv5 reachable-family support, heuristic cleanup, copy/scales if new
+current-head probes reproduce, and staged broad validation.
+
+Previous repair checkpoint: 2026-04-21 23:56 UTC rank-5 selected-parent `ld/st`
 backend gap is repaired. Current-head rank-5 replay showed six small rows still
 failed after marker cleanup, and one earlier unit-parent row had exposed a
 wrong-result risk from vectorized row-advancing `32x32b.x64` packet repetition.

@@ -1592,6 +1592,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
+    if (loadOp.getRedOp() || loadOp.getToken())
+      return failure();
+
     auto match = matchReplayableFullView(loadOp.getSrc());
     if (!match)
       return failure();
@@ -1613,6 +1616,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
+    if (loadOp.getRedOp() || loadOp.getToken())
+      return failure();
+
     auto resultTy = dyn_cast<RankedTensorType>(loadOp.getType());
     if (!resultTy)
       return failure();
@@ -1693,6 +1699,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
+    if (loadOp.getRedOp() || loadOp.getToken())
+      return failure();
+
     auto resultTy = dyn_cast<RankedTensorType>(loadOp.getType());
     if (!resultTy)
       return failure();
