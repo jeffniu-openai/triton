@@ -38,8 +38,8 @@ MemDescOperand mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::tmemLoad(
   // though the logical element layout uses colStride=2. TMEM lhs operands
   // still use typed-column addressing, so keep the old scaling there.
   if (!useRawWordColumns)
-    col = col * bitwidth / 32;
-  int offset = col | (row << 16);
+    col = ttng::getTMemWordColumn(col, bitwidth);
+  int offset = ttng::packTMemRowColOffset(row, col);
   return {address, offset};
 }
 

@@ -33552,6 +33552,43 @@ Open after this slice:
   boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
   staged broad validation.
 
+## 2026-04-22 03:13 UTC: upstream merge and post-merge address refactor
+
+- Merge:
+  fetched upstream Triton main and merged `upstream/main` at `37c9a4b569a0`
+  into `codex/tmem`. Conflict files were
+  `lib/Dialect/TritonGPU/IR/Dialect.cpp`,
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAHelpers.h`,
+  and
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`.
+- Merge resolution:
+  kept the branch's generalized TMEM backend, descriptor-view-aware MMAv5
+  loader, and factored `LinearLayoutAsm` parser/printer path. Fixed one
+  namespace fallout in `TritonGPU/IR/Dialect.cpp`. Required `make -j8` passed,
+  then merge checkpoint `b96231ec8` was pushed to `origin/codex/tmem`.
+- Refactor scope:
+  audited the post-merge branch delta and kept this cleanup on branch-owned
+  TMEM address arithmetic. Added `getTMemWordColumn` next to the existing
+  packed row/column helpers, removed one duplicate `LinearLayoutAsm.h` include,
+  and converted remaining planner/lowering open-coding of 32-bit TMEM word
+  columns and packed row offsets in the IR planner, copy planner, and MMAv5
+  lowering to the shared helpers.
+- Validation evidence:
+  required `make -j8`; lit
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+  `test/TritonNvidiaGPU/interleave_tmem.mlir`, and
+  `test/Conversion/lower_tensor_memory_to_llvm.mlir` passed `3/3`; full
+  `python/test/gluon/test_tmem_runtime_matrix.py` split-4 passed as group1
+  `308 passed, 98 skipped`, group2 `402 passed, 4 skipped`, group3
+  `406 passed`, and group4 `405 passed`; structural fuzzer split-4 passed
+  `9 + 9 + 9 + 9 = 36`.
+- Note:
+  an initial runtime-matrix collection without
+  `PYTHONPATH=.:./python:./python/triton_kernels` failed before running tests
+  by importing the installed `triton` package. Corrected commands with the
+  repo Python path produced the validation above.
+
 ## 2026-04-22 02:09 UTC: TMEM cleanup/generalization checkpoint
 
 - Source cleanup:

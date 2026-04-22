@@ -26,6 +26,11 @@ constexpr uint32_t packTMemRowColOffset(uint32_t row, uint32_t col) {
   return getTMemPackedOffsetRowBase(row) | col;
 }
 
+constexpr uint32_t getTMemWordColumn(uint32_t elementColumn,
+                                     uint32_t elementBitWidth) {
+  return elementColumn * elementBitWidth / 32;
+}
+
 inline uint32_t packTMemBasisOffset(ArrayRef<int32_t> basis) {
   assert(basis.size() == 2 && "TMEM basis offsets must be 2D row/col vectors");
   return packTMemRowColOffset(static_cast<uint32_t>(basis[0]),

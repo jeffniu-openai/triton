@@ -1,6 +1,26 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-22 02:28 UTC branch-diff refactor pass completed over the
+- Latest: 2026-04-22 03:13 UTC merged `codex/tmem` with upstream Triton main
+  `37c9a4b569a0` and pushed merge checkpoint `b96231ec8`. Conflicts were in
+  TritonGPU/TritonNvidiaGPU dialect files and MMAv5 lowering; resolutions kept
+  the branch's generalized TMEM backend while preserving upstream API/build
+  movement. The post-merge refactor pass moved the remaining local 32-bit TMEM
+  word-column arithmetic onto shared helpers: `TensorMemoryUtils.h` owns
+  `getTMemWordColumn`, `packTMemRowColOffset`, and row-base construction, and
+  the IR planner, copy planner, and MMAv5 lowering now share those contracts
+  instead of open-coding `(row << 16)` or `col * bitwidth / 32`. Also removed
+  a duplicate `LinearLayoutAsm.h` include introduced by the merge. Validation:
+  required `make -j8`; lit `test/TritonNvidiaGPU/tmem_layouts.mlir`,
+  `test/TritonNvidiaGPU/interleave_tmem.mlir`, and
+  `test/Conversion/lower_tensor_memory_to_llvm.mlir` passed `3/3`; full
+  runtime matrix split-4 passed as group1 `308 passed, 98 skipped`, group2
+  `402 passed, 4 skipped`, group3 `406 passed`, group4 `405 passed`;
+  structural fuzzer split-4 passed `9 + 9 + 9 + 9 = 36`. The first runtime
+  attempt without `PYTHONPATH=.:./python:./python/triton_kernels` failed
+  collection against the installed `triton` package; the corrected commands
+  above are the meaningful validation.
+
+- Previous: 2026-04-22 02:28 UTC branch-diff refactor pass completed over the
   TMEM backend surface in `origin/main...HEAD`. The total branch delta is over
   a thousand files and includes unrelated upstream/AMD/proton/test work, so the
   cleanup scope stayed on branch-owned TMEM backend code. Added shared packed

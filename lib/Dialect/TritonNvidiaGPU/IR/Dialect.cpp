@@ -23,7 +23,6 @@
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
-#include "triton/Dialect/TritonGPU/IR/LinearLayoutAsm.h"
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
 #include "triton/Tools/Sys/GetEnv.hpp"
 
@@ -2306,7 +2305,7 @@ static uint32_t getTMemViewOffsetImpl(const LinearLayout &ll, unsigned memRank,
       if (dim == kRow) {
         offsetRow = value;
       } else if (dim == kCol) {
-        offsetCol = value * bitwidth / 32;
+        offsetCol = getTMemWordColumn(value, bitwidth);
       }
     }
   }
@@ -2317,7 +2316,7 @@ static uint32_t getTMemViewOffsetImpl(const LinearLayout &ll, unsigned memRank,
     offsetCol += linearizePrefixOffsets(prefixShape, offsets.take_front(extraRank)) *
                  singleBufferCols;
   }
-  return offsetCol | offsetRow << 16;
+  return packTMemRowColOffset(offsetRow, offsetCol);
 }
 
 uint32_t getTMemViewOffset(const LinearLayout &layout,

@@ -1436,7 +1436,7 @@ static uint32_t getTMemOriginBaseOffset(const LinearLayout &layout,
     offset += getTMemPackedOffsetRowBase(static_cast<uint32_t>(row));
   int32_t col = lookupTMemOrigin(inDims, origin, kCol);
   if (col > 0)
-    offset += static_cast<uint32_t>(col) * bitwidth / 32;
+    offset += getTMemWordColumn(static_cast<uint32_t>(col), bitwidth);
   return offset;
 }
 
@@ -4441,7 +4441,7 @@ static std::optional<uint32_t> getTMemLdStQueryOriginDeltaBaseOffset(
     return std::nullopt;
   return packTMemRowColOffset(
       static_cast<uint32_t>(dstRow - srcRow),
-      static_cast<uint32_t>(dstCol - srcCol) * bitwidth / 32);
+      getTMemWordColumn(static_cast<uint32_t>(dstCol - srcCol), bitwidth));
 }
 
 static std::optional<uint32_t> getSurjectiveQuerySubviewBaseOffset(
@@ -10412,12 +10412,14 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
                                    query.elementBitWidth))
     return 0u;
   if (!isDenseTMemCopyFamily(family))
-    return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
+    return getTMemWordColumn(static_cast<uint32_t>(logicalCol),
+                             query.elementBitWidth);
 
   auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(query.layout);
   if (!needsDenseTMemCopyPhysicalColumnTileOffsets(
           ll, query.memTy.getContext(), family, query.elementBitWidth))
-    return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
+    return getTMemWordColumn(static_cast<uint32_t>(logicalCol),
+                             query.elementBitWidth);
 
   auto coord = getDenseTMemCopyDestinationTileCoord(
       ll, query.memTy.getContext(), logicalCol);
@@ -10425,7 +10427,8 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
     return std::nullopt;
   return packTMemRowColOffset(
       static_cast<uint32_t>(coord->first),
-      static_cast<uint32_t>(coord->second) * query.elementBitWidth / 32);
+      getTMemWordColumn(static_cast<uint32_t>(coord->second),
+                        query.elementBitWidth));
 }
 
 static std::optional<TMemCopyDestinationFootprint>
@@ -10586,7 +10589,8 @@ getTMemCopyInstructionDestinationFootprint(
   int64_t physicalCol = static_cast<int64_t>(tile.destination.physicalCol) +
                         dwordDeltaBits / elementBitWidth;
   int64_t offset = static_cast<int64_t>(tile.destination.offset) +
-                   (static_cast<int64_t>(plan.tmemRowDelta) << 16) +
+                   getTMemPackedOffsetRowBase(
+                       static_cast<uint32_t>(plan.tmemRowDelta)) +
                    plan.tmemDwordDelta;
   if (physicalRow > std::numeric_limits<int32_t>::max() ||
       physicalCol > std::numeric_limits<int32_t>::max() ||
@@ -11482,8 +11486,9 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
     }
     uint32_t tileOffset =
         packTMemRowColOffset(static_cast<uint32_t>(tileOrigin->first),
-                             static_cast<uint32_t>(tileOrigin->second) *
-                                 bitwidth / 32);
+                             getTMemWordColumn(
+                                 static_cast<uint32_t>(tileOrigin->second),
+                                 bitwidth));
     if (llvm::is_contained(visitedTileOffsets, tileOffset)) {
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::PhysicalQuery,

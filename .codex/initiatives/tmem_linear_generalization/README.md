@@ -7,7 +7,21 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest validation checkpoint: 2026-04-22 02:28 UTC completed a branch-diff
+Latest validation checkpoint: 2026-04-22 03:13 UTC merged `codex/tmem` with
+upstream Triton main `37c9a4b569a0`, resolved the four TMEM-related conflicts,
+and pushed the merge checkpoint `b96231ec8`. A post-merge refactor pass then
+kept the branch-owned TMEM address arithmetic on the shared helper path:
+`TensorMemoryUtils.h` now also owns 32-bit TMEM word-column scaling, and the
+IR planner, copy planner, and MMAv5 lowering use shared helpers for packed
+row/column offsets instead of local `(row << 16)`, `col * bitwidth / 32`, and
+duplicate include patterns. Validation: required `make -j8`; lit
+`tmem_layouts.mlir`, `interleave_tmem.mlir`, and
+`lower_tensor_memory_to_llvm.mlir` `3 passed`; full
+`test_tmem_runtime_matrix.py` split-4 passed as group1 `308 passed,
+98 skipped`, group2 `402 passed, 4 skipped`, group3 `406 passed`, group4
+`405 passed`; structural fuzzer split-4 passed `9 + 9 + 9 + 9 = 36`.
+
+Previous validation checkpoint: 2026-04-22 02:28 UTC completed a branch-diff
 refactor pass over the TMEM backend surface in the `origin/main...HEAD`
 delta. The full branch diff is very broad, so this pass targeted the
 branch-owned TMEM backend code rather than unrelated upstream/AMD/proton/test

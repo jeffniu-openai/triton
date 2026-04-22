@@ -1,8 +1,24 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 02:28 UTC
+Last updated: 2026-04-22 03:13 UTC
 
-Latest validation checkpoint: 2026-04-22 02:28 UTC branch-diff refactor pass
+Latest validation checkpoint: 2026-04-22 03:13 UTC upstream-merge and
+post-merge refactor pass completed. `codex/tmem` is merged with upstream main
+`37c9a4b569a0`; merge checkpoint `b96231ec8` was pushed to
+`origin/codex/tmem`. The post-merge code cleanup kept TMEM packed-address
+logic centralized by adding shared 32-bit word-column scaling and replacing
+remaining branch-local `col * bitwidth / 32`, `(row << 16)`, and direct packed
+offset expressions in the IR planner, copy planner, and MMAv5 lowering.
+Validation: required `make -j8`; lit `TritonNvidiaGPU/tmem_layouts.mlir`,
+`TritonNvidiaGPU/interleave_tmem.mlir`, and
+`Conversion/lower_tensor_memory_to_llvm.mlir` passed `3/3`; full runtime
+matrix split-4 passed as group1 `308 passed, 98 skipped`, group2 `402 passed,
+4 skipped`, group3 `406 passed`, group4 `405 passed`; structural fuzzer
+split-4 passed `9 + 9 + 9 + 9 = 36`. Current next slice: with the merge and
+refactor green, continue only with current-head cleanup/probes or the broader
+completion queue if a live gap appears.
+
+Previous validation checkpoint: 2026-04-22 02:28 UTC branch-diff refactor pass
 completed over the TMEM backend surface in `origin/main...HEAD`. The full
 branch delta is intentionally broad, so this pass avoided unrelated
 upstream/AMD/proton/test churn and focused on reusable TMEM backend
