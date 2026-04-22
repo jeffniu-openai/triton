@@ -882,6 +882,27 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
   passed.
 
+### 2026-04-22 Active Subview Load/Store Query-Type Slice
+
+- Added `getTypeLocalTMemLdStQueryTypes(MemDescType)`. It derives candidate
+  ld/st query types directly from the current descriptor type: the canonical
+  surrogate from the current type-local row plan, followed by the current
+  descriptor type. Duplicate types are filtered while preserving that order.
+- `getTMemLdStQueryTypes(Value)` now returns the type-local candidate list
+  immediately for active self-contained TMEM subviews. This removes another
+  semantic lowering dependency on parent/view-chain reconstruction for the
+  descriptor class being migrated to the new memdesc model.
+- Legacy descriptors still use the old value-chain path. That is intentional
+  during the incremental migration: existing behavior remains stable until
+  their view ops compute fully self-contained result types or an optimizer
+  rewrite materializes an explicit supported descriptor.
+- Validation after this slice: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+  selector `78 passed, 1547 deselected`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `88 passed`,
+  group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+  `67 passed, 20 skipped`; targeted lit set passed `6/6`.
+
 ### 2026-04-22 Active Subview Load/Store Raw-Query Slice
 
 - Added `inferTypeLocalTMemLdStQueryLayout(MemDescType)` as the ld/st analogue

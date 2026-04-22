@@ -33904,6 +33904,37 @@ Open after this slice:
   boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
   staged broad validation.
 
+## 2026-04-22 23:55 UTC: active-subview ld/st query-type locality
+
+- Branch/HEAD before this slice:
+  `59b2f03b9 Add type-local TMEM ld/st query layout`.
+- Context:
+  the previous raw-query slice made active self-contained descriptors derive
+  their ld/st query layout from the current `MemDescType`, but
+  `getTMemLdStQueryTypes(Value)` still entered the producer-aware legacy
+  reconstruction path before returning candidate types. That kept a semantic
+  lowering surface tied to parent/view-chain context.
+- Completed implementation:
+  added `getTypeLocalTMemLdStQueryTypes(MemDescType)`. For active
+  self-contained TMEM subviews the value-taking wrapper now returns the
+  type-local candidate list immediately: the canonical surrogate derived from
+  `getTMemLdStRowPlanForType(memTy)`, when one exists, followed by the current
+  descriptor type. Legacy descriptors remain on the existing producer-chain
+  fallback until their view lowering is made self-contained.
+- Validation evidence:
+  required `make -j8`; exact active-subview warpx2 copy/load row `4 passed`;
+  focused ld/st selector
+  `ldst and (n32_linear_layout or descriptor_compositions or higher_rank_half_rows or direct_half_rows) and not reports`
+  `78 passed, 1547 deselected`; 4-GPU `ldst and not reports and not scales`
+  split passed as group1 `88 passed`, group2 `32 passed, 56 skipped`, group3
+  `66 passed, 22 skipped`, and group4 `67 passed, 20 skipped`; targeted lit
+  set passed `6/6`.
+- Remaining frontier:
+  continue the semantic-lowering migration by replacing support-query and
+  `ld.red` value-chain dependence for active self-contained descriptors. Keep
+  producer-chain walkers only for legacy fallback, allocation, effects, or
+  optimizer peepholes.
+
 ## 2026-04-22 03:13 UTC: upstream merge and post-merge address refactor
 
 - Merge:

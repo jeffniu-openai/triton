@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-22 23:42 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-22 23:53 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -32,11 +32,25 @@ The first too-small-copy clean negatives are now covered for `128x1xf32` and
 `128x2xf32`. Active self-contained ld/st row-plan selection now uses the
 current descriptor's row plan instead of borrowing a backing parent row plan.
 Active self-contained ld/st raw-query construction now dispatches through
-`inferTypeLocalTMemLdStQueryLayout(MemDescType)`. Remaining work continues
-through broader type-local ld/st lowering/verifiers, `ld.red`, MMAv5/scales,
-and helper API cleanup.
+`inferTypeLocalTMemLdStQueryLayout(MemDescType)`, and ld/st query-type
+selection now returns a type-local list for the same descriptor class. Remaining
+work continues through broader type-local ld/st lowering/verifiers, `ld.red`,
+MMAv5/scales, and helper API cleanup.
 
-Latest validation checkpoint: 2026-04-22 23:42 UTC completed the first
+Latest validation checkpoint: 2026-04-22 23:53 UTC completed the active-subview
+ld/st query-type slice. `getTypeLocalTMemLdStQueryTypes(MemDescType)` builds
+the canonical surrogate/current-type list from the current descriptor row plan,
+and `getTMemLdStQueryTypes(Value)` returns it immediately for active
+self-contained subviews instead of running producer-aware standalone/backing
+analysis. Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st selector
+`78 passed, 1547 deselected`; 4-GPU
+`ldst and not reports and not scales` split passed as group1 `88 passed`,
+group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+`67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+passed.
+
+Previous validation checkpoint: 2026-04-22 23:42 UTC completed the first
 type-local ld/st raw-query helper slice. `inferTypeLocalTMemLdStQueryLayout`
 builds the zero-origin query layout directly from the current `MemDescType` and
 TMEM encoding, and the existing value-taking raw-query wrapper dispatches to it

@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-22 23:53 UTC completed the active-subview ld/st query-type
+  slice. Added `getTypeLocalTMemLdStQueryTypes(MemDescType)`, which builds the
+  canonical surrogate/current-descriptor query-type list from the current
+  type-local row plan. `getTMemLdStQueryTypes(Value)` now returns this list
+  immediately for active self-contained subviews, avoiding producer-aware
+  standalone type reconstruction and parent backing-plan selection for that
+  descriptor class. Validation: required `make -j8`; exact warpx2 active
+  subview copy/load row `4 passed`; focused ld/st selector `78 passed`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `88 passed`,
+  group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+  `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+  passed.
+
 - Latest: 2026-04-22 23:42 UTC completed the first type-local ld/st raw-query
   helper slice. Added `inferTypeLocalTMemLdStQueryLayout(MemDescType)`, which
   builds a zero-origin query layout from the current descriptor type and

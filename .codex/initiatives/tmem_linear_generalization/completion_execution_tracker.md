@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 23:42 UTC
+Last updated: 2026-04-22 23:53 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -26,7 +26,9 @@ Active implementation checklist:
   row-plan slice: active self-contained subviews now use the current
   descriptor's type-local row plan instead of backing parent row plans. First
   ld/st raw-query slice: active self-contained subviews now dispatch through
-  `inferTypeLocalTMemLdStQueryLayout(MemDescType)`. First copy-planning slice:
+  `inferTypeLocalTMemLdStQueryLayout(MemDescType)`. First ld/st query-type
+  slice: active self-contained subviews now return query types from
+  `getTypeLocalTMemLdStQueryTypes(MemDescType)`. First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
   keeping legacy standalone/exact selection for direct roots and older
@@ -152,6 +154,20 @@ then canonicalizes out-dim names to match the previous query contract.
 `inferStandaloneTMemLdStQueryLayout(Value, ...)` dispatches to the type-local
 builder for this descriptor class while preserving chain reconstruction for
 legacy views. Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+selector `78 passed, 1547 deselected`; 4-GPU
+`ldst and not reports and not scales` split passed as group1 `88 passed`,
+group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+`67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+passed.
+
+Completed seventh implementation slice: active self-contained TMEM subviews now
+have a type-local ld/st query-type list. `getTypeLocalTMemLdStQueryTypes`
+builds the canonical surrogate/current-type candidate list using
+`getTMemLdStRowPlanForType(memTy)`, and `getTMemLdStQueryTypes(Value)` returns
+that list immediately for this descriptor class. This avoids producer-aware
+standalone type reconstruction and parent backing-plan selection for active
+layouts. Validation: required `make -j8`; exact
 `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
 selector `78 passed, 1547 deselected`; 4-GPU
 `ldst and not reports and not scales` split passed as group1 `88 passed`,
