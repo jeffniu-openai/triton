@@ -1,6 +1,24 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-22 00:38 UTC external TMEM validation after the full
+- Latest: 2026-04-22 02:09 UTC cleanup/generalization pass completed over the
+  recent TMEM repair code. `OptimizeTMemLayouts` now centralizes the invariant
+  for plain single-result TMEM loads in `isPlainSingleResultTMemLoad` and uses
+  it across split-load, physical-support, full/half/leading replay,
+  reduction-rewrite, fused reduction, and TMEM-to-shared rewrites. This keeps
+  generic one-result rewrites away from `ld.red`/token loads and removes
+  duplicated guard logic. `TensorMemoryToLLVM` now names the row/column packet
+  split used by lowering and reuses `getTMemLdStReductionRepeats` instead of
+  recomputing reduction packet repeats locally. Validation: required
+  `make -j8`; exact prior `ld.red` descriptor-chain crash repro `1 passed`;
+  focused affected runtime selector `83 passed`; structural fuzzer split-4
+  `9 + 9 + 9 + 9 = 36 passed`; targeted lit `tmem_layouts.mlir` and
+  `interleave_tmem.mlir` `2 passed`; runtime/structural `py_compile` and
+  `git diff --check` passed. Current fuzz state: checked-in structural xfails
+  remain at zero; the full runtime matrix remains green from the 00:30
+  checkpoint; stale temporary `FZ-*` buckets should not drive implementation
+  unless they reproduce on current head.
+
+- Previous: 2026-04-22 00:38 UTC external TMEM validation after the full
   runtime-matrix fallout repair is green. No source changes were needed.
   `python/test/gluon/test_core.py -k 'tmem and (copy or ld or load or store or
   mma or tcgen05)'` passed split-4 as group1 `14 passed`, group2 `14 passed`,

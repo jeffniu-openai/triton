@@ -124,6 +124,11 @@ struct TMemReplayFullViewMatch {
   SmallVector<TMemTensorViewTransform> transforms;
 };
 
+static bool isPlainSingleResultTMemLoad(TMEMLoadOp loadOp) {
+  return loadOp && loadOp->getNumResults() == 1 && !loadOp.getRedOp() &&
+         !loadOp.getToken();
+}
+
 static SmallVector<int32_t> invertPermutation(ArrayRef<int32_t> order) {
   SmallVector<int32_t> inverse(order.size());
   for (auto [idx, value] : llvm::enumerate(order))
@@ -1400,6 +1405,9 @@ lowerReplayFullViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
 
 static FailureOr<Value>
 lowerTMemPhysicalSupportLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp) {
+  if (!isPlainSingleResultTMemLoad(loadOp))
+    return failure();
+
   std::string error;
   auto standaloneMemTy = inferStandaloneTMemViewType(loadOp.getSrc(), &error);
   if (failed(standaloneMemTy))
@@ -1473,7 +1481,7 @@ public:
     // tmem_load).
     Value reshapeSrc = stripConvertLayout(reshapeOp.getSrc());
     auto tmemLoad = reshapeSrc.getDefiningOp<TMEMLoadOp>();
-    if (!tmemLoad)
+    if (!isPlainSingleResultTMemLoad(tmemLoad))
       return failure();
     if (matchLeadingSliceView(tmemLoad.getSrc()))
       return failure();
@@ -1541,6 +1549,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
+    if (!isPlainSingleResultTMemLoad(loadOp))
+      return failure();
+
     if (shouldPreserveDirectTMemLdStLeadingSliceView(loadOp.getSrc()))
       return failure();
 
@@ -1571,6 +1582,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
+    if (!isPlainSingleResultTMemLoad(loadOp))
+      return failure();
+
     auto match = matchReplayableHalfSliceView(loadOp.getSrc());
     if (!match)
       return failure();
@@ -1592,7 +1606,7 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
-    if (loadOp.getRedOp() || loadOp.getToken())
+    if (!isPlainSingleResultTMemLoad(loadOp))
       return failure();
 
     auto match = matchReplayableFullView(loadOp.getSrc());
@@ -1616,7 +1630,7 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
-    if (loadOp.getRedOp() || loadOp.getToken())
+    if (!isPlainSingleResultTMemLoad(loadOp))
       return failure();
 
     auto resultTy = dyn_cast<RankedTensorType>(loadOp.getType());
@@ -1699,7 +1713,7 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
-    if (loadOp.getRedOp() || loadOp.getToken())
+    if (!isPlainSingleResultTMemLoad(loadOp))
       return failure();
 
     auto resultTy = dyn_cast<RankedTensorType>(loadOp.getType());
@@ -1951,6 +1965,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp tmemLoadOp,
                                 PatternRewriter &rewriter) const override {
+    if (!isPlainSingleResultTMemLoad(tmemLoadOp))
+      return failure();
+
     int numWarps = ttg::lookupNumWarps(tmemLoadOp);
     // If there is only 1 warpgroup there is nothing to optimize as the layout
     // is already reduction friendly.
@@ -2010,7 +2027,7 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
-    if (!loadOp || loadOp.getRedOp() || loadOp.getToken())
+    if (!isPlainSingleResultTMemLoad(loadOp))
       return failure();
 
     auto loadTy = dyn_cast<RankedTensorType>(loadOp.getType());
@@ -2269,6 +2286,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp tmemLoadOp,
                                 PatternRewriter &rewriter) const override {
+    if (!isPlainSingleResultTMemLoad(tmemLoadOp))
+      return failure();
+
     auto tmemEnc = tmemLoadOp.getSrc().getType().getEncoding();
     if (!triton::nvidia_gpu::isTensorMemoryEncoding(tmemEnc) ||
         isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(tmemEnc))

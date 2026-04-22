@@ -7,7 +7,25 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest validation checkpoint: 2026-04-22 00:38 UTC revalidated TMEM coverage
+Latest validation checkpoint: 2026-04-22 02:09 UTC completed a cleanup and
+generalization pass over the recent TMEM repair code. `OptimizeTMemLayouts`
+now has a shared plain single-result TMEM-load predicate used by split-load,
+physical-support, full/half/leading replay, reduction-rewrite, fused
+reduction, and TMEM-to-shared patterns, so reduction/token loads are not
+accidentally rewritten by one-result load rewrites. `TensorMemoryToLLVM`
+now uses a named packed row/column packet-offset split and reuses
+`getTMemLdStReductionRepeats` for the reduction packet legality check.
+Validation: required `make -j8`; exact prior `ld.red` descriptor-chain crash
+repro `1 passed`; focused affected runtime selector `83 passed`; structural
+fuzzer split-4 `9 + 9 + 9 + 9 = 36 passed`; targeted lit
+`tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`; runtime/structural
+`py_compile` and `git diff --check` passed. Current fuzz-investigation state:
+checked-in structural xfails remain at zero, the full runtime matrix remains
+green from the 00:30 checkpoint, and older cataloged buckets should be treated
+as stale unless an exact current-head repro shows a live compiler/runtime
+failure.
+
+Previous validation checkpoint: 2026-04-22 00:38 UTC revalidated TMEM coverage
 outside the runtime-matrix file after the full-matrix fallout repair. No code
 changes were needed. `test_core.py` TMEM selector
 `tmem and (copy or ld or load or store or mma or tcgen05)` passed split-4 as

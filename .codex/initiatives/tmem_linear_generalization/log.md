@@ -33552,6 +33552,32 @@ Open after this slice:
   boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
   staged broad validation.
 
+## 2026-04-22 02:09 UTC: TMEM cleanup/generalization checkpoint
+
+- Source cleanup:
+  `OptimizeTMemLayouts` now uses a shared
+  `isPlainSingleResultTMemLoad` predicate across split-load,
+  physical-support, full/half/leading replay, full-view control-flow replay,
+  reduction-rewrite, fused reduction, and TMEM-to-shared patterns. This keeps
+  ordinary one-result load rewrites from matching `ld.red` or token-bearing
+  TMEM loads and removes duplicated guard logic.
+- Lowering cleanup:
+  `TensorMemoryToLLVM` now has a named packed row/column packet-offset split,
+  preserving the hardware lowering contract that TMEM row bits advance the
+  base register and the `tcgen05` bracket operand is a column immediate.
+  `ld.red` packet legality now reuses `getTMemLdStReductionRepeats`.
+- Validation:
+  required `make -j8`; exact prior `ld.red` descriptor-chain crash repro
+  `1 passed`; focused affected runtime selector `83 passed`; structural
+  fuzzer split-4 `36 passed`; targeted lit `tmem_layouts.mlir` and
+  `interleave_tmem.mlir` `2 passed`; runtime/structural `py_compile` and
+  `git diff --check` passed.
+- Fuzz status:
+  no checked-in structural xfails remain. The full runtime matrix and external
+  TMEM validation are green from the immediately preceding checkpoints; older
+  temporary bucket reports are useful history, not live work, unless they
+  reproduce on current head.
+
 ## 2026-04-21 23:56 UTC: rank-5 selected-parent full-view replay repair
 
 - Branch/HEAD before this repair slice:

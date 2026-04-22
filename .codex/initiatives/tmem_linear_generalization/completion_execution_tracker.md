@@ -1,8 +1,28 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 00:38 UTC
+Last updated: 2026-04-22 02:09 UTC
 
-Latest validation checkpoint: 2026-04-22 00:38 UTC external TMEM coverage
+Latest validation checkpoint: 2026-04-22 02:09 UTC cleanup/generalization
+pass completed over the recent TMEM repair code. Source cleanup:
+`OptimizeTMemLayouts` now has a shared `isPlainSingleResultTMemLoad` guard
+used by split-load, physical-support, full/half/leading replay,
+reduction-rewrite, fused reduction, and TMEM-to-shared patterns; generic
+one-result rewrites no longer duplicate ad hoc `redOp`/token checks or risk
+rewriting reduction/token TMEM loads. `TensorMemoryToLLVM` now names the
+packed row/column packet-offset split and reuses
+`getTMemLdStReductionRepeats` for `ld.red` packet legality. Validation:
+required `make -j8`; exact prior `ld.red` descriptor-chain crash repro
+`1 passed`; focused affected runtime selector `83 passed`; structural fuzzer
+split-4 `9 + 9 + 9 + 9 = 36 passed`; targeted lit
+`TritonNvidiaGPU/tmem_layouts.mlir` and `interleave_tmem.mlir` `2 passed`;
+runtime/structural `py_compile` passed; `git diff --check` passed. Current
+fuzz status: no checked-in structural xfails; full runtime matrix remains
+green from the 00:30 checkpoint; do not spend implementation time on stale
+temporary `FZ-*` buckets unless they reproduce on current head. Current next
+slice: cleanup/validation/current-head probes only, then broader completion
+queue items if a live gap appears.
+
+Previous validation checkpoint: 2026-04-22 00:38 UTC external TMEM coverage
 outside the runtime-matrix file is green after the full-matrix fallout repair.
 No source changes were needed. `test_core.py` selector
 `tmem and (copy or ld or load or store or mma or tcgen05)` passed split-4 as

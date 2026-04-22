@@ -35,6 +35,17 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
+struct TMemPacketOffset {
+  uint32_t rowBaseOffset;
+  int colImmediate;
+};
+
+static TMemPacketOffset splitTMemPacketOffset(int packedOffset) {
+  uint32_t offset = static_cast<uint32_t>(packedOffset);
+  return {/*rowBaseOffset=*/offset & 0xffff0000u,
+          /*colImmediate=*/static_cast<int>(offset & 0xffffu)};
+}
+
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -434,25 +445,23 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
       // colOffset.
       staticOffset = col | (row << 16);
     }
-    uint32_t packedOffset = static_cast<uint32_t>(staticOffset);
-    uint32_t rowOffset = packedOffset & 0xffff0000u;
-    int colOffset = static_cast<int>(packedOffset & 0xffffu);
+    TMemPacketOffset packetOffset = splitTMemPacketOffset(staticOffset);
     Value packetBase = tmemBase;
-    if (rowOffset != 0)
-      packetBase = b.add(packetBase, b.i32_val(rowOffset));
+    if (packetOffset.rowBaseOffset != 0)
+      packetBase = b.add(packetBase, b.i32_val(packetOffset.rowBaseOffset));
 
     if (isStore) {
       auto chunk = to_vector(vals.slice(i, valsPerMessage));
-      createTensorMemoryStore(loc, packetBase, /*colOffset=*/colOffset, chunk,
+      createTensorMemoryStore(loc, packetBase,
+                              /*colOffset=*/packetOffset.colImmediate, chunk,
                               /*secondHalfOffset=*/secondHalfOffset, pred,
                               /*unpacked=*/unpacked, atom, rewriter);
     } else {
-      auto [outVals, redval] =
-          createTensorMemoryLoad(loc, ctx, packetBase, /*colOffset=*/colOffset,
-                                 /*secondHalfOffset=*/secondHalfOffset,
-                                 /*unpacked=*/unpacked,
-                                 /*numRegPerMessage=*/valsPerMessage, atom,
-                                 redOp, useAbs, useNaN, llvmElemTy, rewriter);
+      auto [outVals, redval] = createTensorMemoryLoad(
+          loc, ctx, packetBase, /*colOffset=*/packetOffset.colImmediate,
+          /*secondHalfOffset=*/secondHalfOffset, /*unpacked=*/unpacked,
+          /*numRegPerMessage=*/valsPerMessage, atom, redOp, useAbs, useNaN,
+          llvmElemTy, rewriter);
       resultVals.append(
           unpackResults(outVals, llvmElemTy, valsPerMessage, loc, rewriter));
       if (redval)
@@ -524,16 +533,12 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
   if (isStore) {
     inVals = info.perm.apply(inVals);
   }
-  if (redOp) {
-    unsigned elementsPerThread = getElementsPerThread(info.atom);
-    unsigned reductionRepeats = info.numRegsPerMessage / elementsPerThread;
-    if (reductionRepeats < 2) {
-      emitError(loc)
-          << "failed to lower TMEM reduction: tcgen05.ld.red requires at "
-             "least an .x2 message shape, but the selected direct layout "
-             "scalarizes to .x1 packets";
-      return failure();
-    }
+  if (redOp && getTMemLdStReductionRepeats(info) < 2) {
+    emitError(loc)
+        << "failed to lower TMEM reduction: tcgen05.ld.red requires at "
+           "least an .x2 message shape, but the selected direct layout "
+           "scalarizes to .x1 packets";
+    return failure();
   }
   auto [outVals, redvalVals] =
       lowerTMemLdSt(loc, rewriter, info.reps, inVals, info.atom, llvmElemTy,
