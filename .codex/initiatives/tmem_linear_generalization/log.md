@@ -33647,6 +33647,33 @@ Open after this slice:
   families, heuristic cleanup, copy/scales boundaries if new probes reproduce,
   and staged broad validation.
 
+## 2026-04-22 00:38 UTC: external TMEM validation
+
+- Branch/HEAD:
+  `a2f75f2f8 Fix TMEM full runtime matrix fallout`.
+- Scope:
+  revalidate TMEM coverage outside `python/test/gluon/test_tmem_runtime_matrix.py`
+  after the full runtime-matrix fallout repair. No source changes were made.
+- `test_core.py` selector:
+  `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-test-core-tmem-gpu<gpu> PYTHONPATH=.:./python TRITON_ALWAYS_COMPILE=1 pytest -q -s --tb=short --splits 4 --group <group> python/test/gluon/test_core.py -k 'tmem and (copy or ld or load or store or mma or tcgen05)'`
+  passed as group1 `14 passed`, group2 `14 passed`, group3 `14 passed`, and
+  group4 `8 passed, 5 skipped`.
+- TMEM-focused examples:
+  `python/examples/gluon/05-moe-bmm1-fused-gather.py`,
+  `python/examples/gluon/05-tmem-moe-router.py`,
+  `python/examples/gluon/06-tmem-lora-fusion.py`, and
+  `python/examples/gluon/08-tmem-layout-as-epilogue.py` collected `85` tests
+  with `PYTHONPATH=.:./python:./python/triton_kernels` and passed split-4 as
+  group1 `22 passed`, group2 `22 passed`, group3 `22 passed`, and group4
+  `19 passed`.
+- Attention smoke:
+  `python/examples/gluon/01-attention-forward.py -k 'test_op and fp16 and
+  1024'` passed split-4 as `2 + 2 + 2 + 2`.
+- Classification:
+  no compiler crash, verifier drift, unsupported-case drift, runtime
+  miscompile, example-level regression, or new independent `FZ-*` was found.
+  Remaining checked-in structural xfails: none.
+
 ## 2026-04-21 22:50 UTC: FZ-0016 verifier and FZ-0023 frontend drift repair
 
 - Branch/HEAD before this repair slice:

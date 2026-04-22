@@ -1,6 +1,18 @@
 # TMEM Linear Generalization
 
-- Latest: 2026-04-22 00:30 UTC validation/repair slice fixed the broad
+- Latest: 2026-04-22 00:38 UTC external TMEM validation after the full
+  runtime-matrix fallout repair is green. No source changes were needed.
+  `python/test/gluon/test_core.py -k 'tmem and (copy or ld or load or store or
+  mma or tcgen05)'` passed split-4 as group1 `14 passed`, group2 `14 passed`,
+  group3 `14 passed`, and group4 `8 passed, 5 skipped`. The TMEM-focused
+  examples `05-moe-bmm1-fused-gather.py`, `05-tmem-moe-router.py`,
+  `06-tmem-lora-fusion.py`, and `08-tmem-layout-as-epilogue.py` require
+  `PYTHONPATH=.:./python:./python/triton_kernels`, collected `85` tests, and
+  passed split-4 as `22 + 22 + 22 + 19`. Attention-forward fp16/N1024 smoke
+  passed split-4 as `2 + 2 + 2 + 2`. Remaining checked-in structural xfails:
+  none.
+
+- Previous: 2026-04-22 00:30 UTC validation/repair slice fixed the broad
   runtime-matrix fallout after the rank-5 selected-parent replay repair. The
   full-file split first showed two current-head issues. The real backend bug:
   generic full-view replay patterns in `OptimizeTMemLayouts` matched

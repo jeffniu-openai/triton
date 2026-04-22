@@ -1,8 +1,25 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 00:30 UTC
+Last updated: 2026-04-22 00:38 UTC
 
-Latest validation checkpoint: 2026-04-22 00:30 UTC full runtime-matrix fallout
+Latest validation checkpoint: 2026-04-22 00:38 UTC external TMEM coverage
+outside the runtime-matrix file is green after the full-matrix fallout repair.
+No source changes were needed. `test_core.py` selector
+`tmem and (copy or ld or load or store or mma or tcgen05)` passed split-4 as
+group1 `14 passed`, group2 `14 passed`, group3 `14 passed`, group4
+`8 passed, 5 skipped`. TMEM-focused Gluon examples
+`05-moe-bmm1-fused-gather.py`, `05-tmem-moe-router.py`,
+`06-tmem-lora-fusion.py`, and `08-tmem-layout-as-epilogue.py` collected
+`85` tests with `PYTHONPATH=.:./python:./python/triton_kernels` and passed
+split-4 as group1 `22 passed`, group2 `22 passed`, group3 `22 passed`, group4
+`19 passed`. Attention-forward fp16/N1024 smoke passed split-4 as `2 + 2 + 2
++ 2`. Remaining checked-in structural xfails: none. Current next slice:
+because the runtime matrix, structural fuzzer, `test_core.py` TMEM selector,
+and TMEM-focused examples are green, continue with cleanup/validation only
+unless a new current-head probe reproduces a cataloged boundary as a real
+compiler/runtime failure.
+
+Previous validation checkpoint: 2026-04-22 00:30 UTC full runtime-matrix fallout
 from the rank-5 selected-parent replay checkpoint is repaired. The first
 full-file split after commit `f2c2233db` found one real optimizer crash and
 stale expectation rows. Root cause for the crash: generic full-view replay

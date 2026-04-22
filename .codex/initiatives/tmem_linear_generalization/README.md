@@ -7,7 +7,20 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-Latest validation checkpoint: 2026-04-22 00:30 UTC repaired the full
+Latest validation checkpoint: 2026-04-22 00:38 UTC revalidated TMEM coverage
+outside the runtime-matrix file after the full-matrix fallout repair. No code
+changes were needed. `test_core.py` TMEM selector
+`tmem and (copy or ld or load or store or mma or tcgen05)` passed split-4 as
+group1 `14 passed`, group2 `14 passed`, group3 `14 passed`, and group4
+`8 passed, 5 skipped`. The TMEM-focused Gluon examples
+`05-moe-bmm1-fused-gather.py`, `05-tmem-moe-router.py`,
+`06-tmem-lora-fusion.py`, and `08-tmem-layout-as-epilogue.py` collected
+`85` tests with `PYTHONPATH=.:./python:./python/triton_kernels` and passed
+split-4 as `22`, `22`, `22`, and `19` passed. Attention-forward fp16/N1024
+smoke passed split-4 as `2 + 2 + 2 + 2`. Remaining checked-in structural
+xfails: none.
+
+Previous validation checkpoint: 2026-04-22 00:30 UTC repaired the full
 runtime-matrix fallout from the rank-5 selected-parent replay checkpoint. A
 full-file split first exposed one real optimizer crash and several stale
 opcode/marker expectations: generic full-view replay patterns tried to replace
