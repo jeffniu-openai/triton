@@ -580,7 +580,9 @@ Checklist state:
   lowering for origin-changing views.
 - [ ] Migrate ld/st planning to type-local analysis.
   First row-plan slice complete: active self-contained subviews use the current
-  descriptor's row plan instead of parent backing-row plans.
+  descriptor's row plan instead of parent backing-row plans. First raw-query
+  slice complete: active self-contained subviews dispatch through
+  `inferTypeLocalTMemLdStQueryLayout(MemDescType)`.
 - [ ] Migrate subword pack/unpack handling for packed and unpacked sub-32-bit
   layouts.
 - [ ] Migrate `ld.red` legality/layout selection to the type-local planner.
@@ -872,6 +874,27 @@ High-priority hacks and debt to remove after replacement coverage exists:
   lowering still call value-taking query helpers; the next step is to introduce
   an explicit type-local ld/st query-plan API and route one active descriptor
   consumer path through it.
+- Validation after this slice: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+  selector `78 passed, 1547 deselected`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `88 passed`,
+  group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+  `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+  passed.
+
+### 2026-04-22 Active Subview Load/Store Raw-Query Slice
+
+- Added `inferTypeLocalTMemLdStQueryLayout(MemDescType)` as the ld/st analogue
+  of the type-local physical-query scaffold. It derives the query layout from
+  the current descriptor type and tensor-memory encoding, sets the query origin
+  to zero, and canonicalizes out-dim names to preserve the existing
+  `TMemLdStQueryLayout` contract.
+- `inferStandaloneTMemLdStQueryLayout(Value, ...)` now dispatches to the
+  type-local helper for active self-contained subviews. This keeps call sites
+  stable while removing producer-chain reconstruction for that descriptor
+  class. Legacy views continue through the old wrapper path until their result
+  types are self-contained or an optimizer rewrite materializes a supported
+  descriptor.
 - Validation after this slice: required `make -j8`; exact
   `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
   selector `78 passed, 1547 deselected`; 4-GPU

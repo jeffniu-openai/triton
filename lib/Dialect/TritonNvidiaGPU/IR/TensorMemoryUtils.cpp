@@ -4895,16 +4895,8 @@ inferStandaloneTMemRegLayoutQueryType(Value memDesc, std::string *error) {
       memDesc, /*preserveNonCanonicalView=*/true, error);
 }
 
-FailureOr<TMemLdStQueryLayout>
-inferStandaloneTMemLdStQueryLayout(Value memDesc,
-                                   bool preserveNonCanonicalView,
-                                   std::string *error) {
-  auto maybeQuery = inferStandaloneTMemLdStQueryLayoutImpl(
-      memDesc, preserveNonCanonicalView, error);
-  if (failed(maybeQuery))
-    return failure();
-  auto &query = *maybeQuery;
-  auto *ctx = memDesc.getContext();
+static void canonicalizeTMemLdStQueryOutDims(TMemLdStQueryLayout &query,
+                                             MLIRContext *ctx) {
   auto outDimNames = standardOutDimNames(ctx, query.layout.getNumOutDims());
   SmallVector<std::pair<StringAttr, int32_t>> outDims;
   outDims.reserve(query.layout.getNumOutDims());
@@ -4912,6 +4904,50 @@ inferStandaloneTMemLdStQueryLayout(Value memDesc,
     outDims.emplace_back(outDimNames[idx], static_cast<int32_t>(size));
   query.layout = LinearLayout(query.layout.getBases(), std::move(outDims),
                               query.layout.isSurjective());
+}
+
+FailureOr<TMemLdStQueryLayout>
+inferTypeLocalTMemLdStQueryLayout(MemDescType memTy, std::string *error) {
+  if (!memTy ||
+      memTy.getMemorySpace() != TensorMemorySpaceAttr::get(memTy.getContext())) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+  auto encoding = memTy.getEncoding();
+  if (!isTensorMemoryEncoding(encoding)) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+
+  auto maybeQuery =
+      getTMemViewAnalysisLayout(memTy.getShape(), encoding, error);
+  if (!maybeQuery)
+    return failure();
+
+  TMemLdStQueryLayout query{maybeQuery->layout, maybeQuery->twoCTAs,
+                            SmallVector<int32_t>(
+                                maybeQuery->layout.getNumInDims(), 0)};
+  canonicalizeTMemLdStQueryOutDims(query, memTy.getContext());
+  return query;
+}
+
+FailureOr<TMemLdStQueryLayout>
+inferStandaloneTMemLdStQueryLayout(Value memDesc,
+                                   bool preserveNonCanonicalView,
+                                   std::string *error) {
+  if (auto memTy = dyn_cast<MemDescType>(memDesc.getType())) {
+    if (hasSelfContainedTMemSubviewLayout(memTy))
+      return inferTypeLocalTMemLdStQueryLayout(memTy, error);
+  }
+
+  auto maybeQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+      memDesc, preserveNonCanonicalView, error);
+  if (failed(maybeQuery))
+    return failure();
+  auto &query = *maybeQuery;
+  canonicalizeTMemLdStQueryOutDims(query, memDesc.getContext());
   return query;
 }
 

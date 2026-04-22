@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 23:31 UTC
+Last updated: 2026-04-22 23:42 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -25,7 +25,9 @@ Active implementation checklist:
   types, using a type-local shape-vs-alloc/layout predicate. First ld/st
   row-plan slice: active self-contained subviews now use the current
   descriptor's type-local row plan instead of backing parent row plans. First
-  copy-planning slice: `selectTMemCopyPhysicalQuery` now selects the
+  ld/st raw-query slice: active self-contained subviews now dispatch through
+  `inferTypeLocalTMemLdStQueryLayout(MemDescType)`. First copy-planning slice:
+  `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
   keeping legacy standalone/exact selection for direct roots and older
   parent-encoding views. First clean-negative copy slice: too-narrow current
@@ -136,6 +138,20 @@ use local ld/st row planning. The row-plan helpers no longer fall through to
 surrogate generation instead of parent-chain backing plans. This keeps legacy
 views on existing rescue paths while removing one semantic parent-chain
 dependency from active-layout subviews. Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+selector `78 passed, 1547 deselected`; 4-GPU
+`ldst and not reports and not scales` split passed as group1 `88 passed`,
+group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+`67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+passed.
+
+Completed sixth implementation slice: active self-contained TMEM subviews now
+have a type-local ld/st raw-query builder. `inferTypeLocalTMemLdStQueryLayout`
+computes the zero-origin query layout from `MemDescType` and its TMEM encoding,
+then canonicalizes out-dim names to match the previous query contract.
+`inferStandaloneTMemLdStQueryLayout(Value, ...)` dispatches to the type-local
+builder for this descriptor class while preserving chain reconstruction for
+legacy views. Validation: required `make -j8`; exact
 `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
 selector `78 passed, 1547 deselected`; 4-GPU
 `ldst and not reports and not scales` split passed as group1 `88 passed`,

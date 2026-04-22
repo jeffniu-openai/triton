@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-22 23:42 UTC completed the first type-local ld/st raw-query
+  helper slice. Added `inferTypeLocalTMemLdStQueryLayout(MemDescType)`, which
+  builds a zero-origin query layout from the current descriptor type and
+  tensor-memory encoding, then canonicalizes out-dim names in the same form the
+  old wrapper returned. `inferStandaloneTMemLdStQueryLayout(Value, ...)` now
+  dispatches to it for active self-contained subviews, leaving legacy views on
+  chain reconstruction. Validation: required `make -j8`; exact warpx2
+  active-subview copy/load row `4 passed`; focused ld/st selector `78 passed`;
+  4-GPU `ldst and not reports and not scales` split passed as group1
+  `88 passed`, group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`,
+  group4 `67 passed, 20 skipped`; targeted lit set passed `6/6`;
+  `git diff --check` passed.
+
 - Latest: 2026-04-22 23:31 UTC completed the first ld/st row-plan locality
   slice for active self-contained TMEM subviews. `getTMemLdStRowPlanForQuery`,
   `getTMemLdStRowPlanForQueryLayout`, and

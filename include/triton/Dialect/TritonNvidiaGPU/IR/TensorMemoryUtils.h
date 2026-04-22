@@ -609,6 +609,10 @@ inferStandaloneTMemRegLayoutQueryType(Value memDesc,
                                       std::string *error = nullptr);
 
 FailureOr<TMemLdStQueryLayout>
+inferTypeLocalTMemLdStQueryLayout(gpu::MemDescType memTy,
+                                  std::string *error = nullptr);
+
+FailureOr<TMemLdStQueryLayout>
 inferStandaloneTMemLdStQueryLayout(Value memDesc,
                                    bool preserveNonCanonicalView = true,
                                    std::string *error = nullptr);

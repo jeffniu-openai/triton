@@ -254,6 +254,40 @@
   type-local query-plan API for active descriptors and route one verifier or
   LLVM lowering path through it.
 
+## 2026-04-22 23:42 UTC: active subview ld/st type-local raw-query slice
+
+- Branch/HEAD before this implementation slice:
+  `a57d8b1f5 Use local row plans for active TMEM subviews`.
+- Context:
+  the row-plan slice stopped active self-contained subviews from borrowing
+  parent row plans, but the raw ld/st query wrapper still reconstructed layouts
+  by walking the value chain. For active self-contained subviews, the current
+  `MemDescType` and tensor-memory encoding already describe the relative
+  physical layout.
+- Completed implementation:
+  added `inferTypeLocalTMemLdStQueryLayout(MemDescType)`. It validates the
+  tensor-memory descriptor, derives the query through
+  `getTMemViewAnalysisLayout(memTy.getShape(), memTy.getEncoding())`, assigns
+  a zero origin, and canonicalizes out-dim names to match the old wrapper's
+  result contract. `inferStandaloneTMemLdStQueryLayout(Value, ...)` now
+  dispatches to this type-local helper for active self-contained subviews and
+  leaves legacy descriptor views on producer-chain reconstruction.
+- Validation evidence:
+  required `make -j8`; exact
+  `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_subslice_view_positive`
+  `4 passed`; focused ld/st selector
+  `ldst and (n32_linear_layout or descriptor_compositions or higher_rank_half_rows or direct_half_rows) and not reports`
+  `78 passed, 1547 deselected`; 4-GPU selector
+  `ldst and not reports and not scales` passed as group1 `88 passed`, group2
+  `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
+  `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
+  passed.
+- Remaining frontier:
+  `getTMemLdStQueryTypes(Value)` and support-query helpers still expose
+  value-chain planning to verifier/lowering users. Next, route active
+  self-contained descriptors through an explicit type-local query-type/support
+  plan API rather than only dispatching inside the legacy wrapper.
+
 ## 2026-04-22: TMEM memdesc runtime abstraction audit
 
 - Wrote
