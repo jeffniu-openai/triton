@@ -16,10 +16,6 @@ namespace ttng = mlir::triton::nvidia_gpu;
 using ::mlir::triton::gpu::NVMMASharedEncodingAttr;
 using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 
-//===----------------------------------------------------------------------===//
-// DotOpMmaV5TmemLoader
-//===----------------------------------------------------------------------===//
-
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
     Value memDescValue, Value tmemBase, bool useRawWordColumns) {
@@ -75,7 +71,7 @@ namespace {
 // InstDescriptor
 //===----------------------------------------------------------------------===//
 
-static bool isTransposed(Value operand) {
+bool isTransposed(Value operand) {
   auto tensorTy = cast<MemDescType>(operand.getType());
   auto enc = tensorTy.getEncoding();
   if (auto shared = dyn_cast<NVMMASharedEncodingAttr>(enc))
@@ -253,10 +249,10 @@ static Value createScaleInstDescriptor(ConversionPatternRewriter &rewriter,
 // tcgen05 instructions
 //===----------------------------------------------------------------------===//
 
-static void createGen5MMA(ConversionPatternRewriter &rewriter, Location loc,
-                          ttng::TCGen5MMAOp op, MemDescOperand a, Value b,
-                          MemDescOperand d, Value pred, Value instDescriptor,
-                          Value useInitAcc, bool aInTMem, bool twoCTAs) {
+void createGen5MMA(ConversionPatternRewriter &rewriter, Location loc,
+                   ttng::TCGen5MMAOp op, MemDescOperand a, Value b,
+                   MemDescOperand d, Value pred, Value instDescriptor,
+                   Value useInitAcc, bool aInTMem, bool twoCTAs) {
   PTXBuilder ptxBuilder;
   std::string opcode =
       "tcgen05.mma.cta_group::" + std::to_string(twoCTAs ? 2 : 1) + ".kind::";
@@ -321,9 +317,9 @@ static void createScaledGen5MMA(ConversionPatternRewriter &rewriter,
   ptxBuilder.launch(rewriter, loc, void_ty(rewriter.getContext()));
 }
 
-static void createMMACommit(ConversionPatternRewriter &rewriter, Location loc,
-                            Value barrier, Value pred, bool twoCTAs,
-                            ValueRange descs) {
+void createMMACommit(ConversionPatternRewriter &rewriter, Location loc,
+                     Value barrier, Value pred, bool twoCTAs,
+                     ValueRange descs) {
   PTXBuilder ptxBuilder;
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   Value mask;
