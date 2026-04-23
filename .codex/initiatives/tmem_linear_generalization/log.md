@@ -34059,6 +34059,41 @@ Open after this slice:
   chains, but active helper dispatch now keeps the main legality paths local.
   Continue toward MMAv5/scales address planning and then clean helper API splits.
 
+## 2026-04-23 01:54 UTC: active physical-support subview repair
+
+- Branch/HEAD before this slice:
+  `1aaae5c98 Keep active TMEM verifier fallbacks type-local`.
+- Context:
+  the first MMAv5/scales migration probe exposed a scaled accumulator subslice
+  over a tile-permuted `128x128` parent. The active `128x64` view had advanced
+  the runtime `taddr`, but the pure column-subview type shortcut compacted the
+  result layout to `out = [128,64]`. That collapsed the high physical column
+  basis to zero, so MMAv5 lowering later tried to pseudoinvert a non-injective
+  layout and aborted in `LinearLayout::lstsq`.
+- Completed implementation:
+  pure 2D column subview inference now keeps the compact narrowed encoding only
+  when the selected physical support window fits the active logical shape.
+  Windows that need wider physical support fall through to exact layout algebra
+  or the existing exact-view fallback instead of losing high column bases. The
+  active-subview planning helper now resets `allocShape` to the logical shape
+  only for compact self-contained layouts; wider exact support images stay on
+  the current type. MMAv5 active subview address layout and tile-order offsets
+  use the current descriptor type for self-contained descriptors.
+- Validation evidence:
+  required `make -j8`; exact scaled tile-permuted crash repro `1 passed`; full
+  scaled tile-permuted accumulator subslice function `10 passed`; exact
+  two-CTA scaled subslice row `1 passed`; positive MMAv5 selector split-4
+  passed as group1 `133 passed, 14 skipped`, group2 `147 passed`, group3
+  `147 passed`, and group4 `147 passed`; combined ld/st+ld.red+copy selector
+  split-4 passed as group1 `120 passed, 28 skipped`, group2 `98 passed,
+  50 skipped`, group3 `128 passed, 20 skipped`, and group4 `146 passed`;
+  targeted lit set passed `6/6`; `git diff --check` passed.
+- Remaining frontier:
+  preserved parent-encoding exact support views can still rely on
+  producer-aware support planning. Continue migrating MMAv5/scales and
+  remaining ld.red/query rescue surfaces toward current type/layout plus
+  current `taddr` only.
+
 ## 2026-04-22 03:13 UTC: upstream merge and post-merge address refactor
 
 - Merge:

@@ -3165,6 +3165,7 @@ bool isTMemPhysicalBitcast(Value value) {
 
 LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
   std::string layoutError;
+  bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
   auto getExactTypeLayout = [&]() -> std::optional<LinearLayout> {
     if (auto maybeAnalysis = getTMemViewAnalysisLinearLayout(
             memTy.getShape(), memTy.getEncoding(), &layoutError)) {
@@ -3177,6 +3178,14 @@ LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
     }
     return std::nullopt;
   };
+
+  if (hasTypeLocalSubviewLayout) {
+    // The lowered base for active subviews is already relative to the current
+    // descriptor taddr. Use the current type's normalized address image rather
+    // than reconstructing a producer-chain query and origin.
+    if (auto maybeLayout = getExactTypeLayout())
+      return *maybeLayout;
+  }
 
   if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
     // The lowered TMEM base already includes the source slice/subview offset.
@@ -3213,6 +3222,9 @@ uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
                                            MemDescType memTy,
                                            ArrayRef<int32_t> offsets) {
   assert(offsets.size() == memTy.getRank());
+  if (hasSelfContainedTMemSubviewLayout(memTy))
+    return getTMemViewOffset(memTy, offsets);
+
   // Keep tile ordering in the same typed coordinate frame as
   // getMMAv5TMemAddressLayout for physical bitcasts.
   if (memDescValue && !isTMemPhysicalBitcast(memDescValue))
@@ -4282,6 +4294,37 @@ static bool shouldPreferDirectHalfRowsSubviewRowPlan(
     std::optional<TMemLdStRowPlan> queryPlan,
     std::optional<TMemLdStRowPlan> backingPlan);
 
+static bool tmemLinearLayoutHasActiveLogicalShape(gpu::MemDescType memTy,
+                                                  const LinearLayout &layout) {
+  auto layoutRank =
+      static_cast<size_t>(cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank());
+  if (layoutRank != 2 || memTy.getShape().size() < layoutRank)
+    return false;
+  auto activeShape = memTy.getShape().take_back(layoutRank);
+  auto *ctx = memTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  return layout.hasInDim(kRow) && layout.hasInDim(kCol) &&
+         layout.getInDimSize(kRow) == activeShape[0] &&
+         layout.getInDimSize(kCol) == activeShape[1];
+}
+
+static bool tmemLinearLayoutFitsAllocShape(gpu::MemDescType memTy,
+                                           const LinearLayout &layout) {
+  auto layoutRank =
+      static_cast<size_t>(cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank());
+  if (layout.getNumOutDims() != static_cast<int>(layoutRank) ||
+      memTy.getAllocShape().size() < layoutRank)
+    return false;
+  auto allocShape = memTy.getAllocShape().take_back(layoutRank);
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  for (auto [idx, allocDim] : llvm::enumerate(allocShape)) {
+    if (layout.getOutDimSize(outDims[idx]) > allocDim)
+      return false;
+  }
+  return true;
+}
+
 bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy) {
   if (!memTy || !isTensorMemoryEncoding(memTy.getEncoding()) ||
       isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
@@ -4297,7 +4340,27 @@ bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy) {
       memTy.getAllocShape().take_back(layoutRank)) {
     return false;
   }
-  return getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr).has_value();
+  if (getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr))
+    return true;
+
+  std::string error;
+  auto maybeLayout =
+      getTMemViewAnalysisLinearLayout(memTy.getShape(), memTy.getEncoding(),
+                                      &error);
+  if (!maybeLayout)
+    return false;
+  return tmemLinearLayoutHasActiveLogicalShape(memTy, *maybeLayout) &&
+         tmemLinearLayoutFitsAllocShape(memTy, *maybeLayout);
+}
+
+gpu::MemDescType getSelfContainedTMemSubviewPlanningType(gpu::MemDescType memTy) {
+  if (!hasSelfContainedTMemSubviewLayout(memTy))
+    return memTy;
+  if (!getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr))
+    return memTy;
+  return gpu::MemDescType::get(memTy.getShape(), memTy.getElementType(),
+                               memTy.getEncoding(), memTy.getMemorySpace(),
+                               memTy.getMutableMemory(), memTy.getShape());
 }
 
 llvm::SmallVector<gpu::MemDescType>
@@ -4305,6 +4368,9 @@ getTypeLocalTMemLdStQueryTypes(gpu::MemDescType memTy) {
   llvm::SmallVector<gpu::MemDescType> queryTypes;
   if (!memTy)
     return queryTypes;
+  bool hasCompactTypeLocalLayout =
+      getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr).has_value();
+  memTy = getSelfContainedTMemSubviewPlanningType(memTy);
 
   auto add = [&](gpu::MemDescType ty) {
     if (llvm::none_of(queryTypes, [&](gpu::MemDescType existing) {
@@ -4315,10 +4381,12 @@ getTypeLocalTMemLdStQueryTypes(gpu::MemDescType memTy) {
   };
 
   auto rowPlan = getTMemLdStRowPlanForType(memTy);
-  if (auto surrogate =
-          getCanonicalTMemLdStSurrogateType(memTy, rowPlan,
-                                            /*error=*/nullptr)) {
-    add(*surrogate);
+  if (hasCompactTypeLocalLayout) {
+    if (auto surrogate =
+            getCanonicalTMemLdStSurrogateType(memTy, rowPlan,
+                                              /*error=*/nullptr)) {
+      add(*surrogate);
+    }
   }
   add(memTy);
   return queryTypes;
@@ -6246,6 +6314,7 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
 
 std::optional<TMemLdStSupportQueryPlan>
 getTypeLocalTMemLdStSupportQueryPlan(MemDescType memTy, std::string *error) {
+  memTy = getSelfContainedTMemSubviewPlanningType(memTy);
   auto maybeQuery = inferTypeLocalTMemLdStQueryLayout(memTy, error);
   if (failed(maybeQuery))
     return std::nullopt;
@@ -7430,17 +7499,61 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
         *error = "unsupported tensor memory memdesc_subslice view";
       return failure();
     }
-    auto narrowedLayout = ll;
-    if (narrowedLayout.getOutDimSize(logicalDims[1]) != dstShape[1])
-      narrowedLayout =
-          narrowedLayout.resizeOutDim(logicalDims[1], dstShape[1]);
-    if (narrowedLayout.getInDimSize(kCol) != dstShape[1])
-      narrowedLayout = narrowedLayout.resizeInDim(kCol, dstShape[1]);
-    auto result = tryMakeTMemViewEncoding(ctx, narrowedLayout,
-                                          maybeSrcLayout->twoCTAs, error);
-    if (!result)
-      return failure();
-    return *result;
+    auto narrowedWindowFitsDstShape = [&]() {
+      std::string inverseError;
+      auto maybeInv = computeLeftInverseLayout(ll, &inverseError);
+      if (failed(maybeInv))
+        return true;
+
+      SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
+      encodedOffsets.reserve(layoutRank);
+      for (auto [dim, offset] : llvm::enumerate(offsets))
+        encodedOffsets.push_back({logicalDims[dim], offset});
+      auto baseCoords =
+          maybeInv->apply(makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
+      auto physOutDimNames = llvm::to_vector(maybeInv->getOutDimNames());
+      SmallVector<uint32_t> activePhysMasks(physOutDimNames.size(), 0);
+      for (int64_t dim = 0; dim < static_cast<int64_t>(dstShape.size());
+           ++dim) {
+        for (int64_t step = 1; step < dstShape[dim]; step <<= 1) {
+          auto point = encodedOffsets;
+          point[dim].second += static_cast<int32_t>(step);
+          auto pointCoords =
+              maybeInv->apply(makeFullLinearLayoutCoords(logicalDims, point));
+          for (auto [physIdx, physDim] : llvm::enumerate(physOutDimNames)) {
+            int32_t delta = lookupLinearLayoutCoord(pointCoords, physDim) -
+                            lookupLinearLayoutCoord(baseCoords, physDim);
+            if (delta < 0)
+              return false;
+            activePhysMasks[physIdx] |= static_cast<uint32_t>(delta);
+          }
+        }
+      }
+      for (auto [physIdx, mask] : llvm::enumerate(activePhysMasks)) {
+        int32_t activePhysSize = 1;
+        while (activePhysSize <= static_cast<int32_t>(mask))
+          activePhysSize <<= 1;
+        if (physIdx >= dstShape.size())
+          continue;
+        if (activePhysSize > dstShape[physIdx])
+          return false;
+      }
+      return true;
+    };
+
+    if (narrowedWindowFitsDstShape()) {
+      auto narrowedLayout = ll;
+      if (narrowedLayout.getOutDimSize(logicalDims[1]) != dstShape[1])
+        narrowedLayout =
+            narrowedLayout.resizeOutDim(logicalDims[1], dstShape[1]);
+      if (narrowedLayout.getInDimSize(kCol) != dstShape[1])
+        narrowedLayout = narrowedLayout.resizeInDim(kCol, dstShape[1]);
+      auto result = tryMakeTMemViewEncoding(ctx, narrowedLayout,
+                                            maybeSrcLayout->twoCTAs, error);
+      if (!result)
+        return failure();
+      return *result;
+    }
   }
 
   auto logicalDims = llvm::to_vector(ll.getOutDimNames());

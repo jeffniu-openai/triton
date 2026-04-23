@@ -569,6 +569,9 @@ lowerTMemLdStFromTypes(
       memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
                    : SmallVector<MemDescType>{memTy};
   bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
+  MemDescType planningMemTy = hasTypeLocalSubviewLayout
+                                  ? getSelfContainedTMemSubviewPlanningType(memTy)
+                                  : memTy;
   auto makeBaseOffsetRelativeToCurrentTAddr = [&](uint32_t baseOffset) {
     return hasTypeLocalSubviewLayout
                ? baseOffset
@@ -599,7 +602,7 @@ lowerTMemLdStFromTypes(
             memDescValue, /*preserveNonCanonicalView=*/true, &rawError);
         succeeded(rawQuery)) {
       rawQueryLayout = *rawQuery;
-      MemDescType rawMemTy = memTy;
+      MemDescType rawMemTy = planningMemTy;
       if (!hasTypeLocalSubviewLayout) {
         if (auto maybeStandaloneTy = inferStandaloneTMemRegLayoutQueryType(
                 memDescValue, /*error=*/nullptr);
@@ -675,7 +678,7 @@ lowerTMemLdStFromTypes(
         ScopedDiagnosticHandler handler(
             rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
         return computeTMemLdStEncodingInfo(
-            regTy, memTy, supportQuery, maxnreg,
+            regTy, planningMemTy, supportQuery, maxnreg,
             debugQuerySelection ? diag : std::function<InFlightDiagnostic()>{},
             supportRowPlan);
       }();
@@ -690,7 +693,8 @@ lowerTMemLdStFromTypes(
       }
       if (succeeded(encodingInfoOr)) {
         auto &encodingInfo = *encodingInfoOr;
-        if (!preserveTMemLdStSupportQueryBaseOffset(memTy, supportQuery))
+        if (!preserveTMemLdStSupportQueryBaseOffset(planningMemTy,
+                                                    supportQuery))
           encodingInfo.baseOffset = 0;
         encodingInfo.baseOffset =
             makeBaseOffsetRelativeToCurrentTAddr(encodingInfo.baseOffset);

@@ -292,6 +292,36 @@ to decide legality. Either the current result type represents the legal
 instruction image directly, or the lowering is not semantically valid for that
 descriptor type.
 
+### Implementation Checkpoint: Active Physical-Support Views
+
+As of 2026-04-23 01:54 UTC, the first MMAv5/scales-facing physical-support
+slice is implemented. It exposed an important distinction in the "current type
+is self-contained" rule:
+
+- compact active views have a current layout whose physical image is the same
+  size as the logical active shape; these can plan with `allocShape == shape`
+  because the runtime `taddr` already names the active origin;
+- exact physical-support views have a current layout whose logical shape is
+  narrower than the physical support image required to describe the selected
+  columns or rows; these must keep that support image in the type/layout and
+  must not be compacted to the logical shape during instruction planning.
+
+The motivating repro is a `128x64xf32` accumulator subview taken from a
+tile-permuted `128x128` parent at logical column 64. The runtime `taddr`
+advances to the current physical origin, but the active logical column bit
+`32` still maps to a physical column displacement outside the compact
+`64`-column window. Compacting the result encoding to `out = [128,64]`
+therefore turned that high column basis into zero, making the layout
+non-injective and causing MMAv5 lowering to abort while pseudoinverting it.
+The fixed inference lets exact subview algebra or exact-view fallback retain a
+wider support image instead of forcing compact output dimensions.
+
+This checkpoint does not make every exact physical-support view fully
+type-local yet. Some preserved parent-encoding cases still route through
+producer-aware support planning. The invariant remains unchanged: lowering must
+eventually derive legality and address generation from the current `taddr`,
+current `MemDescType`/layout, and operation semantics only.
+
 ## Current Disallowed Chain-Walking Sites
 
 These sites currently use parent operations to decide semantic verifier,

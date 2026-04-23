@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 00:58 UTC
+Last updated: 2026-04-23 01:54 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -40,7 +40,14 @@ Active implementation checklist:
   First verifier-locality slice: generic ld/st verification skips standalone
   physical-support rescue for active self-contained descriptors, and ld.red
   verification no longer uses backing-row fallback for active support/raw
-  row-plan checks.
+  row-plan checks. First MMAv5/scales-facing active physical-support slice:
+  pure 2D column subview inference now avoids compacting a view when its
+  selected physical support image is wider than the logical slice, preventing
+  tile-permuted accumulator subviews from collapsing their high column basis to
+  zero. MMAv5 active subview address and tile-order lowering use current
+  descriptor type/layout facts for self-contained descriptors. Compact active
+  layouts still use the current-`taddr` planning type with `allocShape` reset
+  to the logical shape; wider exact support layouts keep their support shape.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -58,16 +65,15 @@ planned semantic tightening is clean rejection of `tcgen05.copy` descriptors
 that are too small for any legal ISA atom, such as dense `128x1xf32` or
 `128x2xf32`, rather than borrowing hidden parent footprint.
 
-Current implementation checkpoint: added explicit TMEM physical element-column
-helpers (`getTMemElementsPerWord`, `getTMemSubwordIndex`, and
-`getTMemAddressColumns`) plus `inferTypeLocalTMemPhysicalQuery(MemDescType)`.
-`selectTMemCopyPhysicalQuery` records type-local, standalone, and exact
-destination candidates for debug comparison. For active self-contained subviews
-whose current `MemDescType` shape differs from alloc shape and whose current
-TMEM-linear layout matches the active shape, copy planning now uses the
-type-local destination query directly. Direct roots and legacy parent-encoding
-views continue to use the existing standalone/exact selection while the broader
-planner migration proceeds.
+Current implementation checkpoint: active subviews now have two type-local
+planning modes. Compact active layouts, whose current layout materializes the
+logical shape exactly, plan with `allocShape == shape` because the lowered
+base is already the current `taddr`. Exact physical-support layouts, whose
+current layout needs a wider support image than the logical slice, keep that
+support shape and avoid canonical-surrogate query-type invention. The
+tile-permuted scaled-MMAv5 accumulator subslice crash is fixed; remaining work
+continues with broader type-local MMAv5/scales cleanup, `ld.red` cleanup, and
+helper API separation.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

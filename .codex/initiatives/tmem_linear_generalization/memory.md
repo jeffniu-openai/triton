@@ -1,5 +1,27 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 01:54 UTC completed the active physical-support subview
+  slice. The bug was exposed by scaled MMAv5 accumulator subslices over a
+  tile-permuted parent layout: the previous pure-column-subview shortcut
+  narrowed the result encoding to `out = [128,64]`, which collapsed the active
+  high physical column basis to zero. MMAv5 then tried to pseudoinvert a
+  non-injective layout and aborted in `LinearLayout::lstsq`. The fix lets
+  exact subview algebra handle column windows whose selected physical support
+  exceeds the logical slice shape, while preserving the compact shortcut for
+  normal column slices and non-injective support layouts that need it. The
+  active-subview planning type now rewrites `allocShape` to logical shape only
+  for compact self-contained layouts; wider exact support images remain on the
+  current type. MMAv5 address and tile-order lowering use the current type for
+  active self-contained descriptors. Validation: required `make -j8`; exact
+  scaled tile-permuted crash repro `1 passed`; full scaled tile-permuted
+  accumulator subslice function `10 passed`; exact two-CTA scaled subslice row
+  `1 passed`; 4-GPU positive MMAv5 selector passed as group1 `133 passed,
+  14 skipped`, group2 `147 passed`, group3 `147 passed`, group4 `147 passed`;
+  4-GPU combined ld/st+ld.red+copy selector passed as group1 `120 passed,
+  28 skipped`, group2 `98 passed, 50 skipped`, group3 `128 passed,
+  20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`;
+  `git diff --check` passed.
+
 - Latest: 2026-04-23 00:58 UTC completed the first verifier-locality slice.
   Generic ld/st verification now skips standalone view-type physical-support
   rescue for active self-contained descriptors. `TMEMLoadOp` reduction
