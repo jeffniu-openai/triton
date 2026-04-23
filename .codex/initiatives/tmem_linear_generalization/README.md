@@ -20,6 +20,18 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
+Latest checkpoint: as of 2026-04-23 20:38 UTC, broad `test_core.py -k
+tmem` validation is green after fixing physical-bitcast TMEM reinterpret
+lowering. The key semantic fix is that tensor-memory `memdesc_reinterpret`
+with `tmem_physical_bitcast` now updates the memdesc SSA value's runtime
+`taddr` between source and result element-column coordinate systems instead of
+passing through the source base unchanged. Subword phase analysis now also
+rescales known residue information for narrowing physical bitcasts, so M64
+subslice bitcast load/store plans no longer fall back to an unsupported
+unknown-origin diagnostic. PTX/LLIR exact-immediate expectations were updated
+only where correctness already passed and row displacement moved from the
+instruction immediate into the runtime base value.
+
 Active execution plan: as of 2026-04-23 08:11 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in

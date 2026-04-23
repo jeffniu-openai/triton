@@ -35829,3 +35829,47 @@ Open after this slice:
   commit and push this checkpoint. Continue auditing remaining semantic
   value-chain fallbacks, with copy physical-query scheduling/modeling still
   the largest open boundary.
+
+## 2026-04-23 20:38 UTC: physical-bitcast reinterpret lowering checkpoint
+
+- Branch/HEAD at slice start:
+  `55e4f3c5f Keep direct ld/st diagnostics type-local`.
+- Failure exposed by broad validation:
+  after the full runtime matrix was green, `test_core.py -k tmem` still failed
+  M64 subslice physical-bitcast rows, dynamic/static physical-bitcast subview
+  mapping rows, and several exact PTX immediate rows. The M64 rows failed at
+  compile time with an unsupported sub-32-bit origin diagnostic; the physical
+  bitcast mapping rows were real runtime wrong-results where a `f32` column
+  subview bitcast to `f16` wrote columns `32:96` instead of the selected
+  `64:128` half.
+- Root cause:
+  `ViewOpToLLVM.cpp` had been updated to rescale tensor-memory bitcast bases,
+  but the NVIDIA tensor-memory lowering owns its own
+  `MemDescReinterpretOpConversion` in `TensorMemoryToLLVM.cpp` and still passed
+  the source memdesc base through unchanged. The runtime `taddr` therefore kept
+  source element-column coordinates across physical bitcasts even though the
+  result `MemDescType` and layout were in result element-column coordinates.
+  Static subword phase analysis also degraded narrowing physical bitcasts to
+  unknown instead of scaling known residues.
+- Source changes:
+  tensor-memory physical-bitcast reinterpret lowering now preserves row bits and
+  rescales the packed element-column field of the runtime `taddr` when source
+  and result element bitwidths differ. Subword phase analysis now scales known
+  residues for narrowing physical bitcasts. Exact PTX/LLIR expectations were
+  updated only for rows whose numeric roundtrip already passed, matching the
+  current lowering contract where row displacement can live in the runtime base
+  value instead of the tcgen05 bracket immediate.
+- Validation evidence:
+  required `make -j8`; exact physical-bitcast selected/static rows with
+  `TRITON_ALWAYS_COMPILE=1` `2 passed`; former atom/splitn PTX-drift rows
+  `5 passed`; four-GPU `python/test/gluon/test_core.py -k tmem` passed as
+  group1 `68 passed, 5 skipped, 18043 deselected`, group2 `73 passed, 18043
+  deselected`, group3 `73 passed, 18043 deselected`, group4 `70 passed, 18046
+  deselected`; runtime-matrix `bitcast or reinterpret` selector `3 passed,
+  1704 deselected`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.
+- Next concrete step:
+  commit and push this physical-bitcast checkpoint. Continue with the broader
+  memdesc-model migration by auditing remaining tensor-memory reinterpret users
+  and then returning to the next still-open helper-locality or packed-lane copy
+  scheduler bucket.

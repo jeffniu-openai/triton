@@ -2984,9 +2984,9 @@ TMEM_LINEAR_ATOM_CASES = [
         "16x64b",
         (
             ("tcgen05.st.sync.aligned.16x64b.x32.b32", 0),
-            ("tcgen05.st.sync.aligned.16x64b.x32.b32", 1048576),
+            ("tcgen05.st.sync.aligned.16x64b.x32.b32", 0),
             ("tcgen05.ld.sync.aligned.16x64b.x32.b32", 0),
-            ("tcgen05.ld.sync.aligned.16x64b.x32.b32", 1048576),
+            ("tcgen05.ld.sync.aligned.16x64b.x32.b32", 0),
         ),
     ),
     (
@@ -3000,9 +3000,9 @@ TMEM_LINEAR_ATOM_CASES = [
         "16x128b",
         (
             ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
-            ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048576),
+            ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
             ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
-            ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048576),
+            ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
         ),
     ),
     (
@@ -3016,9 +3016,9 @@ TMEM_LINEAR_ATOM_CASES = [
         "16x128b",
         (
             ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
-            ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048576),
+            ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
             ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
-            ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048576),
+            ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
         ),
     ),
     (
@@ -3033,12 +3033,12 @@ TMEM_LINEAR_ATOM_CASES = [
         (
             ("tcgen05.st.sync.aligned.16x256b.x16.b32", 0),
             ("tcgen05.st.sync.aligned.16x256b.x16.b32", 128),
-            ("tcgen05.st.sync.aligned.16x256b.x16.b32", 1048576),
-            ("tcgen05.st.sync.aligned.16x256b.x16.b32", 1048704),
+            ("tcgen05.st.sync.aligned.16x256b.x16.b32", 0),
+            ("tcgen05.st.sync.aligned.16x256b.x16.b32", 128),
             ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 0),
             ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 128),
-            ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 1048576),
-            ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 1048704),
+            ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 0),
+            ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 128),
         ),
     ),
 ]
@@ -3235,9 +3235,9 @@ TMEM_LINEAR_SPLITN_CASES = [
         128,
         (
             ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 1048576, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
             ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 1048576, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
         ),
     ),
     (

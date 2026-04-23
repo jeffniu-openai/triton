@@ -1,5 +1,27 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 20:38 UTC fixed the physical-bitcast TMEM
+  reinterpret base/phase gap exposed by broad `test_core.py -k tmem` validation.
+  The NVIDIA tensor-memory lowering path had its own `MemDescReinterpretOp`
+  conversion and was still passing tensor-memory physical bitcasts through
+  unchanged, so a `f32` column-subview bitcast to `f16` kept the old element
+  column coordinate and wrote the wrong half of the parent tile after dynamic or
+  static selection. Tensor-memory reinterpret lowering now rescales only the
+  packed element-column field of the runtime `taddr` when source/result
+  bitwidths differ and preserves row bits. The generic view lowering has the
+  same conversion for consistency. Static subword phase analysis now rescales
+  known residues for narrowing physical bitcasts, fixing the M64 subslice
+  compiler failures that previously reported an unsupported sub-32-bit origin.
+  Correctness passed before updating PTX expectations; the exact PTX/LLIR rows
+  were then updated to the new contract where row displacement is carried by
+  the runtime base and the local tcgen05 immediate can be zero. Validation:
+  required `make -j8`; exact physical-bitcast selected/static rows `2 passed`
+  with `TRITON_ALWAYS_COMPILE=1`; former PTX-drift atom/splitn rows `5 passed`;
+  full four-GPU `test_core.py -k tmem` split passed as group1 `68 passed, 5
+  skipped`, group2 `73 passed`, group3 `73 passed`, group4 `70 passed`;
+  runtime-matrix `bitcast or reinterpret` selector `3 passed`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
 - Latest: 2026-04-23 19:11 UTC completed the dynamic subword
   `memdesc_index` slice. Dynamic TMEM index lowering no longer rejects index
   bases that map to sub-32-bit element-column offsets; it advances the current

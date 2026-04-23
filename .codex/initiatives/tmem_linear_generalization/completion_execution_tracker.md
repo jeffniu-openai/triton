@@ -1,8 +1,20 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 20:13 UTC
+Last updated: 2026-04-23 20:38 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
+
+Current checkpoint summary:
+
+- [x] Fixed physical-bitcast TMEM reinterpret lowering so `tmem_physical_bitcast`
+  changes the runtime `taddr` element-column coordinate when element bitwidth
+  changes, preserving row bits and keeping dynamic selected memdesc values
+  self-contained after lowering.
+- [x] Fixed narrowing physical-bitcast subword phase analysis so known source
+  residues are scaled into the result element coordinate instead of degrading
+  to an unsupported unknown-origin path.
+- [x] Revalidated the full `test_core.py -k tmem` split and the runtime-matrix
+  bitcast/reinterpret slice after the fix.
 
 Active implementation checklist:
 

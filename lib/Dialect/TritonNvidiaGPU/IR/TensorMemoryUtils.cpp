@@ -153,6 +153,23 @@ advanceTMemSubwordPhaseInfo(TMemSubwordPhaseInfo srcInfo,
           /*unknown=*/false};
 }
 
+static TMemSubwordPhaseInfo
+scaleTMemSubwordPhaseInfo(TMemSubwordPhaseInfo srcInfo, uint32_t elementScale,
+                          uint32_t modulus) {
+  if (srcInfo.unknown || srcInfo.elementsPerWord != modulus)
+    return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+
+  uint32_t residueMask = 0;
+  for (uint32_t residue = 0; residue < modulus; ++residue) {
+    if ((srcInfo.residueMask & (1u << residue)) == 0)
+      continue;
+    residueMask |= 1u << ((residue * elementScale) % modulus);
+  }
+  return {/*elementsPerWord=*/modulus,
+          /*residueMask=*/residueMask,
+          /*unknown=*/false};
+}
+
 static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
     Value memDesc, unsigned depth, SmallPtrSetImpl<Value> &seen,
     uint32_t modulus);
@@ -322,10 +339,17 @@ static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
                                        modulus);
   if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
     auto srcTy = cast<MemDescType>(reinterpret.getSrc().getType());
-    if (srcTy.getElementTypeBitWidth() != bitwidth)
-      return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
-    return getTMemSubwordPhaseInfoImpl(reinterpret.getSrc(), depth + 1, seen,
+    uint32_t srcBitwidth = srcTy.getElementTypeBitWidth();
+    auto srcInfo = getTMemSubwordPhaseInfoImpl(reinterpret.getSrc(), depth + 1,
+                                               seen, modulus);
+    if (srcBitwidth == bitwidth)
+      return srcInfo;
+    if (reinterpret->hasAttr("tmem_physical_bitcast") &&
+        srcBitwidth > bitwidth && srcBitwidth % bitwidth == 0) {
+      return scaleTMemSubwordPhaseInfo(srcInfo, srcBitwidth / bitwidth,
                                        modulus);
+    }
+    return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
   }
 
   if (auto subslice = memDesc.getDefiningOp<gpu::MemDescSubsliceOp>()) {

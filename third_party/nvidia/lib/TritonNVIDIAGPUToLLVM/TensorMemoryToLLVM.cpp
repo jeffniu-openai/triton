@@ -42,6 +42,33 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
+// Tensor-memory taddrs encode row bits plus an element-column field. A
+// physical bitcast keeps the same bits live but changes the element size, so
+// the memdesc SSA value must switch to the result element-column coordinate.
+Value reinterpretTensorMemoryBase(Location loc,
+                                  ConversionPatternRewriter &rewriter,
+                                  Value base, uint32_t srcBitwidth,
+                                  uint32_t dstBitwidth) {
+  if (srcBitwidth == dstBitwidth)
+    return base;
+
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value baseInt = b.ptrtoint(i32_ty, base);
+  Value row = b.and_(
+      baseInt, b.i32_val(static_cast<int32_t>(~kTMemPackedOffsetColMask)));
+  Value col = b.and_(baseInt, b.i32_val(kTMemPackedOffsetColMask));
+  Value dstCol;
+  if (srcBitwidth > dstBitwidth && srcBitwidth % dstBitwidth == 0) {
+    dstCol = b.mul(col, b.i32_val(srcBitwidth / dstBitwidth));
+  } else if (dstBitwidth > srcBitwidth && dstBitwidth % srcBitwidth == 0) {
+    dstCol = b.udiv(col, b.i32_val(dstBitwidth / srcBitwidth));
+  } else {
+    return base;
+  }
+  Value newBase = b.or_(row, dstCol, /*disjoint=*/true);
+  return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
+}
+
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -1756,13 +1783,21 @@ public:
   LogicalResult
   matchAndRewrite(MemDescReinterpretOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
     auto srcTy = op.getSrc().getType();
     auto tmem =
         triton::nvidia_gpu::TensorMemorySpaceAttr::get(srcTy.getContext());
     if (srcTy.getMemorySpace() != tmem) {
       return failure();
     }
-    rewriter.replaceOp(op, adaptor.getSrc());
+    MemDescType dstTy = op.getType();
+    Value base = adaptor.getSrc();
+    if (op->hasAttr("tmem_physical_bitcast")) {
+      base = reinterpretTensorMemoryBase(loc, rewriter, base,
+                                         srcTy.getElementTypeBitWidth(),
+                                         dstTy.getElementTypeBitWidth());
+    }
+    rewriter.replaceOp(op, base);
     return success();
   }
 };
