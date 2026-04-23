@@ -18167,6 +18167,18 @@ rejection, not rescue
   required `make -j8`; exact new rows `2 passed`; adjacent
   `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
 
+- 2026-04-23 phase-aware packed-subword ld/st fallback tightened. A
+  reversed-column packed f16 subview exposed that the lowerer could emit the
+  intended "unsupported contiguous packed 32x32b" diagnostic and then continue
+  into raw/source fallback where support-layout construction asserted with
+  `Invalid basis`. Lowering now records when a phase-aware codegen attempt
+  actually fails and treats that as terminal for the op, while ordinary query
+  computation failures can still fall through to later plans. Validation:
+  required `make -j8`; focused unaligned subword ld/st selector including the
+  new reversed-column negative `11 passed, 1671 deselected`; adjacent subword
+  copy/ldst selector including the new row `50 passed, 1632 deselected`; lit
+  `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
 - 2026-04-23 Gluon M64 ordering helper separation completed. Added a
   `MemDescType` overload of
   `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery` and routed active

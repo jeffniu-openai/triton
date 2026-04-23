@@ -35451,3 +35451,33 @@ Open after this slice:
   commit and push this checkpoint. Continue with the remaining phase-aware
   consumer surface: non-contiguous/unpacked subword ld/st, `ld.red`, copy
   family constraints beyond the 128-bit address gate, and MMAv5 operands.
+
+## 2026-04-23 08:11 UTC: phase-aware fallback crash guard
+
+- Branch/HEAD at slice start:
+  `84059a58f Track TMEM element-column residues for copy alignment`.
+- Finding:
+  a packed f16 `slice(1, 128)` view over a reversed-column `128x256`
+  `tensor_memory_linear` parent correctly reaches the current phase-aware
+  unsupported-layout boundary, because the implemented subword RMW path only
+  supports contiguous packed `32x32b` ld/st plans. Before this slice, lowering
+  emitted that diagnostic and then continued into raw/source fallback,
+  eventually asserting while constructing an incompatible linear-layout support
+  query with `Invalid basis`.
+- Completed source/test slice:
+  `lowerTMemLdStFromTypes` now records when a phase-aware codegen attempt
+  actually fails and treats that as terminal for the op. Query computation
+  failures that did not reach phase-aware codegen still fall through to later
+  plans. Added a runtime-matrix clean negative for the reversed-column packed
+  f16 subview and asserted that the old `Invalid basis`/segfault path is not
+  reached.
+- Validation evidence:
+  required `make -j8`; focused unaligned subword ld/st selector including the
+  new reversed-column row passed `11 passed, 1671 deselected`; adjacent subword
+  copy/ldst selector including the new row passed `50 passed, 1632 deselected`;
+  lit `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue widening the phase-aware consumer
+  surface, starting with non-contiguous/unpacked subword ld/st analysis and
+  `ld.red` clean-negative/positive classification from current memdesc
+  type/layout.

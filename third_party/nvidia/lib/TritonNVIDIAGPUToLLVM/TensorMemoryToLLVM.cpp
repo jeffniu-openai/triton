@@ -788,6 +788,7 @@ lowerTMemLdStFromTypes(
       disallowTMemLdStQueryTypeRescue(memTy);
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
+  bool phaseAwareLoweringFailed = false;
   auto tryRawQueryLowering =
       [&]() -> std::optional<std::pair<SmallVector<Value>, SmallVector<Value>>> {
     if (!memDescValue)
@@ -851,6 +852,8 @@ lowerTMemLdStFromTypes(
             succeeded(lowered)) {
           return *lowered;
         }
+        if (useSubwordPhasePath)
+          phaseAwareLoweringFailed = true;
       }
     } else if (debugQuerySelection && !rawError.empty()) {
       llvm::errs() << "[tmem-ldst] rawQuery fail: " << rawError << "\n";
@@ -894,10 +897,13 @@ lowerTMemLdStFromTypes(
           encodingInfo.baseOffset = 0;
         encodingInfo.baseOffset =
             makeBaseOffsetRelativeToCurrentTAddr(encodingInfo.baseOffset);
-        return lowerTMemLdStFromInfo(
+        auto lowered = lowerTMemLdStFromInfo(
             loc, rewriter, encodingInfo, pred, llvmElemTy,
             memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs,
             useNaN, useSubwordPhasePath);
+        if (failed(lowered) && useSubwordPhasePath)
+          phaseAwareLoweringFailed = true;
+        return lowered;
       }
       return failure();
     };
@@ -912,6 +918,8 @@ lowerTMemLdStFromTypes(
           if (succeeded(lowered)) {
             return *lowered;
           }
+          if (phaseAwareLoweringFailed)
+            return failure();
         }
         std::string sourceRawError;
         if (auto sourceRawQuery = inferStandaloneTMemLdStQueryLayout(
@@ -944,17 +952,22 @@ lowerTMemLdStFromTypes(
                 succeeded(lowered)) {
               return *lowered;
             }
+            if (useSubwordPhasePath)
+              phaseAwareLoweringFailed = true;
+            if (phaseAwareLoweringFailed)
+              return failure();
           }
         }
       }
     }
     if (auto supportPlan =
             getTMemLdStSupportQueryPlan(memDescValue, &supportError)) {
-      if (auto lowered =
-              trySupportQuery(supportPlan->query, supportPlan->rowPlan);
-          succeeded(lowered)) {
+      auto lowered = trySupportQuery(supportPlan->query, supportPlan->rowPlan);
+      if (succeeded(lowered)) {
         return *lowered;
       }
+      if (phaseAwareLoweringFailed)
+        return failure();
     } else if (debugQuerySelection && !supportError.empty()) {
       llvm::errs() << "[tmem-ldst] supportQuery unavailable: " << supportError
                    << "\n";
@@ -962,6 +975,8 @@ lowerTMemLdStFromTypes(
     if (!preferQueryTypeLoweringBeforeRawQuery) {
       if (auto lowered = tryRawQueryLowering())
         return *lowered;
+      if (phaseAwareLoweringFailed)
+        return failure();
     }
   }
   std::optional<MemDescType> firstQueryTy;
@@ -1003,6 +1018,8 @@ lowerTMemLdStFromTypes(
   if (preferQueryTypeLoweringBeforeRawQuery) {
     if (auto lowered = tryRawQueryLowering())
       return *lowered;
+    if (phaseAwareLoweringFailed)
+      return failure();
   }
   if (rawQueryLayout) {
     (void)computeTMemLdStEncodingInfo(regTy, memTy, rawQueryLayout->layout,

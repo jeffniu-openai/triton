@@ -7511,6 +7511,28 @@ def test_tmem_runtime_matrix_ldst_unaligned_subword_linear_subslice_view_roundtr
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_ldst_unaligned_subword_reversed_columns_reports_error(capfd):
+    m = 128
+    n = 128
+    parent_layout = _make_tmem_linear_layout_permuted(m, 2 * n, "identity", "reverse")
+    base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 16
+    inp = base.to(torch.float16)
+    out = torch.empty((3, m, n), dtype=torch.float16, device="cuda")
+
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
+        tmem_ldst_unaligned_subword_linear_subslice_view_kernel[(1, )](
+            inp, out, parent_layout, m, n, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "unsupported sub-32-bit TMEM view origin for this ld/st layout" in text
+    assert "phase-aware lowering currently supports contiguous packed 32x32b" in text
+    assert "Invalid basis" not in text
+    assert "Segmentation fault" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype", (("f16", torch.float16), ("i8", torch.int8)))
 @pytest.mark.parametrize(
     "mode,selector,selects_odd",

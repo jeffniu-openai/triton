@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 06:43 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 08:11 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -124,6 +124,11 @@ queried granularity and exposes a generic
 f16 origin at element column 2 is 32-bit-word aligned but still a clean
 negative for `tcgen05.copy`, while nested f16/i8 subviews that realign to a
 128-bit boundary execute as positives.
+Unsupported phase-aware packed-subword ld/st plans now stop after the first
+diagnosed lowering failure instead of falling through into raw-query fallback
+that assumes a word-column support layout. A reversed-column packed f16
+subview now reports the intended unsupported contiguous-`32x32b` diagnostic
+and no longer reaches the old invalid-basis assertion.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -151,7 +156,15 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 07:55 UTC made TMEM element-column
+Latest validation checkpoint: 2026-04-23 08:11 UTC tightened phase-aware
+packed-subword ld/st fallback after a reversed-column f16 subview exposed a
+post-diagnostic raw-query crash. Validation: required `make -j8`; focused
+unaligned subword ld/st selector including the new reversed-column clean
+negative `11 passed, 1671 deselected`; adjacent subword copy/ldst selector
+including the new row `50 passed, 1632 deselected`; lit `tmem_layouts.mlir`
+`1 passed`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 07:55 UTC made TMEM element-column
 residue analysis precise enough for static offset cancellation and added the
 copy-specific 128-bit destination-address alignment gate. Validation: required
 `make -j8`; new nested-slice copy positives plus the word-aligned/copy-

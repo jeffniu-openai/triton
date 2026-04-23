@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 07:55 UTC
+Last updated: 2026-04-23 08:11 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -151,6 +151,13 @@ Active implementation checklist:
   `tcgen05.copy`; a packed f16 origin at element column 2 is word-aligned but
   rejected as copy-address-misaligned, while nested f16/i8 slices that realign
   to a 128-bit boundary execute as positives.
+  First unsupported phase-aware fallback slice: when an unaligned subword ld/st
+  value reaches a lowering plan that is not supported by the current
+  contiguous packed `32x32b` phase-aware implementation, LLVM lowering now
+  stops on that diagnostic instead of continuing into raw/source fallback paths
+  that can assert while constructing incompatible support layouts. A
+  reversed-column packed f16 subview is covered as a clean negative with no
+  invalid-basis crash.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -216,6 +223,14 @@ modulo the requested granularity, which lets offset chains such as packed f16
 alignment. Copy now has a separate 128-bit alignment gate because the hardware
 copy address can still be illegal even when the subword phase is zero; f16
 `slice(1).slice(1)` is the covered clean negative for that distinction.
+
+Current phase-aware fallback checkpoint: phase-aware packed-subword ld/st is
+still intentionally limited to contiguous packed `32x32b` load/store plans.
+The lowerer now treats an emitted phase-aware unsupported-layout diagnostic as
+terminal for that op, preventing later fallback queries from using support
+layouts that are only valid for aligned word-column paths. The covered
+reversed-column packed f16 subview now fails cleanly with the phase-aware
+diagnostic and does not report `Invalid basis` or segfault.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

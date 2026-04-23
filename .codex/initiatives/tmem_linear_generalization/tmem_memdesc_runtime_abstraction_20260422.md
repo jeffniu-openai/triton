@@ -1797,3 +1797,28 @@ High-priority hacks and debt to remove after replacement coverage exists:
   adjacent subword copy/ldst selector `49 passed, 1632 deselected`; adjacent
   non-subword active copy selector `26 passed, 1655 deselected`; lit
   `tmem_layouts.mlir` `1 passed`.
+
+### 2026-04-23 Phase-Aware Fallback Crash Guard
+
+- A reversed-column packed f16 subview demonstrated a remaining weakness in the
+  transition phase-aware ld/st lowering. The current implementation only
+  supports contiguous packed `32x32b` RMW plans; that part correctly emitted an
+  unsupported-layout diagnostic, but the enclosing lowering continued into
+  source/raw fallback paths that were designed for aligned word-column support
+  layouts and could assert with `Invalid basis`.
+- `lowerTMemLdStFromTypes` now distinguishes between query-computation failure
+  and actual phase-aware codegen failure. Query failures may still fall through
+  to later candidate plans. Once phase-aware codegen has emitted its
+  unsupported-layout diagnostic, lowering stops for that op so no incompatible
+  fallback can reinterpret the same current memdesc value through a stale
+  support layout.
+- Added runtime-matrix coverage for the reversed-column packed f16 subview.
+  This is a temporary clean negative for the current narrow RMW implementation,
+  not proof that the layout is ISA-impossible. Future non-contiguous subword
+  support should revisit it with a valid local lowering from the current
+  element-column `taddr` and current `MemDescType`/layout.
+- Validation after this slice: required `make -j8`; focused unaligned subword
+  ld/st selector including the new reversed-column row `11 passed, 1671
+  deselected`; adjacent subword copy/ldst selector including the new row
+  `50 passed, 1632 deselected`; lit `tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.
