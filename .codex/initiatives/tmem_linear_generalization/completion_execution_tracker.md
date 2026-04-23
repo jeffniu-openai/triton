@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 03:05 UTC
+Last updated: 2026-04-23 03:23 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -59,7 +59,10 @@ Active implementation checklist:
   same-typed descriptor is selected dynamically. First B-scale
   rematerialization slice: selected unpadded B-scale descriptor views are
   rematerialized branch-wise to padded scales storage before scaled MMA, with
-  cleanup when the original select is single-use.
+  cleanup when the original select is single-use. First general scale
+  descriptor-view slice: generated A/B scale descriptor-view storage is
+  classified from current type/layout facts, and selected scale descriptor
+  views rematerialize branch-wise for scaled MMA.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -115,6 +118,14 @@ unpadded branch is rematerialized from its store/view chain into padded
 for the MMA. When the original select is single-use, the obsolete unpadded
 select/store/view chains are cleaned up once the MMA operand is rewritten;
 multi-use originals remain available to unrelated consumers.
+
+Current general scale descriptor-view checkpoint:
+`getMMAv5ScaleStorageType(MemDescType)` recognizes generated unpadded A/B scale
+descriptor-view storage from the current memdesc type/layout. The general scale
+descriptor-view rematerializer uses that type-local classification before
+legacy root walking and can split selected descriptors branch-wise, creating a
+rematerialized selected scales descriptor for scaled MMA while preserving
+multi-use originals for unrelated consumers.
 
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
@@ -174,6 +185,22 @@ selected row `1 passed`; padded+unpadded dynamic rows `2 passed`; focused
 `6/6`; 4-GPU positive MMAv5 selector passed as group1
 `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`, group4
 `146 passed`; `git diff --check` passed.
+
+Completed sixteenth implementation slice: general A/B scale descriptor-view
+storage and selected rematerialization are type-local. Added
+`getMMAv5ScaleStorageType(MemDescType)` and factored the common unpadded
+interleaved scale descriptor-view layout classifier out of the B-scale-specific
+classifier. `getMMAv5ScaleStorageTypeThroughViews(Value)` now tries the
+type-local helper before legacy producer-chain fallback. The general scale
+descriptor-view rematerializer now handles selected descriptors by
+rematerializing each branch to a scales allocation and selecting between the
+rematerialized descriptors for the MMA. New dynamic A/B scale descriptor-view
+runtime rows cover both scale operands. Validation: required `make -j8`;
+dynamic A/B scale descriptor-view rows `2 passed`; combined
+`scale_descriptor_view or bscale_descriptor_view` selector
+`12 passed, 1617 deselected`; targeted lit set `6/6`; 4-GPU positive MMAv5
+selector passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
+group3 `148 passed`, group4 `148 passed`; `git diff --check` passed.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

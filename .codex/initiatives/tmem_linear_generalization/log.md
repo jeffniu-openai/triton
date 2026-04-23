@@ -34470,6 +34470,46 @@ Open after this slice:
   driven by concrete `scf.if` or loop-carried repros so the transform only
   rewrites the consumers that need padded descriptors.
 
+## 2026-04-23 03:23 UTC: general selected scale descriptor-view repair
+
+- Branch/HEAD before this repair slice:
+  `534c0380c Rematerialize selected MMAv5 B-scale fragments`.
+- Root cause:
+  general scaled-MMAv5 A/B scale descriptor views still used
+  `getMMAv5ScaleStorageTypeThroughViews(Value)` in the allocation pass, which
+  recovered scales semantics by walking reshape/trans/index producers. A
+  dynamically selected descriptor view loses that visible root chain even though
+  its current `MemDescType` layout is enough to identify generated scales
+  storage.
+- Completed implementation:
+  added `getMMAv5ScaleStorageType(MemDescType)` as a type-local classifier for
+  generated unpadded interleaved A/B scale descriptor-view storage. The
+  B-scale-specific classifier now reuses the same unpadded predicate and keeps
+  its additional padded-storage support. The allocation pass tries the
+  type-local classifier before legacy root walking.
+- Rematerialization:
+  `RematerializeScaledMmaScaleDescriptorViews` now handles selected scale
+  descriptors by rematerializing true and false branches into scales
+  allocations, selecting between those rematerialized descriptors for the MMA,
+  cleaning up single-use originals, and preserving multi-use originals for
+  unrelated consumers.
+- New coverage:
+  `test_tmem_runtime_matrix_mma_scaled_dynamic_scale_descriptor_view` covers
+  dynamic selected A-scale and B-scale descriptor views with runtime
+  correctness, exact scaled-MMA opcode count, selected descriptor forwarding,
+  and `tensor_memory_linear` TTGIR coverage.
+- Validation evidence:
+  required `make -j8`; exact dynamic A/B scale descriptor-view rows
+  `2 passed`; combined `scale_descriptor_view or bscale_descriptor_view`
+  selector `12 passed, 1617 deselected`; targeted lit set `6/6`; 4-GPU
+  positive MMAv5 selector passed as group1 `134 passed, 14 skipped`, group2
+  `148 passed`, group3 `148 passed`, group4 `148 passed`; `git diff --check`
+  passed.
+- Remaining migration frontier:
+  audit remaining scales-root chain walkers outside MMAv5 allocation, especially
+  `getTMemScalesRootEncoding` uses in ld/st diagnostics and support checks, and
+  move semantic decisions to current-type/layout facts where possible.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

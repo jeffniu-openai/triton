@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 03:23 UTC generalized selected scale descriptor-view
+  rematerialization beyond B-scale padding. Added
+  `getMMAv5ScaleStorageType(MemDescType)` to classify generated unpadded A/B
+  scale descriptor-view storage from the current type/layout, and changed the
+  allocation pass's general scale descriptor-view rematerializer to try that
+  type-local path before legacy root walking. The rematerializer now splits
+  selected A/B scale descriptors branch-wise, creates a selected rematerialized
+  scales descriptor for the MMA, and cleans up single-use originals while
+  preserving multi-use originals for unrelated consumers. Added dynamic A/B
+  scale descriptor-view runtime coverage. Validation: required `make -j8`;
+  dynamic A/B scale descriptor-view rows `2 passed`; combined
+  `scale_descriptor_view or bscale_descriptor_view` selector
+  `12 passed, 1617 deselected`; targeted lit set `6/6`; 4-GPU positive MMAv5
+  selector passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
+  group3 `148 passed`, group4 `148 passed`; `git diff --check` passed.
+
 - Latest: 2026-04-23 03:05 UTC repaired unpadded dynamic selected B-scale
   descriptor-view rematerialization. The previous type-local classifier made
   the semantic legality local, but the allocation transform still failed to

@@ -3542,6 +3542,128 @@ def tmem_mma_scaled_scale_descriptor_view_format_kernel(
 
 
 @gluon.jit
+def tmem_mma_scaled_dynamic_scale_descriptor_view_format_kernel(
+    out_ptr,
+    selector_ptr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    K: ttgl.constexpr,
+    a,
+    b,
+    a_scale,
+    b_scale,
+    acc_layout: ttgl.constexpr,
+    VEC_SIZE: ttgl.constexpr,
+    A_ELEM_PER_BYTE: ttgl.constexpr,
+    B_ELEM_PER_BYTE: ttgl.constexpr,
+    A_FORMAT: ttgl.constexpr,
+    B_FORMAT: ttgl.constexpr,
+    SCALE_SIDE: ttgl.constexpr,
+):
+    A_STORAGE_K: ttgl.constexpr = K // A_ELEM_PER_BYTE
+    B_STORAGE_K: ttgl.constexpr = K // B_ELEM_PER_BYTE
+    A_IS_FP4: ttgl.constexpr = A_ELEM_PER_BYTE == 2
+    B_IS_FP4: ttgl.constexpr = B_ELEM_PER_BYTE == 2
+    MIXED_PREC: ttgl.constexpr = A_ELEM_PER_BYTE != B_ELEM_PER_BYTE
+    SCALE_K: ttgl.constexpr = K // VEC_SIZE
+
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
+    a_nvmma_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [M, A_STORAGE_K],
+        a.dtype.element_ty,
+        fp4_padded=A_IS_FP4 and MIXED_PREC,
+    )
+    b_nvmma_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [N, B_STORAGE_K],
+        b.dtype.element_ty,
+        fp4_padded=B_IS_FP4 and MIXED_PREC,
+    )
+    block_layout_a: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+    block_layout_b: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+
+    a_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, block_layout_a))[:, None]
+    a_offs_k = ttgl.arange(0, A_STORAGE_K, layout=ttgl.SliceLayout(0, block_layout_a))[None, :]
+    b_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, block_layout_b))[:, None]
+    b_offs_k = ttgl.arange(0, B_STORAGE_K, layout=ttgl.SliceLayout(0, block_layout_b))[None, :]
+
+    a_tile = ttgl.load(a + a_offs_m * A_STORAGE_K + a_offs_k)
+    b_tile = ttgl.load(b + b_offs_n * B_STORAGE_K + b_offs_k)
+    a_smem = ttgl.allocate_shared_memory(a.dtype.element_ty, [M, A_STORAGE_K], a_nvmma_layout, a_tile)
+    b_smem = ttgl.allocate_shared_memory(b.dtype.element_ty, [N, B_STORAGE_K], b_nvmma_layout, b_tile)
+
+    acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
+    acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+    acc_tmem.store(ttgl.full([M, N], 0.0, ttgl.float32, layout=acc_reg_layout))
+
+    scale_layout: ttgl.constexpr = TensorMemoryScalesLayout()
+    if SCALE_SIDE == "a":
+        a_parent0 = allocate_tensor_memory(a_scale.dtype.element_ty, [M, SCALE_K], scale_layout)
+        a_parent1 = allocate_tensor_memory(a_scale.dtype.element_ty, [M, SCALE_K], scale_layout)
+        a_scale_tmem0 = a_parent0.reshape((M // 2, 2, SCALE_K)).permute([1, 0, 2]).reshape((M, SCALE_K))
+        a_scale_tmem1 = a_parent1.reshape((M // 2, 2, SCALE_K)).permute([1, 0, 2]).reshape((M, SCALE_K))
+        b_scale_tmem = allocate_tensor_memory(b_scale.dtype.element_ty, [N, SCALE_K], scale_layout)
+        scale_reg_layout_m: ttgl.constexpr = a_scale_tmem0.get_reg_layout()
+        scale_reg_layout_n: ttgl.constexpr = b_scale_tmem.get_reg_layout()
+        scale_offs_k_m = ttgl.arange(0, SCALE_K, layout=ttgl.SliceLayout(0, scale_reg_layout_m))[None, :]
+        scale_offs_k_n = ttgl.arange(0, SCALE_K, layout=ttgl.SliceLayout(0, scale_reg_layout_n))[None, :]
+        scale_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, scale_reg_layout_m))[:, None]
+        scale_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, scale_reg_layout_n))[:, None]
+        a_scale_tmem0.store(ttgl.load(a_scale + scale_offs_m * SCALE_K + scale_offs_k_m))
+        a_scale_tmem1.store(ttgl.load(a_scale + scale_offs_m * SCALE_K + scale_offs_k_m))
+        b_scale_tmem.store(ttgl.load(b_scale + scale_offs_n * SCALE_K + scale_offs_k_n))
+        a_scale_selected = a_scale_tmem0
+        if ttgl.load(selector_ptr) != 0:
+            a_scale_selected = a_scale_tmem1
+        else:
+            a_scale_selected = a_scale_tmem0
+        a_scale_operand = a_scale_selected
+        b_scale_operand = b_scale_tmem
+    else:
+        a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, SCALE_K], scale_layout)
+        b_parent0 = allocate_tensor_memory(b_scale.dtype.element_ty, [N, SCALE_K], scale_layout)
+        b_parent1 = allocate_tensor_memory(b_scale.dtype.element_ty, [N, SCALE_K], scale_layout)
+        b_scale_tmem0 = b_parent0.reshape((N // 2, 2, SCALE_K)).permute([1, 0, 2]).reshape((N, SCALE_K))
+        b_scale_tmem1 = b_parent1.reshape((N // 2, 2, SCALE_K)).permute([1, 0, 2]).reshape((N, SCALE_K))
+        scale_reg_layout_m: ttgl.constexpr = a_scale_tmem.get_reg_layout()
+        scale_reg_layout_n: ttgl.constexpr = b_scale_tmem0.get_reg_layout()
+        scale_offs_k_m = ttgl.arange(0, SCALE_K, layout=ttgl.SliceLayout(0, scale_reg_layout_m))[None, :]
+        scale_offs_k_n = ttgl.arange(0, SCALE_K, layout=ttgl.SliceLayout(0, scale_reg_layout_n))[None, :]
+        scale_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, scale_reg_layout_m))[:, None]
+        scale_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, scale_reg_layout_n))[:, None]
+        a_scale_tmem.store(ttgl.load(a_scale + scale_offs_m * SCALE_K + scale_offs_k_m))
+        b_scale_tmem0.store(ttgl.load(b_scale + scale_offs_n * SCALE_K + scale_offs_k_n))
+        b_scale_tmem1.store(ttgl.load(b_scale + scale_offs_n * SCALE_K + scale_offs_k_n))
+        b_scale_selected = b_scale_tmem0
+        if ttgl.load(selector_ptr) != 0:
+            b_scale_selected = b_scale_tmem1
+        else:
+            b_scale_selected = b_scale_tmem0
+        a_scale_operand = a_scale_tmem
+        b_scale_operand = b_scale_selected
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_mma_scaled(
+        a_smem,
+        b_smem.permute((1, 0)),
+        acc_tmem,
+        a_scale_operand,
+        b_scale_operand,
+        A_FORMAT,
+        B_FORMAT,
+        use_acc=True,
+    )
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    mbarrier.invalidate(bar)
+
+    out_reg = acc_tmem.load()
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, reg_layout))[None, :]
+    ttgl.store(out_ptr + offs_m * N + offs_n, ttgl.convert_layout(out_reg, reg_layout))
+
+
+@gluon.jit
 def tmem_mma_scaled_dynamic_bscale_direct_kernel(
     out_ptr,
     selector_ptr,
@@ -13432,6 +13554,54 @@ def test_tmem_runtime_matrix_mma_scaled_linear_scale_descriptor_view(scale_side)
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_reshape" in ttgir
     assert "ttg.memdesc_trans" in ttgir
+    assert "ttng.tc_gen5_mma_scaled" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("scale_side", ["a", "b"])
+def test_tmem_runtime_matrix_mma_scaled_dynamic_scale_descriptor_view(scale_side):
+    m = n = k = 128
+    a_format = b_format = "mxfp8"
+    layout = _make_tmem_linear_layout(m, n)
+    vec_size = 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    selector = torch.tensor(1, dtype=torch.int32, device="cuda")
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_dynamic_scale_descriptor_view_format_kernel[(1, )](
+        out,
+        selector,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        scale_side,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
     assert "ttng.tc_gen5_mma_scaled" in ttgir
 
 

@@ -378,6 +378,9 @@ getMMAv5ScaleTMemTypeForSharedScale(gpu::MemDescType sharedScaleType,
                                     int64_t rows);
 
 std::optional<gpu::MemDescType>
+getMMAv5ScaleStorageType(gpu::MemDescType scaleType);
+
+std::optional<gpu::MemDescType>
 getMMAv5ScaledBScaleStorageType(gpu::MemDescType bScaleType);
 
 std::optional<gpu::MemDescType>

@@ -382,8 +382,8 @@ getMMAv5ScaleStorageTypeThroughViews(Value scale) {
   auto scaleType = dyn_cast<ttg::MemDescType>(scale.getType());
   if (!scaleType)
     return std::nullopt;
-  if (isa<TensorMemoryScalesEncodingAttr>(scaleType.getEncoding()))
-    return scaleType;
+  if (auto typeLocal = getMMAv5ScaleStorageType(scaleType))
+    return typeLocal;
 
   Value current = scale;
   while (Operation *defOp = current.getDefiningOp()) {
@@ -776,22 +776,16 @@ class RematerializeScaledMmaScaleDescriptorViews
 public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult rematerializeScale(OpOperand &operand,
-                                   TCGen5MMAScaledOp mmaOp,
-                                   PatternRewriter &rewriter) const {
-    Value scale = operand.get();
+  FailureOr<Value> rematerializeDirectScale(
+      Value scale, ttg::MemDescType storageType, Operation *consumer,
+      unsigned ignoredConsumerOperand, PatternRewriter &rewriter,
+      SmallVectorImpl<DeferredScaleCleanup> *deferredCleanups = nullptr) const {
     auto scaleType = cast<ttg::MemDescType>(scale.getType());
     if (isa<TensorMemoryScalesEncodingAttr>(scaleType.getEncoding()))
       return failure();
 
-    std::optional<ttg::MemDescType> storageType =
-        getMMAv5ScaleStorageTypeThroughViews(scale);
-    if (!storageType)
-      return failure();
-
     FailureOr<TMemScaleStoreInfo> maybeInfo =
-        getSingleTMemScaleStoreInfo(scale, mmaOp.getOperation(),
-                                    operand.getOperandNumber());
+        getSingleTMemScaleStoreInfo(scale, consumer, ignoredConsumerOperand);
     if (failed(maybeInfo))
       return failure();
     TMemScaleStoreInfo &info = *maybeInfo;
@@ -808,14 +802,14 @@ public:
     }
 
     auto storedType = cast<RankedTensorType>(stored.getType());
-    assert(storedType.getShape() == storageType->getShape() &&
+    assert(storedType.getShape() == storageType.getShape() &&
            "alias view replay should materialize the scale logical shape");
     Value materialized = stored;
     if (!isDistributedLayoutTMemCompatible(info.storeOp.getOperation(),
-                                           storedType, *storageType)) {
+                                           storedType, storageType)) {
       SmallVector<ttg::DistributedEncodingTrait> layouts =
           getTmemCompatibleLayouts(info.storeOp.getOperation(), storedType,
-                                   *storageType);
+                                   storageType);
       if (layouts.empty())
         return failure();
       auto convertedType = storedType.cloneWithEncoding(layouts[0]);
@@ -824,14 +818,95 @@ public:
     }
 
     auto rematerializedAlloc = TMEMAllocOp::create(
-        rewriter, info.storeOp.getLoc(), *storageType, Value());
+        rewriter, info.storeOp.getLoc(), storageType, Value());
     TMEMStoreOp::create(rewriter, info.storeOp.getLoc(),
                         rematerializedAlloc.getResult(), materialized,
                         info.storeOp.getPred());
-    rewriter.modifyOpInPlace(mmaOp, [&] {
-      operand.assign(rematerializedAlloc.getResult());
-    });
+    if (deferredCleanups) {
+      deferredCleanups->push_back(DeferredScaleCleanup{std::move(info), scale});
+      return rematerializedAlloc.getResult();
+    }
     cleanupScaleAliasChain(rewriter, info, scale);
+    return rematerializedAlloc.getResult();
+  }
+
+  FailureOr<Value> rematerializeScaleValue(
+      Value scale, ttg::MemDescType storageType, Operation *consumer,
+      unsigned ignoredConsumerOperand, PatternRewriter &rewriter,
+      SmallVectorImpl<DeferredScaleCleanup> &deferredCleanups,
+      SmallVectorImpl<Operation *> &deadOps) const {
+    if (auto selectOp = scale.getDefiningOp<arith::SelectOp>()) {
+      bool canCleanupSelect = scale.hasOneUse();
+      SmallVector<DeferredScaleCleanup> branchCleanups;
+      SmallVectorImpl<DeferredScaleCleanup> *cleanupSink =
+          canCleanupSelect ? &branchCleanups : nullptr;
+      Operation *branchConsumer =
+          canCleanupSelect ? selectOp.getOperation() : consumer;
+      unsigned trueOperand = canCleanupSelect
+                                 ? selectOp.getTrueValueMutable()
+                                       .getOperandNumber()
+                                 : ignoredConsumerOperand;
+      unsigned falseOperand = canCleanupSelect
+                                  ? selectOp.getFalseValueMutable()
+                                        .getOperandNumber()
+                                  : ignoredConsumerOperand;
+      FailureOr<Value> trueScale = rematerializeDirectScale(
+          selectOp.getTrueValue(), storageType, branchConsumer, trueOperand,
+          rewriter, cleanupSink);
+      if (failed(trueScale))
+        return failure();
+      FailureOr<Value> falseScale = rematerializeDirectScale(
+          selectOp.getFalseValue(), storageType, branchConsumer, falseOperand,
+          rewriter, cleanupSink);
+      if (failed(falseScale))
+        return failure();
+
+      rewriter.setInsertionPoint(selectOp);
+      Value selected = arith::SelectOp::create(
+                           rewriter, selectOp.getLoc(),
+                           selectOp.getCondition(), *trueScale, *falseScale)
+                           .getResult();
+      if (canCleanupSelect) {
+        llvm::move(branchCleanups, std::back_inserter(deferredCleanups));
+        deadOps.push_back(selectOp.getOperation());
+      }
+      return selected;
+    }
+
+    return rematerializeDirectScale(scale, storageType, consumer,
+                                    ignoredConsumerOperand, rewriter);
+  }
+
+  LogicalResult rematerializeScale(OpOperand &operand,
+                                   TCGen5MMAScaledOp mmaOp,
+                                   PatternRewriter &rewriter) const {
+    Value scale = operand.get();
+    auto scaleType = cast<ttg::MemDescType>(scale.getType());
+    if (isa<TensorMemoryScalesEncodingAttr>(scaleType.getEncoding()))
+      return failure();
+
+    std::optional<ttg::MemDescType> storageType =
+        getMMAv5ScaleStorageTypeThroughViews(scale);
+    if (!storageType)
+      return failure();
+
+    SmallVector<DeferredScaleCleanup> deferredCleanups;
+    SmallVector<Operation *> deadOps;
+    FailureOr<Value> rematerializedScale = rematerializeScaleValue(
+        scale, *storageType, mmaOp.getOperation(), operand.getOperandNumber(),
+        rewriter, deferredCleanups, deadOps);
+    if (failed(rematerializedScale))
+      return failure();
+
+    rewriter.modifyOpInPlace(mmaOp, [&] {
+      operand.assign(*rematerializedScale);
+    });
+    for (Operation *deadOp : deadOps) {
+      if (deadOp->use_empty())
+        rewriter.eraseOp(deadOp);
+    }
+    for (DeferredScaleCleanup &cleanup : deferredCleanups)
+      cleanupScaleAliasChain(rewriter, cleanup.info, cleanup.scale);
     return success();
   }
 

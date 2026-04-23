@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 03:05 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 03:23 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -52,22 +52,36 @@ helper APIs, with the old value-taking functions acting as legacy wrappers.
 B-scale descriptor-view storage classification now has a type-local semantic
 helper so dynamically selected same-typed B-scale views do not need to expose
 their producer chain for scaled-MMAv5 legality. The B-scale rematerialization
-pass now splits through single-use dynamic selects so unpadded selected views
-can be rematerialized into padded scales storage before scaled MMA.
+pass now splits through dynamic selects so unpadded selected views can be
+rematerialized into padded scales storage before scaled MMA. General A/B scale
+descriptor views now have the same type-local storage classifier and
+selected-view rematerialization path, so their legality and materialization no
+longer require a visible root scales producer chain.
 
-Latest validation checkpoint: 2026-04-23 03:05 UTC repaired unpadded dynamic
+Latest validation checkpoint: 2026-04-23 03:23 UTC generalized the scale
+descriptor-view repair beyond B-scale padding. `getMMAv5ScaleStorageType`
+classifies generated unpadded A/B scale descriptor-view storage from current
+`MemDescType` facts, and the general scale descriptor-view rematerializer now
+splits selected descriptors branch-wise before scaled MMA. Validation: required
+`make -j8`; dynamic A/B scale descriptor-view rows `2 passed`; combined
+`scale_descriptor_view or bscale_descriptor_view` selector
+`12 passed, 1617 deselected`; targeted lit set `6/6`; 4-GPU positive MMAv5
+selector passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
+group3 `148 passed`, group4 `148 passed`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 03:05 UTC repaired unpadded dynamic
 selected B-scale descriptor-view rematerialization. When a scaled MMA consumes
 a selected unpadded B-scale descriptor view, the allocation pass now
 rematerializes each selected branch into padded `tensor_memory_scales` storage
 and builds a new selected padded descriptor for that MMA. Single-use original
 selects are erased and their obsolete unpadded store/view chains are cleaned
 up; multi-use original selects remain available to unrelated consumers.
-Validation: required
-`make -j8`; exact unpadded dynamic selected row `1 passed`; padded+unpadded
-dynamic selected rows `2 passed`; focused `bscale_descriptor_view` selector
-`6 passed, 1621 deselected`; targeted lit set `6/6`; 4-GPU positive MMAv5
-selector passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
-group3 `148 passed`, group4 `146 passed`; `git diff --check` passed.
+Validation: required `make -j8`; exact unpadded dynamic selected row
+`1 passed`; padded+unpadded dynamic selected rows `2 passed`; focused
+`bscale_descriptor_view` selector `6 passed, 1621 deselected`; targeted lit set
+`6/6`; 4-GPU positive MMAv5 selector passed as group1
+`134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`, group4
+`146 passed`; `git diff --check` passed.
 
 Previous validation checkpoint: 2026-04-23 02:52 UTC completed the first
 type-local B-scale descriptor-view storage slice. B-scale descriptor views are

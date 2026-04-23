@@ -1691,42 +1691,109 @@ static void padZero2DBases(SmallVectorImpl<std::array<int32_t, 2>> &bases,
     bases.push_back({0, 0});
 }
 
-static bool isMMAv5ScaledBScaleDescriptorViewStorage(MemDescType bScaleType) {
-  if (!bScaleType || bScaleType.getRank() != 2 ||
-      bScaleType.getElementTypeBitWidth() != 8 ||
-      !isTensorMemoryEncoding(bScaleType.getEncoding()) ||
-      isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
-    return false;
+static std::optional<LinearLayout>
+getNormalizedMMAv5Rank2I8LinearScaleStorageLayout(MemDescType scaleType) {
+  if (!scaleType || scaleType.getRank() != 2 ||
+      scaleType.getElementTypeBitWidth() != 8 ||
+      !isTensorMemoryEncoding(scaleType.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(scaleType.getEncoding()))
+    return std::nullopt;
 
   auto linear =
-      dyn_cast<TensorMemoryLinearEncodingAttr>(bScaleType.getEncoding());
+      dyn_cast<TensorMemoryLinearEncodingAttr>(scaleType.getEncoding());
   if (!linear || linear.getTwoCTAs())
-    return false;
+    return std::nullopt;
 
-  auto shape = bScaleType.getShape();
-  int64_t rows = shape[0];
-  int64_t cols = shape[1];
-  if (rows < 16 || cols < 4 || !llvm::isPowerOf2_64(rows) ||
-      !llvm::isPowerOf2_64(cols))
-    return false;
+  auto shape = scaleType.getShape();
+  if (shape[0] < 16 || shape[1] < 4 || !llvm::isPowerOf2_64(shape[0]) ||
+      !llvm::isPowerOf2_64(shape[1]))
+    return std::nullopt;
 
   std::string layoutError;
   auto maybeLayout = getTMemViewAnalysisLinearLayout(
-      bScaleType.getShape(), bScaleType.getEncoding(), &layoutError);
+      scaleType.getShape(), scaleType.getEncoding(), &layoutError);
   if (!maybeLayout)
-    return false;
+    return std::nullopt;
   LinearLayout layout =
       normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout);
 
   auto outDims = llvm::to_vector(layout.getOutDimSizes());
-  if (outDims.size() != 2 || outDims[0] != rows || outDims[1] != cols)
+  if (outDims.size() != 2 || outDims[0] != shape[0] ||
+      outDims[1] != shape[1])
+    return std::nullopt;
+
+  auto *ctx = scaleType.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol))
+    return std::nullopt;
+  return layout;
+}
+
+static bool isMMAv5UnpaddedInterleavedScaleDescriptorViewStorage(
+    MemDescType scaleType, const LinearLayout &layout) {
+  auto shape = scaleType.getShape();
+  int64_t rows = shape[0];
+  int64_t cols = shape[1];
+  if (rows < 32)
     return false;
+
+  auto *ctx = scaleType.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  unsigned rowBasisCount = layout.getInDimSizeLog2(kRow);
+  unsigned colBasisCount = layout.getInDimSizeLog2(kCol);
+
+  SmallVector<std::array<int32_t, 2>> rowBases = {
+      {static_cast<int32_t>(rows / 2), 0}};
+  for (int32_t row = 1; row <= 8 && row < rows / 2; row <<= 1)
+    rowBases.push_back({row, 0});
+  padZero2DBases(rowBases, rowBasisCount);
+
+  SmallVector<std::array<int32_t, 2>> colBases = {{0, 1}, {0, 2}};
+  for (int32_t row = 16; row <= rows / 4; row <<= 1)
+    colBases.push_back({row, 0});
+  for (int32_t col = 4; col < cols; col <<= 1)
+    colBases.push_back({0, col});
+
+  return rowBases.size() == rowBasisCount &&
+         colBases.size() == colBasisCount &&
+         hasExact2DBasisSequence(layout, kRow, rowBases) &&
+         hasExact2DBasisSequence(layout, kCol, colBases);
+}
+
+std::optional<MemDescType> getMMAv5ScaleStorageType(MemDescType scaleType) {
+  if (!scaleType)
+    return std::nullopt;
+  if (isa<TensorMemoryScalesEncodingAttr>(scaleType.getEncoding()))
+    return scaleType;
+  auto layout = getNormalizedMMAv5Rank2I8LinearScaleStorageLayout(scaleType);
+  if (!layout ||
+      !isMMAv5UnpaddedInterleavedScaleDescriptorViewStorage(scaleType,
+                                                            *layout))
+    return std::nullopt;
+
+  MLIRContext *ctx = scaleType.getContext();
+  auto scaleEncoding = TensorMemoryScalesEncodingAttr::get(
+      ctx, getCGALayout(scaleType.getEncoding()));
+  return MemDescType::get(scaleType.getShape(), scaleType.getElementType(),
+                          scaleEncoding, scaleType.getMemorySpace(),
+                          scaleType.getMutableMemory());
+}
+
+static bool isMMAv5ScaledBScaleDescriptorViewStorage(MemDescType bScaleType) {
+  auto maybeLayout = getNormalizedMMAv5Rank2I8LinearScaleStorageLayout(
+      bScaleType);
+  if (!maybeLayout)
+    return false;
+  auto shape = bScaleType.getShape();
+  int64_t rows = shape[0];
+  int64_t cols = shape[1];
+  LinearLayout layout = *maybeLayout;
 
   auto *ctx = bScaleType.getContext();
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
-  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol))
-    return false;
 
   unsigned rowBasisCount = layout.getInDimSizeLog2(kRow);
   unsigned colBasisCount = layout.getInDimSizeLog2(kCol);
@@ -1749,29 +1816,9 @@ static bool isMMAv5ScaledBScaleDescriptorViewStorage(MemDescType bScaleType) {
            hasExact2DBasisSequence(layout, kCol, colBases);
   };
 
-  auto matchesUnpaddedInterleavedView = [&]() {
-    if (rows < 32)
-      return false;
-
-    SmallVector<std::array<int32_t, 2>> rowBases = {
-        {static_cast<int32_t>(rows / 2), 0}};
-    for (int32_t row = 1; row <= 8 && row < rows / 2; row <<= 1)
-      rowBases.push_back({row, 0});
-    padZero2DBases(rowBases, rowBasisCount);
-
-    SmallVector<std::array<int32_t, 2>> colBases = {{0, 1}, {0, 2}};
-    for (int32_t row = 16; row <= rows / 4; row <<= 1)
-      colBases.push_back({row, 0});
-    for (int32_t col = 4; col < cols; col <<= 1)
-      colBases.push_back({0, col});
-
-    return rowBases.size() == rowBasisCount &&
-           colBases.size() == colBasisCount &&
-           hasExact2DBasisSequence(layout, kRow, rowBases) &&
-           hasExact2DBasisSequence(layout, kCol, colBases);
-  };
-
-  return matchesPaddedStorageView() || matchesUnpaddedInterleavedView();
+  return matchesPaddedStorageView() ||
+         isMMAv5UnpaddedInterleavedScaleDescriptorViewStorage(bScaleType,
+                                                              layout);
 }
 
 std::optional<MemDescType>

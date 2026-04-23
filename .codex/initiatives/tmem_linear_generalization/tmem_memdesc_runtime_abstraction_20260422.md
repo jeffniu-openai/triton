@@ -1013,6 +1013,35 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`, group4
   `146 passed`; `git diff --check` passed.
 
+### 2026-04-23 General Selected Scale Descriptor-View Slice
+
+- General A/B scaled-MMAv5 scale descriptor views had the same semantic
+  producer-chain dependency as B-scale storage: the current value was a
+  `tensor_memory_linear` memdesc whose layout described generated scales
+  storage, while the allocation transform recovered the root
+  `tensor_memory_scales` encoding by walking reshape/trans producers.
+- Added `getMMAv5ScaleStorageType(MemDescType)`, a type-local classifier for
+  generated unpadded interleaved scale descriptor-view storage. The B-scale
+  classifier now reuses the same unpadded-layout predicate and keeps its
+  additional padded-storage predicate for B-scale fragment requirements.
+- `getMMAv5ScaleStorageTypeThroughViews(Value)` now tries the type-local helper
+  before falling back to legacy root walking, so semantic rematerialization does
+  not require a visible root view chain for the covered layout family.
+- The general `RematerializeScaledMmaScaleDescriptorViews` pattern now mirrors
+  the selected B-scale flow: it rematerializes selected true/false scale
+  descriptors branch-wise into direct scales allocations, creates a selected
+  rematerialized descriptor for the MMA, cleans up single-use originals, and
+  leaves multi-use originals intact for unrelated consumers.
+- Added dynamic A/B scale descriptor-view runtime rows. Both rows select between
+  same-typed linear descriptor views and consume the selected scale in scaled
+  MMA; both now pass runtime correctness and exact opcode checks.
+- Validation after this slice: required `make -j8`; dynamic A/B scale
+  descriptor-view rows `2 passed`; combined
+  `scale_descriptor_view or bscale_descriptor_view` selector
+  `12 passed, 1617 deselected`; targeted lit set `6/6`; 4-GPU positive MMAv5
+  selector passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
+  group3 `148 passed`, group4 `148 passed`; `git diff --check` passed.
+
 ### 2026-04-23 Type-Local MMAv5 Family Address Slice
 
 - `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects narrowed
