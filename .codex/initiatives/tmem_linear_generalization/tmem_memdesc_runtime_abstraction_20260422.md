@@ -1702,3 +1702,43 @@ High-priority hacks and debt to remove after replacement coverage exists:
   ld/st/copy selector passed as group1 `5 passed`, group2 `5 passed`, group3
   `5 passed`, group4 `5 passed`; tmem-backed MMAv5 smoke rows `4 passed`; lit
   `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+### 2026-04-23 First Unaligned Packed-Subword Ld/St Slice
+
+- Removed the temporary static odd-column rejection from
+  `memdesc_subslice` type inference and from generic/NVIDIA TMEM view/subslice
+  lowering. These operations now continue to update the runtime memdesc by
+  element-column offsets, including origins that start inside a 32-bit hardware
+  word.
+- Added a transition helper, `TMemSubwordPhaseStatus`, that identifies visible
+  TMEM values whose current `taddr` may carry a nonzero subword phase. It
+  handles roots, static subviews/indexes, reshapes/transposes, same-bitwidth
+  reinterprets, simple forwarding block arguments, and `arith.select` joins.
+  This is not the final semantic contract; it is used to keep the first
+  phase-aware lowering slice targeted while later consumers are migrated.
+- Implemented the first executable `subword_index` consumer for packed
+  contiguous `32x32b` ld/st plans. The lowering derives
+  `phase = element_col % elements_per_word` from the current runtime `taddr`,
+  projects the base to hardware word columns for PTX, loads one tail word for
+  unaligned reads, and realigns packed b32 registers with dynamic shifts and
+  ors. Stores read the first and tail hardware words, wait for those loads, and
+  write shifted packed words plus a predicated tail word so lanes outside the
+  logical view are preserved.
+- `tcgen05.copy` now rejects known-nonzero subword destination origins locally.
+  The copy ISA path has no RMW sequence in this slice, so accepting those
+  descriptors would reintroduce floor-to-word aliasing.
+- Added a f16 `slice(1, 128)` runtime positive that initializes neighboring
+  aligned views, stores through the odd-column view, loads the odd-column view
+  back, checks the left boundary through the aligned first view, and checks the
+  right boundary through a second odd-column view starting at `N-1`. Added a
+  copy diagnostic row for the same odd-column destination.
+- Remaining boundaries: non-packed or non-contiguous subword ld/st layouts,
+  `ld.red`, copy, MMAv5, and unknown non-local subword phases still need
+  follow-up support or local rejection. The intended end state remains local
+  lowering from the current `taddr` plus current type/layout, not producer-chain
+  dependence for validity.
+- Validation after this slice: required `make -j8`; exact unaligned f16 ld/st
+  runtime positive `1 passed`; exact unaligned f16 copy diagnostic row
+  `1 passed`; focused adjacent subword ld/st/copy selector `32 passed,
+  1636 deselected`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed.

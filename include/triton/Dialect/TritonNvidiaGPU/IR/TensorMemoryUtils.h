@@ -133,6 +133,12 @@ enum class TMemPhysicalQueryDifference {
   Origin,
 };
 
+enum class TMemSubwordPhaseStatus {
+  KnownZero,
+  MayBeNonZero,
+  Unknown,
+};
+
 struct TMemLdStSupportQueryPlan {
   TMemLdStQueryLayout query;
   std::optional<TMemLdStRowPlan> rowPlan;
@@ -464,6 +470,10 @@ struct TMemCopyPlanSelection {
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy);
 
 Value getTMemForwardingSource(Value memDesc);
+
+TMemSubwordPhaseStatus getTMemSubwordPhaseStatus(Value memDesc);
+
+bool mayHaveNonZeroTMemSubwordPhase(Value memDesc);
 
 std::optional<TensorMemoryScalesEncodingAttr>
 getTMemScalesRootEncoding(Value memDesc);

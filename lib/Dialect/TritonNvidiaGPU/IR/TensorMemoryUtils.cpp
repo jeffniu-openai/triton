@@ -1,5 +1,6 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
@@ -77,6 +78,118 @@ Value getTMemForwardingSource(Value memDesc) {
   }
 
   return getUniqueFunctionArgForwardingSource(blockArg);
+}
+
+static TMemSubwordPhaseStatus combineTMemSubwordPhaseStatus(
+    TMemSubwordPhaseStatus lhs, TMemSubwordPhaseStatus rhs) {
+  if (lhs == TMemSubwordPhaseStatus::MayBeNonZero ||
+      rhs == TMemSubwordPhaseStatus::MayBeNonZero)
+    return TMemSubwordPhaseStatus::MayBeNonZero;
+  if (lhs == TMemSubwordPhaseStatus::Unknown ||
+      rhs == TMemSubwordPhaseStatus::Unknown)
+    return TMemSubwordPhaseStatus::Unknown;
+  return TMemSubwordPhaseStatus::KnownZero;
+}
+
+static TMemSubwordPhaseStatus
+advanceTMemSubwordPhaseStatus(TMemSubwordPhaseStatus srcStatus,
+                              uint32_t elementColOffset,
+                              uint32_t elementBitWidth) {
+  uint32_t elementsPerWord = getTMemElementsPerWord(elementBitWidth);
+  if (elementColOffset % elementsPerWord != 0)
+    return TMemSubwordPhaseStatus::MayBeNonZero;
+  return srcStatus;
+}
+
+static TMemSubwordPhaseStatus
+getTMemSubwordPhaseStatusImpl(Value memDesc, unsigned depth) {
+  if (!memDesc || depth > 32)
+    return TMemSubwordPhaseStatus::Unknown;
+
+  auto memTy = dyn_cast<MemDescType>(memDesc.getType());
+  if (!memTy || !isTensorMemoryEncoding(memTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()) ||
+      memTy.getElementTypeBitWidth() >= 32) {
+    return TMemSubwordPhaseStatus::KnownZero;
+  }
+  uint32_t bitwidth = memTy.getElementTypeBitWidth();
+
+  if (auto forwarded = getTMemForwardingSource(memDesc))
+    return getTMemSubwordPhaseStatusImpl(forwarded, depth + 1);
+
+  if (auto select = memDesc.getDefiningOp<arith::SelectOp>()) {
+    return combineTMemSubwordPhaseStatus(
+        getTMemSubwordPhaseStatusImpl(select.getTrueValue(), depth + 1),
+        getTMemSubwordPhaseStatusImpl(select.getFalseValue(), depth + 1));
+  }
+
+  if (memDesc.getDefiningOp<TMEMAllocOp>())
+    return TMemSubwordPhaseStatus::KnownZero;
+
+  if (auto reshape = memDesc.getDefiningOp<gpu::MemDescReshapeOp>())
+    return getTMemSubwordPhaseStatusImpl(reshape.getSrc(), depth + 1);
+  if (auto trans = memDesc.getDefiningOp<gpu::MemDescTransOp>())
+    return getTMemSubwordPhaseStatusImpl(trans.getSrc(), depth + 1);
+  if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
+    auto srcTy = cast<MemDescType>(reinterpret.getSrc().getType());
+    if (srcTy.getElementTypeBitWidth() != bitwidth)
+      return TMemSubwordPhaseStatus::Unknown;
+    return getTMemSubwordPhaseStatusImpl(reinterpret.getSrc(), depth + 1);
+  }
+
+  if (auto subslice = memDesc.getDefiningOp<gpu::MemDescSubsliceOp>()) {
+    auto srcTy = cast<MemDescType>(subslice.getSrc().getType());
+    auto srcStatus = getTMemSubwordPhaseStatusImpl(subslice.getSrc(), depth + 1);
+    auto physicalOffset =
+        getTMemViewPhysicalRowElementCol(srcTy, subslice.getOffsets());
+    return advanceTMemSubwordPhaseStatus(srcStatus, physicalOffset.second,
+                                         bitwidth);
+  }
+
+  if (auto subslice = memDesc.getDefiningOp<TMEMSubSliceOp>()) {
+    auto srcTy = cast<MemDescType>(subslice.getSrc().getType());
+    auto srcStatus = getTMemSubwordPhaseStatusImpl(subslice.getSrc(), depth + 1);
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.back() = subslice.getN();
+    auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
+    return advanceTMemSubwordPhaseStatus(srcStatus, physicalOffset.second,
+                                         bitwidth);
+  }
+
+  if (auto index = memDesc.getDefiningOp<gpu::MemDescIndexOp>()) {
+    auto srcTy = cast<MemDescType>(index.getSrc().getType());
+    auto srcStatus = getTMemSubwordPhaseStatusImpl(index.getSrc(), depth + 1);
+    APInt indexValue;
+    if (matchPattern(index.getIndex(), m_ConstantInt(&indexValue))) {
+      SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+      offsets.front() = indexValue.getSExtValue();
+      auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
+      return advanceTMemSubwordPhaseStatus(srcStatus, physicalOffset.second,
+                                           bitwidth);
+    }
+
+    uint32_t elementsPerWord = getTMemElementsPerWord(bitwidth);
+    int64_t dimSize = srcTy.getShape().front();
+    for (int64_t bit = 1; bit < dimSize; bit <<= 1) {
+      SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+      offsets.front() = bit;
+      auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
+      if (physicalOffset.second % elementsPerWord != 0)
+        return TMemSubwordPhaseStatus::MayBeNonZero;
+    }
+    return srcStatus;
+  }
+
+  return TMemSubwordPhaseStatus::Unknown;
+}
+
+TMemSubwordPhaseStatus getTMemSubwordPhaseStatus(Value memDesc) {
+  return getTMemSubwordPhaseStatusImpl(memDesc, /*depth=*/0);
+}
+
+bool mayHaveNonZeroTMemSubwordPhase(Value memDesc) {
+  return getTMemSubwordPhaseStatus(memDesc) ==
+         TMemSubwordPhaseStatus::MayBeNonZero;
 }
 
 std::optional<TensorMemoryScalesEncodingAttr>

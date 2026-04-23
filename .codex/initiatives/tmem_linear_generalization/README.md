@@ -109,6 +109,13 @@ at ISA emission. Validation fixed two important details: packed f16/i8 ld/st
 must project using the memdesc element bitwidth rather than the packed LLVM b32
 packet type, and scaled-MMAv5 scale bases are TMEM ISA operands that need the
 same projection boundary.
+The first unaligned packed-subword ld/st consumer is now implemented for
+packed contiguous `32x32b` plans. Static odd-column subviews are allowed to
+lower; ld/st computes the runtime subword phase from the current
+element-column `taddr`, loads one tail hardware word, realigns packed b32 load
+results, and stores through RMW so neighboring subword lanes are preserved.
+Known-nonzero subword `tcgen05.copy` destinations still diagnose locally until
+copy has an equivalent legal lowering or a proven ISA boundary.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -136,9 +143,17 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 06:43 UTC implemented the aligned
+Latest validation checkpoint: 2026-04-23 07:13 UTC implemented the first
+unaligned packed-subword ld/st slice. Validation: required `make -j8`; exact
+unaligned f16 ld/st runtime positive `1 passed`; exact unaligned f16 copy
+diagnostic row `1 passed`; focused adjacent subword ld/st/copy selector
+passed `32 passed, 1636 deselected`; lit `tmem_layouts.mlir` `1 passed`;
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 06:43 UTC implemented the aligned
 element-column runtime slice while keeping the unaligned subword guard in
-place. Validation: required `make -j8`; selector
+place for consumers without phase-aware lowering. Validation: required
+`make -j8`; selector
 `linear_subslice_view_subword or ldst_unaligned_subword_linear_subslice_view`
 passed across four GPU split groups as group1 `5 passed`, group2 `5 passed`,
 group3 `5 passed`, group4 `2 passed`; direct subword ld/st/copy selector

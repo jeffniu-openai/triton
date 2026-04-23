@@ -35333,3 +35333,49 @@ Open after this slice:
   commit and push this checkpoint. Continue with the unaligned subword
   `subword_index`/RMW path or the next high-priority helper separation slice
   from the tracker.
+
+## 2026-04-23 07:13 UTC: first unaligned packed-subword ld/st slice
+
+- Branch/HEAD at slice start:
+  `831113bc9 Carry aligned TMEM subword views as element columns`.
+- Dirty files before checkpoint commit:
+  `include/triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h`,
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+  `lib/Dialect/TritonGPU/IR/Ops.cpp`,
+  `lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`,
+  `python/test/gluon/test_tmem_runtime_matrix.py`, plus initiative docs.
+- Completed source slice:
+  removed the temporary static subword view-origin rejection from
+  `memdesc_subslice` type inference and view/subslice lowering. Added a
+  `TMemSubwordPhaseStatus` helper that recognizes visible roots, static
+  subviews/indexes, reshapes/transposes, same-bitwidth reinterprets, forwarded
+  block args, and `arith.select` joins that may start inside a 32-bit hardware
+  column. For packed contiguous `32x32b` ld/st, LLVM lowering now computes the
+  runtime subword phase from the current memdesc element-column `taddr`, loads
+  one tail hardware word, realigns b32 load packets by shift/or, and stores
+  through a read/modify/write sequence that preserves subword lanes outside
+  the logical view.
+- Boundary note:
+  this is the first executable `subword_index` consumer, not the complete
+  unaligned-subword migration. The phase-aware path is deliberately limited to
+  packed contiguous `32x32b` ld/st. `tcgen05.copy` now rejects known nonzero
+  subword destination origins because this slice does not implement a copy RMW
+  equivalent; `ld.red`, non-contiguous/unpacked subword ld/st, MMAv5, and
+  unknown non-local phase cases remain follow-up work.
+- Validation evidence:
+  required `make -j8`; exact unaligned f16 ld/st runtime positive `1 passed`;
+  exact unaligned f16 copy diagnostic row `1 passed`; focused selector
+  `ldst_unaligned_subword_linear_subslice_view_roundtrip or
+  ldst_dynamic_linear_subslice_view_subword or
+  ldst_loop_carried_linear_subslice_view_subword or ldst_subword_pack_unpack
+  or cp_no_scales_unaligned_subword_linear_subslice_view_reports_error or
+  cp_no_scales_dynamic_linear_subslice_view_subword or
+  cp_no_scales_loop_carried_linear_subslice_view_subword or
+  cp_no_scales_linear_subword_dtypes` passed `32 passed, 1636 deselected`;
+  lit `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue by widening phase-aware subword
+  lowering beyond the packed contiguous `32x32b` ld/st slice, starting with
+  dynamic/unknown phase classification and then non-contiguous or unpacked
+  subword layouts.

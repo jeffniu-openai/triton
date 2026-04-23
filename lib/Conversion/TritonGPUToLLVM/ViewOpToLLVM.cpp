@@ -18,27 +18,6 @@ bool isTensorMemoryMemDesc(MemDescType type) {
          triton::nvidia_gpu::isTensorMemoryEncoding(type.getEncoding());
 }
 
-LogicalResult verifyHardwareColumnAlignedTMemView(Location loc,
-                                                  MemDescType srcTy,
-                                                  ArrayRef<int32_t> offsets) {
-  uint32_t bitwidth = srcTy.getElementTypeBitWidth();
-  if (bitwidth >= 32)
-    return success();
-  auto physicalOffset =
-      triton::nvidia_gpu::getTMemViewPhysicalRowElementCol(srcTy, offsets);
-  uint32_t elementCol = physicalOffset.second;
-  uint32_t elementsPerWord =
-      triton::nvidia_gpu::getTMemElementsPerWord(bitwidth);
-  if (elementCol % elementsPerWord == 0)
-    return success();
-  return emitError(loc)
-         << "unsupported sub-32-bit TMEM view origin: physical element "
-            "column "
-         << elementCol << " is not aligned to a 32-bit hardware column. "
-         << "Correct lowering requires element-column taddr and subword-index "
-            "support.";
-}
-
 LogicalResult verifyHardwareColumnAlignedTMemDynamicIndex(Location loc,
                                                           MemDescType srcTy) {
   uint32_t bitwidth = srcTy.getElementTypeBitWidth();
@@ -605,8 +584,6 @@ struct MemDescIndexOpConversion
 
       SmallVector<int32_t> offsets(srcTy.getRank(), 0);
       offsets.front() = index.getSExtValue();
-      if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy, offsets)))
-        return failure();
       rewriter.replaceOp(
           op, advanceTensorMemoryBase(loc, rewriter, tmemBase,
                                       triton::nvidia_gpu::getTMemViewElementOffset(
@@ -675,9 +652,6 @@ struct MemDescSubsliceOpConversion
     Location loc = op->getLoc();
     auto srcTy = op.getSrc().getType();
     if (isTensorMemoryMemDesc(srcTy)) {
-      if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy,
-                                                     op.getOffsets())))
-        return failure();
       rewriter.replaceOp(
           op, advanceTensorMemoryBase(loc, rewriter, adaptor.getSrc(),
                                       triton::nvidia_gpu::

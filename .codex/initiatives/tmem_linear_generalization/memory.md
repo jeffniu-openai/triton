@@ -18281,3 +18281,18 @@ rejection, not rescue
   rows `4 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
   passed. The unaligned subword guard remains until the dynamic
   `subword_index`/RMW path is implemented.
+
+- 2026-04-23 first unaligned packed-subword ld/st slice completed. The static
+  odd-element-column guard was removed from `memdesc_subslice` type inference
+  and TMEM view/subslice lowering, and packed contiguous `32x32b` ld/st now
+  consumes the runtime subword phase from the current element-column `taddr`.
+  Loads fetch one tail word and shift/or packed b32 packets; stores perform
+  RMW for the first/tail hardware words so neighboring f16 lanes outside the
+  logical view are preserved. Added a f16 `slice(1, 128)` runtime positive that
+  checks the selected view and both boundary sides, plus a copy diagnostic row
+  for known-nonzero subword `tcgen05.copy` destinations. Validation: required
+  `make -j8`; exact unaligned ld/st row `1 passed`; exact copy diagnostic row
+  `1 passed`; focused adjacent subword ld/st/copy selector `32 passed,
+  1636 deselected`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed. Remaining work: non-contiguous/unpacked subword ld/st, `ld.red`,
+  copy, MMAv5, and unknown non-local subword phase values.

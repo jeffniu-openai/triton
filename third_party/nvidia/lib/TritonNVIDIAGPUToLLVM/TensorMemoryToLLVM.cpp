@@ -35,25 +35,6 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
-LogicalResult verifyHardwareColumnAlignedTMemView(Location loc,
-                                                  MemDescType srcTy,
-                                                  ArrayRef<int32_t> offsets) {
-  uint32_t bitwidth = srcTy.getElementTypeBitWidth();
-  if (bitwidth >= 32)
-    return success();
-  auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
-  uint32_t elementCol = physicalOffset.second;
-  uint32_t elementsPerWord = getTMemElementsPerWord(bitwidth);
-  if (elementCol % elementsPerWord == 0)
-    return success();
-  return emitError(loc)
-         << "unsupported sub-32-bit TMEM view origin: physical element "
-            "column "
-         << elementCol << " is not aligned to a 32-bit hardware column. "
-         << "Correct lowering requires element-column taddr and subword-index "
-            "support.";
-}
-
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -309,6 +290,175 @@ static SmallVector<Value> unpackResults(Value packedValues, Type elemTy,
   return resultVals;
 }
 
+static Value getTMemSubwordPhase(Location loc,
+                                 ConversionPatternRewriter &rewriter,
+                                 Value tmemBase,
+                                 uint32_t tmemElementBitwidth) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value base = b.ptrtoint(i32_ty, tmemBase);
+  Value elementCol = b.and_(base, b.i32_val(kTMemPackedOffsetColMask));
+  uint32_t elementsPerWord = getTMemElementsPerWord(tmemElementBitwidth);
+  return b.and_(elementCol, b.i32_val(elementsPerWord - 1));
+}
+
+static SmallVector<Value>
+realignPackedSubwordLoadWords(Location loc,
+                              ConversionPatternRewriter &rewriter,
+                              ArrayRef<Value> words, Value phase,
+                              uint32_t tmemElementBitwidth) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  assert(words.size() >= 2 &&
+         "phase-aware subword load needs one tail word");
+  Value phaseBits = b.mul(phase, b.i32_val(tmemElementBitwidth));
+  Value phaseNonZero = b.icmp_ne(phase, b.i32_val(0));
+  Value inverseShift = b.sub(b.i32_val(32), phaseBits);
+  Value inverseShiftSafe =
+      b.select(phaseNonZero, inverseShift, b.i32_val(0));
+
+  SmallVector<Value> realigned;
+  realigned.reserve(words.size() - 1);
+  for (unsigned i = 0, e = words.size() - 1; i < e; ++i) {
+    Value low = b.lshr(words[i], phaseBits);
+    Value high = b.shl(words[i + 1], inverseShiftSafe);
+    Value shifted = b.or_(low, high);
+    realigned.push_back(b.select(phaseNonZero, shifted, words[i]));
+  }
+  return realigned;
+}
+
+static std::pair<SmallVector<Value>, Value>
+realignPackedSubwordStoreWords(Location loc,
+                               ConversionPatternRewriter &rewriter,
+                               ArrayRef<Value> words, Value oldFirstWord,
+                               Value oldTailWord, Value phase,
+                               uint32_t tmemElementBitwidth) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  assert(!words.empty() && "phase-aware subword store needs data words");
+  Value phaseBits = b.mul(phase, b.i32_val(tmemElementBitwidth));
+  Value phaseNonZero = b.icmp_ne(phase, b.i32_val(0));
+  Value inverseShift = b.sub(b.i32_val(32), phaseBits);
+  Value inverseShiftSafe =
+      b.select(phaseNonZero, inverseShift, b.i32_val(0));
+  Value lowMask = b.sub(b.shl(b.i32_val(1), phaseBits), b.i32_val(1));
+  Value highMask = b.xor_(lowMask, b.i32_val(-1));
+
+  SmallVector<Value> realigned;
+  realigned.reserve(words.size());
+  Value first = b.or_(b.and_(oldFirstWord, lowMask),
+                      b.shl(words.front(), phaseBits));
+  realigned.push_back(b.select(phaseNonZero, first, words.front()));
+  for (unsigned i = 1, e = words.size(); i < e; ++i) {
+    Value fromPrev = b.lshr(words[i - 1], inverseShiftSafe);
+    Value fromCur = b.shl(words[i], phaseBits);
+    Value shifted = b.or_(fromPrev, fromCur);
+    realigned.push_back(b.select(phaseNonZero, shifted, words[i]));
+  }
+
+  Value tail = b.or_(b.and_(oldTailWord, highMask),
+                     b.lshr(words.back(), inverseShiftSafe));
+  return {std::move(realigned), tail};
+}
+
+static FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>>
+lowerContiguousPackedSubwordPhaseAwareLdSt(
+    Location loc, ConversionPatternRewriter &rewriter,
+    const TMemLdStEncodingInfo &info, Value pred, Type llvmElemTy,
+    uint32_t tmemElementBitwidth, ArrayRef<Value> vals, Value tmemBase,
+    std::optional<TMEMLoadReduceModifier> redOp) {
+  auto unsupported = [&]() -> LogicalResult {
+    emitError(loc)
+        << "unsupported sub-32-bit TMEM view origin for this ld/st layout: "
+           "phase-aware lowering currently supports contiguous packed "
+           "32x32b load/store plans";
+    return failure();
+  };
+  if (tmemElementBitwidth >= 32 || llvmElemTy.getIntOrFloatBitWidth() != 32 ||
+      redOp || info.atom != TMemAccessAtom::I32x32b || info.unpacked ||
+      info.secondHalfOffset || !info.packetOffsets.empty()) {
+    (void)unsupported();
+    return failure();
+  }
+
+  auto *ctx = rewriter.getContext();
+  auto kReg = str_attr("register");
+  auto kWarp = str_attr("warp");
+  if (!info.reps.hasInDim(kReg) ||
+      info.reps.getInDimSize(kReg) != info.numRegsPerMessage ||
+      info.numRegsPerMessage <= 0 || info.baseOffset != 0 ||
+      info.warpBaseOffset0 != getTMemPackedOffsetRowBase(32u) ||
+      info.warpBaseOffset1 != getTMemPackedOffsetRowBase(64u) ||
+      info.reps.getInDimSize(kWarp) > 4) {
+    (void)unsupported();
+    return failure();
+  }
+
+  bool isStore = !vals.empty();
+  if (isStore && static_cast<int>(vals.size()) != info.numRegsPerMessage) {
+    (void)unsupported();
+    return failure();
+  }
+
+  Value phase = getTMemSubwordPhase(loc, rewriter, tmemBase,
+                                    tmemElementBitwidth);
+  tmemBase = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
+      loc, rewriter, tmemBase, tmemElementBitwidth);
+
+  // TMEM base values are encoded in hardware word columns after projection, so
+  // the scalar tail message advances by one word-column per packed register.
+  uint32_t tailColOffset = static_cast<uint32_t>(info.numRegsPerMessage);
+  if (!isStore) {
+    auto [packed, _] = createTensorMemoryLoad(
+        loc, rewriter.getContext(), tmemBase, /*colOffset=*/0,
+        /*secondHalfOffset=*/std::nullopt, /*unpacked=*/false,
+        info.numRegsPerMessage, TMemAccessAtom::I32x32b, /*redOp=*/std::nullopt,
+        /*useAbs=*/false, /*useNaN=*/false, llvmElemTy, rewriter);
+    SmallVector<Value> words =
+        unpackResults(packed, llvmElemTy, info.numRegsPerMessage, loc,
+                      rewriter);
+    auto [tail, __] = createTensorMemoryLoad(
+        loc, rewriter.getContext(), tmemBase,
+        /*colOffset=*/static_cast<int>(tailColOffset),
+        /*secondHalfOffset=*/std::nullopt, /*unpacked=*/false,
+        /*numRegPerMessage=*/1, TMemAccessAtom::I32x32b,
+        /*redOp=*/std::nullopt, /*useAbs=*/false, /*useNaN=*/false, llvmElemTy,
+        rewriter);
+    words.push_back(tail);
+    return std::make_pair(
+        realignPackedSubwordLoadWords(loc, rewriter, words, phase,
+                                      tmemElementBitwidth),
+        SmallVector<Value>{});
+  }
+
+  auto [oldFirst, _] = createTensorMemoryLoad(
+      loc, rewriter.getContext(), tmemBase, /*colOffset=*/0,
+      /*secondHalfOffset=*/std::nullopt, /*unpacked=*/false,
+      /*numRegPerMessage=*/1, TMemAccessAtom::I32x32b, /*redOp=*/std::nullopt,
+      /*useAbs=*/false, /*useNaN=*/false, llvmElemTy, rewriter);
+  auto [oldTail, __] = createTensorMemoryLoad(
+      loc, rewriter.getContext(), tmemBase,
+      /*colOffset=*/static_cast<int>(tailColOffset),
+      /*secondHalfOffset=*/std::nullopt, /*unpacked=*/false,
+      /*numRegPerMessage=*/1, TMemAccessAtom::I32x32b, /*redOp=*/std::nullopt,
+      /*useAbs=*/false, /*useNaN=*/false, llvmElemTy, rewriter);
+  NVVM::Tcgen05WaitOp::create(rewriter, loc, NVVM::Tcgen05WaitKind::LOAD);
+
+  auto [realignedWords, tailWord] = realignPackedSubwordStoreWords(
+      loc, rewriter, vals, oldFirst, oldTail, phase, tmemElementBitwidth);
+  createTensorMemoryStore(loc, tmemBase, /*colOffset=*/0, realignedWords,
+                          /*secondHalfOffset=*/std::nullopt, pred,
+                          /*unpacked=*/false, TMemAccessAtom::I32x32b,
+                          rewriter);
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value tailPred = b.and_(pred, b.icmp_ne(phase, b.i32_val(0)));
+  SmallVector<Value> tailWords = {tailWord};
+  createTensorMemoryStore(loc, tmemBase,
+                          /*colOffset=*/static_cast<int>(tailColOffset),
+                          tailWords, /*secondHalfOffset=*/std::nullopt,
+                          tailPred, /*unpacked=*/false,
+                          TMemAccessAtom::I32x32b, rewriter);
+  return std::make_pair(SmallVector<Value>{}, SmallVector<Value>{});
+}
+
 // Returns {resultVals, redvalVals} where redvalVals is empty if no reduction.
 // Reduction produces exactly one value per thread; if multiple messages
 // contribute partial reductions, they are combined into one.
@@ -490,7 +640,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
                       uint32_t tmemElementBitwidth, ArrayRef<Value> vals,
                       Value tmemBase,
                       std::optional<TMEMLoadReduceModifier> redOp, bool useAbs,
-                      bool useNaN) {
+                      bool useNaN, bool useSubwordPhasePath) {
   bool isStore = !vals.empty();
   if (info.broadcast) {
     auto removeBroadcast = std::move(info.broadcast.value());
@@ -502,7 +652,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
     }
     auto outOr = lowerTMemLdStFromInfo(
         loc, rewriter, info, pred, llvmElemTy, tmemElementBitwidth, inVals,
-        tmemBase, redOp, useAbs, useNaN);
+        tmemBase, redOp, useAbs, useNaN, useSubwordPhasePath);
     if (failed(outOr))
       return failure();
     auto [outVals, redvalVals] = *outOr;
@@ -531,7 +681,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
     }
     auto outOr = lowerTMemLdStFromInfo(
         loc, rewriter, info, pred, packedElemTy, tmemElementBitwidth, inVals,
-        tmemBase, redOp, useAbs, useNaN);
+        tmemBase, redOp, useAbs, useNaN, useSubwordPhasePath);
     if (failed(outOr))
       return failure();
     auto [outVals, redvalVals] = *outOr;
@@ -551,6 +701,11 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
            "least an .x2 message shape, but the selected direct layout "
            "scalarizes to .x1 packets";
     return failure();
+  }
+  if (useSubwordPhasePath) {
+    return lowerContiguousPackedSubwordPhaseAwareLdSt(
+        loc, rewriter, info, pred, llvmElemTy, tmemElementBitwidth, inVals,
+        tmemBase, redOp);
   }
   auto [outVals, redvalVals] =
       lowerTMemLdSt(loc, rewriter, info.reps, inVals, info.atom, llvmElemTy,
@@ -597,6 +752,9 @@ lowerTMemLdStFromTypes(
       typeLocalScalesStorageTy = *storageTy;
   }
   bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
+  bool useSubwordPhasePath =
+      memTy.getElementTypeBitWidth() < 32 && memDescValue &&
+      mayHaveNonZeroTMemSubwordPhase(memDescValue);
   MemDescType planningMemTy = memTy;
   if (typeLocalScalesStorageTy) {
     planningMemTy = *typeLocalScalesStorageTy;
@@ -683,7 +841,7 @@ lowerTMemLdStFromTypes(
         if (auto lowered = lowerTMemLdStFromInfo(
                 loc, rewriter, *encodingInfoOr, pred, llvmElemTy,
                 memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs,
-                useNaN);
+                useNaN, useSubwordPhasePath);
             succeeded(lowered)) {
           return *lowered;
         }
@@ -733,7 +891,7 @@ lowerTMemLdStFromTypes(
         return lowerTMemLdStFromInfo(
             loc, rewriter, encodingInfo, pred, llvmElemTy,
             memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs,
-            useNaN);
+            useNaN, useSubwordPhasePath);
       }
       return failure();
     };
@@ -776,7 +934,7 @@ lowerTMemLdStFromTypes(
             if (auto lowered = lowerTMemLdStFromInfo(
                     loc, rewriter, *sourceRawEncodingInfo, pred, llvmElemTy,
                     memTy.getElementTypeBitWidth(), vals, tmemBase, redOp,
-                    useAbs, useNaN);
+                    useAbs, useNaN, useSubwordPhasePath);
                 succeeded(lowered)) {
               return *lowered;
             }
@@ -832,7 +990,7 @@ lowerTMemLdStFromTypes(
         return lowerTMemLdStFromInfo(
             loc, rewriter, *encodingInfoOr, pred, llvmElemTy,
             memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs,
-            useNaN);
+            useNaN, useSubwordPhasePath);
       }
     }
   }
@@ -1146,6 +1304,12 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto cvt = *maybeCvt;
 
   auto bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
+  if (bitwidth < 32 && mayHaveNonZeroTMemSubwordPhase(op.getDst())) {
+    return op->emitOpError()
+           << "unsupported sub-32-bit tensor memory destination origin for "
+              "tcgen05.copy: the current descriptor may start inside a "
+              "32-bit hardware column";
+  }
   Value wordBaseDst = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
       loc, rewriter, baseDst, bitwidth);
   auto copyPlans = getTMemCopyPlans(cvt, bitwidth);
@@ -1331,8 +1495,6 @@ struct MemDescIndexOpConversion
 
     SmallVector<int32_t> offsets(srcTy.getRank(), 0);
     offsets.front() = index.getSExtValue();
-    if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy, offsets)))
-      return failure();
     rewriter.replaceOp(
         op, advanceTensorMemoryBase(loc, rewriter, tmemBase,
                                     triton::nvidia_gpu::getTMemViewElementOffset(
@@ -1377,8 +1539,6 @@ struct TMEMSubSliceOpConversion
     // subslices onto the same base address.
     SmallVector<int32_t> offsets(srcTy.getRank(), 0);
     offsets.back() = op.getN();
-    if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy, offsets)))
-      return failure();
     uint32_t offset = getTMemSubSliceElementOffset(srcTy, op.getN());
 
     Value tmemBase = adaptor.getSrc();

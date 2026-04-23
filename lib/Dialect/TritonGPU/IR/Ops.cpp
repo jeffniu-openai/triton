@@ -1337,32 +1337,6 @@ OpFoldResult MemDescSubsliceOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-static LogicalResult
-verifyHardwareColumnAlignedTMemStaticSubview(std::optional<Location> loc,
-                                             MemDescType srcTy,
-                                             ArrayRef<int32_t> offsets) {
-  Attribute srcEnc = srcTy.getEncoding();
-  bool isTMemEncoding =
-      srcEnc && triton::nvidia_gpu::isTensorMemoryEncoding(srcEnc) &&
-      !isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(srcEnc);
-  uint32_t bitwidth = srcTy.getElementTypeBitWidth();
-  if (!isTMemEncoding || bitwidth >= 32)
-    return success();
-  auto physicalOffset =
-      triton::nvidia_gpu::getTMemViewPhysicalRowElementCol(srcTy, offsets);
-  uint32_t elementCol = physicalOffset.second;
-  uint32_t elementsPerWord =
-      triton::nvidia_gpu::getTMemElementsPerWord(bitwidth);
-  if (elementCol % elementsPerWord == 0)
-    return success();
-  return emitOptionalError(
-      loc,
-      "unsupported sub-32-bit TMEM view origin: physical element column ",
-      elementCol,
-      " is not aligned to a 32-bit hardware column. Correct lowering requires "
-      "element-column taddr and subword-index support.");
-}
-
 LogicalResult MemDescSubsliceOp::inferReturnType(
     MLIRContext *context, std::optional<Location> loc, MemDescType srcTy,
     ArrayRef<int64_t> dstShape, ArrayRef<int32_t> offsets,
@@ -1385,9 +1359,6 @@ LogicalResult MemDescSubsliceOp::inferReturnType(
                                     "shape");
     }
   }
-  if (failed(
-          verifyHardwareColumnAlignedTMemStaticSubview(loc, srcTy, offsets)))
-    return failure();
 
   Attribute dstEncoding = srcTy.getEncoding();
   if (Attribute srcEnc = srcTy.getEncoding()) {

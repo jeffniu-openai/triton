@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 06:43 UTC
+Last updated: 2026-04-23 07:13 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -124,6 +124,16 @@ Active implementation checklist:
   scale-address emission. `lowerTMemLdSt` now threads the memdesc element
   bitwidth separately from the packed LLVM packet type, so f16/i8 packed b32
   messages still project the TMEM base correctly.
+  First unaligned packed-subword ld/st slice: static subword
+  `memdesc_subslice`/view lowering no longer rejects odd physical
+  element-column origins. A new phase-status helper identifies view chains that
+  may start inside a 32-bit hardware column. For packed contiguous `32x32b`
+  ld/st plans, LLVM lowering now computes the runtime subword phase from the
+  current memdesc `taddr`, loads one tail hardware word, realigns packed b32
+  load results with shifts/or, and stores via read/modify/write so neighboring
+  subword lanes outside the logical view are preserved. `tcgen05.copy` still
+  rejects known nonzero subword destinations because copy has no equivalent
+  RMW path in this slice.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -164,8 +174,20 @@ and index lowering add element-column offsets derived from the current
 `projectTMemElementBaseToWordBase` is the only boundary used by ld/st, copy,
 plain MMAv5, scaled MMAv5 accumulator, and scaled-MMA scale operands before
 emitting ISA addresses. The unaligned subword guard remains in place for
-physical element origins that are not 32-bit hardware-column aligned because
-the separate dynamic `subword_index`/RMW path is still not implemented.
+consumers that do not yet have a local phase-aware lowering. Packed contiguous
+`32x32b` ld/st is the first consumer migrated to the runtime
+`subword_index`/RMW path.
+
+Current unaligned packed-subword ld/st checkpoint: the first executable
+`subword_index`/RMW consumer is implemented for packed contiguous `32x32b`
+load/store plans. The supported f16 odd-column runtime row stores through
+`slice(1, 128)`, loads it back, checks the left neighbor via an aligned view,
+and checks the right boundary through a second odd-column view starting at
+`N-1`; this proves the tail read/modify/write path preserves and updates the
+correct subword lanes. The phase-aware path is intentionally narrow: non-packed
+or non-contiguous subword ld/st layouts, `ld.red`, copy, MMAv5 operands, and
+unknown loop-carried/non-local phase cases still need follow-up work before
+the unaligned-subword migration can be considered complete.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:
