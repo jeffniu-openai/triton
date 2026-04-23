@@ -498,6 +498,9 @@ bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
     Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom);
 
 bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
+    gpu::MemDescType memTy, RankedTensorType regTy);
+
+bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
     Value memDesc, gpu::MemDescType memTy, RankedTensorType regTy);
 
 bool shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(

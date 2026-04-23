@@ -34943,3 +34943,32 @@ Open after this slice:
   no checked-in structural xfails remain. Continue with copy `warpx2`/scales
   boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
   staged broad validation.
+
+## 2026-04-23 05:10 UTC: active-subview M64 query-ordering helper separation
+
+- Branch/HEAD before this checkpoint:
+  `f3bf27249 Choose ld/st query rescue locally`.
+- Dirty files before checkpoint commit:
+  `include/triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h`,
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`, plus initiative
+  docs.
+- Completed source slice:
+  split `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery` into a shared
+  implementation that can consume an already-derived raw-query layout, added a
+  `MemDescType`/`RankedTensorType` overload of
+  `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery`, and routed active
+  self-contained descriptors through the type-local overload before legacy
+  Value-based raw-query probing.
+- Result:
+  M64 split-N query-type-vs-raw-query ordering for migrated active subviews is
+  now derived from the current descriptor type/layout and register layout. The
+  existing Value wrapper remains for legacy descriptors that still require
+  producer-chain raw-query inference.
+- Validation evidence:
+  required `make -j8`; exact selected active-subview ld/st rows `4 passed`;
+  M64 split-N ld/st cluster `20 passed`; targeted lit set `6/6`;
+  `git diff --check` passed.
+- Next concrete step:
+  commit and push this checkpoint. Then continue auditing remaining
+  value-taking verifier/lowering helpers and convert active self-contained
+  semantics to type-local overloads where possible.

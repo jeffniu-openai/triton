@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:05 UTC
+Last updated: 2026-04-23 05:10 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -93,7 +93,10 @@ Active implementation checklist:
   helpers now return type-local active-subview plans before entering
   value-chain row-plan/backing-plan logic. First query-rescue locality slice:
   row-zero lifted query-type rescue gating is now a `MemDescType` predicate and
-  verifier/lowering callers use the type-local overload.
+  verifier/lowering callers use the type-local overload. First M64
+  query-ordering slice: active self-contained descriptors now choose M64
+  query-type-before-raw-query lowering order from their current
+  `MemDescType`/register layout instead of a value-chain raw-query probe.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -132,7 +135,9 @@ has explicit type-local entry points:
 `getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType, offsets)`. The old
 value-taking helpers still preserve physical-bitcast behavior and legacy
 producer-chain fallback, but the semantic type-local path is now callable and
-auditable independently.
+auditable independently. Ld/st query-rescue and M64 query-ordering now also
+have type-local entry points for active self-contained descriptors; legacy
+Value wrappers remain for descriptor classes not migrated yet.
 
 Current B-scale checkpoint: scaled-MMAv5 B-scale storage classification now has
 a type-local entry point, `getMMAv5ScaledBScaleStorageType(MemDescType)`.

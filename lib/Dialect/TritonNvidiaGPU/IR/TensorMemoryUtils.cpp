@@ -3564,18 +3564,16 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQueryRequest(
                                                 numWarps, allow16Bit);
 }
 
-bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
-    Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom) {
-  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+static bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQueryImpl(
+    MemDescType memTy, std::optional<TMemLdStQueryLayout> rawQuery,
+    unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom) {
   if (!isM64SplitNDescriptorType(memTy, numWarps))
     return false;
   if (desiredAtom && *desiredAtom != TMemAccessAtom::I32x32b &&
       *desiredAtom != TMemAccessAtom::I16x32bx2) {
     return false;
   }
-  auto rawQuery = inferStandaloneTMemLdStQueryLayout(
-      memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);
-  if (failed(rawQuery))
+  if (!rawQuery)
     return true;
 
   auto kRow = StringAttr::get(memTy.getContext(), "row");
@@ -3587,10 +3585,44 @@ bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
            activeLayout.getInDimSize(kRow) == memTy.getShape()[0]);
 }
 
+bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+    Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom) {
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  std::optional<TMemLdStQueryLayout> rawQuery;
+  if (auto maybeRawQuery = inferStandaloneTMemLdStQueryLayout(
+          memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);
+      succeeded(maybeRawQuery)) {
+    rawQuery = *maybeRawQuery;
+  }
+  return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQueryImpl(
+      memTy, rawQuery, numWarps, desiredAtom);
+}
+
+bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(MemDescType memTy,
+                                                         RankedTensorType regTy) {
+  auto regLayout = toLinearEncoding(regTy).getLinearLayout();
+  auto kWarp = StringAttr::get(memTy.getContext(), "warp");
+  unsigned numWarps =
+      regLayout.hasInDim(kWarp) ? regLayout.getInDimSize(kWarp) : 4;
+  if (isM64SplitNDescriptorType(memTy, numWarps) &&
+      llvm::equal(memTy.getShape(), memTy.getAllocShape()))
+    return false;
+  std::optional<TMemLdStQueryLayout> rawQuery;
+  if (auto maybeRawQuery =
+          inferTypeLocalTMemLdStQueryLayout(memTy, /*error=*/nullptr);
+      succeeded(maybeRawQuery)) {
+    rawQuery = *maybeRawQuery;
+  }
+  return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQueryImpl(
+      memTy, rawQuery, numWarps, /*desiredAtom=*/std::nullopt);
+}
+
 bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
     Value memDesc, MemDescType memTy, RankedTensorType regTy) {
   if (!memDesc)
     return false;
+  if (hasSelfContainedTMemSubviewLayout(memTy))
+    return shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(memTy, regTy);
   auto regLayout = toLinearEncoding(regTy).getLinearLayout();
   auto kWarp = StringAttr::get(memTy.getContext(), "warp");
   unsigned numWarps =

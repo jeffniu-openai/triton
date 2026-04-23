@@ -1434,3 +1434,18 @@ High-priority hacks and debt to remove after replacement coverage exists:
   4-GPU `(ldst or ld_red) and not reports and not scales` split passed as
   group1 `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`, group3
   `130 passed, 20 skipped`, group4 `147 passed`.
+
+### 2026-04-23 M64 Query-Ordering Helper Separation
+
+- `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery` now has a
+  `MemDescType`/register-layout overload for active self-contained
+  descriptors. The shared predicate accepts an already-derived type-local
+  raw-query layout, so migrated active subviews do not need a producer-chain
+  raw-query probe to decide M64 split-N query-type-vs-raw-query order.
+- Legacy descriptor classes still use the Value wrapper and existing
+  standalone raw-query inference. This keeps the change scoped to descriptors
+  whose current type/layout already encode the semantic facts required by the
+  new memdesc model.
+- Validation after this slice: required `make -j8`; exact selected
+  active-subview ld/st rows `4 passed`; M64 split-N ld/st cluster `20 passed`;
+  targeted lit set `6/6`; `git diff --check` passed.
