@@ -1365,3 +1365,22 @@ High-priority hacks and debt to remove after replacement coverage exists:
   adjacent ld.red selector `53 passed, 1591 deselected`; 4-GPU
   `ld_red and not reports and not scales` split passed as group1 `61 passed`,
   group2 `61 passed`, group3 `61 passed`, group4 `59 passed`.
+
+### 2026-04-23 Loop-Carried Active-Subview Ld/St Sentinel
+
+- Added runtime coverage for normal ld/st after a selected active column
+  subview flows through an `scf.for` result. The kernel initializes two
+  same-typed `128x128xf32` views of one `128x256xf32` parent, carries the
+  selected descriptor through a loop, then calls `get_reg_layout()`, loads from
+  the selected descriptor, stores through it, and reads back both explicit
+  candidate views.
+- This covers the no-local-producer use shape required by the new memdesc
+  model. The consumer only sees the current memdesc SSA value and type/layout;
+  it cannot rely on walking directly to a visible subslice producer.
+- No backend change was required. Existing active-subview type-local ld/st
+  planning handles the loop-carried memdesc result.
+- Validation after this slice: required `make -j8`; exact new rows `2 passed`;
+  adjacent ld/st selector `42 passed, 1604 deselected`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `89 passed`,
+  group2 `35 passed, 54 skipped`, group3 `65 passed, 24 skipped`, group4
+  `68 passed, 20 skipped`.

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:34 UTC
+Last updated: 2026-04-23 04:45 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -83,7 +83,9 @@ Active implementation checklist:
   selected-subview sentinel: selected active column subviews now have a
   runtime positive that initializes both candidates, stores through the selected
   descriptor, and loads both candidates to prove the selected store uses the
-  current runtime `taddr`.
+  current runtime `taddr`. First loop-carried active subview sentinel: an
+  `scf.for`-carried selected active subview now loads, stores, and feeds
+  `get_reg_layout()` correctly without a local view producer at the consumer.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -168,6 +170,17 @@ selector-1 case would fail if the selected store ignored the memdesc SSA value's
 current `taddr` while explicit loads still used their own view bases. This
 validates the selected-value contract for normal ld/st independently of the
 copy and scales paths.
+
+Current loop-carried normal ld/st selected-subview checkpoint:
+a representative active column subview now flows through an `scf.for` result
+before `get_reg_layout()`, `ttng.tmem_load`, and `ttng.tmem_store`. The test
+uses selector `0` to switch to the second candidate and selector `2` to keep
+the initial candidate, then verifies the selected pre-store load and both
+explicit post-store candidate loads. Validation: required `make -j8`; exact new
+rows `2 passed`; adjacent ld/st selector `42 passed, 1604 deselected`; 4-GPU
+`ldst and not reports and not scales` split passed as group1 `89 passed`,
+group2 `35 passed, 54 skipped`, group3 `65 passed, 24 skipped`, group4
+`68 passed, 20 skipped`.
 
 Current ld.red selected-view checkpoint:
 a representative dynamic selected descriptor-chain ld.red row is covered as a

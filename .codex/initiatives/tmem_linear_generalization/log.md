@@ -34764,6 +34764,35 @@ Open after this slice:
   callers where producer-chain recovery can still decide legality instead of
   current `MemDescType`/layout facts.
 
+## 2026-04-23 04:45 UTC: loop-carried selected ld/st active-subview coverage
+
+- Branch/HEAD before this validation slice:
+  `6d20e69d1 Cover selected ld.red column subviews`.
+- Motivation:
+  `arith.select` selected active subviews were covered for ld/st, copy, and
+  ld.red, but the memdesc-model plan also requires consumers to work when the
+  selected descriptor reaches them through control-flow block results. This
+  probes the no-local-producer case for handle-aware `get_reg_layout()` and
+  normal ld/st lowering.
+- Completed coverage:
+  added `tmem_ldst_loop_carried_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_ldst_loop_carried_linear_subslice_view`. The kernel
+  carries a same-typed active column subview through an `scf.for` result,
+  loads the selected pre-store value, stores through the selected descriptor,
+  and then loads both explicit candidate views.
+- Result:
+  no backend repair was required. Existing active-subview type-local ld/st
+  planning handles the loop-carried descriptor value.
+- Validation evidence:
+  required `make -j8`; exact new rows `2 passed`; adjacent ld/st selector
+  `42 passed, 1604 deselected`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `89 passed`,
+  group2 `35 passed, 54 skipped`, group3 `65 passed, 24 skipped`, group4
+  `68 passed, 20 skipped`.
+- Remaining migration frontier:
+  continue helper API separation and classify/replace remaining value-taking
+  semantic helpers with type-local overloads where possible.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

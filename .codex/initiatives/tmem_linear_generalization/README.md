@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 04:34 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 04:45 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -76,8 +76,18 @@ physical query before attempting legacy standalone/exact producer-chain
 reconstruction.
 Normal ld/st selected active column subviews now also have runtime coverage
 that checks both candidate views after storing through the selected descriptor.
+The same active-subview ld/st surface is now also covered through an `scf.for`
+carried memdesc value, including handle-aware `get_reg_layout()`, selected
+load, selected store, and explicit candidate readback.
 
-Latest validation checkpoint: 2026-04-23 04:34 UTC added dynamic selected
+Latest validation checkpoint: 2026-04-23 04:45 UTC added loop-carried selected
+normal ld/st active column-subview coverage. Validation: required `make -j8`;
+exact new rows `2 passed`; adjacent ld/st selector
+`42 passed, 1604 deselected`; 4-GPU `ldst and not reports and not scales`
+split passed as group1 `89 passed`, group2 `35 passed, 54 skipped`, group3
+`65 passed, 24 skipped`, group4 `68 passed, 20 skipped`.
+
+Previous validation checkpoint: 2026-04-23 04:34 UTC added dynamic selected
 ld.red active column-subview coverage. Validation: required `make -j8`; exact
 new rows `2 passed`; adjacent ld.red selector `53 passed, 1591 deselected`;
 4-GPU `ld_red and not reports and not scales` split passed as group1

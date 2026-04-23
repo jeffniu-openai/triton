@@ -18070,3 +18070,15 @@ rejection, not rescue
   selector `53 passed, 1591 deselected`; 4-GPU
   `ld_red and not reports and not scales` split passed as group1 `61 passed`,
   group2 `61 passed`, group3 `61 passed`, group4 `59 passed`.
+
+- 2026-04-23 loop-carried active-subview ld/st sentinel completed. Added
+  `tmem_ldst_loop_carried_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_ldst_loop_carried_linear_subslice_view`, carrying a
+  same-typed active column subview through an `scf.for` result before
+  handle-aware `get_reg_layout()`, selected load, selected store, and explicit
+  candidate readback. This covers a no-local-producer consumer shape from the
+  memdesc-model plan. Validation: required `make -j8`; exact new rows
+  `2 passed`; adjacent ld/st selector `42 passed, 1604 deselected`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `89 passed`,
+  group2 `35 passed, 54 skipped`, group3 `65 passed, 24 skipped`, group4
+  `68 passed, 20 skipped`.
