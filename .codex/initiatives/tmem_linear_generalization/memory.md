@@ -18454,3 +18454,20 @@ rejection, not rescue
   dynamic selector passed as group1 `5 passed`, group2 `5 passed`, group3
   `5 passed`, group4 `3 passed`; lit `tmem_layouts.mlir` `1 passed`;
   `git diff --check` passed.
+
+- 2026-04-23 20:01 UTC scales ld/st helper-locality slice completed. Scales
+  descriptor-view support-query planning now dispatches through a
+  type-local scales descriptor-view query helper and chooses row plans from
+  the current `MemDescType`, leaving the value-shaped standalone planner as
+  legacy compatibility instead of the semantic support path. The dynamic
+  scales ld/st descriptor-view runtime row now tests both selector values
+  with distinct candidate roots (`inp + 3` vs. `inp + 8`), proving the
+  selected runtime `taddr` remains live. Validation: required `make -j8`;
+  exact dynamic scales ld/st descriptor-view rows `4 passed`; adjacent
+  scales descriptor-view selector `16 passed, 1691 deselected`; four-GPU
+  `ldst_scales and not reports` selector passed as group1 `9 passed`,
+  group2 `9 passed`, group3 `9 passed`, group4 `6 passed`; lit
+  `tmem_layouts.mlir` `1 passed`; `git diff --check` passed. Remaining
+  helper split work continues with semantic lowering/verifier callers that
+  still expose value-shaped compatibility wrappers, while packed-lane
+  `tcgen05.copy` scheduling remains a separate planner/modeling boundary.

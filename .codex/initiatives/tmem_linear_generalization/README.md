@@ -183,7 +183,21 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 19:27 UTC cleaned up the
+Latest validation checkpoint: 2026-04-23 20:01 UTC completed the scales ld/st
+helper-locality slice. Scales descriptor-view load/store support planning
+now uses a type-local scales descriptor-view query helper and type-local
+row-plan selection instead of routing the semantic support path through the
+value-shaped standalone planner. Dynamic scales ld/st descriptor-view
+coverage now runs selector 0 and selector 1 with distinct candidate roots,
+expecting `inp + 3` and `inp + 8`, so the selected runtime `taddr` is
+observable. Validation: required `make -j8`; exact dynamic scales ld/st
+descriptor-view rows `4 passed`; adjacent scales descriptor-view selector
+`16 passed, 1691 deselected`; four-GPU `ldst_scales and not reports`
+selector passed as group1 `9 passed`, group2 `9 passed`, group3
+`9 passed`, group4 `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 19:27 UTC cleaned up the
 scalar packed-subword ld/st fallback naming/masks and added dynamic consumer
 coverage. Dynamic f32 `memdesc_index` views now prove the split between
 hardware `ld.red` when the selector lives on physical column bit 5 and

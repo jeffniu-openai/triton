@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 19:27 UTC
+Last updated: 2026-04-23 20:01 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -66,7 +66,11 @@ Active implementation checklist:
   descriptor-view slice: generated A/B scales descriptor views now use their
   type-local recovered `tensor_memory_scales` storage type for load/store
   query-type rescue and LLVM planning, preserving the current selected runtime
-  `taddr` and avoiding unsafe canonical dense-linear surrogate lowering. First
+  `taddr` and avoiding unsafe canonical dense-linear surrogate lowering. First scales ld/st
+  helper-locality slice: scales descriptor-view support-query planning now
+  dispatches through the type-local scales descriptor-view query helper and
+  type-local row-plan selection, leaving the value-shaped standalone planner as
+  legacy compatibility instead of the semantic support path. First
   dynamic ld.red selected-view sentinels: same-typed descriptor-chain and
   same-parent active column-subview `arith.select` rows are covered as runtime
   positives, proving the current ld.red path handles those representative
@@ -201,12 +205,20 @@ Active implementation checklist:
   covered as a clean negative for both f16 and i8, and dynamic B-scale
   descriptor-view scaled MMAv5 now selects between distinct runtime scale
   tensors for both padded and unpadded storage views.
+- [x] Scales ld/st helper-locality slice: type-local scales descriptor-view
+  support-query planning now avoids the value-shaped standalone planner and
+  chooses row plans from the current `MemDescType`; dynamic scales ld/st
+  descriptor-view coverage now tests selector 0 and selector 1 with distinct
+  roots so the selected runtime `taddr` is observable.
 - [ ] Packed-lane `tcgen05.copy` scheduling remains a real planner/modeling
   boundary: the current scheduler can identify the lane/dword projection, but
   still lacks a lane-aware source-storage, descriptor-synthesis, and tile
   footprint model that would make such copies legal.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
-  and producer-chain matchers are optimizer-only.
+  and producer-chain matchers are optimizer-only. Latest completed slice:
+  scales descriptor-view load/store support planning now uses the
+  type-local query and row-plan helpers directly, and dynamic selector
+  coverage proves distinct selected scale roots produce distinct values.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
   and example performance checks before considering the migration complete.
 

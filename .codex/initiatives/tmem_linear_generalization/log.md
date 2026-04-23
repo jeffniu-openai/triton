@@ -35710,3 +35710,33 @@ Open after this slice:
   dynamic selector passed as group1 `5 passed`, group2 `5 passed`, group3
   `5 passed`, group4 `3 passed`; lit `tmem_layouts.mlir` `1 passed`;
   `git diff --check` passed.
+
+## 2026-04-23 20:01 UTC: scales ld/st helper-locality checkpoint
+
+- Branch/HEAD at slice start:
+  `f2a681818 Cover dynamic TMEM consumer boundaries`.
+- Completed source slice:
+  split scales descriptor-view load/store support planning so the semantic
+  support path calls a type-local scales descriptor-view query helper and
+  chooses row plans from the current `MemDescType`. The value-taking
+  standalone planner still delegates for compatibility, but support planning
+  no longer needs to route through that value-shaped helper for this
+  descriptor class.
+- Completed test slice:
+  dynamic scales ld/st descriptor-view runtime coverage now executes both
+  selector values with distinct candidate roots. Selector 0 reads the first
+  descriptor and expects `inp + 3`; selector 1 reads the second descriptor
+  and expects `inp + 8`. This prevents a shared-base mistake from being
+  hidden by identical candidate contents.
+- Validation evidence:
+  required `make -j8`; exact dynamic scales ld/st descriptor-view rows
+  `4 passed`; adjacent scales descriptor-view selector `16 passed, 1691
+  deselected`; four-GPU `ldst_scales and not reports` selector passed as
+  group1 `9 passed`, group2 `9 passed`, group3 `9 passed`, group4
+  `6 passed`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.
+- Next concrete step:
+  commit and push this helper-locality checkpoint. Continue splitting
+  semantic lowering/verifier helpers away from producer-chain compatibility
+  wrappers, then return to the packed-lane `tcgen05.copy` scheduler/model
+  boundary when the helper surface is clean.

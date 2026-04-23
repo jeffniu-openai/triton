@@ -5518,6 +5518,29 @@ static void canonicalizeTMemLdStQueryOutDims(TMemLdStQueryLayout &query,
                               query.layout.isSurjective());
 }
 
+static FailureOr<TMemLdStQueryLayout>
+inferTypeLocalTMemScalesDescriptorViewLdStQueryLayout(MemDescType memTy,
+                                                      std::string *error) {
+  if (!isTypeLocalTMemScalesDescriptorView(memTy)) {
+    if (error)
+      *error = "expected tensor memory scales descriptor-view type";
+    return failure();
+  }
+  auto maybeTwoCTAs = getTensorMemoryTwoCTAs(memTy.getEncoding());
+  if (!maybeTwoCTAs) {
+    if (error)
+      *error = "expected tensor memory layout encoding";
+    return failure();
+  }
+
+  auto rawLayout = toLinearLayout(memTy);
+  TMemLdStQueryLayout query{
+      rawLayout, *maybeTwoCTAs,
+      SmallVector<int32_t>(rawLayout.getNumInDims(), 0)};
+  canonicalizeTMemLdStQueryOutDims(query, memTy.getContext());
+  return query;
+}
+
 FailureOr<TMemLdStQueryLayout>
 inferTypeLocalTMemLdStQueryLayout(MemDescType memTy, std::string *error) {
   if (!memTy ||
@@ -5552,20 +5575,8 @@ inferStandaloneTMemLdStQueryLayout(Value memDesc,
   if (auto memTy = dyn_cast<MemDescType>(memDesc.getType())) {
     if (hasSelfContainedTMemSubviewLayout(memTy))
       return inferTypeLocalTMemLdStQueryLayout(memTy, error);
-    if (isTypeLocalTMemScalesDescriptorView(memTy)) {
-      auto maybeTwoCTAs = getTensorMemoryTwoCTAs(memTy.getEncoding());
-      if (!maybeTwoCTAs) {
-        if (error)
-          *error = "expected tensor memory layout encoding";
-        return failure();
-      }
-      auto rawLayout = toLinearLayout(memTy);
-      TMemLdStQueryLayout query{
-          rawLayout, *maybeTwoCTAs,
-          SmallVector<int32_t>(rawLayout.getNumInDims(), 0)};
-      canonicalizeTMemLdStQueryOutDims(query, memDesc.getContext());
-      return query;
-    }
+    if (isTypeLocalTMemScalesDescriptorView(memTy))
+      return inferTypeLocalTMemScalesDescriptorViewLdStQueryLayout(memTy, error);
   }
 
   auto maybeQuery = inferStandaloneTMemLdStQueryLayoutImpl(
@@ -6809,20 +6820,11 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   if (!queryTy)
     return std::nullopt;
   if (isTypeLocalTMemScalesDescriptorView(queryTy)) {
-    auto maybeQuery = inferStandaloneTMemLdStQueryLayout(
-        memDesc, /*preserveNonCanonicalView=*/true, error);
-    if (failed(maybeQuery))
-      return std::nullopt;
-    auto rowPlan = getTMemLdStRowPlanForQueryLayout(
-        memDesc, queryTy, *maybeQuery);
-    if (!rowPlan)
-      rowPlan = getTMemLdStRowPlan(maybeQuery->layout);
-    if (!rowPlan)
-      return std::nullopt;
-    if (debug)
+    auto support = getTypeLocalTMemLdStSupportQueryPlan(queryTy, error);
+    if (debug && support)
       llvm::errs() << "[tmem-ldst-support] type-local scales view layout:\n"
-                   << maybeQuery->layout.toString() << "\n";
-    return TMemLdStSupportQueryPlan{*maybeQuery, rowPlan};
+                   << support->query.layout.toString() << "\n";
+    return support;
   }
   if (hasSelfContainedTMemSubviewLayout(queryTy)) {
     auto support = getTypeLocalTMemLdStSupportQueryPlan(queryTy, error);
@@ -6867,12 +6869,18 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
 
 std::optional<TMemLdStSupportQueryPlan>
 getTypeLocalTMemLdStSupportQueryPlan(MemDescType memTy, std::string *error) {
-  memTy = getSelfContainedTMemSubviewPlanningType(memTy);
-  auto maybeQuery = inferTypeLocalTMemLdStQueryLayout(memTy, error);
+  MemDescType planningTy = isTypeLocalTMemScalesDescriptorView(memTy)
+                               ? memTy
+                               : getSelfContainedTMemSubviewPlanningType(memTy);
+  FailureOr<TMemLdStQueryLayout> maybeQuery =
+      isTypeLocalTMemScalesDescriptorView(planningTy)
+          ? inferTypeLocalTMemScalesDescriptorViewLdStQueryLayout(planningTy,
+                                                                  error)
+          : inferTypeLocalTMemLdStQueryLayout(planningTy, error);
   if (failed(maybeQuery))
     return std::nullopt;
 
-  auto rowPlan = getTMemLdStRowPlanForType(memTy);
+  auto rowPlan = getTMemLdStRowPlanForType(planningTy);
   if (!rowPlan)
     rowPlan = getTMemLdStRowPlan(maybeQuery->layout);
   return TMemLdStSupportQueryPlan{*maybeQuery, rowPlan};

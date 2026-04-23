@@ -1594,7 +1594,7 @@ def tmem_scales_ldst_dynamic_descriptor_view_kernel(in_ptr, out_ptr, selector_pt
     value = ttgl.load(in_ptr + offs)
     converted = ttgl.convert_layout(value, root_layout)
     tmem0.store(converted)
-    tmem1.store(converted)
+    tmem1.store(converted + ttgl.full([M, N], 5, ttgl.int8, layout=root_layout))
 
     view0 = tmem0.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
     view1 = tmem1.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
@@ -9556,6 +9556,7 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("selector_value", (0, 1))
 @pytest.mark.parametrize(
     "num_ctas,cga_layout,expected_ops",
     [
@@ -9583,16 +9584,19 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip(
         ),
     ],
 )
-def test_tmem_runtime_matrix_ldst_scales_dynamic_descriptor_view_roundtrip(num_ctas, cga_layout, expected_ops):
+def test_tmem_runtime_matrix_ldst_scales_dynamic_descriptor_view_roundtrip(
+    selector_value, num_ctas, cga_layout, expected_ops
+):
     M, N = 128, 32
     inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
     out = torch.empty_like(inp)
-    selector = torch.tensor(1, dtype=torch.int32, device="cuda")
+    selector = torch.tensor(selector_value, dtype=torch.int32, device="cuda")
 
     compiled = tmem_scales_ldst_dynamic_descriptor_view_kernel[(1, )](
         inp, out, selector, M, N, "32x32b", cga_layout, num_warps=4, num_ctas=num_ctas
     )
-    torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
+    expected = inp + (8 if selector_value else 3)
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     assert ops == expected_ops
