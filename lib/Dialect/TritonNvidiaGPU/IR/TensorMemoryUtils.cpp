@@ -4561,8 +4561,7 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
   auto queryPlan = getTMemLdStRowPlanForType(queryTy);
   if (!memDesc)
     return queryPlan;
-  if (hasSelfContainedTMemSubviewLayout(queryTy) ||
-      isTypeLocalTMemScalesDescriptorView(queryTy))
+  if (hasTypeLocalTMemLdStLayout(queryTy))
     return queryPlan;
   auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
   if (!queryPlan)
@@ -4668,8 +4667,7 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy || memTy != queryTy)
     return queryPlan;
-  if (hasSelfContainedTMemSubviewLayout(queryTy) ||
-      isTypeLocalTMemScalesDescriptorView(queryTy))
+  if (hasTypeLocalTMemLdStLayout(queryTy))
     return queryPlan;
   if (auto backingPlan = getBackingTMemLdStRowPlan(memDesc)) {
     if (queryPlan && backingPlan->rowSpan > queryPlan->rowSpan &&
@@ -4725,8 +4723,7 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
 std::optional<TMemLdStRowPlan>
 getTMemLdStRowPlanForRawQuery(Value memDesc, MemDescType queryTy,
                               const TMemLdStQueryLayout &queryLayout) {
-  if (hasSelfContainedTMemSubviewLayout(queryTy) ||
-      isTypeLocalTMemScalesDescriptorView(queryTy)) {
+  if (hasTypeLocalTMemLdStLayout(queryTy)) {
     if (auto rowPlan = getTMemLdStRowPlanForType(queryTy))
       return rowPlan;
     return getTMemLdStRowPlan(queryLayout.layout);
@@ -4747,8 +4744,7 @@ getTMemLdStRowPlanForRawQuery(Value memDesc, MemDescType queryTy,
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForSupportQuery(
     Value memDesc, MemDescType queryTy, const TMemLdStQueryLayout &supportQuery,
     std::optional<TMemLdStRowPlan> supportRowPlan) {
-  if (hasSelfContainedTMemSubviewLayout(queryTy) ||
-      isTypeLocalTMemScalesDescriptorView(queryTy)) {
+  if (hasTypeLocalTMemLdStLayout(queryTy)) {
     if (supportRowPlan)
       return supportRowPlan;
     if (auto rowPlan = getTMemLdStRowPlanForType(queryTy))
@@ -4868,6 +4864,11 @@ bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy) {
          tmemLinearLayoutFitsAllocShape(memTy, *maybeLayout);
 }
 
+bool hasTypeLocalTMemLdStLayout(gpu::MemDescType memTy) {
+  return hasSelfContainedTMemSubviewLayout(memTy) ||
+         isTypeLocalTMemScalesDescriptorView(memTy);
+}
+
 gpu::MemDescType getSelfContainedTMemSubviewPlanningType(gpu::MemDescType memTy) {
   if (!hasSelfContainedTMemSubviewLayout(memTy))
     return memTy;
@@ -4920,8 +4921,7 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
   auto memTy = dyn_cast<gpu::MemDescType>(memDesc.getType());
   if (!memTy)
     return queryTypes;
-  if (hasSelfContainedTMemSubviewLayout(memTy) ||
-      isTypeLocalTMemScalesDescriptorView(memTy))
+  if (hasTypeLocalTMemLdStLayout(memTy))
     return getTypeLocalTMemLdStQueryTypes(memTy);
 
   auto add = [&](gpu::MemDescType ty) {
@@ -5581,8 +5581,7 @@ inferStandaloneTMemLdStQueryLayout(Value memDesc,
                                    bool preserveNonCanonicalView,
                                    std::string *error) {
   if (auto memTy = dyn_cast<MemDescType>(memDesc.getType())) {
-    if (hasSelfContainedTMemSubviewLayout(memTy) ||
-        isTypeLocalTMemScalesDescriptorView(memTy))
+    if (hasTypeLocalTMemLdStLayout(memTy))
       return inferTypeLocalTMemLdStQueryLayout(memTy, error);
   }
 
@@ -10470,7 +10469,7 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
 static bool isViewLikeTMemLdStMemDesc(Value memDesc) {
   if (!memDesc)
     return false;
-  if (hasSelfContainedTMemSubviewLayout(
+  if (hasTypeLocalTMemLdStLayout(
           dyn_cast_if_present<MemDescType>(memDesc.getType())))
     return true;
   return isa_and_nonnull<gpu::MemDescIndexOp, TMEMSubSliceOp,
@@ -10512,7 +10511,7 @@ TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
     MemDescType memTy, RankedTensorType regTy, MemDescType queryTy, int maxnreg,
     std::optional<TMemLdStRowPlan> rowPlanOverride, TMemLdStEncodingInfo info) {
   return refineTMemLdStQueryTypeEncodingInfoImpl(
-      hasSelfContainedTMemSubviewLayout(memTy), regTy, queryTy, maxnreg,
+      hasTypeLocalTMemLdStLayout(memTy), regTy, queryTy, maxnreg,
       rowPlanOverride, info);
 }
 

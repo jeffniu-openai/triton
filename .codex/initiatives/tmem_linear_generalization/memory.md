@@ -18499,3 +18499,17 @@ rejection, not rescue
   `9 passed`, group2 `9 passed`, group3 `9 passed`, group4
   `6 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
   passed.
+
+- 2026-04-23 20:11 UTC shared type-local ld/st predicate slice completed. Added
+  `hasTypeLocalTMemLdStLayout(MemDescType)` as the public predicate for
+  descriptor classes whose ld/st semantics are derivable from the current
+  type/layout: active self-contained subviews and scales descriptor views.
+  Query dispatch, row-plan selection, query-type refinement, generic
+  verifier fallback, reduction verifier fallback, and NVIDIA ld/st lowering
+  fallback gates now use that predicate where appropriate. Validation:
+  required `make -j8`; focused `ldst_scales and (descriptor_view or
+  reports)` selector `20 passed, 1687 deselected`; active-subview ld/st
+  selector `12 passed, 1695 deselected`; four-GPU `ldst_scales and not
+  reports` selector passed as group1 `9 passed`, group2 `9 passed`,
+  group3 `9 passed`, group4 `6 passed`; lit `tmem_layouts.mlir`
+  `1 passed`; `git diff --check` passed.

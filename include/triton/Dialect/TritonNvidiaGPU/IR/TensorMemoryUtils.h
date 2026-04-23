@@ -604,6 +604,8 @@ getTypeLocalTMemLdStQueryTypes(gpu::MemDescType memTy);
 
 bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy);
 
+bool hasTypeLocalTMemLdStLayout(gpu::MemDescType memTy);
+
 gpu::MemDescType getSelfContainedTMemSubviewPlanningType(gpu::MemDescType memTy);
 
 bool isTMemLdStHalfRowsDescriptorView(Value memDesc);

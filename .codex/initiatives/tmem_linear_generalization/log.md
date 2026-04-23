@@ -35786,3 +35786,27 @@ Open after this slice:
   commit and push this checkpoint. Continue with the remaining lowering and
   verifier call sites that still need a type-local semantic path before
   falling back to value-chain compatibility.
+
+## 2026-04-23 20:11 UTC: shared type-local ld/st predicate checkpoint
+
+- Branch/HEAD at slice start:
+  `44726b2d7 Keep scales ld/st row plans type-local`.
+- Completed source slice:
+  added `hasTypeLocalTMemLdStLayout(MemDescType)` and routed semantic
+  query, row-plan, query-type refinement, verifier, and NVIDIA lowering
+  fallback gates through it where both active self-contained subviews and
+  scales descriptor views should avoid producer-chain recovery.
+- Validation evidence:
+  required `make -j8`; focused `ldst_scales and (descriptor_view or
+  reports)` selector `20 passed, 1687 deselected`; active-subview ld/st
+  selector `12 passed, 1695 deselected`; four-GPU `ldst_scales and not
+  reports` selector passed as group1 `9 passed`, group2 `9 passed`,
+  group3 `9 passed`, group4 `6 passed`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed. The initial selector `selected_active_subview and ldst`
+  selected zero rows and was replaced with exact collected active-subview
+  ld/st selectors.
+- Next concrete step:
+  commit and push this checkpoint. Continue auditing remaining producer-chain
+  helpers; likely next targets are standalone physical-query/copy helper
+  paths or the packed-lane `tcgen05.copy` scheduling model.

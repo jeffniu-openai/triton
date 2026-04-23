@@ -1478,10 +1478,9 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
       return success();
   }
 
-  bool hasTypeLocalSubviewLayout =
-      hasSelfContainedTMemSubviewLayout(memdesc);
+  bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(memdesc);
   std::string standaloneError;
-  if (!hasTypeLocalSubviewLayout) {
+  if (!hasTypeLocalLdStLayout) {
     if (auto standaloneTy =
             inferStandaloneTMemViewType(memdescValue, &standaloneError);
         succeeded(standaloneTy)) {
@@ -1667,8 +1666,7 @@ LogicalResult TMEMLoadOp::verify() {
                                               getType());
     auto maxnreg = getContextualMaxNReg(*this);
     auto srcMemTy = cast<MemDescType>(getSrc().getType());
-    bool hasTypeLocalSubviewLayout =
-        hasSelfContainedTMemSubviewLayout(srcMemTy);
+    bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(srcMemTy);
     bool directSourceFriendly = isReductionFriendlyTmemSourceLayout(srcMemTy);
     std::string encodingDetails;
     auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
@@ -1706,7 +1704,7 @@ LogicalResult TMEMLoadOp::verify() {
         auto rowPlan = supportPlan->rowPlan;
         if (!rowPlan)
           rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
-        if (!rowPlan && !hasTypeLocalSubviewLayout)
+        if (!rowPlan && !hasTypeLocalLdStLayout)
           rowPlan = getBackingTMemLdStRowPlan(getSrc());
         if (auto maybeInfo = computeTMemLdStEncodingInfo(
                 regTy, srcMemTy, supportPlan->query, maxnreg,
@@ -1721,7 +1719,7 @@ LogicalResult TMEMLoadOp::verify() {
               getSrc(), /*preserveNonCanonicalView=*/true, &rawError);
           succeeded(rawQuery)) {
         auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
-        if (!rowPlan && !hasTypeLocalSubviewLayout)
+        if (!rowPlan && !hasTypeLocalLdStLayout)
           rowPlan = getBackingTMemLdStRowPlan(getSrc());
         if (auto maybeInfo = computeTMemLdStEncodingInfo(
                 regTy, srcMemTy, *rawQuery, maxnreg,

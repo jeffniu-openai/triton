@@ -952,6 +952,7 @@ lowerTMemLdStFromTypes(
       typeLocalScalesStorageTy = *storageTy;
   }
   bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
+  bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(memTy);
   bool useSubwordPhasePath = false;
   if (memTy.getElementTypeBitWidth() < 32 && memDescValue) {
     TMemSubwordPhaseStatus phaseStatus =
@@ -1005,7 +1006,7 @@ lowerTMemLdStFromTypes(
         succeeded(rawQuery)) {
       rawQueryLayout = *rawQuery;
       MemDescType rawMemTy = planningMemTy;
-      if (!hasTypeLocalSubviewLayout && !typeLocalScalesStorageTy) {
+      if (!hasTypeLocalLdStLayout) {
         if (auto maybeStandaloneTy = inferStandaloneTMemRegLayoutQueryType(
                 memDescValue, /*error=*/nullptr);
             succeeded(maybeStandaloneTy)) {
@@ -1014,7 +1015,7 @@ lowerTMemLdStFromTypes(
       }
       rawRowPlan = getTMemLdStRowPlanForQueryLayout(memDescValue, memTy,
                                                     *rawQueryLayout);
-      if (!rawRowPlan && !hasTypeLocalSubviewLayout)
+      if (!rawRowPlan && !hasTypeLocalLdStLayout)
         rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       rawRowPlan = preferBackingRowPlanForDirectRootLoad(rawMemTy, rawRowPlan,
                                                          &*rawQueryLayout);
@@ -1073,7 +1074,7 @@ lowerTMemLdStFromTypes(
       if (!supportRowPlan)
         supportRowPlan =
             getTMemLdStRowPlanForQueryLayout(memDescValue, memTy, supportQuery);
-      if (!supportRowPlan && !hasTypeLocalSubviewLayout)
+      if (!supportRowPlan && !hasTypeLocalLdStLayout)
         supportRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       supportRowPlan = preferBackingRowPlanForDirectRootLoad(
           memTy, supportRowPlan, &supportQuery);
@@ -1213,7 +1214,7 @@ lowerTMemLdStFromTypes(
                                       rowPlan);
       if (succeeded(encodingInfoOr)) {
         *encodingInfoOr =
-            hasTypeLocalSubviewLayout
+            hasTypeLocalLdStLayout
                 ? refineTMemLdStQueryTypeEncodingInfo(
                       memTy, regTy, queryTy, maxnreg, rowPlan, *encodingInfoOr)
                 : refineTMemLdStQueryTypeEncodingInfo(

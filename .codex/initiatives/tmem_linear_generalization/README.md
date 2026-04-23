@@ -183,7 +183,20 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 20:07 UTC tightened scales ld/st row-plan
+Latest validation checkpoint: 2026-04-23 20:11 UTC introduced the shared
+`hasTypeLocalTMemLdStLayout` predicate. Query, row-plan,
+query-type refinement, verifier, and lowering fallback gates now use
+one public descriptor-class predicate when the semantic path should
+cover both active self-contained subviews and scales descriptor views.
+Validation: required `make -j8`; focused `ldst_scales and
+(descriptor_view or reports)` selector `20 passed, 1687
+deselected`; active-subview ld/st selector `12 passed, 1695
+deselected`; four-GPU `ldst_scales and not reports` selector
+passed as group1 `9 passed`, group2 `9 passed`, group3 `9 passed`,
+group4 `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 20:07 UTC tightened scales ld/st row-plan
 locality. Raw-query, support-query, direct query, and query-layout
 row-plan helpers now treat scales descriptor views as type-local, so
 they use the current descriptor type/layout instead of borrowing
