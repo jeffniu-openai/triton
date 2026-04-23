@@ -18167,6 +18167,27 @@ rejection, not rescue
   required `make -j8`; exact new rows `2 passed`; adjacent
   `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
 
+- 2026-04-23 pointwise TMEM view-offset inversion completed.
+  Generic TMEM view offset lowering no longer requires a global
+  `LinearLayout::pseudoinvert()` of the descriptor layout. It now solves only
+  the requested logical offset against the current `MemDescType`/layout and
+  returns the physical row/element-column preimage when that point is
+  representable. This fixes valid non-surjective `warpx2` copy subviews that
+  previously asserted in `lstsq`, keeps `memdesc_subslice` lowering on the
+  ordinary type-local `getTMemViewElementOffset(srcTy, offsets)` path, and
+  gives analyses an optional query for genuinely non-representable points.
+  The load+reduce fusion pattern now delays address-alignment analysis until a
+  reduction user has actually matched, avoiding unnecessary phase queries on
+  plain loads. Validation: required `make -j8`; saved warpx2 compiler
+  reproducer
+  `triton-opt /tmp/tmem_cp_warpx2_subslice_llir_fail.mlir --run-reproducer`
+  passed; exact warpx2 runtime row `2 passed, 1687 deselected`; focused
+  subword ld/st selector `12 passed, 1677 deselected`; combined non-scale
+  runtime selector `(ldst or ld_red or cp_no_scales) and not reports and not
+  scales` passed split-4 as group1 `145 passed, 11 skipped`, group2
+  `89 passed, 67 skipped`, group3 `136 passed, 20 skipped`, group4
+  `156 passed`.
+
 - 2026-04-23 subword ld/st storage-layout coverage added. Runtime positives
   now cover tile-permuted packed f16 storage plus legacy unpacked/padded f16
   and i8 storage. The latter rows show that logical odd-column views can be

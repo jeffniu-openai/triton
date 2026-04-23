@@ -35560,3 +35560,40 @@ Open after this slice:
   commit and push this coverage checkpoint. Continue with remaining
   non-contiguous subword negatives/positives and broader 4-GPU sweeps after
   the local consumer inventory is stable.
+
+## 2026-04-23 09:28 UTC: pointwise TMEM view-offset inverse
+
+- Branch/HEAD at slice start:
+  `577e161b6 Cover additional subword TMEM storage layouts`.
+- Finding:
+  the final `cp_no_scales` shard exposed 16 `warpx2` view cases asserting in
+  `LinearLayout::lstsq`. The descriptor layouts are non-surjective globally
+  because some logical row bits are not in the physical image, but the concrete
+  copy subview offsets are still representable. Requiring a whole-layout
+  pseudoinverse was therefore too strong for valid view-address lowering.
+- Completed source slice:
+  `getTMemViewPhysicalRowElementCol` now uses a pointwise GF(2) solve for the
+  requested logical offset, returning the physical row/element-column preimage
+  when that point is representable. The public optional variant lets phase and
+  alignment analyses return unknown for non-representable points instead of
+  asserting. Generic TMEM `memdesc_subslice` lowering again derives the
+  element-column offset directly from the current source `MemDescType` and
+  layout; the temporary chain-query element-offset workaround was removed.
+  `OptimizeTMemLayouts` also delays ld.red address-alignment analysis until it
+  has matched an actual reduction user, so unrelated plain loads do not force
+  phase analysis on difficult descriptor layouts.
+- Validation evidence:
+  required `make -j8`; saved compiler reproducer
+  `/tmp/tmem_cp_warpx2_subslice_llir_fail.mlir` passed with
+  `triton-opt --run-reproducer`; exact warpx2 runtime row passed
+  `2 passed, 1687 deselected`; focused subword ld/st selector passed
+  `12 passed, 1677 deselected`; combined non-scale TMEM runtime selector
+  `(ldst or ld_red or cp_no_scales) and not reports and not scales` passed
+  across four GPU shards as group1 `145 passed, 11 skipped`, group2
+  `89 passed, 67 skipped`, group3 `136 passed, 20 skipped`, group4
+  `156 passed`.
+- Next concrete step:
+  commit and push this correctness checkpoint. Continue with the remaining
+  non-contiguous subword classification and helper API separation, keeping
+  lowering legality derived from current memdesc type/layout and current
+  `taddr`, not from producer-chain reconstruction.

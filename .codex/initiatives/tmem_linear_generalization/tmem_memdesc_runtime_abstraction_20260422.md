@@ -638,7 +638,10 @@ Checklist state:
 - [ ] Introduce type-local descriptor-planning helpers beside the existing
   chain-dependent helpers.
 - [ ] Fix TMEM view result type computation and source-type-only `taddr`
-  lowering for origin-changing views.
+  lowering for origin-changing views. Pointwise view-offset inversion is now
+  type/local for static offsets: lowering solves the requested logical offset
+  against the current `MemDescType`/layout instead of requiring a global
+  layout pseudoinverse.
 - [ ] Migrate ld/st planning to type-local analysis.
   First row-plan slice complete: active self-contained subviews use the current
   descriptor's row plan instead of parent backing-row plans. First raw-query
@@ -1883,3 +1886,33 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; focused unaligned subword
   ld/st selector `14 passed, 1675 deselected`; adjacent subword copy/ldst
   selector `53 passed, 1636 deselected`; `git diff --check` passed.
+
+### 2026-04-23 Pointwise View-Offset Inversion
+
+- A `warpx2` copy-subview shard showed that globally non-surjective layouts
+  can still have valid preimages for the concrete logical offsets used by a
+  view. The old `ll.pseudoinvert().apply(offsets)` path required the whole
+  image to be invertible enough for a layout-wide pseudoinverse and asserted in
+  `LinearLayout::lstsq` before lowering could use the representable point.
+- `getTMemViewPhysicalRowElementCol` now solves one augmented GF(2) system for
+  the requested logical offset and returns the physical row/element-column
+  point when it exists. The public optional variant lets analysis callers
+  report unknown for non-representable points; the non-optional helper keeps
+  the existing hard-failure behavior for code paths that require a valid
+  offset.
+- Because the point solve is now strong enough, generic TMEM
+  `memdesc_subslice` lowering no longer needs a chain-query element-offset
+  workaround. It uses `getTMemViewElementOffset(srcTy, offsets)`, so the
+  lowered address update is derived from the current source `MemDescType` and
+  explicit offsets only.
+- The load+reduce fusion pattern now calls the hardware `ld.red` address
+  alignment helper only after it has found a reduction user. This avoids
+  executing phase/alignment analysis on plain loads that cannot be fused and
+  whose descriptor layouts may be difficult but irrelevant to reduction
+  legality.
+- Validation after this slice: required `make -j8`; saved warpx2 compiler
+  reproducer passed with `triton-opt --run-reproducer`; exact warpx2 runtime
+  row `2 passed, 1687 deselected`; focused subword ld/st selector `12 passed,
+  1677 deselected`; combined non-scale TMEM runtime selector passed as group1
+  `145 passed, 11 skipped`, group2 `89 passed, 67 skipped`, group3
+  `136 passed, 20 skipped`, group4 `156 passed`.

@@ -46,6 +46,7 @@
 #include "triton/Tools/StrUtil.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
+#include "third_party/f2reduce/f2reduce.h"
 
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.cpp.inc"
 
@@ -2446,11 +2447,81 @@ uint32_t getTMemSubSliceElementOffset(MemDescType memDescType,
   return getTMemViewElementOffset(memDescType, offsets);
 }
 
-static std::pair<uint32_t, uint32_t>
-getTMemViewPhysicalRowElementColImpl(const LinearLayout &ll, unsigned memRank,
-                                     ArrayRef<int32_t> offsets,
-                                     ArrayRef<int64_t> prefixShape) {
-  assert(offsets.size() == memRank);
+static std::optional<SmallVector<std::pair<StringAttr, uint32_t>>>
+solveLinearLayoutPointPreimage(
+    const LinearLayout &ll,
+    ArrayRef<std::pair<StringAttr, int32_t>> logicalOffsets) {
+  int numRows = ll.getTotalOutDimSizeLog2();
+  int numCols = ll.getTotalInDimSizeLog2();
+  // Unlike LinearLayout::pseudoinvert(), this solves only one requested logical
+  // offset. Non-surjective layouts can still have a valid preimage for that
+  // point, which is enough to update the current TMEM descriptor address.
+  if (numCols >= 64)
+    return std::nullopt;
+
+  auto lookupOffset = [&](StringAttr dim) -> std::optional<int32_t> {
+    for (auto [offsetDim, offset] : logicalOffsets) {
+      if (offsetDim == dim)
+        return offset;
+    }
+    return 0;
+  };
+
+  auto matrix = getMatrix(ll);
+  std::unique_ptr<uint64_t[]> augmented(new uint64_t[numRows]());
+  int row = 0;
+  for (StringAttr outDim : ll.getOutDimNames()) {
+    auto maybeOffset = lookupOffset(outDim);
+    if (!maybeOffset || *maybeOffset < 0 ||
+        *maybeOffset >= ll.getOutDimSize(outDim))
+      return std::nullopt;
+    auto offset = static_cast<uint32_t>(*maybeOffset);
+    for (int bit = 0; bit < ll.getOutDimSizeLog2(outDim); ++bit, ++row) {
+      augmented[row] = matrix[row];
+      if ((offset >> bit) & 1u)
+        augmented[row] |= 1ull << numCols;
+    }
+  }
+
+  f2reduce::inplace_rref_strided(augmented.get(), numRows, numCols + 1,
+                                 /*stride=*/1);
+
+  uint64_t coeffMask = (1ull << numCols) - 1;
+  uint64_t rhsMask = 1ull << numCols;
+  uint64_t solution = 0;
+  for (int r = 0; r < numRows; ++r) {
+    uint64_t coeffs = augmented[r] & coeffMask;
+    bool rhs = (augmented[r] & rhsMask) != 0;
+    if (coeffs == 0) {
+      if (rhs)
+        return std::nullopt;
+      continue;
+    }
+    int pivot = __builtin_ctzll(coeffs);
+    if (rhs)
+      solution |= 1ull << pivot;
+  }
+
+  SmallVector<std::pair<StringAttr, uint32_t>> physicalOffsets;
+  int col = 0;
+  for (StringAttr inDim : ll.getInDimNames()) {
+    uint32_t value = 0;
+    for (int bit = 0; bit < ll.getInDimSizeLog2(inDim); ++bit, ++col) {
+      if ((solution >> col) & 1ull)
+        value |= 1u << bit;
+    }
+    physicalOffsets.push_back({inDim, value});
+  }
+  return physicalOffsets;
+}
+
+static std::optional<std::pair<uint32_t, uint32_t>>
+tryGetTMemViewPhysicalRowElementColImpl(const LinearLayout &ll,
+                                        unsigned memRank,
+                                        ArrayRef<int32_t> offsets,
+                                        ArrayRef<int64_t> prefixShape) {
+  if (offsets.size() != memRank)
+    return std::nullopt;
   auto *ctx = (*ll.getInDimNames().begin()).getContext();
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
@@ -2476,8 +2547,10 @@ getTMemViewPhysicalRowElementColImpl(const LinearLayout &ll, unsigned memRank,
                    [](const std::pair<StringAttr, int32_t> &offset) {
                      return offset.second != 0;
                    })) {
-    auto rowColBlock = ll.pseudoinvert().apply(logicalOffsets);
-    for (auto [dim, value] : rowColBlock) {
+    auto rowColBlock = solveLinearLayoutPointPreimage(ll, logicalOffsets);
+    if (!rowColBlock)
+      return std::nullopt;
+    for (auto [dim, value] : *rowColBlock) {
       if (dim == kRow) {
         offsetRow = value;
       } else if (dim == kCol) {
@@ -2492,7 +2565,19 @@ getTMemViewPhysicalRowElementColImpl(const LinearLayout &ll, unsigned memRank,
     offsetCol += linearizePrefixOffsets(prefixShape, offsets.take_front(extraRank)) *
                  singleBufferCols;
   }
-  return {offsetRow, offsetCol};
+  return std::make_pair(offsetRow, offsetCol);
+}
+
+static std::pair<uint32_t, uint32_t>
+getTMemViewPhysicalRowElementColImpl(const LinearLayout &ll, unsigned memRank,
+                                     ArrayRef<int32_t> offsets,
+                                     ArrayRef<int64_t> prefixShape) {
+  auto result =
+      tryGetTMemViewPhysicalRowElementColImpl(ll, memRank, offsets, prefixShape);
+  if (!result)
+    llvm_unreachable(
+        "TMEM view offset is not representable by descriptor layout");
+  return *result;
 }
 
 static uint32_t getTMemViewOffsetImpl(const LinearLayout &ll, unsigned memRank,
@@ -2531,8 +2616,21 @@ static LinearLayout getTMemViewOffsetAnalysisLayout(MemDescType memDescType) {
 std::pair<uint32_t, uint32_t>
 getTMemViewPhysicalRowElementCol(MemDescType memDescType,
                                  ArrayRef<int32_t> offsets) {
+  auto result = tryGetTMemViewPhysicalRowElementCol(memDescType, offsets);
+  if (!result)
+    llvm_unreachable(
+        "TMEM view offset is not representable by descriptor layout");
+  return *result;
+}
+
+std::optional<std::pair<uint32_t, uint32_t>>
+tryGetTMemViewPhysicalRowElementCol(MemDescType memDescType,
+                                    ArrayRef<int32_t> offsets) {
+  if (!memDescType ||
+      offsets.size() != static_cast<size_t>(memDescType.getRank()))
+    return std::nullopt;
   LinearLayout ll = getTMemViewOffsetAnalysisLayout(memDescType);
-  return getTMemViewPhysicalRowElementColImpl(
+  return tryGetTMemViewPhysicalRowElementColImpl(
       ll, memDescType.getRank(), offsets,
       memDescType.getShape().take_front(
           memDescType.getRank() > ll.getNumOutDims()

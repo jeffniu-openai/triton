@@ -86,6 +86,14 @@ passed after that cleanup as group1 `14 passed`, group2 `14 passed`, group3
 The scalar refinement helper now also has a `MemDescType` overload, and active
 lowering calls that overload directly; the Value-taking overload remains as
 legacy descriptor-view compatibility.
+TMEM view-offset lowering now uses a type/local pointwise preimage solve
+instead of requiring a global `LinearLayout::pseudoinvert()`. Non-surjective
+layouts such as `warpx2` copy views can therefore advance the current `taddr`
+when the requested logical offset is representable, while optional query
+callers can conservatively treat non-representable points as unknown. Generic
+TMEM `memdesc_subslice` lowering derives its element-column offset directly
+from the current source `MemDescType` and layout; no chain-query element-offset
+workaround is needed.
 Subword active selected column subviews now have runtime coverage for f16 and
 i8 dynamic-select and loop-carried values across both ld/st and dense
 `tcgen05.copy`. The shared sentinel kernels now allocate TMEM with the input
@@ -168,7 +176,18 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 08:32 UTC added subword ld/st storage
+Latest validation checkpoint: 2026-04-23 09:28 UTC fixed pointwise TMEM view
+offset inversion for non-surjective but representable layouts. Validation:
+required `make -j8`; saved warpx2 compiler reproducer
+`triton-opt /tmp/tmem_cp_warpx2_subslice_llir_fail.mlir --run-reproducer`
+passed; exact warpx2 runtime row `2 passed, 1687 deselected`; focused
+subword ld/st selector `12 passed, 1677 deselected`; combined non-scale TMEM
+runtime selector `(ldst or ld_red or cp_no_scales) and not reports and not
+scales` passed across four GPU shards as group1 `145 passed, 11 skipped`,
+group2 `89 passed, 67 skipped`, group3 `136 passed, 20 skipped`, group4
+`156 passed`.
+
+Previous validation checkpoint: 2026-04-23 08:32 UTC added subword ld/st storage
 coverage for tile-permuted packed f16 and unpacked/padded f16/i8 layouts.
 Validation: required `make -j8`; focused unaligned subword ld/st selector
 `14 passed, 1675 deselected`; adjacent subword copy/ldst selector `53 passed,

@@ -144,6 +144,10 @@ std::pair<uint32_t, uint32_t>
 getTMemViewPhysicalRowElementCol(gpu::MemDescType memDescType,
                                  ArrayRef<int32_t> offsets);
 
+std::optional<std::pair<uint32_t, uint32_t>>
+tryGetTMemViewPhysicalRowElementCol(gpu::MemDescType memDescType,
+                                    ArrayRef<int32_t> offsets);
+
 uint32_t getTMemViewElementOffset(gpu::MemDescType memDescType,
                                   ArrayRef<int32_t> offsets);
 

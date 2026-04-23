@@ -153,6 +153,38 @@ advanceTMemSubwordPhaseInfo(TMemSubwordPhaseInfo srcInfo,
           /*unknown=*/false};
 }
 
+static int32_t lookupTMemOriginForPhase(ArrayRef<StringAttr> dims,
+                                        ArrayRef<int32_t> origin,
+                                        StringAttr dim) {
+  for (auto [idx, candidate] : llvm::enumerate(dims)) {
+    if (candidate == dim && idx < origin.size())
+      return origin[idx];
+  }
+  return 0;
+}
+
+static std::optional<uint32_t> tryGetTMemSubviewElementColDeltaForPhase(
+    Value src, Value dst, MLIRContext *ctx) {
+  std::string error;
+  auto srcQuery = inferStandaloneTMemLdStQueryLayout(
+      src, /*preserveNonCanonicalView=*/true, &error);
+  auto dstQuery = inferStandaloneTMemLdStQueryLayout(
+      dst, /*preserveNonCanonicalView=*/true, &error);
+  if (failed(srcQuery) || failed(dstQuery))
+    return std::nullopt;
+
+  auto kCol = StringAttr::get(ctx, "col");
+  int32_t srcCol = lookupTMemOriginForPhase(
+      llvm::to_vector(srcQuery->layout.getInDimNames()), srcQuery->origin,
+      kCol);
+  int32_t dstCol = lookupTMemOriginForPhase(
+      llvm::to_vector(dstQuery->layout.getInDimNames()), dstQuery->origin,
+      kCol);
+  if (dstCol < srcCol)
+    return std::nullopt;
+  return static_cast<uint32_t>(dstCol - srcCol);
+}
+
 static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
     Value memDesc, unsigned depth, SmallPtrSetImpl<Value> &seen,
     uint32_t modulus);
@@ -334,8 +366,14 @@ static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
         getTMemSubwordPhaseInfoImpl(subslice.getSrc(), depth + 1, seen,
                                     modulus);
     auto physicalOffset =
-        getTMemViewPhysicalRowElementCol(srcTy, subslice.getOffsets());
-    return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset.second, modulus);
+        tryGetTMemViewPhysicalRowElementCol(srcTy, subslice.getOffsets());
+    if (!physicalOffset) {
+      if (auto colDelta = tryGetTMemSubviewElementColDeltaForPhase(
+              subslice.getSrc(), memDesc, memDesc.getContext()))
+        return advanceTMemSubwordPhaseInfo(srcInfo, *colDelta, modulus);
+      return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+    }
+    return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset->second, modulus);
   }
 
   if (auto subslice = memDesc.getDefiningOp<TMEMSubSliceOp>()) {
@@ -345,8 +383,10 @@ static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
                                     modulus);
     SmallVector<int32_t> offsets(srcTy.getRank(), 0);
     offsets.back() = subslice.getN();
-    auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
-    return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset.second, modulus);
+    auto physicalOffset = tryGetTMemViewPhysicalRowElementCol(srcTy, offsets);
+    if (!physicalOffset)
+      return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+    return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset->second, modulus);
   }
 
   if (auto index = memDesc.getDefiningOp<gpu::MemDescIndexOp>()) {
@@ -357,8 +397,10 @@ static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
     if (matchPattern(index.getIndex(), m_ConstantInt(&indexValue))) {
       SmallVector<int32_t> offsets(srcTy.getRank(), 0);
       offsets.front() = indexValue.getSExtValue();
-      auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
-      return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset.second,
+      auto physicalOffset = tryGetTMemViewPhysicalRowElementCol(srcTy, offsets);
+      if (!physicalOffset)
+        return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+      return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset->second,
                                          modulus);
     }
 
@@ -367,11 +409,13 @@ static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
     for (int64_t bit = 1; bit < dimSize; bit <<= 1) {
       SmallVector<int32_t> offsets(srcTy.getRank(), 0);
       offsets.front() = bit;
-      auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
-      if (physicalOffset.second % modulus != 0) {
+      auto physicalOffset = tryGetTMemViewPhysicalRowElementCol(srcTy, offsets);
+      if (!physicalOffset)
+        return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+      if (physicalOffset->second % modulus != 0) {
         info = combineTMemSubwordPhaseInfo(
             info,
-            advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset.second,
+            advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset->second,
                                         modulus),
             modulus);
       }

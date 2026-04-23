@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 08:32 UTC
+Last updated: 2026-04-23 09:28 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -173,6 +173,13 @@ Active implementation checklist:
   and for legacy unpacked/padded f16/i8 parents. The unpacked/padded rows
   document that logical odd columns can be word-aligned through storage stride
   and must not be conflated with packed-lane RMW legality.
+  First pointwise view-offset inverse slice: TMEM view offset lowering now
+  solves the exact requested logical offset against the current
+  `MemDescType`/layout instead of constructing a global pseudoinverse. This
+  fixes non-surjective but point-representable layouts such as `warpx2`
+  copy-subviews, keeps generic `memdesc_subslice` lowering type-local, and
+  exposes an optional physical row/element-column query for conservative
+  analyses.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -269,6 +276,22 @@ A tile-permuted packed f16 parent proves support-query lowering can still find
 a valid contiguous packed plan, while f16 `col_stride=2` and i8
 `col_stride=4` legacy storage prove unpacked/padded physical layouts advance
 odd logical views to 32-bit-word-aligned current origins.
+
+Current pointwise view-offset checkpoint: TMEM logical view offsets are now
+inverted as a single point query over the current tensor-memory layout. This
+removes the old requirement that the whole layout be globally surjective just
+to advance the current `taddr`. For non-surjective `warpx2` copy layouts, the
+specific subview offset is representable and lowers through the ordinary
+`getTMemViewElementOffset` path. For genuinely non-representable points, the
+optional query returns unknown so legality analyses can stay conservative
+without asserting. The load+reduce fusion pass also delays TMEM address
+alignment analysis until after it has actually matched a reduction user, so
+plain loads with difficult descriptor layouts are not queried unnecessarily.
+Validation: required `make -j8`; saved warpx2 `triton-opt --run-reproducer`
+passed; exact warpx2 runtime row `2 passed`; focused subword ld/st selector
+`12 passed`; combined non-scale TMEM runtime selector passed as group1
+`145 passed, 11 skipped`, group2 `89 passed, 67 skipped`, group3
+`136 passed, 20 skipped`, group4 `156 passed`.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:
