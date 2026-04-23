@@ -34972,3 +34972,26 @@ Open after this slice:
   commit and push this checkpoint. Then continue auditing remaining
   value-taking verifier/lowering helpers and convert active self-contained
   semantics to type-local overloads where possible.
+
+## 2026-04-23 05:15 UTC: loop-carried active-subview ld.red sentinel
+
+- Branch/HEAD before this checkpoint:
+  `96c7ec961 Choose active M64 query ordering locally`.
+- Dirty files before checkpoint commit:
+  `python/test/gluon/test_tmem_runtime_matrix.py`, plus initiative docs.
+- Completed source slice:
+  added `tmem_ld_red_loop_carried_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_ld_red_loop_carried_linear_subslice_view`. The
+  kernel initializes two same-parent active column subviews with distinct
+  payloads, carries the selected memdesc through an `scf.for` result, then
+  calls `get_reg_layout()` and `load_max` through the loop-carried descriptor.
+- Result:
+  no backend repair was needed. This extends the selected active-subview
+  contract for `tcgen05.ld.red` to a no-local-producer consumer shape, matching
+  the existing loop-carried normal ld/st and copy guardrails.
+- Validation evidence:
+  required `make -j8`; exact new rows `2 passed`; adjacent
+  `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
+- Next concrete step:
+  commit and push this checkpoint. Then continue helper API separation and
+  reduce remaining semantic use of producer-chain helpers.

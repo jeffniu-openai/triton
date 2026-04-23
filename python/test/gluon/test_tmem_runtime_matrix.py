@@ -1559,6 +1559,47 @@ def tmem_ld_red_dynamic_linear_subslice_view_kernel(
 
 
 @gluon.jit
+def tmem_ld_red_loop_carried_linear_subslice_view_kernel(
+    in_ptr, out_ptr, red_ptr, selector_ptr, parent_layout: ttgl.constexpr, N: ttgl.constexpr,
+    load_variant: ttgl.constexpr, propagate_nan: ttgl.constexpr
+):
+    M: ttgl.constexpr = 128
+    num_warps: ttgl.constexpr = 4
+    global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
+    global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, global_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, global_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    view1 = tmem.slice(N, N, dim=1)
+    store_layout: ttgl.constexpr = view0.get_reg_layout()
+    view0.store(ttgl.convert_layout(value, store_layout))
+    value1 = value + ttgl.full([M, N], 5.0, ttgl.float32, layout=global_layout)
+    view1.store(ttgl.convert_layout(value1, store_layout))
+
+    selected = view0
+    selector = ttgl.load(selector_ptr)
+    for i in range(0, 2, 1):
+        if i == selector:
+            selected = view1
+        else:
+            selected = selected
+
+    load_layout: ttgl.constexpr = selected.get_reg_layout(instr_variant=load_variant)
+    output, reduced = selected.load_max(layout=load_layout, abs=False, propagate_nan=propagate_nan)
+    output = ttgl.convert_layout(output, global_layout)
+    ttgl.store(out_ptr + offs, output)
+
+    red_offs = ttgl.arange(0, M, global_layout_1d)
+    reduced = ttgl.convert_layout(reduced, global_layout_1d)
+    ttgl.store(red_ptr + red_offs, reduced)
+
+
+@gluon.jit
 def tmem_ld_red_m64_explicit_layout_kernel(
     in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, N: ttgl.constexpr, load_variant: ttgl.constexpr,
     red_op: ttgl.constexpr, use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
@@ -9231,6 +9272,53 @@ def test_tmem_runtime_matrix_ld_red_dynamic_linear_subslice_view(selector):
     )
     ttgir = compiled.asm["ttgir"]
     assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize(
+    "selector,selects_view1",
+    [
+        pytest.param(0, True, id="select-view1"),
+        pytest.param(2, False, id="keep-view0"),
+    ],
+)
+def test_tmem_runtime_matrix_ld_red_loop_carried_linear_subslice_view(selector, selects_view1):
+    M = N = 128
+    layout = _make_tmem_linear_layout(M, 2 * N)
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_ld_red_loop_carried_linear_subslice_view_kernel[(1, )](
+        inp,
+        out,
+        red,
+        selector_tensor,
+        layout,
+        N,
+        "auto",
+        tl.PropagateNan.NONE,
+        num_warps=4,
+    )
+
+    expected = inp + 5 if selects_view1 else inp
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.max(expected, dim=1).values, atol=0, rtol=0)
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        "32x32b.x128",
+        "max",
+        False,
+        tl.PropagateNan.NONE,
+        expected_store_waits=2,
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "scf.for" in ttgir
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_load" in ttgir
     assert "ttg.memdesc_subslice" in ttgir

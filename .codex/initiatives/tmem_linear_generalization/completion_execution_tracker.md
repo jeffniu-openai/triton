@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:10 UTC
+Last updated: 2026-04-23 05:15 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -167,12 +167,19 @@ Current scales ld/st descriptor-view checkpoint:
 dynamic selected scales descriptor views now lower from type-local facts.
 `getTMemLdStQueryTypes(Value)` recognizes generated scales descriptor-view
 storage from the current `MemDescType` and returns the recovered
-`tensor_memory_scales` storage type before the original linear view type, rather
-than inventing a canonical dense-linear surrogate. LLVM ld/st lowering also
-uses the recovered storage type as the semantic planning type for raw/support
-attempts. The selected descriptor's runtime `taddr` still carries the dynamic
-base; only the static storage semantics change. This fixed the 1CTA
-row-permuted selected scales view miscompile and kept the 2CTA row green.
+  `tensor_memory_scales` storage type before the original linear view type, rather
+  than inventing a canonical dense-linear surrogate. LLVM ld/st lowering also
+  uses the recovered storage type as the semantic planning type for raw/support
+  attempts. The selected descriptor's runtime `taddr` still carries the dynamic
+  base; only the static storage semantics change. This fixed the 1CTA
+  row-permuted selected scales view miscompile and kept the 2CTA row green.
+Current ld.red selected-subview coverage checkpoint:
+active column subviews are now covered both as direct dynamic selections and
+as `scf.for` loop-carried selected memdesc values before `load_max`. The
+loop-carried case proves the reduction frontend/lowering does not require a
+local visible subview producer at the consumer. Validation: required
+`make -j8`; exact loop-carried rows `2 passed`; adjacent
+`ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
 
 Current normal ld/st selected-subview checkpoint:
 a representative dynamic selected active column subview now has runtime

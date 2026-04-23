@@ -1449,3 +1449,17 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; exact selected
   active-subview ld/st rows `4 passed`; M64 split-N ld/st cluster `20 passed`;
   targeted lit set `6/6`; `git diff --check` passed.
+
+### 2026-04-23 Loop-Carried Active-Subview Ld.Red Sentinel
+
+- Added runtime coverage for `tcgen05.ld.red` after a selected active column
+  subview flows through an `scf.for` result. The kernel writes distinct values
+  to both same-parent subviews, carries the selected descriptor through the
+  loop, then computes `get_reg_layout()` and `load_max` from the loop-carried
+  value.
+- No backend change was required. This covers the reduction path for the same
+  no-local-producer selected-value contract already covered by normal ld/st and
+  copy.
+- Validation after this slice: required `make -j8`; exact new rows `2 passed`;
+  adjacent `ld_red and linear_subslice_view` selector
+  `4 passed, 1646 deselected`.

@@ -18125,3 +18125,11 @@ rejection, not rescue
   Validation: required `make -j8`; exact selected active-subview ld/st rows
   `4 passed`; M64 split-N ld/st cluster `20 passed`; targeted lit set `6/6`;
   `git diff --check` passed.
+
+- 2026-04-23 loop-carried active-subview ld.red sentinel completed. Added
+  `tmem_ld_red_loop_carried_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_ld_red_loop_carried_linear_subslice_view`, carrying
+  a selected same-parent active column subview through `scf.for` before
+  `get_reg_layout()` and `load_max`. No backend change was needed. Validation:
+  required `make -j8`; exact new rows `2 passed`; adjacent
+  `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.

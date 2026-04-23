@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 05:10 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 05:15 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -66,6 +66,8 @@ sentinel; no additional backend change was needed for that representative row.
 Dynamic selected active column-subview ld.red now has matching runtime coverage
 for same-parent subviews, proving hardware row reduction uses the selected
 memdesc SSA value's current `taddr` and the current descriptor type/layout.
+Loop-carried active column-subview ld.red now has matching coverage, so
+`load_max` is guarded for no-local-producer selected memdesc values too.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -90,7 +92,12 @@ type-local overload as well, so migrated active descriptors choose lowering
 order from the current `MemDescType`/register layout rather than a producer
 chain raw-query probe.
 
-Latest validation checkpoint: 2026-04-23 05:10 UTC made active-subview M64
+Latest validation checkpoint: 2026-04-23 05:15 UTC added loop-carried
+active-subview ld.red coverage. Validation: required `make -j8`; exact
+loop-carried rows `2 passed`; adjacent
+`ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
+
+Previous validation checkpoint: 2026-04-23 05:10 UTC made active-subview M64
 query-ordering type-local. Validation: required `make -j8`; exact selected
 active-subview ld/st rows `4 passed`; M64 split-N ld/st cluster `20 passed`;
 targeted lit set `6/6`; `git diff --check` passed.
