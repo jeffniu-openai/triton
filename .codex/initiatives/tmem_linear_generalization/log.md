@@ -33996,6 +33996,41 @@ Open after this slice:
   for active descriptors, then move MMAv5/scales address planning toward the
   same current-type/current-`taddr` model.
 
+## 2026-04-23 00:44 UTC: active-subview LLVM lowering locality
+
+- Branch/HEAD before this slice:
+  `fa1af69ef Keep active TMEM row-plan fallbacks type-local`.
+- Context:
+  IR planning helpers were type-local for active self-contained descriptors, but
+  LLVM lowering still performed several value-chain corrections: standalone
+  register-layout query reconstruction, hidden backing-row fallback,
+  source-column support rescue, and already-adjusted view-offset subtraction.
+  Copy lowering also subtracted reconstructed relative view offsets even when
+  copy planning had selected a type-local destination query.
+- Completed implementation:
+  exported `hasSelfContainedTMemSubviewLayout(MemDescType)` for conversion
+  code. `lowerTMemLdStFromTypes` now uses that predicate to keep active
+  self-contained descriptors relative to the current `taddr`: it leaves the raw
+  query type as the current memdesc type, skips backing row-plan fallback, skips
+  source-column support rescue, and does not call
+  `getTMemSubviewRelativeBaseOffset` for active type-local base offsets.
+  `copySharedToTmem` skips relative-offset subtraction when
+  `selectTMemCopyPhysicalQuery` reports `usedTypeLocal`.
+- Validation evidence:
+  required `make -j8`; exact active-subview warpx2 copy/load row `4 passed`;
+  focused ld/st selector `78 passed`; focused `ld_red and not reports and not
+  scales` selector `239 passed`; focused copy selector `57 passed`; 4-GPU
+  combined `(ldst or ld_red or cp_no_scales) and not reports and not scales`
+  split passed as group1 `120 passed, 28 skipped`, group2
+  `98 passed, 50 skipped`, group3 `128 passed, 20 skipped`, and group4
+  `146 passed`; dedicated 4-GPU `cp_no_scales and not reports` split passed as
+  group1 `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, and
+  group4 `57 passed`; targeted lit set passed `6/6`.
+- Remaining frontier:
+  verifiers still contain some direct backing-row fallback in reduction
+  diagnostics and query-type rescue, and MMAv5/scales address planning still
+  relies on value-chain helpers. Continue narrowing those semantic surfaces.
+
 ## 2026-04-22 03:13 UTC: upstream merge and post-merge address refactor
 
 - Merge:

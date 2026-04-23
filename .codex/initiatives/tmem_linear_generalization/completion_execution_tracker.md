@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 00:25 UTC
+Last updated: 2026-04-23 00:44 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -33,6 +33,10 @@ Active implementation checklist:
   `getTypeLocalTMemLdStSupportQueryPlan(MemDescType)`. First fallback-tightening
   slice: active self-contained raw-query, direct-support, and reduction row-plan
   paths no longer borrow backing row plans when a type-local row plan is absent.
+  First LLVM lowering slice: active self-contained descriptors no longer use
+  standalone type reconstruction, source-column support rescue, or
+  already-adjusted base-offset correction in `lowerTMemLdStFromTypes`, and
+  type-local copy queries no longer subtract chain-derived view offsets.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -207,6 +211,25 @@ scales` selector `239 passed, 1386 deselected`; 4-GPU
 `(ldst or ld_red) and not reports and not scales` split passed as group1
 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
 `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`.
+
+Completed tenth implementation slice: active self-contained TMEM subviews now
+keep ld/st and copy LLVM lowering relative to the current `taddr`.
+`hasSelfContainedTMemSubviewLayout(MemDescType)` is public so conversion code
+can share the active-layout predicate. `lowerTMemLdStFromTypes` now skips
+standalone reg-layout query-type reconstruction, backing-row fallback,
+source-column support rescue, and already-adjusted base-offset subtraction for
+active self-contained descriptors. `copySharedToTmem` skips
+`getTMemSubviewRelativeBaseOffset` when the selected destination query is
+type-local. Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+selector `78 passed`; focused `ld_red and not reports and not scales` selector
+`239 passed`; focused copy selector `57 passed`; 4-GPU combined
+`(ldst or ld_red or cp_no_scales) and not reports and not scales` split passed
+as group1 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+`128 passed, 20 skipped`, group4 `146 passed`; dedicated 4-GPU
+`cp_no_scales and not reports` split passed as group1 `54 passed, 4 skipped`,
+group2 `58 passed`, group3 `58 passed`, group4 `57 passed`; targeted lit set
+passed `6/6`.
 
 Current prototype evidence: hand-written LLVM IR passed through
 `opt -S -O2` shows unused or statically zero subword-phase arithmetic is removed

@@ -21,8 +21,6 @@ using namespace mlir::triton::gpu;
 
 namespace mlir::triton::nvidia_gpu {
 
-static bool hasSelfContainedTMemSubviewLayout(MemDescType memTy);
-
 namespace {
 
 constexpr int maxRegisters = 256;
@@ -4284,7 +4282,7 @@ static bool shouldPreferDirectHalfRowsSubviewRowPlan(
     std::optional<TMemLdStRowPlan> queryPlan,
     std::optional<TMemLdStRowPlan> backingPlan);
 
-static bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy) {
+bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy) {
   if (!memTy || !isTensorMemoryEncoding(memTy.getEncoding()) ||
       isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
     return false;

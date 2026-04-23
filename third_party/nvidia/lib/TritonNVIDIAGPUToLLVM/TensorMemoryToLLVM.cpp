@@ -568,6 +568,12 @@ lowerTMemLdStFromTypes(
   auto queryTypes =
       memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
                    : SmallVector<MemDescType>{memTy};
+  bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
+  auto makeBaseOffsetRelativeToCurrentTAddr = [&](uint32_t baseOffset) {
+    return hasTypeLocalSubviewLayout
+               ? baseOffset
+               : getTMemSubviewRelativeBaseOffset(memDescValue, baseOffset);
+  };
   auto preferBackingRowPlanForDirectRootLoad =
       [&](MemDescType queryTy,
           std::optional<TMemLdStRowPlan> rowPlan,
@@ -594,14 +600,16 @@ lowerTMemLdStFromTypes(
         succeeded(rawQuery)) {
       rawQueryLayout = *rawQuery;
       MemDescType rawMemTy = memTy;
-      if (auto maybeStandaloneTy = inferStandaloneTMemRegLayoutQueryType(
-              memDescValue, /*error=*/nullptr);
-          succeeded(maybeStandaloneTy)) {
-        rawMemTy = *maybeStandaloneTy;
+      if (!hasTypeLocalSubviewLayout) {
+        if (auto maybeStandaloneTy = inferStandaloneTMemRegLayoutQueryType(
+                memDescValue, /*error=*/nullptr);
+            succeeded(maybeStandaloneTy)) {
+          rawMemTy = *maybeStandaloneTy;
+        }
       }
       rawRowPlan = getTMemLdStRowPlanForQueryLayout(memDescValue, memTy,
                                                     *rawQueryLayout);
-      if (!rawRowPlan)
+      if (!rawRowPlan && !hasTypeLocalSubviewLayout)
         rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       rawRowPlan = preferBackingRowPlanForDirectRootLoad(rawMemTy, rawRowPlan,
                                                          &*rawQueryLayout);
@@ -636,8 +644,8 @@ lowerTMemLdStFromTypes(
         // Subview ops that already advanced the TMEM base pointer should only
         // keep the portion of the raw-query baseOffset that remains relative
         // to the lowered base, rather than re-applying the full view origin.
-        encodingInfoOr->baseOffset = getTMemSubviewRelativeBaseOffset(
-            memDescValue, encodingInfoOr->baseOffset);
+        encodingInfoOr->baseOffset =
+            makeBaseOffsetRelativeToCurrentTAddr(encodingInfoOr->baseOffset);
         if (auto lowered = lowerTMemLdStFromInfo(
                 loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals,
                 tmemBase, redOp, useAbs, useNaN);
@@ -657,7 +665,7 @@ lowerTMemLdStFromTypes(
       if (!supportRowPlan)
         supportRowPlan =
             getTMemLdStRowPlanForQueryLayout(memDescValue, memTy, supportQuery);
-      if (!supportRowPlan)
+      if (!supportRowPlan && !hasTypeLocalSubviewLayout)
         supportRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       supportRowPlan = preferBackingRowPlanForDirectRootLoad(
           memTy, supportRowPlan, &supportQuery);
@@ -684,8 +692,8 @@ lowerTMemLdStFromTypes(
         auto &encodingInfo = *encodingInfoOr;
         if (!preserveTMemLdStSupportQueryBaseOffset(memTy, supportQuery))
           encodingInfo.baseOffset = 0;
-        encodingInfo.baseOffset = getTMemSubviewRelativeBaseOffset(
-            memDescValue, encodingInfo.baseOffset);
+        encodingInfo.baseOffset =
+            makeBaseOffsetRelativeToCurrentTAddr(encodingInfo.baseOffset);
         return lowerTMemLdStFromInfo(
             loc, rewriter, encodingInfo, pred, llvmElemTy, vals, tmemBase,
             redOp, useAbs, useNaN);
@@ -693,44 +701,47 @@ lowerTMemLdStFromTypes(
       return failure();
     };
     std::string supportError;
-    if (auto subslice = getTMemLdStPure2DColumnSubview(memDescValue)) {
-      if (auto srcSupportPlan =
-              getTMemLdStSourceColumnSubviewSupportQueryPlan(memDescValue,
-                                                             &supportError)) {
-        auto lowered =
-            trySupportQuery(srcSupportPlan->query, srcSupportPlan->rowPlan);
-        if (succeeded(lowered)) {
-          return *lowered;
-        }
-      }
-      std::string sourceRawError;
-      if (auto sourceRawQuery = inferStandaloneTMemLdStQueryLayout(
-              subslice->getSrc(), /*preserveNonCanonicalView=*/true,
-              &sourceRawError);
-          succeeded(sourceRawQuery)) {
-        auto sourceRowPlan =
-            getTMemLdStSourceColumnSubviewRawQueryRowPlan(memDescValue,
-                                                          *sourceRawQuery);
-        std::string sourceRawDetails;
-        auto sourceRawEncodingInfo = [&]() -> FailureOr<TMemLdStEncodingInfo> {
-          llvm::raw_string_ostream os(sourceRawDetails);
-          ScopedDiagnosticHandler handler(
-              rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
-          return computeTMemLdStEncodingInfo(
-              regTy, memTy, *sourceRawQuery, maxnreg,
-              debugQuerySelection ? diag
-                                  : std::function<InFlightDiagnostic()>{},
-              sourceRowPlan);
-        }();
-        if (succeeded(sourceRawEncodingInfo)) {
-          sourceRawEncodingInfo->baseOffset =
-              getTMemSubviewRelativeBaseOffset(
-                  memDescValue, sourceRawEncodingInfo->baseOffset);
-          if (auto lowered = lowerTMemLdStFromInfo(
-                  loc, rewriter, *sourceRawEncodingInfo, pred, llvmElemTy,
-                  vals, tmemBase, redOp, useAbs, useNaN);
-              succeeded(lowered)) {
+    if (!hasTypeLocalSubviewLayout) {
+      if (auto subslice = getTMemLdStPure2DColumnSubview(memDescValue)) {
+        if (auto srcSupportPlan =
+                getTMemLdStSourceColumnSubviewSupportQueryPlan(memDescValue,
+                                                               &supportError)) {
+          auto lowered =
+              trySupportQuery(srcSupportPlan->query, srcSupportPlan->rowPlan);
+          if (succeeded(lowered)) {
             return *lowered;
+          }
+        }
+        std::string sourceRawError;
+        if (auto sourceRawQuery = inferStandaloneTMemLdStQueryLayout(
+                subslice->getSrc(), /*preserveNonCanonicalView=*/true,
+                &sourceRawError);
+            succeeded(sourceRawQuery)) {
+          auto sourceRowPlan =
+              getTMemLdStSourceColumnSubviewRawQueryRowPlan(memDescValue,
+                                                            *sourceRawQuery);
+          std::string sourceRawDetails;
+          auto sourceRawEncodingInfo = [&]() -> FailureOr<TMemLdStEncodingInfo> {
+            llvm::raw_string_ostream os(sourceRawDetails);
+            ScopedDiagnosticHandler handler(
+                rewriter.getContext(),
+                [&](Diagnostic &diag) { diag.print(os); });
+            return computeTMemLdStEncodingInfo(
+                regTy, memTy, *sourceRawQuery, maxnreg,
+                debugQuerySelection ? diag
+                                    : std::function<InFlightDiagnostic()>{},
+                sourceRowPlan);
+          }();
+          if (succeeded(sourceRawEncodingInfo)) {
+            sourceRawEncodingInfo->baseOffset =
+                getTMemSubviewRelativeBaseOffset(
+                    memDescValue, sourceRawEncodingInfo->baseOffset);
+            if (auto lowered = lowerTMemLdStFromInfo(
+                    loc, rewriter, *sourceRawEncodingInfo, pred, llvmElemTy,
+                    vals, tmemBase, redOp, useAbs, useNaN);
+                succeeded(lowered)) {
+              return *lowered;
+            }
           }
         }
       }
@@ -1157,8 +1168,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   bool twoCTAs = getModuleTwoCTAs(op);
   uint32_t destinationBaseOffset =
       getTMemPhysicalQueryOriginBaseOffset(supportDstQuery);
-  destinationBaseOffset =
-      getTMemSubviewRelativeBaseOffset(op.getDst(), destinationBaseOffset);
+  if (!maybeQuerySelection->usedTypeLocal)
+    destinationBaseOffset =
+        getTMemSubviewRelativeBaseOffset(op.getDst(), destinationBaseOffset);
 
   for (const TMemCopyScheduledInstruction &instruction :
        planSelection.plan->instructions) {

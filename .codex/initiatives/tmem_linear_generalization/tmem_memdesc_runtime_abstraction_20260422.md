@@ -924,6 +924,28 @@ High-priority hacks and debt to remove after replacement coverage exists:
   group1 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
   `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`.
 
+### 2026-04-23 Active Subview LLVM Lowering Locality
+
+- Exported `hasSelfContainedTMemSubviewLayout(MemDescType)` so LLVM conversion
+  can share the same active-layout predicate as IR planning.
+- `lowerTMemLdStFromTypes` now treats active self-contained descriptors as
+  already relative to their current runtime `taddr`: raw-query lowering keeps
+  the current memdesc type, raw/support row-plan fallback does not borrow
+  backing rows, source-column support rescue is skipped, and base offsets are
+  not passed through `getTMemSubviewRelativeBaseOffset`.
+- `copySharedToTmem` now skips `getTMemSubviewRelativeBaseOffset` when
+  `selectTMemCopyPhysicalQuery` selected the type-local destination query.
+- Validation after this slice: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+  selector `78 passed`; focused `ld_red and not reports and not scales`
+  selector `239 passed`; focused copy selector `57 passed`; 4-GPU combined
+  `(ldst or ld_red or cp_no_scales) and not reports and not scales` split
+  passed as group1 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`,
+  group3 `128 passed, 20 skipped`, group4 `146 passed`; dedicated 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
+  `57 passed`; targeted lit set passed `6/6`.
+
 ### 2026-04-23 Active Subview Row-Plan Fallback Tightening
 
 - Active self-contained descriptors now reject missing type-local row-plan facts

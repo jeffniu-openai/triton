@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 00:44 UTC completed the first LLVM lowering-locality
+  slice. Exported `hasSelfContainedTMemSubviewLayout(MemDescType)`.
+  `lowerTMemLdStFromTypes` now keeps active self-contained descriptors relative
+  to the current `taddr`: it skips standalone reg-layout query reconstruction,
+  backing-row fallback, source-column support rescue, and chain-derived
+  base-offset subtraction. `copySharedToTmem` also skips
+  `getTMemSubviewRelativeBaseOffset` when the selected copy destination query is
+  type-local. Validation: required `make -j8`; exact active row `4 passed`;
+  focused ld/st `78 passed`; focused ld.red `239 passed`; focused copy
+  `57 passed`; 4-GPU combined selector passed as group1
+  `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+  `128 passed, 20 skipped`, group4 `146 passed`; dedicated 4-GPU copy split
+  passed as group1 `54 passed, 4 skipped`, group2 `58 passed`, group3
+  `58 passed`, group4 `57 passed`; targeted lit set passed `6/6`.
+
 - Latest: 2026-04-23 00:25 UTC tightened active-subview row-plan fallback
   behavior. `getTMemLdStRowPlanForRawQuery`,
   `getTMemLdStDirectSupportTensorType`, and
