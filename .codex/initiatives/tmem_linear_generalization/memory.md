@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 02:52 UTC completed the first type-local B-scale
+  descriptor-view storage slice. Generated MMAv5 B-scale descriptor views are
+  currently `tensor_memory_linear` memdesc result types even when their layout
+  is the generated B-scale storage pattern. That means root-walking through
+  reshape/trans/index chains is not a valid semantic requirement after
+  dynamic selection. Added `getMMAv5ScaledBScaleStorageType(MemDescType)` to
+  recognize conservative padded and unpadded generated B-scale storage layouts
+  from the current type/layout, and made
+  `getMMAv5ScaledBScaleStorageTypeThroughViews(Value)` try that type-local path
+  before legacy chain fallback. Added a dynamic selected padded B-scale
+  descriptor-view runtime test. Validation: required `make -j8`; focused
+  `bscale_descriptor_view` selector passed as `5 passed, 1621 deselected`;
+  targeted lit set previously passed `6/6`; 4-GPU positive MMAv5 selector
+  previously passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
+  group3 `148 passed`, group4 `145 passed`; `git diff --check` passed.
+  Boundary: unpadded dynamic selected B-scale views still expose a separate
+  allocation/rematerialization transform gap, not a semantic lowering
+  legality gap.
+
 - Latest: 2026-04-23 02:32 UTC split the MMAv5 address/tile-order helper
   surface. `getTypeLocalMMAv5TMemAddressLayout(MemDescType)` and
   `getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType, offsets)` now

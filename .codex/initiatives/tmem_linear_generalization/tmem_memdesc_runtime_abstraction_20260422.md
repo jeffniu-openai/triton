@@ -947,6 +947,42 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
   passed.
 
+### 2026-04-23 Type-Local B-Scale Descriptor-View Storage Slice
+
+- Generated MMAv5 B-scale descriptor views are not currently represented as
+  `tensor_memory_scales` result types after reshape/trans/index composition;
+  they are `tensor_memory_linear` descriptors whose layout still encodes the
+  B-scale storage pattern.
+- A value selected through `arith.select`, yielded from a block, or otherwise
+  forwarded dynamically cannot rely on a visible reshape/trans/index producer
+  chain to recover the root scales encoding. This is exactly the semantic gap
+  the new memdesc model is removing.
+- Added `getMMAv5ScaledBScaleStorageType(MemDescType)`. It first accepts
+  current `tensor_memory_scales` descriptors, then conservatively recognizes
+  generated padded and unpadded B-scale storage layouts from a rank-2 8-bit
+  `tensor_memory_linear` type by checking exact row/column basis sequences
+  after normalized TMEM-view layout analysis.
+- `getMMAv5ScaledBScaleStorageTypeThroughViews(Value)` now tries this type-local
+  helper before the legacy producer-chain walk. The chain walk remains a
+  migration fallback for descriptor classes whose result types are not yet
+  self-contained.
+- Added runtime coverage that stores B-scale data into two padded descriptor
+  views, dynamically selects one same-typed view, and consumes it in scaled MMA.
+  The test asserts runtime correctness, exact `tcgen05.mma` opcode count,
+  dynamic-control-flow/select presence, and that TTGIR still contains the
+  linear descriptor-view type.
+- Boundary: an unpadded dynamically selected B-scale descriptor view still
+  exposes a separate allocation/rematerialization transform gap. The semantic
+  lowering legality can now be classified from the current type, but the
+  transform stack must still learn how to rematerialize or preserve unpadded
+  B-scale storage through dynamic forwarding before that variant becomes a
+  runtime positive.
+- Validation after this slice: required `make -j8`; focused
+  `bscale_descriptor_view` selector `5 passed, 1621 deselected`; targeted lit
+  set previously passed `6/6`; 4-GPU positive MMAv5 selector previously passed
+  as group1 `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`,
+  group4 `145 passed`; `git diff --check` passed.
+
 ### 2026-04-23 Type-Local MMAv5 Family Address Slice
 
 - `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects narrowed

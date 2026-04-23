@@ -34390,6 +34390,45 @@ Open after this slice:
   public helper surface into semantic type-local planners versus optimizer-only
   view-chain matchers.
 
+## 2026-04-23 02:52 UTC: type-local B-scale descriptor-view storage slice
+
+- Branch/HEAD before this validation slice:
+  `e4d699b69 Split type-local MMAv5 address helpers`.
+- Completed source slice:
+  added `getMMAv5ScaledBScaleStorageType(MemDescType)` to classify current
+  MMAv5 B-scale storage from the current memdesc type/layout. It accepts
+  direct `tensor_memory_scales` descriptors and conservatively recognizes the
+  generated padded and unpadded B-scale descriptor-view storage layouts when
+  they appear as rank-2 8-bit `tensor_memory_linear` descriptors.
+- Semantic effect:
+  `getMMAv5ScaledBScaleStorageTypeThroughViews(Value)` now consults the
+  type-local helper before legacy reshape/trans/index root walking. Scaled MMA
+  B-scale legality no longer depends on producer-chain visibility for the
+  generated descriptor-view layouts covered by the classifier.
+- New coverage:
+  `test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view` stores
+  B-scale data through two padded descriptor views, dynamically selects between
+  same-typed views, and consumes the selected view in scaled MMA. The assertion
+  covers output correctness, exact MMA opcode count, dynamic-control-flow/select
+  presence, `tensor_memory_linear` descriptor-view TTGIR, and
+  `ttng.tc_gen5_mma_scaled`.
+- Boundary:
+  unpadded dynamically selected B-scale descriptor views still expose a
+  separate allocation/rematerialization transform gap. This slice proves and
+  covers semantic lowering from current type/layout facts using padded storage;
+  it does not repair that transform path.
+- Validation evidence:
+  required `make -j8`; focused `bscale_descriptor_view` selector passed as
+  `5 passed, 1621 deselected`; targeted lit set previously passed `6/6`;
+  4-GPU positive MMAv5 selector previously passed as group1
+  `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`, group4
+  `145 passed`; `git diff --check` passed.
+- Remaining migration frontier:
+  repair or classify the unpadded selected B-scale rematerialization path, then
+  continue replacing remaining MMAv5/scales producer-chain dependencies with
+  type-local semantic helpers and leave view-chain walking to optimizer-only
+  rewrites.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 02:32 UTC
+Last updated: 2026-04-23 02:52 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -52,7 +52,11 @@ Active implementation checklist:
   derive address layouts and tile-order offsets from current `MemDescType`
   family facts before legacy producer-chain fallback. First MMAv5 helper-split
   slice: the type-local address and tile-order computations are now explicit
-  APIs, with value-taking wrappers retaining legacy fallback.
+  APIs, with value-taking wrappers retaining legacy fallback. First B-scale
+  descriptor-view storage slice: generated padded and unpadded B-scale storage
+  layouts can be classified from the current `MemDescType`, so scaled-MMAv5
+  legality no longer requires walking B-scale descriptor-view producers when a
+  same-typed descriptor is selected dynamically.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -93,6 +97,14 @@ value-taking helpers still preserve physical-bitcast behavior and legacy
 producer-chain fallback, but the semantic type-local path is now callable and
 auditable independently.
 
+Current B-scale checkpoint: scaled-MMAv5 B-scale storage classification now has
+a type-local entry point, `getMMAv5ScaledBScaleStorageType(MemDescType)`.
+Generated B-scale descriptor views that are represented as
+`tensor_memory_linear` can be recognized from their current layout alone, which
+keeps dynamic same-typed selected views legal without relying on producer-chain
+root recovery. Legacy value-taking chain recovery remains as fallback for
+descriptor classes not migrated yet.
+
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
 `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects
@@ -120,6 +132,22 @@ B-scale descriptor-view rows `3 passed`; 4-GPU positive MMAv5 selector passed
 as group1 `133 passed, 14 skipped`, group2 `147 passed`, group3 `147 passed`,
 group4 `147 passed`; targeted lit set passed `6/6`; `git diff --check`
 passed.
+
+Completed fourteenth implementation slice: MMAv5 B-scale descriptor-view
+storage classification is type-local. `getMMAv5ScaledBScaleStorageType` accepts
+current `tensor_memory_scales` descriptors and conservatively recognizes the
+generated padded and unpadded B-scale descriptor-view storage layouts from a
+rank-2 8-bit `tensor_memory_linear` `MemDescType`. The existing
+`getMMAv5ScaledBScaleStorageTypeThroughViews` wrapper now calls the type-local
+helper before the legacy reshape/trans/index root-walk. New runtime coverage
+selects between two same-typed padded B-scale descriptor views through dynamic
+control flow before scaled MMA. Validation: required `make -j8`; focused
+`bscale_descriptor_view` selector `5 passed, 1621 deselected`; targeted lit set
+previously passed `6/6`; 4-GPU positive MMAv5 selector previously passed as
+group1 `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`,
+group4 `145 passed`; `git diff --check` passed. Remaining boundary:
+unpadded dynamic selected B-scale views still need an allocation/rematerialized
+storage transform repair before they are covered as runtime positives.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

@@ -1670,13 +1670,134 @@ getMMAv5ScaleTMemTypeForSharedScale(MemDescType sharedScaleType,
                           /*mutableMemory=*/true);
 }
 
+static bool hasExact2DBasisSequence(
+    const LinearLayout &layout, StringAttr dim,
+    ArrayRef<std::array<int32_t, 2>> expected) {
+  if (!layout.hasInDim(dim) ||
+      layout.getInDimSizeLog2(dim) != expected.size())
+    return false;
+  for (auto [idx, expectedBasis] : llvm::enumerate(expected)) {
+    auto basis = layout.getBasis(dim, idx);
+    if (basis.size() != 2 || basis[0] != expectedBasis[0] ||
+        basis[1] != expectedBasis[1])
+      return false;
+  }
+  return true;
+}
+
+static void padZero2DBases(SmallVectorImpl<std::array<int32_t, 2>> &bases,
+                           unsigned count) {
+  while (bases.size() < count)
+    bases.push_back({0, 0});
+}
+
+static bool isMMAv5ScaledBScaleDescriptorViewStorage(MemDescType bScaleType) {
+  if (!bScaleType || bScaleType.getRank() != 2 ||
+      bScaleType.getElementTypeBitWidth() != 8 ||
+      !isTensorMemoryEncoding(bScaleType.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
+    return false;
+
+  auto linear =
+      dyn_cast<TensorMemoryLinearEncodingAttr>(bScaleType.getEncoding());
+  if (!linear || linear.getTwoCTAs())
+    return false;
+
+  auto shape = bScaleType.getShape();
+  int64_t rows = shape[0];
+  int64_t cols = shape[1];
+  if (rows < 16 || cols < 4 || !llvm::isPowerOf2_64(rows) ||
+      !llvm::isPowerOf2_64(cols))
+    return false;
+
+  std::string layoutError;
+  auto maybeLayout = getTMemViewAnalysisLinearLayout(
+      bScaleType.getShape(), bScaleType.getEncoding(), &layoutError);
+  if (!maybeLayout)
+    return false;
+  LinearLayout layout =
+      normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout);
+
+  auto outDims = llvm::to_vector(layout.getOutDimSizes());
+  if (outDims.size() != 2 || outDims[0] != rows || outDims[1] != cols)
+    return false;
+
+  auto *ctx = bScaleType.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol))
+    return false;
+
+  unsigned rowBasisCount = layout.getInDimSizeLog2(kRow);
+  unsigned colBasisCount = layout.getInDimSizeLog2(kCol);
+
+  auto matchesPaddedStorageView = [&]() {
+    SmallVector<std::array<int32_t, 2>> rowBases;
+    for (int32_t row = 1; row <= 16 && row < rows; row <<= 1)
+      rowBases.push_back({row, 0});
+    padZero2DBases(rowBases, rowBasisCount);
+
+    SmallVector<std::array<int32_t, 2>> colBases = {{0, 1}, {0, 2}};
+    for (int32_t row = 32; row < rows; row <<= 1)
+      colBases.push_back({row, 0});
+    for (int32_t col = 4; col < cols; col <<= 1)
+      colBases.push_back({0, col});
+
+    return rowBases.size() == rowBasisCount &&
+           colBases.size() == colBasisCount &&
+           hasExact2DBasisSequence(layout, kRow, rowBases) &&
+           hasExact2DBasisSequence(layout, kCol, colBases);
+  };
+
+  auto matchesUnpaddedInterleavedView = [&]() {
+    if (rows < 32)
+      return false;
+
+    SmallVector<std::array<int32_t, 2>> rowBases = {
+        {static_cast<int32_t>(rows / 2), 0}};
+    for (int32_t row = 1; row <= 8 && row < rows / 2; row <<= 1)
+      rowBases.push_back({row, 0});
+    padZero2DBases(rowBases, rowBasisCount);
+
+    SmallVector<std::array<int32_t, 2>> colBases = {{0, 1}, {0, 2}};
+    for (int32_t row = 16; row <= rows / 4; row <<= 1)
+      colBases.push_back({row, 0});
+    for (int32_t col = 4; col < cols; col <<= 1)
+      colBases.push_back({0, col});
+
+    return rowBases.size() == rowBasisCount &&
+           colBases.size() == colBasisCount &&
+           hasExact2DBasisSequence(layout, kRow, rowBases) &&
+           hasExact2DBasisSequence(layout, kCol, colBases);
+  };
+
+  return matchesPaddedStorageView() || matchesUnpaddedInterleavedView();
+}
+
+std::optional<MemDescType>
+getMMAv5ScaledBScaleStorageType(MemDescType bScaleType) {
+  if (!bScaleType)
+    return std::nullopt;
+  if (isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
+    return bScaleType;
+  if (!isMMAv5ScaledBScaleDescriptorViewStorage(bScaleType))
+    return std::nullopt;
+
+  MLIRContext *ctx = bScaleType.getContext();
+  auto scaleEncoding = TensorMemoryScalesEncodingAttr::get(
+      ctx, getCGALayout(bScaleType.getEncoding()));
+  return MemDescType::get(bScaleType.getShape(), bScaleType.getElementType(),
+                          scaleEncoding, bScaleType.getMemorySpace(),
+                          bScaleType.getMutableMemory());
+}
+
 std::optional<MemDescType>
 getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale) {
   auto bScaleType = dyn_cast<MemDescType>(bScale.getType());
   if (!bScaleType)
     return std::nullopt;
-  if (isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
-    return bScaleType;
+  if (auto typeLocal = getMMAv5ScaledBScaleStorageType(bScaleType))
+    return typeLocal;
 
   Value current = bScale;
   while (Operation *defOp = current.getDefiningOp()) {

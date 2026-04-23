@@ -3333,6 +3333,109 @@ def tmem_mma_scaled_bscale_descriptor_view_format_kernel(
 
 
 @gluon.jit
+def tmem_mma_scaled_dynamic_bscale_descriptor_view_format_kernel(
+    out_ptr,
+    selector_ptr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    K: ttgl.constexpr,
+    a,
+    b,
+    a_scale,
+    b_scale0,
+    b_scale1,
+    acc_layout: ttgl.constexpr,
+    VEC_SIZE: ttgl.constexpr,
+    A_ELEM_PER_BYTE: ttgl.constexpr,
+    B_ELEM_PER_BYTE: ttgl.constexpr,
+    A_FORMAT: ttgl.constexpr,
+    B_FORMAT: ttgl.constexpr,
+):
+    A_STORAGE_K: ttgl.constexpr = K // A_ELEM_PER_BYTE
+    B_STORAGE_K: ttgl.constexpr = K // B_ELEM_PER_BYTE
+    A_IS_FP4: ttgl.constexpr = A_ELEM_PER_BYTE == 2
+    B_IS_FP4: ttgl.constexpr = B_ELEM_PER_BYTE == 2
+    MIXED_PREC: ttgl.constexpr = A_ELEM_PER_BYTE != B_ELEM_PER_BYTE
+    B_SCALE_ROWS: ttgl.constexpr = 2 * N
+    B_SCALE_INSTR_N: ttgl.constexpr = 32
+    B_SCALE_FRAGMENT_N: ttgl.constexpr = 64
+
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
+    a_nvmma_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [M, A_STORAGE_K],
+        a.dtype.element_ty,
+        fp4_padded=A_IS_FP4 and MIXED_PREC,
+    )
+    b_nvmma_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [N, B_STORAGE_K],
+        b.dtype.element_ty,
+        fp4_padded=B_IS_FP4 and MIXED_PREC,
+    )
+    block_layout_a: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+    block_layout_b: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+
+    a_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, block_layout_a))[:, None]
+    a_offs_k = ttgl.arange(0, A_STORAGE_K, layout=ttgl.SliceLayout(0, block_layout_a))[None, :]
+    b_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, block_layout_b))[:, None]
+    b_offs_k = ttgl.arange(0, B_STORAGE_K, layout=ttgl.SliceLayout(0, block_layout_b))[None, :]
+
+    a_tile = ttgl.load(a + a_offs_m * A_STORAGE_K + a_offs_k)
+    b_tile = ttgl.load(b + b_offs_n * B_STORAGE_K + b_offs_k)
+    a_smem = ttgl.allocate_shared_memory(a.dtype.element_ty, [M, A_STORAGE_K], a_nvmma_layout, a_tile)
+    b_smem = ttgl.allocate_shared_memory(b.dtype.element_ty, [N, B_STORAGE_K], b_nvmma_layout, b_tile)
+
+    acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
+    acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+    acc_tmem.store(ttgl.full([M, N], 0.0, ttgl.float32, layout=acc_reg_layout))
+
+    scale_layout: ttgl.constexpr = TensorMemoryScalesLayout()
+    a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, K // VEC_SIZE], scale_layout)
+    b_scale_parent0 = allocate_tensor_memory(b_scale0.dtype.element_ty, [B_SCALE_ROWS, K // VEC_SIZE], scale_layout)
+    b_scale_parent1 = allocate_tensor_memory(b_scale1.dtype.element_ty, [B_SCALE_ROWS, K // VEC_SIZE], scale_layout)
+    b_scale_tmem0 = b_scale_parent0.reshape((1, B_SCALE_ROWS, K // VEC_SIZE)).slice(0, 1, dim=0).index(0)
+    b_scale_tmem1 = b_scale_parent1.reshape((1, B_SCALE_ROWS, K // VEC_SIZE)).slice(0, 1, dim=0).index(0)
+    scale_reg_layout_m: ttgl.constexpr = a_scale_tmem.get_reg_layout()
+    scale_reg_layout_n: ttgl.constexpr = b_scale_tmem0.get_reg_layout()
+
+    scale_offs_k_m = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_m))[None, :]
+    scale_offs_k_n = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_n))[None, :]
+    scale_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, scale_reg_layout_m))[:, None]
+    scale_offs_n = ttgl.arange(0, B_SCALE_ROWS, layout=ttgl.SliceLayout(1, scale_reg_layout_n))[:, None]
+    source_scale_n = (scale_offs_n // B_SCALE_FRAGMENT_N) * B_SCALE_INSTR_N + (scale_offs_n % B_SCALE_INSTR_N)
+    a_scale_tmem.store(ttgl.load(a_scale + scale_offs_m * (K // VEC_SIZE) + scale_offs_k_m))
+    b_scale_tmem0.store(ttgl.load(b_scale0 + source_scale_n * (K // VEC_SIZE) + scale_offs_k_n))
+    b_scale_tmem1.store(ttgl.load(b_scale1 + source_scale_n * (K // VEC_SIZE) + scale_offs_k_n))
+
+    b_scale_selected = b_scale_tmem0
+    if ttgl.load(selector_ptr) != 0:
+        b_scale_selected = b_scale_tmem1
+    else:
+        b_scale_selected = b_scale_tmem0
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_mma_scaled(
+        a_smem,
+        b_smem.permute((1, 0)),
+        acc_tmem,
+        a_scale_tmem,
+        b_scale_selected,
+        A_FORMAT,
+        B_FORMAT,
+        use_acc=True,
+    )
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    mbarrier.invalidate(bar)
+
+    out_reg = acc_tmem.load()
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, reg_layout))[None, :]
+    offs = offs_m * N + offs_n
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out_reg, reg_layout))
+
+
+@gluon.jit
 def tmem_mma_scaled_scale_descriptor_view_format_kernel(
     out_ptr,
     M: ttgl.constexpr,
@@ -13456,6 +13559,53 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_view_extra_u
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     ttgir = compiled.asm["ttgir"]
     assert "ttng.tmem_load" in ttgir
+    assert "ttng.tc_gen5_mma_scaled" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view():
+    m = n = k = 128
+    a_format = b_format = "mxfp8"
+    layout = _make_tmem_linear_layout_tile_permuted(m, n, 32)
+    vec_size = 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    selector = torch.tensor(1, dtype=torch.int32, device="cuda")
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_dynamic_bscale_descriptor_view_format_kernel[(1, )](
+        out,
+        selector,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        b_scale,
+        layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
     assert "ttng.tc_gen5_mma_scaled" in ttgir
 
 

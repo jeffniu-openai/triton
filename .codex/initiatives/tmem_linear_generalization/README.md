@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 02:32 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 02:52 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -49,8 +49,27 @@ the family address layout from the current `MemDescType` for narrowed
 MMAv5-family descriptors instead of needing producer-chain address recovery.
 The type-local MMAv5 address and tile-order computations now have explicit
 helper APIs, with the old value-taking functions acting as legacy wrappers.
+B-scale descriptor-view storage classification now has a type-local semantic
+helper so dynamically selected same-typed B-scale views do not need to expose
+their producer chain for scaled-MMAv5 legality.
 
-Latest validation checkpoint: 2026-04-23 02:32 UTC split the MMAv5
+Latest validation checkpoint: 2026-04-23 02:52 UTC completed the first
+type-local B-scale descriptor-view storage slice. B-scale descriptor views are
+currently represented as `tensor_memory_linear` result types, so
+producer-chain root recovery fails after `arith.select`/control-flow
+forwarding even when the current layout exactly describes generated
+MMAv5 B-scale storage. `getMMAv5ScaledBScaleStorageType(MemDescType)` now
+recognizes the conservative padded and unpadded generated B-scale storage
+layouts from the current type/layout, and the value-taking
+`getMMAv5ScaledBScaleStorageTypeThroughViews` uses that path before legacy
+view-chain fallback. Validation: required `make -j8`; focused
+`bscale_descriptor_view` runtime selector passed as `5 passed,
+1621 deselected`, including the new dynamic selected padded descriptor-view
+case; targeted lit set previously passed `6/6`; 4-GPU positive MMAv5 selector
+previously passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
+group3 `148 passed`, group4 `145 passed`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 02:32 UTC split the MMAv5
 address/tile-order helper surface. `getTypeLocalMMAv5TMemAddressLayout` and
 `getTypeLocalMMAv5TMemViewOffsetForLowering` expose the semantic type-local
 plan for active self-contained and MMAv5-family descriptors, while

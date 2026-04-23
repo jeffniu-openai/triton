@@ -378,6 +378,9 @@ getMMAv5ScaleTMemTypeForSharedScale(gpu::MemDescType sharedScaleType,
                                     int64_t rows);
 
 std::optional<gpu::MemDescType>
+getMMAv5ScaledBScaleStorageType(gpu::MemDescType bScaleType);
+
+std::optional<gpu::MemDescType>
 getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale);
 
 bool isMMAv5ScaledRepeatedN32BScaleStorageSupported(
