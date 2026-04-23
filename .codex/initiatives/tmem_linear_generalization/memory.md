@@ -18243,3 +18243,22 @@ rejection, not rescue
   `4 passed`, group3 `4 passed`, group4 `4 passed`; adjacent non-subword
   active ld/st/copy selector passed as group1 `8 passed`, group2 `8 passed`,
   group3 `8 passed`, group4 `6 passed`.
+
+- 2026-04-23 unaligned packed-subword active-view safety guard completed. A
+  scratch f16 probe showed `slice(1, 128)` miscompiled by lowering physical
+  element column 1 to hardware word column 0, causing the offset view to alias
+  the base view. Added `getTMemViewPhysicalRowElementCol` so analyses can see
+  the exact element-column origin before projection to hardware word columns.
+  Static subword `memdesc_subslice` inference and lowering-only subview/index
+  paths now reject non-32-bit-column-aligned origins cleanly until the planned
+  element-column `taddr` plus subword-index lowering path is implemented. This
+  is a temporary correctness guard, not a final clean-negative boundary.
+  Validation: required `make -j8`; new clean-negative row `1 passed`; split
+  selector `linear_subslice_view_subword or
+  ldst_unaligned_subword_linear_subslice_view` passed as group1 `5 passed`,
+  group2 `5 passed`, group3 `5 passed`, group4 `2 passed`; adjacent
+  non-subword active ld/st/copy selector passed as group1 `8 passed`, group2
+  `8 passed`, group3 `8 passed`, group4 `6 passed`; direct subword ld/st/copy
+  selector passed as group1 `5 passed`, group2 `5 passed`, group3 `5 passed`,
+  group4 `5 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed.

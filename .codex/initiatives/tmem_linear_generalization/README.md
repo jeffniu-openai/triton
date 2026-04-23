@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 06:09 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 06:22 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -92,6 +92,14 @@ i8 dynamic-select and loop-carried values across both ld/st and dense
 element type and use typed initializer constants, and the subword copy sentinel
 reads both candidate views after the selected copy so a shared-base mistake
 cannot be hidden by loading through the same selected value.
+The first unaligned packed-subword probe exposed a real remaining backend gap:
+`f16` `slice(1, 128)` previously floored physical element column 1 to hardware
+word column 0, making the offset view alias the base view. TMEM view-offset
+analysis now exposes physical row/element-column coordinates separately from
+the hardware word-column projection, and the frontend/lowering rejects
+non-32-bit-column-aligned subword view origins cleanly until the planned
+element-column `taddr` plus subword-index codegen path is implemented. This is
+tracked as a temporary correctness guard, not a final ISA-impossible boundary.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -119,7 +127,16 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 06:09 UTC added f16/i8 subword active
+Latest validation checkpoint: 2026-04-23 06:22 UTC added a clean negative for
+unaligned packed-subword active views after proving the prior behavior
+miscompiled `f16` physical element column 1 as hardware word column 0.
+Validation: required `make -j8`; selector
+`linear_subslice_view_subword or ldst_unaligned_subword_linear_subslice_view`
+passed across four GPU split groups as group1 `5 passed`, group2 `5 passed`,
+group3 `5 passed`, group4 `2 passed`; lit `tmem_layouts.mlir` `1 passed`;
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 06:09 UTC added f16/i8 subword active
 selected-view runtime coverage. Validation: required `make -j8`; an initial
 pytest attempt without `PYTHONPATH=./python` failed during collection against
 the wrong installed `triton` package and ran no tests. Rerunning with

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 06:09 UTC
+Last updated: 2026-04-23 06:22 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -108,6 +108,12 @@ Active implementation checklist:
   column-subviews now have dynamic-select and loop-carried runtime positives
   for both ld/st and dense `tcgen05.copy`, with candidate readback proving the
   selected runtime `taddr` is honored for sub-32-bit element-slot layouts.
+  First unaligned-subword safety slice: TMEM view-offset analysis now exposes
+  the physical element column separately from the hardware word column. Until
+  the element-column `taddr` and subword-index lowering path is implemented,
+  static subword subviews and lowering-only subview/index paths reject
+  non-32-bit-column-aligned origins cleanly instead of silently flooring the
+  element column to a hardware word column.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,

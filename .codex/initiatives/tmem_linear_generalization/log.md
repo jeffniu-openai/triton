@@ -35244,3 +35244,46 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Continue migrating and auditing subword
   lowering surfaces toward the physical-element-column memdesc model.
+
+## 2026-04-23 06:22 UTC: unaligned subword view safety guard
+
+- Branch/HEAD at slice start:
+  `eb5d87353 Add subword active TMEM view coverage`.
+- Dirty files before checkpoint commit:
+  `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`,
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`,
+  `lib/Dialect/TritonGPU/IR/Ops.cpp`,
+  `lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`,
+  `python/test/gluon/test_tmem_runtime_matrix.py`, plus initiative docs.
+- Bug exposed:
+  a scratch packed-f16 active view at physical element column 1
+  (`slice(1, 128)`) silently miscompiled: both the base view and offset view
+  lowered to hardware word column 0. That proves the current runtime/lowering
+  path still lacks the element-column `taddr` plus subword-index semantics from
+  the design note.
+- Completed source slice:
+  factored TMEM view-offset analysis so callers can ask for physical
+  row/element-column coordinates before hardware word-column projection.
+  Static subword `memdesc_subslice` inference, generic TMEM view lowering, and
+  NVIDIA-specific TMEM index/subslice lowering now reject non-32-bit-column
+  aligned origins cleanly instead of flooring the element column. Added a
+  runtime-matrix clean-negative row for the f16 odd-column case.
+- Boundary note:
+  this is not recorded as an ISA-impossible final boundary. It is a temporary
+  correctness guard until the planned element-column `taddr` and subword
+  pack/unpack/RMW lowering path is implemented.
+- Validation evidence:
+  required `make -j8`; exact new clean-negative row `1 passed`; split selector
+  `linear_subslice_view_subword or
+  ldst_unaligned_subword_linear_subslice_view` passed as group1 `5 passed`,
+  group2 `5 passed`, group3 `5 passed`, group4 `2 passed`; adjacent
+  non-subword active ld/st/copy selector passed as group1 `8 passed`, group2
+  `8 passed`, group3 `8 passed`, group4 `6 passed`; direct subword ld/st/copy
+  selector passed as group1 `5 passed`, group2 `5 passed`, group3 `5 passed`,
+  group4 `5 passed`; lit `tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue with the actual runtime memdesc
+  representation/codegen work needed to carry and consume subword phase instead
+  of rejecting these views.

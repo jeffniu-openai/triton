@@ -35,6 +35,25 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
+LogicalResult verifyHardwareColumnAlignedTMemView(Location loc,
+                                                  MemDescType srcTy,
+                                                  ArrayRef<int32_t> offsets) {
+  uint32_t bitwidth = srcTy.getElementTypeBitWidth();
+  if (bitwidth >= 32)
+    return success();
+  auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
+  uint32_t elementCol = physicalOffset.second;
+  uint32_t elementsPerWord = getTMemElementsPerWord(bitwidth);
+  if (elementCol % elementsPerWord == 0)
+    return success();
+  return emitError(loc)
+         << "unsupported sub-32-bit TMEM view origin: physical element "
+            "column "
+         << elementCol << " is not aligned to a 32-bit hardware column. "
+         << "Correct lowering requires element-column taddr and subword-index "
+            "support.";
+}
+
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -1298,6 +1317,8 @@ struct MemDescIndexOpConversion
 
     SmallVector<int32_t> offsets(srcTy.getRank(), 0);
     offsets.front() = index.getSExtValue();
+    if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy, offsets)))
+      return failure();
     rewriter.replaceOp(
         op, advanceTensorMemoryBase(loc, rewriter, tmemBase,
                                     triton::nvidia_gpu::getTMemViewOffset(
@@ -1340,6 +1361,10 @@ struct TMEMSubSliceOpConversion
     // space. Using the narrowed result type can erase high-order column bits
     // for N-half views (for example 128x256 -> 128x128), collapsing distinct
     // subslices onto the same base address.
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.back() = op.getN();
+    if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy, offsets)))
+      return failure();
     uint32_t offset = getTMemSubSliceOffset(srcTy, op.getN());
 
     Value tmemBase = adaptor.getSrc();

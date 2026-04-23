@@ -896,6 +896,25 @@ def tmem_ldst_loop_carried_linear_subslice_view_kernel(in_ptr, out_ptr, selector
 
 
 @gluon.jit
+def tmem_ldst_unaligned_subword_linear_subslice_view_kernel(in_ptr, out_ptr,
+                                                            parent_layout: ttgl.constexpr,
+                                                            M: ttgl.constexpr,
+                                                            N: ttgl.constexpr):
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
+    view = tmem.slice(1, N, dim=1)
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+    value = ttgl.convert_layout(value, reg_layout)
+    view.store(value)
+    out = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, out)
+
+
+@gluon.jit
 def tmem_alloc_source_init_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -7268,6 +7287,27 @@ def test_tmem_runtime_matrix_ldst_loop_carried_linear_subslice_view_subword(
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_load" in ttgir
     assert "ttng.tmem_store" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_ldst_unaligned_subword_linear_subslice_view_reports_clean_error():
+    m = 128
+    n = 128
+    layout = _make_tmem_linear_layout(m, 2 * n)
+    base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 16
+    inp = base.to(torch.float16)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_unaligned_subword_linear_subslice_view_kernel[(1, )](
+            inp, out, layout, m, n, num_warps=4
+        )
+
+    text = str(excinfo.value)
+    assert "unsupported sub-32-bit TMEM view origin" in text
+    assert "physical element column 1 is not aligned to a 32-bit hardware column" in text
+    assert "element-column taddr and subword-index support" in text
+    assert "PassManager::run failed" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

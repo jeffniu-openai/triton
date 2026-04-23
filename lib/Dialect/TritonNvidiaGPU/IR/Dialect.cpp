@@ -2439,10 +2439,10 @@ uint32_t getTMemSubSliceOffset(MemDescType memDescType, int32_t nOffset) {
   return getTMemViewOffset(memDescType, offsets);
 }
 
-static uint32_t getTMemViewOffsetImpl(const LinearLayout &ll, unsigned memRank,
-                                      ArrayRef<int32_t> offsets,
-                                      uint32_t bitwidth,
-                                      ArrayRef<int64_t> prefixShape) {
+static std::pair<uint32_t, uint32_t>
+getTMemViewPhysicalRowElementColImpl(const LinearLayout &ll, unsigned memRank,
+                                     ArrayRef<int32_t> offsets,
+                                     ArrayRef<int64_t> prefixShape) {
   assert(offsets.size() == memRank);
   auto *ctx = (*ll.getInDimNames().begin()).getContext();
   auto kRow = StringAttr::get(ctx, "row");
@@ -2474,17 +2474,27 @@ static uint32_t getTMemViewOffsetImpl(const LinearLayout &ll, unsigned memRank,
       if (dim == kRow) {
         offsetRow = value;
       } else if (dim == kCol) {
-        offsetCol = getTMemWordColumn(value, bitwidth);
+        offsetCol = value;
       }
     }
   }
   if (extraRank > 0) {
     assert(prefixShape.size() == extraRank &&
            "prefix shape is required when the logical rank exceeds the layout rank");
-    auto singleBufferCols = ll.getInDimSize(kCol) / (32 / bitwidth);
+    auto singleBufferCols = ll.getInDimSize(kCol);
     offsetCol += linearizePrefixOffsets(prefixShape, offsets.take_front(extraRank)) *
                  singleBufferCols;
   }
+  return {offsetRow, offsetCol};
+}
+
+static uint32_t getTMemViewOffsetImpl(const LinearLayout &ll, unsigned memRank,
+                                      ArrayRef<int32_t> offsets,
+                                      uint32_t bitwidth,
+                                      ArrayRef<int64_t> prefixShape) {
+  auto [offsetRow, elementCol] =
+      getTMemViewPhysicalRowElementColImpl(ll, memRank, offsets, prefixShape);
+  uint32_t offsetCol = getTMemWordColumn(elementCol, bitwidth);
   return packTMemRowColOffset(offsetRow, offsetCol);
 }
 
@@ -2495,7 +2505,7 @@ uint32_t getTMemViewOffset(const LinearLayout &layout,
                                bitwidth, prefixShape);
 }
 
-uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
+static LinearLayout getTMemViewOffsetAnalysisLayout(MemDescType memDescType) {
   LinearLayout ll = [&]() {
     if (isTensorMemoryEncoding(memDescType.getEncoding()) &&
         !isa<TensorMemoryScalesEncodingAttr>(memDescType.getEncoding())) {
@@ -2508,6 +2518,23 @@ uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
     return normalizeTensorMemoryLinearLayoutForAnalysis(
         triton::gpu::toLinearLayout(memDescType));
   }();
+  return ll;
+}
+
+std::pair<uint32_t, uint32_t>
+getTMemViewPhysicalRowElementCol(MemDescType memDescType,
+                                 ArrayRef<int32_t> offsets) {
+  LinearLayout ll = getTMemViewOffsetAnalysisLayout(memDescType);
+  return getTMemViewPhysicalRowElementColImpl(
+      ll, memDescType.getRank(), offsets,
+      memDescType.getShape().take_front(
+          memDescType.getRank() > ll.getNumOutDims()
+              ? memDescType.getRank() - ll.getNumOutDims()
+              : 0));
+}
+
+uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
+  LinearLayout ll = getTMemViewOffsetAnalysisLayout(memDescType);
   return getTMemViewOffsetImpl(ll, memDescType.getRank(), offsets,
                                memDescType.getElementTypeBitWidth(),
                                memDescType.getShape().take_front(

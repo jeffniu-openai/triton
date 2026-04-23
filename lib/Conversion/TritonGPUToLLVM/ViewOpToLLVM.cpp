@@ -18,6 +18,53 @@ bool isTensorMemoryMemDesc(MemDescType type) {
          triton::nvidia_gpu::isTensorMemoryEncoding(type.getEncoding());
 }
 
+LogicalResult verifyHardwareColumnAlignedTMemView(Location loc,
+                                                  MemDescType srcTy,
+                                                  ArrayRef<int32_t> offsets) {
+  uint32_t bitwidth = srcTy.getElementTypeBitWidth();
+  if (bitwidth >= 32)
+    return success();
+  auto physicalOffset =
+      triton::nvidia_gpu::getTMemViewPhysicalRowElementCol(srcTy, offsets);
+  uint32_t elementCol = physicalOffset.second;
+  uint32_t elementsPerWord =
+      triton::nvidia_gpu::getTMemElementsPerWord(bitwidth);
+  if (elementCol % elementsPerWord == 0)
+    return success();
+  return emitError(loc)
+         << "unsupported sub-32-bit TMEM view origin: physical element "
+            "column "
+         << elementCol << " is not aligned to a 32-bit hardware column. "
+         << "Correct lowering requires element-column taddr and subword-index "
+            "support.";
+}
+
+LogicalResult verifyHardwareColumnAlignedTMemDynamicIndex(Location loc,
+                                                          MemDescType srcTy) {
+  uint32_t bitwidth = srcTy.getElementTypeBitWidth();
+  if (bitwidth >= 32)
+    return success();
+  uint32_t elementsPerWord =
+      triton::nvidia_gpu::getTMemElementsPerWord(bitwidth);
+  int64_t dimSize = srcTy.getShape().front();
+  for (int64_t bit = 1; bit < dimSize; bit <<= 1) {
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.front() = bit;
+    auto physicalOffset =
+        triton::nvidia_gpu::getTMemViewPhysicalRowElementCol(srcTy, offsets);
+    uint32_t elementCol = physicalOffset.second;
+    if (elementCol % elementsPerWord == 0)
+      continue;
+    return emitError(loc)
+           << "unsupported dynamic sub-32-bit TMEM index: index bit " << bit
+           << " maps to physical element column " << elementCol
+           << ", which is not aligned to a 32-bit hardware column. "
+           << "Correct lowering requires element-column taddr and "
+              "subword-index support.";
+  }
+  return success();
+}
+
 Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
                               Value base, uint32_t offset) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -547,6 +594,8 @@ struct MemDescIndexOpConversion
 
       APInt index;
       if (!matchPattern(op.getIndex(), m_ConstantInt(&index))) {
+        if (failed(verifyHardwareColumnAlignedTMemDynamicIndex(loc, srcTy)))
+          return failure();
         Value dynamicOffset = buildDynamicTensorMemoryIndexOffset(
             loc, rewriter, adaptor.getIndex(), srcTy);
         rewriter.replaceOp(
@@ -556,6 +605,8 @@ struct MemDescIndexOpConversion
 
       SmallVector<int32_t> offsets(srcTy.getRank(), 0);
       offsets.front() = index.getSExtValue();
+      if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy, offsets)))
+        return failure();
       rewriter.replaceOp(
           op, advanceTensorMemoryBase(loc, rewriter, tmemBase,
                                       triton::nvidia_gpu::getTMemViewOffset(
@@ -624,6 +675,9 @@ struct MemDescSubsliceOpConversion
     Location loc = op->getLoc();
     auto srcTy = op.getSrc().getType();
     if (isTensorMemoryMemDesc(srcTy)) {
+      if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy,
+                                                     op.getOffsets())))
+        return failure();
       rewriter.replaceOp(
           op, advanceTensorMemoryBase(loc, rewriter, adaptor.getSrc(),
                                       triton::nvidia_gpu::

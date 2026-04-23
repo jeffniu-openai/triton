@@ -1641,3 +1641,34 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `4 passed`, group3 `4 passed`, group4 `4 passed`; adjacent non-subword
   active ld/st/copy selector passed as group1 `8 passed`, group2 `8 passed`,
   group3 `8 passed`, group4 `6 passed`; `git diff --check` passed.
+
+### 2026-04-23 Unaligned Subword View Safety Guard
+
+- A scratch packed-f16 active-view probe using `slice(1, 128)` showed the
+  current backend still projects physical element columns to hardware word
+  columns too early: physical element column 1 was lowered as hardware word
+  column 0, so the offset view aliased the base view and produced wrong output.
+- Added `getTMemViewPhysicalRowElementCol(MemDescType, offsets)` as a small
+  bridge toward the intended abstraction. Existing `getTMemViewOffset` still
+  returns the legacy hardware word-column packed offset, but its implementation
+  now computes exact row/element-column coordinates first and projects to word
+  columns at the final boundary.
+- Until the runtime memdesc carries element-column phase and the ld/st/copy
+  lowering consumes subword-index information, static subword
+  `memdesc_subslice` inference and generic/NVIDIA lowering-only subview/index
+  paths reject non-32-bit-column-aligned physical element origins cleanly. This
+  prevents the silent aliasing miscompile while keeping aligned f16/i8 active
+  view positives green.
+- This is not a final clean-negative boundary. The design target remains
+  element-column `taddr` plus subword-index lowering, with software
+  pack/unpack/RMW where required and worthwhile. Future work should replace the
+  guard for cases the ISA/software sequence can correctly realize.
+- Validation after this slice: required `make -j8`; exact clean-negative row
+  `1 passed`; split selector `linear_subslice_view_subword or
+  ldst_unaligned_subword_linear_subslice_view` passed as group1 `5 passed`,
+  group2 `5 passed`, group3 `5 passed`, group4 `2 passed`; adjacent
+  non-subword active ld/st/copy selector passed as group1 `8 passed`, group2
+  `8 passed`, group3 `8 passed`, group4 `6 passed`; direct subword ld/st/copy
+  selector passed as group1 `5 passed`, group2 `5 passed`, group3 `5 passed`,
+  group4 `5 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed.
