@@ -72,7 +72,7 @@ static Value getUniqueFunctionArgForwardingSource(BlockArgument blockArg) {
 
 } // namespace
 
-Value getTMemForwardingSource(Value memDesc) {
+static Value getTMemForwardingSource(Value memDesc) {
   auto blockArg = dyn_cast<BlockArgument>(memDesc);
   if (!blockArg)
     return {};
@@ -457,7 +457,7 @@ bool mayHaveNonZeroTMemSubwordPhase(Value memDesc) {
          TMemSubwordPhaseStatus::MayBeNonZero;
 }
 
-std::optional<TensorMemoryScalesEncodingAttr>
+static std::optional<TensorMemoryScalesEncodingAttr>
 getTMemScalesRootEncoding(Value memDesc) {
   Value cur = memDesc;
   while (cur) {
@@ -3614,7 +3614,7 @@ getExactTypeTMemAddressLayout(MemDescType memTy, std::string *layoutError) {
   return std::nullopt;
 }
 
-std::optional<LinearLayout>
+static std::optional<LinearLayout>
 getTypeLocalMMAv5TMemAddressLayout(MemDescType memTy) {
   std::string layoutError;
   if (hasSelfContainedTMemSubviewLayout(memTy)) {
@@ -3650,7 +3650,7 @@ LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy) {
   return toLinearLayout(memTy);
 }
 
-std::optional<uint32_t>
+static std::optional<uint32_t>
 getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType memTy,
                                            ArrayRef<int32_t> offsets) {
   assert(offsets.size() == memTy.getRank());
@@ -7050,13 +7050,6 @@ getTypeLocalTMemLdStSupportQueryPlan(MemDescType memTy, std::string *error) {
   if (!rowPlan)
     rowPlan = getTMemLdStRowPlan(maybeQuery->layout);
   return TMemLdStSupportQueryPlan{*maybeQuery, rowPlan};
-}
-
-std::optional<TMemLdStQueryLayout>
-getTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
-  if (auto support = getTMemLdStSupportQueryPlan(memDesc, error))
-    return support->query;
-  return std::nullopt;
 }
 
 std::optional<gpu::MemDescSubsliceOp>

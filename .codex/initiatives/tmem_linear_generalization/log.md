@@ -36127,3 +36127,41 @@ Open after this slice:
   `135 passed, 14 skipped`, group2 `149 passed`, group3 `149 passed`, group4
   `147 passed`; focused `test_core.py` MMA selector `17 passed, 3 skipped`; lit
   `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+## 2026-04-23 22:56 UTC: final helper API cleanup and staged validation finding
+
+- Source cleanup:
+  removed internal-only helper declarations from the public `TensorMemoryUtils`
+  header, made forwarding-source, scales-root, and type-local MMAv5 helper
+  definitions file-local, removed the unused `getTMemLdStSupportQueryLayout`
+  wrapper, and cleaned a stale blank line in the dialect API header. The public
+  helper boundary now documents type-local semantic helpers separately from
+  value-taking compatibility/optimizer/support-query helpers.
+- Validation passed before the blocker:
+  required `make -j8`; `git diff --check`; lit `TritonNvidiaGPU/tmem_layouts.mlir`
+  `1 passed`; four-GPU `test_core.py -k tmem` passed as group1 `69 passed, 5 skipped`,
+  group2 `74 passed`, group3 `74 passed`, group4 `71 passed`; full four-GPU
+  `test_tmem_runtime_matrix.py` passed as group1 `346 passed, 82 skipped`, group2
+  `408 passed, 20 skipped`, group3 `428 passed`, group4 `427 passed`; example
+  smoke rows passed for attention `01` (`2 passed`) and fused gather `05`
+  (`2 passed`).
+- Harness nuance:
+  collecting `05-moe-bmm1-fused-gather.py` with only `PYTHONPATH=./python` fails
+  on `ModuleNotFoundError: triton_kernels.distributed`; collecting and running it
+  with `PYTHONPATH=./python:./python/triton_kernels` succeeds. This is tracked as
+  a validation environment nuance, not a backend failure.
+- Validation blocker:
+  the checked-in structural fuzzer fails deterministically at
+  `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-chain1-64x32-min]`.
+  Exact reruns on separate GPUs reproduce the same runtime value mismatch:
+  `out` from `view.load_min()` mismatches `inp` before the reduced value is
+  checked. The case allocates a `[2, M, N]` f32 TMEM parent, indexes the second
+  plane, reshapes/permutes/reshapes it back to `[M, N]`, and calls hardware
+  load-reduction through that active view at `M=64, N=32`.
+- Classification:
+  real deterministic runtime miscompile/correctness failure in the `ld.red`
+  descriptor-view-chain surface; not a compile crash, not a verifier-clean-negative
+  issue, and not environment/cache-sensitive based on multi-GPU exact reruns.
+- Next concrete step:
+  do not call staged validation green. Plan and fix the `ld.red` chain bucket
+  with the user, then rerun the structural fuzzer and the staged validation set.

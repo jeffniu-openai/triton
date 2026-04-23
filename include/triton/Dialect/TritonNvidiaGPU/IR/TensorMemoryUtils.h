@@ -469,17 +469,12 @@ struct TMemCopyPlanSelection {
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy);
 
-Value getTMemForwardingSource(Value memDesc);
-
 TMemSubwordPhaseStatus getTMemSubwordPhaseStatus(Value memDesc);
 
 TMemSubwordPhaseStatus getTMemElementOffsetModuloStatus(Value memDesc,
                                                         uint32_t modulus);
 
 bool mayHaveNonZeroTMemSubwordPhase(Value memDesc);
-
-std::optional<TensorMemoryScalesEncodingAttr>
-getTMemScalesRootEncoding(Value memDesc);
 
 std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc);
 
@@ -635,14 +630,7 @@ bool disallowTMemLdStQueryTypeRescue(Value memDesc);
 
 uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);
 
-std::optional<LinearLayout>
-getTypeLocalMMAv5TMemAddressLayout(gpu::MemDescType memTy);
-
 LinearLayout getMMAv5TMemAddressLayout(gpu::MemDescType memTy);
-
-std::optional<uint32_t>
-getTypeLocalMMAv5TMemViewOffsetForLowering(gpu::MemDescType memTy,
-                                           ArrayRef<int32_t> offsets);
 
 uint32_t getMMAv5TMemViewOffsetForLowering(gpu::MemDescType memTy,
                                            ArrayRef<int32_t> offsets);
@@ -654,6 +642,10 @@ uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue);
 uint32_t getTMemSubviewRelativeBaseOffset(Value memDescValue,
                                           uint32_t baseOffset);
 
+// Type-local helpers are the semantic API for migrated descriptor classes.
+// Value-taking standalone/exact helpers are compatibility APIs for legacy view
+// recovery, optimizer rewrites, and support-query planning that intentionally
+// inspect a visible descriptor chain.
 FailureOr<gpu::MemDescType>
 inferStandaloneTMemRegLayoutQueryType(Value memDesc,
                                       std::string *error = nullptr);
@@ -673,9 +665,6 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error = nullptr);
 std::optional<TMemLdStSupportQueryPlan>
 getTypeLocalTMemLdStSupportQueryPlan(gpu::MemDescType memTy,
                                      std::string *error = nullptr);
-
-std::optional<TMemLdStQueryLayout> getTMemLdStSupportQueryLayout(
-    Value memDesc, std::string *error = nullptr);
 
 std::optional<gpu::MemDescSubsliceOp>
 getTMemLdStPure2DColumnSubview(Value memDesc);

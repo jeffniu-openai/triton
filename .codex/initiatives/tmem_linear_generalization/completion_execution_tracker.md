@@ -1,8 +1,8 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 22:09 UTC
+Last updated: 2026-04-23 22:56 UTC
 
-Active phase: newer TMEM memdesc model implementation, first vertical slices.
+Active phase: final helper API cleanup complete; staged validation is blocked on one deterministic structural-fuzzer `ld.red` correctness failure.
 
 Current checkpoint summary:
 
@@ -50,6 +50,9 @@ Current checkpoint summary:
   non-self-contained descriptor classes keep the existing support-query legacy
   path; a broad no-scale probe showed raw direct-root type-local selection would
   regress 256-row dense roots and tile-selector-permuted layouts.
+
+- [x] Final helper API cleanup: internal-only `TensorMemoryUtils` helpers for forwarding-source recovery, scales-root recovery, and type-local MMAv5 address/offset planning were removed from the public header or made file-local. The public boundary now keeps type-local semantic helpers separate from value-taking compatibility/optimizer/support-query APIs.
+- [ ] Staged validation is not yet green. Build, lit, `test_core.py -k tmem`, full TMEM runtime matrix, and example smoke checks passed, but the checked-in structural fuzzer fails deterministically at `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-chain1-64x32-min]`. Bucket: `ld.red` descriptor-view-chain runtime miscompile; symptom: passthrough result from `view.load_min()` mismatches the initialized TMEM tile for a `parent.index(1).reshape(...).permute(...).reshape(...)` active view; next step is user-reviewed fix planning before continuing broad validation.
 
 Active implementation checklist:
 

@@ -20,6 +20,8 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
+Latest final API cleanup and staged-validation checkpoint: as of 2026-04-23 22:56 UTC, the public `TensorMemoryUtils` API has been trimmed so internal-only forwarding, scales-root, and type-local MMAv5 helper entry points are file-local implementation details. The remaining public helper boundary now explicitly separates migrated type-local semantic APIs from value-taking compatibility/optimizer/support-query APIs. Validation after the cleanup passed `make -j8`, lit `TritonNvidiaGPU/tmem_layouts.mlir`, four-GPU `test_core.py -k tmem`, the full four-GPU TMEM runtime matrix, and focused Gluon example smoke rows for `01-attention-forward.py` and `05-moe-bmm1-fused-gather.py`. Staged validation is not closed: `python/test/gluon/test_tmem_structural_fuzzer.py::test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-chain1-64x32-min]` fails deterministically on multiple GPUs with a runtime value mismatch from the passthrough result of `view.load_min()` over a descriptor chain. This is classified as a real `ld.red` descriptor-view-chain correctness bucket, not an environment issue or expected clean negative; fixing it is the next planning step before broad validation can be called green.
+
 Latest checkpoint: as of 2026-04-23 20:38 UTC, broad `test_core.py -k
 tmem` validation is green after fixing physical-bitcast TMEM reinterpret
 lowering. The key semantic fix is that tensor-memory `memdesc_reinterpret`
