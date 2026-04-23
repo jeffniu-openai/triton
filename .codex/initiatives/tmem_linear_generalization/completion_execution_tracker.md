@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 21:48 UTC
+Last updated: 2026-04-23 22:09 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -43,6 +43,13 @@ Current checkpoint summary:
   type-local planning for descriptors covered by `hasTypeLocalTMemLdStLayout`.
   Value-shaped producer-chain helpers remain for legacy descriptor-view
   compatibility, optimizer replay, and current-value phase/alignment analysis.
+- [x] Closed the `tcgen05.copy` type-local physical-query selection workstream
+  for active copy descriptor classes: active self-contained subviews and scales
+  descriptor views now select the current `MemDescType` physical query before
+  legacy standalone/exact producer-chain comparison. Direct roots and
+  non-self-contained descriptor classes keep the existing support-query legacy
+  path; a broad no-scale probe showed raw direct-root type-local selection would
+  regress 256-row dense roots and tile-selector-permuted layouts.
 
 Active implementation checklist:
 
@@ -56,6 +63,26 @@ Closeout checklist for this slice:
 - [x] Switch TMEM load/store verifier and Gluon register/reduction layout helpers to the same type-local planning path for `hasTypeLocalTMemLdStLayout` descriptors.
 - [x] Keep producer-chain walkers as compatibility/optimizer-only adapters for legacy descriptor views and replay transforms, not as required semantic lowering facts for self-contained memdesc classes.
 - [x] Rebuild and run focused plus broad `ldst`/`ld.red`/scales validation before checking this slice complete.
+
+Completed closeout slice: `tcgen05.copy` physical-query selection is closed for
+active type-local copy descriptor classes. The remaining producer-chain copy
+paths are compatibility/support-query paths for direct roots or descriptor
+classes whose current type is not yet self-contained for copy planning.
+
+Closeout checklist for the copy slice:
+
+- [x] Audit copy verifier/lowering selection and keep active self-contained
+  subviews on a type-local destination physical query.
+- [x] Extend type-local copy selection to scales descriptor views so clean
+  negative diagnostics for scales copy views no longer depend on exact/standalone
+  producer-chain divergence notes.
+- [x] Preserve the existing support-query path for direct roots after a broad
+  probe showed raw type-local direct-root planning regresses 256-row dense roots
+  and tile-selector-permuted layouts.
+- [x] Keep packed-lane and too-small copy families as clean negatives unless the
+  current descriptor layout itself represents a legal ISA copy family.
+- [x] Rebuild and run focused, broad no-scale/scales, four-GPU runtime-matrix,
+  `test_core.py`, and lit validation before checking this slice complete.
 
 - [x] Rehydrate the initiative and record the newer memdesc-model plan in the
   durable design note.
@@ -282,13 +309,16 @@ Closeout checklist for this slice:
   descriptor-view diagnostics now use `hasTypeLocalTMemLdStLayout` before
   considering producer-chain backing row plans, so scales descriptor views
   stay on the current-type diagnostic path.
-- [ ] Packed-lane `tcgen05.copy` scheduling remains a real planner/modeling
-  boundary: the current scheduler can identify the lane/dword projection, but
-  still lacks a lane-aware source-storage, descriptor-synthesis, and tile
-  footprint model that would make such copies legal.
+- [x] Packed-lane `tcgen05.copy` scheduling is classified for this phase as a
+  clean-negative boundary rather than an open lowering path: the scheduler can
+  identify the lane/dword projection, reports too-small or lane-ambiguous
+  destinations without compiler crashes, and does not borrow hidden parent
+  columns. Legal packed-lane copy execution would require a future lane-aware
+  source-storage, descriptor-synthesis, and tile-footprint model.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
-  and producer-chain matchers are optimizer-only. Ld/st and ld.red are closed
-  for the active type-local descriptor classes as of 2026-04-23 21:48 UTC.
+  and producer-chain matchers are optimizer-only. Ld/st, ld.red, and
+  `tcgen05.copy` physical-query selection are closed for the active type-local
+  descriptor classes as of 2026-04-23 22:09 UTC.
   Latest completed slices:
   scales descriptor-view load/store support planning now uses the
   type-local query and row-plan helpers directly, dynamic selector
@@ -318,6 +348,22 @@ and not scales` passed as four groups of `64 passed`; four-GPU `ldst_scales
 and not reports` passed as group1 `9 passed`, group2 `9 passed`, group3 `9
 passed`, group4 `6 passed`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1
 passed`; `git diff --check` passed.
+
+Current `tcgen05.copy` closeout checkpoint: copy physical-query selection now
+uses a copy-specific type-local predicate for active self-contained subviews and
+scales descriptor views. These descriptor classes select the current
+`MemDescType` query before legacy standalone/exact producer-chain comparison,
+which keeps the selected runtime `taddr` authoritative and removes exact-query
+divergence notes from scales descriptor-view diagnostics. Direct roots are not
+forced through raw type-local selection: a broad no-scale probe showed that
+256-row dense roots and tile-selector-permuted layouts still require the
+existing support-query path. Validation: required `make -j8`; focused copy
+reports `18 passed`; focused linear/direct probe `100 passed`; full no-scale
+copy selector `302 passed, 4 skipped`; scales copy selector `34 passed`;
+four-GPU runtime-matrix `cp_no_scales or cp_scales` passed as group1 `81
+passed, 4 skipped`, group2 `85 passed`, group3 `85 passed`, group4 `85
+passed`; `test_core.py -k 'tmem_copy or mma_scaled_tcgen05_copy'` `149 passed,
+5 skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`.
 
 Current invariant for this phase: user-facing TMEM APIs do not change. The only
 planned semantic tightening is clean rejection of `tcgen05.copy` descriptors

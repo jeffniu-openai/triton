@@ -5036,6 +5036,14 @@ bool hasTypeLocalTMemLdStLayout(gpu::MemDescType memTy) {
          isTypeLocalTMemScalesDescriptorView(memTy);
 }
 
+static bool hasTypeLocalTMemCopyLayout(gpu::MemDescType memTy) {
+  // Direct roots may still require a wider support query than their raw
+  // current layout, for example dense 256-row copy roots. Keep this predicate
+  // limited to descriptor classes whose current type encodes the copy image.
+  return hasSelfContainedTMemSubviewLayout(memTy) ||
+         isTypeLocalTMemScalesDescriptorView(memTy);
+}
+
 gpu::MemDescType getSelfContainedTMemSubviewPlanningType(gpu::MemDescType memTy) {
   if (!hasSelfContainedTMemSubviewLayout(memTy))
     return memTy;
@@ -7537,8 +7545,7 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
   };
 
   auto memTy = dyn_cast<MemDescType>(memDesc.getType());
-  bool hasTypeLocalSubviewLayout =
-      memTy && hasSelfContainedTMemSubviewLayout(memTy);
+  bool hasTypeLocalCopyLayout = hasTypeLocalTMemCopyLayout(memTy);
   if (memTy) {
     if (auto maybeTypeLocal =
             inferTypeLocalTMemPhysicalQuery(memTy, &selection.typeLocalError);
@@ -7547,17 +7554,21 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
     }
   }
 
-  if (hasTypeLocalSubviewLayout) {
-    if (debug) {
-      if (selection.typeLocal) {
-        llvm::errs() << "[tmem-copy] candidate type-local query canCompose="
-                     << canUseCopyQuery(*selection.typeLocal) << "\n"
-                     << selection.typeLocal->layout.toString() << "\n";
-      } else if (!selection.typeLocalError.empty()) {
-        llvm::errs() << "[tmem-copy] candidate type-local query failed: "
-                     << selection.typeLocalError << "\n";
-      }
+  auto dumpTypeLocalCandidate = [&]() {
+    if (!debug)
+      return;
+    if (selection.typeLocal) {
+      llvm::errs() << "[tmem-copy] candidate type-local query canCompose="
+                   << canUseCopyQuery(*selection.typeLocal) << "\n"
+                   << selection.typeLocal->layout.toString() << "\n";
+    } else if (!selection.typeLocalError.empty()) {
+      llvm::errs() << "[tmem-copy] candidate type-local query failed: "
+                   << selection.typeLocalError << "\n";
     }
+  };
+
+  if (hasTypeLocalCopyLayout) {
+    dumpTypeLocalCandidate();
     if (selection.typeLocal)
       return choose(*selection.typeLocal, /*usedTypeLocal=*/true,
                     /*usedExact=*/false);
@@ -7580,22 +7591,15 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
     selection.exact = *maybeExact;
 
   if (debug) {
-    if (selection.typeLocal) {
-      llvm::errs() << "[tmem-copy] candidate type-local query canCompose="
-                   << canUseCopyQuery(*selection.typeLocal) << "\n"
-                   << selection.typeLocal->layout.toString() << "\n";
-      if (selection.exact) {
-        if (auto difference =
-                getFirstTMemPhysicalQueryDifference(*selection.typeLocal,
-                                                    *selection.exact)) {
-          llvm::errs() << "[tmem-copy] type-local/exact query divergence: "
-                       << stringifyTMemPhysicalQueryDifference(*difference)
-                       << "\n";
-        }
+    dumpTypeLocalCandidate();
+    if (selection.typeLocal && selection.exact) {
+      if (auto difference =
+              getFirstTMemPhysicalQueryDifference(*selection.typeLocal,
+                                                  *selection.exact)) {
+        llvm::errs() << "[tmem-copy] type-local/exact query divergence: "
+                     << stringifyTMemPhysicalQueryDifference(*difference)
+                     << "\n";
       }
-    } else if (!selection.typeLocalError.empty()) {
-      llvm::errs() << "[tmem-copy] candidate type-local query failed: "
-                   << selection.typeLocalError << "\n";
     }
     if (selection.standalone) {
       llvm::errs() << "[tmem-copy] candidate standalone query canCompose="

@@ -36066,3 +36066,44 @@ Open after this slice:
   The broader project still has non-ld/st surfaces to close, especially packed
   lane-aware `tcgen05.copy` scheduling/modeling and remaining MMAv5/scales
   producer-chain cleanup outside the load/store/reduction path.
+
+## 2026-04-23 22:09 UTC: tcgen05.copy type-local closeout
+
+- User direction:
+  finish and close out `tcgen05.copy` related changes.
+- Source changes:
+  added a copy-specific type-local predicate in `TensorMemoryUtils.cpp` and made
+  `selectTMemCopyPhysicalQuery` select active self-contained subviews and
+  type-local scales descriptor views from the current `MemDescType` before any
+  legacy standalone/exact producer-chain comparison. Updated the scales
+  descriptor-view clean-negative test to assert the current row-order diagnostic
+  and absence of the old exact-query divergence/source-message note.
+- Important boundary discovered during validation:
+  a broader initial predicate that also forced direct roots through raw
+  type-local copy queries regressed legal no-scale rows. 256-row dense roots were
+  rejected as 256 logical source rows, and a tile-selector-permuted root
+  miscompiled. The final patch therefore keeps direct roots on the existing
+  support-query/standalone compatibility path; that path is a support-planner
+  requirement, not a producer-chain semantic dependency for active views.
+- Packed-lane classification:
+  packed-lane and too-small `tcgen05.copy` rows remain clean negatives for this
+  phase unless the current descriptor layout itself represents a legal copy
+  family. The scheduler identifies the lane/dword projection and reports clean
+  unsupported diagnostics rather than borrowing hidden parent columns or falling
+  through to late lowering failures.
+- Validation:
+  required `make -j8`; focused copy report selector `18 passed, 1693
+  deselected`; focused linear/direct copy selector `100 passed, 1611
+  deselected`; full no-scale copy selector `302 passed, 4 skipped, 1405
+  deselected`; scales copy selector `34 passed, 1677 deselected`; four-GPU
+  runtime-matrix `cp_no_scales or cp_scales` split passed as group1 `81 passed,
+  4 skipped, 1626 deselected`, group2 `85 passed, 1626 deselected`, group3 `85
+  passed, 1626 deselected`, group4 `85 passed, 1626 deselected`;
+  `test_core.py -k 'tmem_copy or mma_scaled_tcgen05_copy'` `149 passed, 5
+  skipped, 17966 deselected`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1
+  passed`.
+- Remaining boundary:
+  copy is closed for active type-local descriptor classes. Remaining non-copy
+  work is the broader MMAv5/scales producer-chain cleanup and final helper API
+  separation; legal packed-lane copy execution would be a future feature with a
+  lane-aware source-storage/descriptor/tile model.

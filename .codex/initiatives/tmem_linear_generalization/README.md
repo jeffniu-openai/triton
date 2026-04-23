@@ -39,13 +39,17 @@ layout, and already-rescaled runtime `taddr`, with a new runtime test covering
 selection between two same-typed bitcast views before MMA. Broad
 `mma and not reports` runtime-matrix validation passed across four GPUs.
 
-Latest copy-planning follow-up: as of 2026-04-23 20:54 UTC,
-`selectTMemCopyPhysicalQuery` uses the type-local destination physical query
-outside the active-subview-only path when it matches the physical projection
-that the legacy standalone/exact selector would have chosen. This preserves the
-selected copy family while letting lowering rely on the current runtime `taddr`
-for the matched destination instead of subtracting a producer-chain-derived
-view offset.
+Latest copy-planning closeout: as of 2026-04-23 22:09 UTC,
+`tcgen05.copy` physical-query selection is closed for active type-local copy
+descriptor classes. Active self-contained TMEM subviews and type-local scales
+descriptor views now choose the current `MemDescType` physical query before any
+legacy standalone/exact producer-chain comparison, so legal copy lowering and
+clean-negative diagnostics for those classes depend on the current type/layout
+and runtime `taddr`. Direct roots and descriptor classes that are not yet
+self-contained keep the existing support-query/standalone compatibility path;
+an attempted raw type-local switch for direct roots exposed real 256-row dense
+root and tile-selector support-query requirements, so those are documented as a
+separate support-planner boundary rather than forced into the copy closeout.
 
 Latest view/taddr closeout: as of 2026-04-23 21:15 UTC,
 origin-changing descriptor views are closed for this phase. Shared TMEM base
@@ -73,11 +77,14 @@ migration is executing first vertical slices. The checklist lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
 type-local physical-query scaffolding, DCE derisking for `subword_index`,
 active TMEM subslice result encodings, and active-subview load/store
-query-ordering for self-contained result layouts. Copy planning now also uses
-the type-local destination physical query for active self-contained subviews.
-The first too-small-copy clean negatives are now covered for `128x1xf32` and
-`128x2xf32`. Active self-contained ld/st row-plan selection now uses the
-current descriptor's row plan instead of borrowing a backing parent row plan.
+query-ordering for self-contained result layouts. Copy planning now uses
+the type-local destination physical query for active self-contained subviews and
+scales descriptor views; too-small and packed-lane copy cases are covered as
+clean negatives when the current descriptor cannot realize a legal ISA copy
+family. The first too-small-copy clean negatives are now covered for
+`128x1xf32` and `128x2xf32`. Active self-contained ld/st row-plan selection now
+uses the current descriptor's row plan instead of borrowing a backing parent row
+plan.
 Active self-contained ld/st raw-query construction now dispatches through
 `inferTypeLocalTMemLdStQueryLayout(MemDescType)`, and ld/st query-type
 selection and support-query planning now return type-local plans for the same

@@ -650,14 +650,18 @@ Checklist state:
 - [ ] Migrate subword pack/unpack handling for packed and unpacked sub-32-bit
   layouts.
 - [ ] Migrate `ld.red` legality/layout selection to the type-local planner.
-- [ ] Migrate `tcgen05.copy` planning to destination-type-only analysis and add
+- [x] Migrate `tcgen05.copy` planning to destination-type-only analysis and add
   too-small-copy clean negatives. First partial slice complete: active
   self-contained subview destinations select a type-local physical query.
   Matched-projection slice complete: other descriptors now also select the
   type-local destination query when it matches the physical projection chosen by
   the legacy standalone/exact selector. First clean-negative slice complete:
   `128x1xf32` and `128x2xf32` current descriptors report an explicit hardware
-  copy-atom boundary.
+  copy-atom boundary. Closeout slice complete: active self-contained subviews
+  and scales descriptor views now use a copy-specific type-local physical query
+  before legacy standalone/exact comparison; direct roots keep the support-query
+  path because raw type-local direct-root planning regressed 256-row dense and
+  tile-selector layouts during validation.
 - [ ] Migrate MMAv5/scales address planning to current type/layout plus runtime
   `taddr`. First partial slice complete: narrowed MMAv5-family descriptors now
   derive address layout and tile-order offsets from current `MemDescType`
@@ -1973,3 +1977,30 @@ High-priority hacks and debt to remove after replacement coverage exists:
   matrix passed across four GPUs as group1 `59 passed, 4 skipped`, group2
   `63 passed`, group3 `63 passed`, group4 `62 passed`; scales copy selector
   `34 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+### 2026-04-23 Type-Local Copy Closeout
+
+- Added a copy-specific type-local predicate for descriptor classes whose copy
+  destination semantics are self-contained in the current `MemDescType`: active
+  TMEM subviews and type-local scales descriptor views.
+- `selectTMemCopyPhysicalQuery` now chooses that type-local query before
+  constructing legacy standalone/exact producer-chain candidates. For these
+  classes, copy lowering keeps the current runtime `taddr` and clean-negative
+  diagnostics come from the current destination layout.
+- Direct roots are deliberately not forced through the raw type-local query. A
+  broad no-scale copy probe showed that 256-row dense roots and
+  tile-selector-permuted layouts still need the existing support-query planner;
+  using the raw 256-row direct query either rejected legal rows or miscompiled a
+  selector-permuted copy. This remains a support-planner boundary, not a reason
+  to reintroduce producer-chain semantics for active descriptor views.
+- Packed-lane/too-small `tcgen05.copy` rows remain clean negatives for this
+  phase unless the current descriptor layout itself represents a legal copy
+  family. The compiler must not borrow hidden parent columns to satisfy a copy
+  atom footprint.
+- Validation after this slice: required `make -j8`; focused reports `18
+  passed`; focused linear/direct probe `100 passed`; no-scale copy selector
+  `302 passed, 4 skipped`; scales copy selector `34 passed`; four-GPU
+  runtime-matrix `cp_no_scales or cp_scales` passed as group1 `81 passed, 4
+  skipped`, group2 `85 passed`, group3 `85 passed`, group4 `85 passed`;
+  `test_core.py -k 'tmem_copy or mma_scaled_tcgen05_copy'` `149 passed, 5
+  skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`.

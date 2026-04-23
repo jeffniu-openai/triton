@@ -18616,3 +18616,22 @@ rejection, not rescue
   reductions `84 passed`; four-GPU ldst split `96/57+39s/57+39s/76+20s`;
   four-GPU ld.red split `64/64/64/64`; four-GPU ldst_scales split `9/9/9/6`;
   lit `tmem_layouts.mlir` passed.
+
+- 2026-04-23 22:09 UTC `tcgen05.copy` type-local closeout completed. Added a
+  copy-specific type-local predicate for active self-contained subviews and
+  type-local scales descriptor views, and routed `selectTMemCopyPhysicalQuery`
+  to choose that current `MemDescType` query before legacy standalone/exact
+  producer-chain comparison. The scales descriptor-view clean negative now comes
+  directly from current row-order facts instead of an exact-query divergence
+  note. A broad no-scale probe showed raw type-local direct-root selection is
+  not yet a valid replacement for the support-query path: 256-row dense roots
+  were rejected and a tile-selector-permuted root miscompiled, so direct roots
+  remain on the existing support-query/standalone compatibility path. Packed-lane
+  and too-small copy rows are classified as clean negatives unless the current
+  descriptor layout itself represents a legal ISA copy family. Validation:
+  required `make -j8`; focused copy reports `18 passed`; focused linear/direct
+  probe `100 passed`; no-scale copy selector `302 passed, 4 skipped`; scales
+  copy selector `34 passed`; four-GPU `cp_no_scales or cp_scales` split passed
+  as group1 `81 passed, 4 skipped`, group2 `85 passed`, group3 `85 passed`,
+  group4 `85 passed`; `test_core.py -k 'tmem_copy or mma_scaled_tcgen05_copy'`
+  `149 passed, 5 skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`.

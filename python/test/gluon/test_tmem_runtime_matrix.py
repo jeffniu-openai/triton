@@ -10909,8 +10909,8 @@ def test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupp
     assert "requires non-broadcast TMEM row bases to stay in ascending physical row order" in text
     assert "destination-row order requirement" in text
     assert "copy atom writes the full 32-row destination footprint" in text
-    assert "first differing physical-query field is physical layout for active view shape 128x32" in text
-    assert "needs a destination-row / source-message schedule" in text
+    assert "first differing physical-query field" not in text
+    assert "source-message schedule" not in text
     assert "Source element type should be 32-bit" not in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
