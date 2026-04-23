@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 02:32 UTC split the MMAv5 address/tile-order helper
+  surface. `getTypeLocalMMAv5TMemAddressLayout(MemDescType)` and
+  `getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType, offsets)` now
+  expose the semantic type-local path for active self-contained and
+  MMAv5-family descriptors. The old value-taking helpers still handle
+  physical-bitcast behavior and legacy producer-chain fallback, but the local
+  plan is now independently callable. Validation: required `make -j8`; full
+  scaled tile-permuted accumulator subslice function `10 passed`; focused
+  B-scale descriptor-view rows `3 passed`; 4-GPU positive MMAv5 selector
+  passed as group1 `133 passed, 14 skipped`, group2 `147 passed`, group3
+  `147 passed`, group4 `147 passed`; targeted lit set passed `6/6`;
+  `git diff --check` passed.
+
 - Latest: 2026-04-23 02:19 UTC completed the first type-local MMAv5
   family-address slice. `getMMAv5TMemFamilyAddressLayout(MemDescType)` no
   longer rejects `shape != allocShape`; the existing MMAv5 family-info helpers

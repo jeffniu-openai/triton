@@ -3163,35 +3163,28 @@ bool isTMemPhysicalBitcast(Value value) {
   return reinterpret && reinterpret->hasAttr("tmem_physical_bitcast");
 }
 
-LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
-  std::string layoutError;
-  bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
-  auto getExactTypeLayout = [&]() -> std::optional<LinearLayout> {
-    if (auto maybeAnalysis = getTMemViewAnalysisLinearLayout(
-            memTy.getShape(), memTy.getEncoding(), &layoutError)) {
-      return normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis);
-    }
-    if (auto maybeCanonical =
-            getCanonicalTMemLinearEncoding(memTy, &layoutError)) {
-      return normalizeTensorMemoryLinearLayoutForAnalysis(
-          maybeCanonical->getLinearLayout());
-    }
-    return std::nullopt;
-  };
+static std::optional<LinearLayout>
+getExactTypeTMemAddressLayout(MemDescType memTy, std::string *layoutError) {
+  if (auto maybeAnalysis = getTMemViewAnalysisLinearLayout(
+          memTy.getShape(), memTy.getEncoding(), layoutError)) {
+    return normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis);
+  }
+  if (auto maybeCanonical =
+          getCanonicalTMemLinearEncoding(memTy, layoutError)) {
+    return normalizeTensorMemoryLinearLayoutForAnalysis(
+        maybeCanonical->getLinearLayout());
+  }
+  return std::nullopt;
+}
 
-  if (hasTypeLocalSubviewLayout) {
+std::optional<LinearLayout>
+getTypeLocalMMAv5TMemAddressLayout(MemDescType memTy) {
+  std::string layoutError;
+  if (hasSelfContainedTMemSubviewLayout(memTy)) {
     // The lowered base for active subviews is already relative to the current
     // descriptor taddr. Use the current type's normalized address image rather
     // than reconstructing a producer-chain query and origin.
-    if (auto maybeLayout = getExactTypeLayout())
-      return *maybeLayout;
-  }
-
-  if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
-    // The lowered TMEM base already includes the source slice/subview offset.
-    // Physical bitcasts consume the result descriptor in this typed coordinate
-    // frame instead of a possibly non-surjective physical query layout.
-    if (auto maybeLayout = getExactTypeLayout())
+    if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
       return *maybeLayout;
   }
 
@@ -3204,9 +3197,25 @@ LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
   if (shape == allocShape) {
     if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy))
       return *maybeLayout;
-    if (auto maybeLayout = getExactTypeLayout())
+    if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
       return *maybeLayout;
   }
+
+  return std::nullopt;
+}
+
+LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
+  std::string layoutError;
+  if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
+    // The lowered TMEM base already includes the source slice/subview offset.
+    // Physical bitcasts consume the result descriptor in this typed coordinate
+    // frame instead of a possibly non-surjective physical query layout.
+    if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
+      return *maybeLayout;
+  }
+
+  if (auto maybeLayout = getTypeLocalMMAv5TMemAddressLayout(memTy))
+    return *maybeLayout;
 
   if (memDescValue) {
     if (auto maybeQuery = inferStandaloneTMemLdStQueryLayout(
@@ -3216,9 +3225,27 @@ LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
     }
   }
 
-  if (auto maybeLayout = getExactTypeLayout())
+  if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
     return *maybeLayout;
   return toLinearLayout(memTy);
+}
+
+std::optional<uint32_t>
+getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType memTy,
+                                           ArrayRef<int32_t> offsets) {
+  assert(offsets.size() == memTy.getRank());
+
+  if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy)) {
+    auto layoutRank = static_cast<size_t>(maybeLayout->getNumOutDims());
+    auto prefixRank =
+        memTy.getRank() > layoutRank ? memTy.getRank() - layoutRank : 0;
+    return getTMemViewOffset(
+        *maybeLayout, offsets.take_back(layoutRank),
+        memTy.getElementTypeBitWidth(), memTy.getShape().take_front(prefixRank));
+  }
+  if (hasSelfContainedTMemSubviewLayout(memTy))
+    return getTMemViewOffset(memTy, offsets);
+  return std::nullopt;
 }
 
 uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
@@ -3230,16 +3257,9 @@ uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
   // getMMAv5TMemAddressLayout for physical bitcasts.
   if (memDescValue && isTMemPhysicalBitcast(memDescValue))
     return getTMemViewOffset(memTy, offsets);
-  if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy)) {
-    auto layoutRank = static_cast<size_t>(maybeLayout->getNumOutDims());
-    auto prefixRank =
-        memTy.getRank() > layoutRank ? memTy.getRank() - layoutRank : 0;
-    return getTMemViewOffset(
-        *maybeLayout, offsets.take_back(layoutRank),
-        memTy.getElementTypeBitWidth(), memTy.getShape().take_front(prefixRank));
-  }
-  if (hasSelfContainedTMemSubviewLayout(memTy))
-    return getTMemViewOffset(memTy, offsets);
+  if (auto maybeOffset =
+          getTypeLocalMMAv5TMemViewOffsetForLowering(memTy, offsets))
+    return *maybeOffset;
   if (memDescValue && !isTMemPhysicalBitcast(memDescValue))
     return getTMemViewOffsetForLowering(memDescValue, offsets);
   return getTMemViewOffset(memTy, offsets);

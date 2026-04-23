@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 02:19 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 02:32 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -47,8 +47,22 @@ accumulator slices, and keeps compact active subviews on the current-`taddr`
 planning path. MMAv5 address layout and tile-order offset lowering now derive
 the family address layout from the current `MemDescType` for narrowed
 MMAv5-family descriptors instead of needing producer-chain address recovery.
+The type-local MMAv5 address and tile-order computations now have explicit
+helper APIs, with the old value-taking functions acting as legacy wrappers.
 
-Latest validation checkpoint: 2026-04-23 02:19 UTC completed the first
+Latest validation checkpoint: 2026-04-23 02:32 UTC split the MMAv5
+address/tile-order helper surface. `getTypeLocalMMAv5TMemAddressLayout` and
+`getTypeLocalMMAv5TMemViewOffsetForLowering` expose the semantic type-local
+plan for active self-contained and MMAv5-family descriptors, while
+`getMMAv5TMemAddressLayout` and `getMMAv5TMemViewOffsetForLowering` keep the
+legacy producer-chain fallback for descriptors not yet migrated. Validation:
+required `make -j8`; full scaled tile-permuted accumulator subslice function
+`10 passed`; focused B-scale descriptor-view rows `3 passed`; 4-GPU positive
+MMAv5 selector passed as group1 `133 passed, 14 skipped`, group2 `147 passed`,
+group3 `147 passed`, group4 `147 passed`; targeted lit set passed `6/6`;
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 02:19 UTC completed the first
 type-local MMAv5 family-address slice. `getMMAv5TMemFamilyAddressLayout` now
 accepts narrowed shapes when the current descriptor type still carries an
 MMAv5-family allocation shape, and MMAv5 address/tile-order lowering consults

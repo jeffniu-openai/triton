@@ -33904,6 +33904,28 @@ Open after this slice:
   boundaries, broader MMAv5 reachable-family support, heuristic cleanup, and
   staged broad validation.
 
+## 2026-04-23 02:32 UTC: MMAv5 address helper split
+
+- Branch/HEAD before this repair slice:
+  `29e368ead Use type-local MMAv5 family address layouts`.
+- Source change:
+  added `getTypeLocalMMAv5TMemAddressLayout(MemDescType)` and
+  `getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType, offsets)`.
+  `getExactTypeTMemAddressLayout` centralizes exact current-type layout
+  extraction. Existing value-taking MMAv5 helpers now preserve physical-bitcast
+  behavior, then use the type-local plan, then fall back to legacy
+  producer-chain inference.
+- Validation evidence:
+  required `make -j8`; full scaled tile-permuted accumulator subslice function
+  `10 passed`; focused B-scale descriptor-view rows `3 passed`; 4-GPU positive
+  MMAv5 selector passed as group1 `133 passed, 14 skipped`, group2
+  `147 passed`, group3 `147 passed`, group4 `147 passed`; targeted lit set
+  passed `6/6`; `git diff --check` passed.
+- Remaining migration frontier:
+  the scales descriptor-view/root-encoding gap remains: current TTGIR still
+  carries some B-scale views as `tensor_memory_linear` and relies on root
+  producer-chain recovery to decide scale storage support.
+
 ## 2026-04-22 23:55 UTC: active-subview ld/st query-type locality
 
 - Branch/HEAD before this slice:

@@ -343,6 +343,13 @@ necessary: MMAv5 address/tile-order can use the family address layout, while
 direct ld/st support planning must select the canonical support family instead
 of blindly using the current tile-permuted encoding.
 
+As of 2026-04-23 02:32 UTC, that type-local computation is also split into
+explicit APIs: `getTypeLocalMMAv5TMemAddressLayout(MemDescType)` and
+`getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType, offsets)`. The
+value-taking MMAv5 helpers remain as wrappers for physical-bitcast behavior and
+legacy producer-chain fallback, but the semantic local plan is now separated
+from the compatibility path.
+
 ## Current Disallowed Chain-Walking Sites
 
 These sites currently use parent operations to decide semantic verifier,
@@ -372,8 +379,9 @@ to pre-lowering canonicalization.
   chain to choose MMAv5 address layout and tile order.
   - Partially migrated: narrowed MMAv5-family descriptors now derive the family
     address layout from current `MemDescType` before legacy producer-chain
-    fallback. Remaining fallbacks and physical-bitcast checks still need to be
-    split into type-local semantics versus optimizer-only rewrites.
+    fallback, and the type-local address/offset computation is now exposed as
+    separate helpers. Remaining fallbacks and physical-bitcast checks still need
+    to be split into type-local semantics versus optimizer-only rewrites.
 - `getBackingTMemLdStRowPlan(Value)` walks through forwarding sources and view
   ops to borrow a wider parent row plan.
   - Any required row plan must be derivable from the current descriptor layout or
@@ -649,7 +657,9 @@ Checklist state:
 - [ ] Migrate MMAv5/scales address planning to current type/layout plus runtime
   `taddr`. First partial slice complete: narrowed MMAv5-family descriptors now
   derive address layout and tile-order offsets from current `MemDescType`
-  family facts before legacy producer-chain fallback.
+  family facts before legacy producer-chain fallback. First helper-split slice
+  complete: type-local MMAv5 address and tile-order computations now have
+  explicit APIs separate from value-taking fallback wrappers.
 - [ ] Split public helper APIs into lowering-facing type-local helpers and
   optimizer-only producer-chain matchers.
 - [ ] Delete or quarantine obsolete support-query, backing-row, and
@@ -961,6 +971,23 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
   `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed
   `6/6`; `git diff --check` passed.
+
+### 2026-04-23 MMAv5 Address Helper Split
+
+- Added `getTypeLocalMMAv5TMemAddressLayout(MemDescType)` for the semantic
+  type-local MMAv5 address plan. It covers active self-contained descriptors,
+  MMAv5-family descriptors, and direct full-shape descriptors without accepting
+  a `Value`.
+- Added `getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType, offsets)` for
+  the matching type-local tile-order offset computation.
+- The existing value-taking helpers now act as compatibility wrappers:
+  physical-bitcast behavior is preserved first, then the type-local helper is
+  used, and only then does legacy producer-chain inference run.
+- Validation after this slice: required `make -j8`; full scaled tile-permuted
+  accumulator subslice function `10 passed`; focused B-scale descriptor-view
+  rows `3 passed`; 4-GPU positive MMAv5 selector passed as group1
+  `133 passed, 14 skipped`, group2 `147 passed`, group3 `147 passed`, group4
+  `147 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
 
 ### 2026-04-22 Active Subview Load/Store Query-Type Slice
 

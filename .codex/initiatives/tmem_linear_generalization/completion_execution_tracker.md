@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 02:19 UTC
+Last updated: 2026-04-23 02:32 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -50,7 +50,9 @@ Active implementation checklist:
   to the logical shape; wider exact support layouts keep their support shape.
   First MMAv5 family-address slice: narrowed MMAv5-family descriptors now
   derive address layouts and tile-order offsets from current `MemDescType`
-  family facts before legacy producer-chain fallback.
+  family facts before legacy producer-chain fallback. First MMAv5 helper-split
+  slice: the type-local address and tile-order computations are now explicit
+  APIs, with value-taking wrappers retaining legacy fallback.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -83,6 +85,14 @@ itself, so ld/st support planning still uses the canonical family support
 layout. Remaining work continues with broader type-local MMAv5/scales cleanup,
 `ld.red` cleanup, and helper API separation.
 
+Current API-separation checkpoint: MMAv5 address and tile-order planning now
+has explicit type-local entry points:
+`getTypeLocalMMAv5TMemAddressLayout(MemDescType)` and
+`getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType, offsets)`. The old
+value-taking helpers still preserve physical-bitcast behavior and legacy
+producer-chain fallback, but the semantic type-local path is now callable and
+auditable independently.
+
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
 `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects
@@ -98,6 +108,18 @@ scaled subslice row `1 passed`; 4-GPU positive MMAv5 selector passed as group1
 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
 `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`;
 `git diff --check` passed.
+
+Completed thirteenth implementation slice: MMAv5 address/tile-order helper
+surface split. `getExactTypeTMemAddressLayout` centralizes exact current-type
+layout extraction. `getTypeLocalMMAv5TMemAddressLayout` returns the local plan
+for active self-contained descriptors, MMAv5-family descriptors, and direct
+full-shape descriptors. `getTypeLocalMMAv5TMemViewOffsetForLowering` computes
+the matching local tile-order offset. Validation: required `make -j8`; full
+scaled tile-permuted accumulator subslice function `10 passed`; focused
+B-scale descriptor-view rows `3 passed`; 4-GPU positive MMAv5 selector passed
+as group1 `133 passed, 14 skipped`, group2 `147 passed`, group3 `147 passed`,
+group4 `147 passed`; targeted lit set passed `6/6`; `git diff --check`
+passed.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but
