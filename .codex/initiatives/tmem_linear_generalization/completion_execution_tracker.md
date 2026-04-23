@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:12 UTC
+Last updated: 2026-04-23 04:17 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -75,7 +75,10 @@ Active implementation checklist:
   dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
   `128x256b` copy families, proving `tcgen05.copy` writes through the selected
   runtime `taddr` while legality is derived from the current self-contained
-  `MemDescType`/layout.
+  `MemDescType`/layout. First copy helper-locality slice:
+  `selectTMemCopyPhysicalQuery` now chooses or rejects active self-contained
+  subview destinations through the type-local physical query before attempting
+  standalone/exact producer-chain reconstruction.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -175,6 +178,15 @@ descriptor. Selector `1` would fail if copy lowering ignored the selected
 memdesc value's current `taddr` and borrowed the first visible producer origin.
 The current copy type-local physical-query path already handles these rows; no
 backend repair was required.
+
+Current copy helper-locality checkpoint:
+`selectTMemCopyPhysicalQuery` now treats active self-contained TMEM subviews as
+a semantic type-local class. It computes the type-local destination physical
+query from the current `MemDescType`/layout and either chooses it or reports
+the local copy-conversion error before attempting standalone/exact
+producer-chain reconstruction. Legacy descriptor classes still use the old
+standalone/exact path after that gate. This means migrated copy lowering does
+not require a visible producer chain even as a transient planning step.
 
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
@@ -316,6 +328,17 @@ required `make -j8`; exact new rows `2 passed`; adjacent 2CTA copy
 subview/indexed selector `23 passed, 1617 deselected`; 4-GPU
 `cp_no_scales and not reports` split passed as group1 `56 passed, 4 skipped`,
 group2 `60 passed`, group3 `60 passed`, group4 `59 passed`.
+
+Completed twenty-second implementation slice: active self-contained copy
+helper locality. `selectTMemCopyPhysicalQuery` now gates active
+self-contained TMEM subviews on `inferTypeLocalTMemPhysicalQuery(MemDescType)`
+before computing standalone or exact producer-chain queries. This removes
+producer-chain reconstruction from the semantic copy path already covered by
+the dense, `warpx2`, and 2CTA selected-copy sentinels; legacy descriptor
+classes keep the existing fallback order. Validation: required `make -j8`;
+combined selected-copy rows `8 passed`; 4-GPU `cp_no_scales and not reports`
+split passed as group1 `56 passed, 4 skipped`, group2 `60 passed`, group3
+`60 passed`, group4 `59 passed`; targeted lit set passed `6/6`.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

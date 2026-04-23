@@ -1312,3 +1312,18 @@ High-priority hacks and debt to remove after replacement coverage exists:
   4-GPU `cp_no_scales and not reports` split passed as group1
   `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
   `59 passed`.
+
+### 2026-04-23 Active Copy Helper Locality
+
+- `selectTMemCopyPhysicalQuery` now computes the type-local destination
+  physical query first. For active self-contained TMEM subviews, it chooses that
+  query or returns its local copy-conversion error before attempting
+  standalone/exact producer-chain reconstruction.
+- This turns the migrated copy path into a true type-local semantic path: the
+  dense, `warpx2`, and 2CTA selected-copy sentinels no longer rely on producer
+  provenance even as an intermediate planner input. Legacy descriptor classes
+  still use the existing standalone/exact fallback ordering after this gate.
+- Validation after this slice: required `make -j8`; combined selected-copy rows
+  `8 passed`; 4-GPU `cp_no_scales and not reports` split passed as group1
+  `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+  `59 passed`; targeted lit set passed `6/6`; `git diff --check` passed.

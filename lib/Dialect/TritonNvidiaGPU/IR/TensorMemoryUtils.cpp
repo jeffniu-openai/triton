@@ -6884,6 +6884,59 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
   bool debug = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
   TMemCopyPhysicalQuerySelection selection;
 
+  auto canUseCopyQuery = [&](const TMemPhysicalQuery &query) {
+    return succeeded(getTMemCopySourceConversion(query, shmemLl));
+  };
+
+  auto choose = [&](const TMemPhysicalQuery &query, bool usedTypeLocal,
+                    bool usedExact)
+      -> FailureOr<TMemCopyPhysicalQuerySelection> {
+    std::string conversionError;
+    if (failed(getTMemCopySourceConversion(query, shmemLl, &conversionError))) {
+      if (error)
+        *error = conversionError;
+      return failure();
+    }
+    selection.query = query;
+    selection.usedTypeLocal = usedTypeLocal;
+    selection.usedExact = usedExact;
+    return selection;
+  };
+
+  auto memTy = dyn_cast<MemDescType>(memDesc.getType());
+  bool hasTypeLocalSubviewLayout =
+      memTy && hasSelfContainedTMemSubviewLayout(memTy);
+  if (memTy) {
+    if (auto maybeTypeLocal =
+            inferTypeLocalTMemPhysicalQuery(memTy, &selection.typeLocalError);
+        succeeded(maybeTypeLocal)) {
+      selection.typeLocal = *maybeTypeLocal;
+    }
+  }
+
+  if (hasTypeLocalSubviewLayout) {
+    if (debug) {
+      if (selection.typeLocal) {
+        llvm::errs() << "[tmem-copy] candidate type-local query canCompose="
+                     << canUseCopyQuery(*selection.typeLocal) << "\n"
+                     << selection.typeLocal->layout.toString() << "\n";
+      } else if (!selection.typeLocalError.empty()) {
+        llvm::errs() << "[tmem-copy] candidate type-local query failed: "
+                     << selection.typeLocalError << "\n";
+      }
+    }
+    if (selection.typeLocal)
+      return choose(*selection.typeLocal, /*usedTypeLocal=*/true,
+                    /*usedExact=*/false);
+    if (error) {
+      if (!selection.typeLocalError.empty())
+        *error = selection.typeLocalError;
+      else
+        *error = "unsupported tensor memory descriptor view for tcgen05.copy";
+    }
+    return failure();
+  }
+
   auto maybeStandalone =
       inferStandaloneTMemPhysicalQuery(memDesc, &selection.standaloneError);
   if (succeeded(maybeStandalone))
@@ -6893,17 +6946,6 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
   if (succeeded(maybeExact))
     selection.exact = *maybeExact;
 
-  if (auto memTy = dyn_cast<MemDescType>(memDesc.getType())) {
-    if (auto maybeTypeLocal =
-            inferTypeLocalTMemPhysicalQuery(memTy, &selection.typeLocalError);
-        succeeded(maybeTypeLocal)) {
-      selection.typeLocal = *maybeTypeLocal;
-    }
-  }
-
-  auto canUseCopyQuery = [&](const TMemPhysicalQuery &query) {
-    return succeeded(getTMemCopySourceConversion(query, shmemLl));
-  };
   if (debug) {
     if (selection.typeLocal) {
       llvm::errs() << "[tmem-copy] candidate type-local query canCompose="
@@ -6938,28 +6980,6 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
       llvm::errs() << "[tmem-copy] candidate exact query failed: "
                    << selection.exactError << "\n";
     }
-  }
-  auto choose = [&](const TMemPhysicalQuery &query, bool usedTypeLocal,
-                    bool usedExact)
-      -> FailureOr<TMemCopyPhysicalQuerySelection> {
-    std::string conversionError;
-    if (failed(getTMemCopySourceConversion(query, shmemLl, &conversionError))) {
-      if (error)
-        *error = conversionError;
-      return failure();
-    }
-    selection.query = query;
-    selection.usedTypeLocal = usedTypeLocal;
-    selection.usedExact = usedExact;
-    return selection;
-  };
-
-  auto memTy = dyn_cast<MemDescType>(memDesc.getType());
-  if (selection.typeLocal && memTy &&
-      hasSelfContainedTMemSubviewLayout(memTy) &&
-      canUseCopyQuery(*selection.typeLocal)) {
-    return choose(*selection.typeLocal, /*usedTypeLocal=*/true,
-                  /*usedExact=*/false);
   }
 
   if (selection.standalone && selection.exact &&

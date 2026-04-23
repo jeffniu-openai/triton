@@ -34679,6 +34679,32 @@ Open after this slice:
   for non-self-contained view classes, then either migrate those classes or
   record true optimizer-only uses.
 
+## 2026-04-23 04:17 UTC: active copy helper locality
+
+- Branch/HEAD before this implementation slice:
+  `76b5d0cfb Cover selected two-CTA copy subviews`.
+- Motivation:
+  the selected-copy runtime sentinels proved the current behavior, but
+  `selectTMemCopyPhysicalQuery` still computed standalone/exact
+  producer-chain queries before choosing the type-local path for active
+  self-contained subviews. That was harmless for the covered rows, but it kept
+  migrated copy lowering coupled to chain reconstruction as a planning step.
+- Completed implementation:
+  `selectTMemCopyPhysicalQuery` now computes the type-local physical query
+  first. If the destination `MemDescType` is an active self-contained subview,
+  the helper chooses that query or reports its local copy-conversion error
+  before attempting standalone/exact producer-chain reconstruction. Legacy
+  descriptor classes retain the existing fallback ordering.
+- Validation evidence:
+  required `make -j8`; combined selected-copy rows `8 passed`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+  `59 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
+- Remaining migration frontier:
+  continue the ld/st verifier and lowering helper audit. Apply the same
+  rule: migrated self-contained descriptor classes should choose/reject from
+  type-local facts before legacy chain recovery is consulted.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

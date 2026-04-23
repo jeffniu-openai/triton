@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 04:17 UTC tightened copy physical-query selection for
+  active self-contained TMEM subviews. `selectTMemCopyPhysicalQuery` now
+  computes the type-local destination query from the current `MemDescType` and
+  either chooses it or reports its local copy-conversion error before attempting
+  standalone/exact producer-chain reconstruction. Legacy descriptor classes
+  keep the existing fallback path. Validation: required `make -j8`; combined
+  selected-copy rows `8 passed`; 4-GPU `cp_no_scales and not reports` split
+  passed as group1 `56 passed, 4 skipped`, group2 `60 passed`, group3
+  `60 passed`, group4 `59 passed`; targeted lit set `6/6`.
+
 - Latest: 2026-04-23 04:12 UTC added dynamic selected 2CTA dense copy
   column-subview runtime coverage. The new rows select at runtime between two
   same-typed `256x128xf32` column subviews of one `256x256xf32` two-CTA TMEM
