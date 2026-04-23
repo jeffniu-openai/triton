@@ -1544,3 +1544,11 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; selected active-subview
   ld/st and ld.red rows `6 passed`; selected/broad physical-bitcast selector
   `17 passed`; targeted lit set `6/6`.
+
+### 2026-04-23 Broad Non-Scale Runtime Validation
+
+- Ran the non-scale ld/st, `ld.red`, and copy runtime selector
+  `(ldst or ld_red or cp_no_scales) and not reports and not scales` as four GPU
+  split commands with distinct caches.
+- Result: group1 `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`,
+  group3 `130 passed, 20 skipped`, group4 `149 passed`.

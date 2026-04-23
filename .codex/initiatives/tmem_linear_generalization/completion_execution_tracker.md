@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:36 UTC
+Last updated: 2026-04-23 05:44 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -221,6 +221,12 @@ active self-contained planning type before requiring a visible view producer.
 Validation: required `make -j8`; selected active-subview ld/st and ld.red rows
 `6 passed`; selected/broad physical-bitcast selector `17 passed`; targeted lit
 set `6/6`.
+
+Current broad non-scale runtime checkpoint:
+after the active-subview query/diagnostic/bitcast helper cleanup, selector
+`(ldst or ld_red or cp_no_scales) and not reports and not scales` passed as a
+four-GPU split runtime sweep: group1 `124 passed, 26 skipped`, group2
+`98 passed, 52 skipped`, group3 `130 passed, 20 skipped`, group4 `149 passed`.
 
 Current normal ld/st selected-subview checkpoint:
 a representative dynamic selected active column subview now has runtime

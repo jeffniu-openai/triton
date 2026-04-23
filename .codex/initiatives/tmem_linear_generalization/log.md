@@ -35134,3 +35134,19 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Continue final helper audit and then run
   a staged broader runtime matrix slice.
+
+## 2026-04-23 05:44 UTC: broad non-scale ld/st, ld.red, and copy runtime validation
+
+- Branch/HEAD:
+  `176e74bc1 Keep active standalone TMEM query types local`.
+- Validation-only checkpoint:
+  ran
+  `python/test/gluon/test_tmem_runtime_matrix.py -k '(ldst or ld_red or cp_no_scales) and not reports and not scales'`
+  as four GPU split commands with distinct caches.
+- Result:
+  group1 `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`, group3
+  `130 passed, 20 skipped`, group4 `149 passed`.
+- Next concrete step:
+  commit and push this validation checkpoint. Continue final helper audit and
+  move to broader MMAv5/scales validation if no more active-subview semantic
+  helper gaps are found.
