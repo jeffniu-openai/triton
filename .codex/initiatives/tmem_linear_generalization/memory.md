@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 04:12 UTC added dynamic selected 2CTA dense copy
+  column-subview runtime coverage. The new rows select at runtime between two
+  same-typed `256x128xf32` column subviews of one `256x256xf32` two-CTA TMEM
+  allocation, copy shared memory into the selected descriptor, then load from
+  that selected descriptor. The test asserts
+  `tcgen05.cp.cta_group::2.128x256b`, cluster fence/barrier sequencing, and
+  multicast commit. This extends the selected-copy `taddr` sentinel to the
+  hardware two-CTA ownership path. Validation: required `make -j8`; exact new
+  rows `2 passed`; adjacent 2CTA copy subview/indexed selector `23 passed,
+  1617 deselected`; 4-GPU `cp_no_scales and not reports` split passed as group1
+  `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+  `59 passed`.
+
 - Latest: 2026-04-23 04:08 UTC added dynamic selected `warpx2` copy
   column-subview runtime coverage. The new rows select at runtime between two
   same-typed `128x4xf32` column subviews of one `128x8xf32` TMEM allocation,

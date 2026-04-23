@@ -1295,3 +1295,20 @@ High-priority hacks and debt to remove after replacement coverage exists:
   4-GPU `cp_no_scales and not reports` split passed as group1
   `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
   `57 passed`.
+
+### 2026-04-23 Dynamic Selected 2CTA Copy Sentinel
+
+- Added a runtime sentinel for selected same-parent two-CTA dense copy column
+  subviews. The kernel selects between two same-typed `256x128xf32` views of a
+  `256x256xf32` two-CTA parent, copies shared memory into the selected
+  descriptor, and then loads through the selected descriptor.
+- The test checks the `tcgen05.cp.cta_group::2.128x256b` path, including
+  cluster fence/barrier sequencing and multicast commit. This extends the
+  selected runtime-`taddr` contract to hardware CTA ownership cases.
+- No backend change was required. The existing type-local copy physical-query
+  path already handles this representative 2CTA selected-copy row.
+- Validation after this slice: required `make -j8`; exact new rows `2 passed`;
+  adjacent 2CTA copy subview/indexed selector `23 passed, 1617 deselected`;
+  4-GPU `cp_no_scales and not reports` split passed as group1
+  `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+  `59 passed`.

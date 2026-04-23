@@ -1969,6 +1969,47 @@ def tmem_copy_no_scales_twocta_linear_subslice_view_kernel(in_ptr, out_ptr, pare
 
 
 @gluon.jit
+def tmem_copy_no_scales_twocta_dynamic_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
+                                                                   parent_layout: ttgl.constexpr,
+                                                                   cga_layout: ttgl.constexpr,
+                                                                   M: ttgl.constexpr, N: ttgl.constexpr,
+                                                                   swizzle: ttgl.constexpr):
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    view1 = tmem.slice(N, N, dim=1)
+    selected = view0
+    if ttgl.load(selector_ptr) != 0:
+        selected = view1
+    else:
+        selected = view0
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
+        rank=2,
+        cga_layout=cga_layout,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    smem.store(value)
+    fence_async_shared(cluster=True)
+
+    barrier = mbarrier.allocate_mbarrier()
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, selected)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    output = selected.load(reg_layout)
+    ttgl.store(out_ptr + offs, output)
+
+
+@gluon.jit
 def tmem_mma_indexed_acc_kernel(
     a_ptr,
     b_ptr,
@@ -9970,6 +10011,50 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_linear_subslice_view(
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_subslice" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_runtime_matrix_cp_no_scales_twocta_dynamic_linear_subslice_view(selector):
+    M = 256
+    N = 128
+    swizzle = 32
+    cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    parent_layout = _make_tmem_linear_layout_mmav5_twocta(M, 2 * N)
+    compiled = tmem_copy_no_scales_twocta_dynamic_linear_subslice_view_kernel[(1, )](
+        inp,
+        out,
+        selector_tensor,
+        parent_layout,
+        tuple(tuple(basis) for basis in cga_layout),
+        M,
+        N,
+        swizzle,
+        num_ctas=2,
+        num_warps=4,
+    )
+    torch.cuda.synchronize()
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x256b"] * 16)
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+    )
+    ptx = compiled.asm["ptx"]
+    assert "tcgen05.cp.cta_group::1" not in ptx
+    assert ptx.count("fence.proxy.async.shared::cluster") == 1
+    assert ptx.count("barrier.cluster.arrive.aligned;") == 2
+    assert ptx.count("barrier.cluster.wait.aligned;") == 2
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_copy" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

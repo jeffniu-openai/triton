@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 04:08 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 04:12 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -63,12 +63,22 @@ selected row-permuted scales descriptor views plan against the recovered
 longer fall through to an unsafe canonical dense-linear surrogate. Dynamic
 selected descriptor-chain ld.red now has runtime coverage as a positive
 sentinel; no additional backend change was needed for that representative row.
-Dynamic selected copy column subviews now have runtime coverage too for dense
-`128x256b` and non-dense `warpx2::{01_23,02_13}` families: the copy atom
-writes through the selected runtime `taddr`, while legality comes from the
-current self-contained memdesc type/layout.
+Dynamic selected copy column subviews now have runtime coverage too for 1CTA
+dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
+`128x256b` families: the copy atom writes through the selected runtime `taddr`,
+while legality comes from the current self-contained memdesc type/layout.
 
-Latest validation checkpoint: 2026-04-23 04:08 UTC added dynamic selected
+Latest validation checkpoint: 2026-04-23 04:12 UTC added dynamic selected 2CTA
+dense copy column-subview coverage. The new rows select between two same-typed
+same-parent `256x128xf32` column subviews, issue
+`tcgen05.cp.cta_group::2.128x256b` into the selected descriptor, and verify
+cluster fence/barrier sequencing plus multicast commit. Validation: required
+`make -j8`; exact new rows `2 passed`; adjacent 2CTA copy subview/indexed
+selector `23 passed, 1617 deselected`; 4-GPU `cp_no_scales and not reports`
+split passed as group1 `56 passed, 4 skipped`, group2 `60 passed`, group3
+`60 passed`, group4 `59 passed`.
+
+Previous validation checkpoint: 2026-04-23 04:08 UTC added dynamic selected
 `warpx2` copy column-subview coverage. The new rows select between two
 same-typed same-parent `128x4xf32` column subviews, issue `tcgen05.copy` into
 the selected descriptor, and load through that selected descriptor for both

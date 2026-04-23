@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:08 UTC
+Last updated: 2026-04-23 04:12 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -71,10 +71,11 @@ Active implementation checklist:
   `arith.select` row is covered as a runtime positive, proving the current
   ld.red path handles that representative selected value without additional
   backend changes. First dynamic copy selected-subview sentinels: same-parent
-  column-subview `arith.select` rows are covered as runtime positives for both
-  dense `128x256b` and non-dense `warpx2::{01_23,02_13}` copy families,
-  proving `tcgen05.copy` writes through the selected runtime `taddr` while
-  legality is derived from the current self-contained `MemDescType`/layout.
+  column-subview `arith.select` rows are covered as runtime positives for 1CTA
+  dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
+  `128x256b` copy families, proving `tcgen05.copy` writes through the selected
+  runtime `taddr` while legality is derived from the current self-contained
+  `MemDescType`/layout.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -162,15 +163,18 @@ the two initialized candidates.
 
 Current copy selected-subview checkpoint:
 representative dynamic selected same-parent column subviews now have runtime
-coverage for dense and non-dense copy families. The dense row selects between
-two same-typed `128x128xf32` subviews of a `128x256xf32` TMEM allocation. The
-non-dense row selects between two same-typed `128x4xf32` subviews of a
-`128x8xf32` TMEM allocation and covers both `warpx2::01_23` and
-`warpx2::02_13` schedules. Each test copies shared memory into the selected
-view and loads from that same selected descriptor. Selector `1` would fail if
-copy lowering ignored the selected memdesc value's current `taddr` and borrowed
-the first visible producer origin. The current copy type-local physical-query
-path already handles these rows; no backend repair was required.
+coverage for 1CTA dense, 1CTA non-dense, and 2CTA dense copy families. The 1CTA
+dense row selects between two same-typed `128x128xf32` subviews of a
+`128x256xf32` TMEM allocation. The non-dense row selects between two same-typed
+`128x4xf32` subviews of a `128x8xf32` TMEM allocation and covers both
+`warpx2::01_23` and `warpx2::02_13` schedules. The 2CTA row selects between
+two same-typed `256x128xf32` subviews of a `256x256xf32` two-CTA TMEM
+allocation and checks cluster/multicast commit behavior. Each test copies
+shared memory into the selected view and loads from that same selected
+descriptor. Selector `1` would fail if copy lowering ignored the selected
+memdesc value's current `taddr` and borrowed the first visible producer origin.
+The current copy type-local physical-query path already handles these rows; no
+backend repair was required.
 
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
@@ -301,6 +305,17 @@ rows `4 passed`; adjacent `warpx2` subview/indexed selector `40 passed,
 1598 deselected`; 4-GPU `cp_no_scales and not reports` split passed as group1
 `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
 `57 passed`.
+
+Completed twenty-first implementation slice: dynamic selected 2CTA dense copy
+column-subview coverage. Added runtime positives that select between two
+same-typed same-parent `256x128xf32` column subviews, issue
+`tcgen05.cp.cta_group::2.128x256b`, and verify the cluster fence plus multicast
+commit sequence. This extends the selected-copy `taddr` sentinel to the
+hardware two-CTA ownership path. No backend repair was required. Validation:
+required `make -j8`; exact new rows `2 passed`; adjacent 2CTA copy
+subview/indexed selector `23 passed, 1617 deselected`; 4-GPU
+`cp_no_scales and not reports` split passed as group1 `56 passed, 4 skipped`,
+group2 `60 passed`, group3 `60 passed`, group4 `59 passed`.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

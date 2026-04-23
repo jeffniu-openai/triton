@@ -34648,6 +34648,37 @@ Open after this slice:
   still use producer-chain recovery for legality rather than for diagnostics or
   optimizer-only rewrites.
 
+## 2026-04-23 04:12 UTC: dynamic selected 2CTA dense copy coverage
+
+- Branch/HEAD before this validation slice:
+  `b38b24182 Cover selected warpx2 copy subviews`.
+- Motivation:
+  the 1CTA dense and `warpx2` sentinels proved selected-copy base handling for
+  single-CTA copy paths. The 2CTA path adds hardware CTA ownership, cluster
+  fences/barriers, and multicast commit sequencing, so it needed its own
+  selected-value runtime row.
+- Completed coverage:
+  added `tmem_copy_no_scales_twocta_dynamic_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_cp_no_scales_twocta_dynamic_linear_subslice_view`.
+  The test selects between two same-typed `256x128xf32` column subviews of a
+  `256x256xf32` two-CTA parent, copies shared memory into the selected view,
+  loads from the selected descriptor, and checks exact `cta_group::2` copy and
+  multicast commit opcodes.
+- Result:
+  no backend repair was required. The selected destination `taddr` contract is
+  currently satisfied for this representative 2CTA dense copy row.
+- Validation evidence:
+  required `make -j8`; exact new rows `2 passed`; adjacent 2CTA copy
+  subview/indexed selector `23 passed, 1617 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+  `59 passed`.
+- Remaining migration frontier:
+  continue the value-taking helper audit. Focus next on semantic ld/st verifier
+  and lowering callers where chain-derived fallbacks may still define legality
+  for non-self-contained view classes, then either migrate those classes or
+  record true optimizer-only uses.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:
