@@ -183,6 +183,18 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
+Latest validation checkpoint: 2026-04-23 19:11 UTC removed the dynamic
+subword `memdesc_index` hardware-word-alignment guard, added sparse
+zero-column-basis ld/st lowering from the current query layout, and covered
+f16/i8 dynamic odd-index views as runtime positives. Copy remains a clean
+negative for packed-lane `tcgen05.copy` scheduling, and sub-32-bit `load_max`
+stays on software reduction over normal TMEM loads. Validation: required
+`make -j8`; dynamic-index ld/st rows `4 passed`; dynamic-index `load_max`
+software-reduction rows `4 passed`; dynamic-index copy clean-negative row
+`1 passed`; four-GPU `unaligned_subword` selector passed as group1 `7 passed`,
+group2 `7 passed`, group3 `7 passed`, group4 `6 passed`; lit
+`tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
 Latest validation checkpoint: 2026-04-23 09:35 UTC removed the chain-derived
 static `memdesc_subslice` phase fallback after the pointwise type/layout query
 covered the representable cases. Validation: required `make -j8`; focused

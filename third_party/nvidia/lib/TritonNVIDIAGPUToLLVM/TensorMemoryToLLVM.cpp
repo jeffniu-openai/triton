@@ -35,6 +35,13 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
+Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
+                              Value base, Value offset) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value newBase = b.add(b.ptrtoint(i32_ty, base), offset);
+  return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
+}
+
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -459,6 +466,188 @@ lowerContiguousPackedSubwordPhaseAwareLdSt(
   return std::make_pair(SmallVector<Value>{}, SmallVector<Value>{});
 }
 
+static bool hasZeroBasisAlong(const LinearLayout &layout, StringAttr dim) {
+  if (!layout.hasInDim(dim))
+    return false;
+  for (unsigned idx = 0; idx < layout.getInDimSizeLog2(dim); ++idx) {
+    if (llvm::all_of(layout.getBasis(dim, idx),
+                     [](int32_t value) { return value == 0; }))
+      return true;
+  }
+  return false;
+}
+
+static Value packDynamicTMemRowElementCol(Location loc,
+                                         ConversionPatternRewriter &rewriter,
+                                         Value row, Value col) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  return b.or_(b.shl(row, b.i32_val(16)), col, /*disjoint=*/true);
+}
+
+static Value zextSubwordValueToI32(Location loc,
+                                   ConversionPatternRewriter &rewriter,
+                                   Value value, Type elemTy) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+  Value bits = elemTy.isInteger() ? value : b.bitcast(value, int_ty(bitwidth));
+  return bitwidth == 32 ? bits : b.zext(i32_ty, bits);
+}
+
+static Value extractSubwordValue(Location loc,
+                                 ConversionPatternRewriter &rewriter,
+                                 Value word, Value phase, Type elemTy) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+  Value phaseBits = b.mul(phase, b.i32_val(bitwidth));
+  Value shifted = b.lshr(word, phaseBits);
+  Value masked = b.and_(shifted, b.i32_val((1u << bitwidth) - 1u));
+  Value narrowed = b.trunc(int_ty(bitwidth), masked);
+  return elemTy.isInteger() ? narrowed : b.bitcast(narrowed, elemTy);
+}
+
+static Value mergeSubwordValue(Location loc,
+                               ConversionPatternRewriter &rewriter,
+                               Value oldWord, Value newValue, Value phase,
+                               Type elemTy) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+  uint32_t lowMask = (1u << bitwidth) - 1u;
+  Value phaseBits = b.mul(phase, b.i32_val(bitwidth));
+  Value laneMask = b.shl(b.i32_val(lowMask), phaseBits);
+  Value valueBits = b.shl(b.and_(zextSubwordValueToI32(loc, rewriter, newValue,
+                                                       elemTy),
+                                b.i32_val(lowMask)),
+                          phaseBits);
+  return b.or_(b.and_(oldWord, b.xor_(laneMask, b.i32_val(-1))), valueBits);
+}
+
+static FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>>
+lowerSparseSubwordElementWiseLdSt(
+    Location loc, ConversionPatternRewriter &rewriter, RankedTensorType regTy,
+    const TMemLdStQueryLayout &query, Value pred, Type llvmElemTy,
+    uint32_t tmemElementBitwidth, ArrayRef<Value> vals, Value tmemBase,
+    std::optional<TMEMLoadReduceModifier> redOp) {
+  if (tmemElementBitwidth >= 32 || redOp)
+    return failure();
+  if (tmemElementBitwidth != llvmElemTy.getIntOrFloatBitWidth())
+    return failure();
+  if (!query.origin.empty() &&
+      llvm::any_of(query.origin, [](int32_t value) { return value != 0; }))
+    return failure();
+
+  auto *ctx = rewriter.getContext();
+  auto kReg = str_attr("register");
+  auto kLane = str_attr("lane");
+  auto kWarp = str_attr("warp");
+  auto kBlock = str_attr("block");
+  auto kRow = str_attr("row");
+  auto kCol = str_attr("col");
+  if (!hasZeroBasisAlong(query.layout, kCol))
+    return failure();
+
+  auto squeezeTrivialBlock = [&](LinearLayout layout) {
+    if (layout.hasInDim(kBlock) && layout.getInDimSize(kBlock) == 1)
+      layout = layout.squeezeIns(kBlock);
+    if (layout.hasOutDim(kBlock) && layout.getOutDimSize(kBlock) == 1)
+      layout = layout.squeezeOuts(kBlock);
+    return layout;
+  };
+  LinearLayout regLayout =
+      squeezeTrivialBlock(toLinearEncoding(regTy).getLinearLayout());
+  LinearLayout memLayout = squeezeTrivialBlock(query.layout);
+  if (!canInvertAndComposeLayouts(regLayout, memLayout))
+    return failure();
+  LinearLayout cvt = squeezeTrivialBlock(regLayout.invertAndCompose(memLayout));
+
+  if (!cvt.hasOutDim(kRow) || !cvt.hasOutDim(kCol) || !cvt.hasInDim(kReg) ||
+      !cvt.hasInDim(kLane))
+    return failure();
+  if (cvt.getInDimSize(kReg) != getTotalElemsPerThread(regTy))
+    return failure();
+  if (!vals.empty() && static_cast<int64_t>(vals.size()) != cvt.getInDimSize(kReg))
+    return failure();
+  if (cvt.getInDimSizeLog2(kLane) < 5)
+    return failure();
+  for (unsigned idx = 0; idx < 5; ++idx) {
+    if (cvt.getBasis(kLane, idx, kRow) != static_cast<int32_t>(1u << idx) ||
+        cvt.getBasis(kLane, idx, kCol) != 0)
+      return failure();
+  }
+  if (cvt.hasInDim(kBlock) && cvt.getInDimSize(kBlock) != 1)
+    return failure();
+
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  bool isStore = !vals.empty();
+  SmallVector<Value> resultVals;
+  if (!isStore)
+    resultVals.reserve(cvt.getInDimSize(kReg));
+
+  Value warpId = cvt.hasInDim(kWarp) ? WarpIdOp::create(rewriter, loc)
+                                     : b.i32_val(0);
+  auto getRowCol = [&](int regIdx) -> std::optional<std::pair<Value, Value>> {
+    SmallVector<std::pair<StringAttr, Value>> inputs;
+    inputs.reserve(cvt.getNumInDims());
+    for (StringAttr inDim : cvt.getInDimNames()) {
+      if (inDim == kReg)
+        inputs.push_back({inDim, b.i32_val(regIdx)});
+      else if (inDim == kLane)
+        inputs.push_back({inDim, b.i32_val(0)});
+      else if (inDim == kWarp)
+        inputs.push_back({inDim, warpId});
+      else if (inDim == kBlock)
+        inputs.push_back({inDim, b.i32_val(0)});
+      else
+        return std::nullopt;
+    }
+    Value row;
+    Value col;
+    for (auto [outDim, value] : applyLinearLayout(loc, rewriter, cvt, inputs)) {
+      if (outDim == kRow)
+        row = value;
+      else if (outDim == kCol)
+        col = value;
+    }
+    if (!row || !col)
+      return std::nullopt;
+    return std::make_pair(row, col);
+  };
+
+  for (int regIdx = 0; regIdx < cvt.getInDimSize(kReg); ++regIdx) {
+    auto rowCol = getRowCol(regIdx);
+    if (!rowCol)
+      return failure();
+    auto [row, col] = *rowCol;
+    Value elementBase = advanceTensorMemoryBase(
+        loc, rewriter, tmemBase,
+        packDynamicTMemRowElementCol(loc, rewriter, row, col));
+    Value phase = getTMemSubwordPhase(loc, rewriter, elementBase,
+                                      tmemElementBitwidth);
+    Value wordBase = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
+        loc, rewriter, elementBase, tmemElementBitwidth);
+    auto [oldWord, _] = createTensorMemoryLoad(
+        loc, ctx, wordBase, /*colOffset=*/0, /*secondHalfOffset=*/std::nullopt,
+        /*unpacked=*/false, /*numRegPerMessage=*/1, TMemAccessAtom::I32x32b,
+        /*redOp=*/std::nullopt, /*useAbs=*/false, /*useNaN=*/false, i32_ty,
+        rewriter);
+    NVVM::Tcgen05WaitOp::create(rewriter, loc, NVVM::Tcgen05WaitKind::LOAD);
+    if (!isStore) {
+      resultVals.push_back(
+          extractSubwordValue(loc, rewriter, oldWord, phase, llvmElemTy));
+      continue;
+    }
+    SmallVector<Value> merged = {
+        mergeSubwordValue(loc, rewriter, oldWord, vals[regIdx], phase,
+                          llvmElemTy)};
+    createTensorMemoryStore(loc, wordBase, /*colOffset=*/0, merged,
+                            /*secondHalfOffset=*/std::nullopt, pred,
+                            /*unpacked=*/false, TMemAccessAtom::I32x32b,
+                            rewriter);
+    NVVM::Tcgen05WaitOp::create(rewriter, loc, NVVM::Tcgen05WaitKind::STORE);
+  }
+
+  return std::make_pair(std::move(resultVals), SmallVector<Value>{});
+}
+
 // Returns {resultVals, redvalVals} where redvalVals is empty if no reduction.
 // Reduction produces exactly one value per thread; if multiple messages
 // contribute partial reductions, they are combined into one.
@@ -877,6 +1066,11 @@ lowerTMemLdStFromTypes(
         supportRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       supportRowPlan = preferBackingRowPlanForDirectRootLoad(
           memTy, supportRowPlan, &supportQuery);
+      auto sparseLowered = lowerSparseSubwordElementWiseLdSt(
+          loc, rewriter, regTy, supportQuery, pred, llvmElemTy,
+          memTy.getElementTypeBitWidth(), vals, tmemBase, redOp);
+      if (succeeded(sparseLowered))
+        return *sparseLowered;
       std::string supportDetails;
       auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
         llvm::raw_string_ostream os(supportDetails);

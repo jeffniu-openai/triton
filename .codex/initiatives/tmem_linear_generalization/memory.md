@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 19:11 UTC completed the dynamic subword
+  `memdesc_index` slice. Dynamic TMEM index lowering no longer rejects index
+  bases that map to sub-32-bit element-column offsets; it advances the current
+  memdesc SSA value in physical element-column coordinates and leaves legality
+  to the consumer. Ld/st now has a layout-driven sparse subword path for
+  zero-column-basis query layouts: it computes each element's physical
+  row/element-column from the current query layout, derives phase from the
+  current runtime `taddr`, projects only the final ISA address to hardware
+  word columns, and uses scalar `32x32b.x1.b32` RMW for stores. This fixes f16
+  and i8 dynamic odd-index views where the two candidate buffers are
+  interleaved by element-column parity. Copy remains a clean negative for the
+  packed-lane `tcgen05.copy` schedule, and sub-32-bit `load_max` stays a
+  software reduction over normal TMEM loads. Validation: required `make -j8`;
+  dynamic-index ld/st rows `4 passed`; dynamic-index `load_max` rows
+  `4 passed`; dynamic-index copy clean-negative row `1 passed`; four-GPU
+  `unaligned_subword` selector passed as group1 `7 passed`, group2 `7 passed`,
+  group3 `7 passed`, group4 `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.
+
 - Latest: 2026-04-23 17:50 UTC clarified the phase/alignment invariant and
   audited the current helpers. The intended model is not "phase from type":
   `MemDescType` plus layout supplies only relative physical row and

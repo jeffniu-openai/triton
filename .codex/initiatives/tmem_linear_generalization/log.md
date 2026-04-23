@@ -35647,3 +35647,48 @@ Open after this slice:
   implementation slice should lower dynamic indexes to element-column bases and
   let each consumer decide legality.
 - Validation: documentation-only audit; ran `git diff --check`.
+
+## 2026-04-23 19:11 UTC: dynamic subword memdesc_index lowering
+
+- Branch/HEAD at slice start:
+  `f36f9b26c` with dynamic-index work in progress.
+- Root cause:
+  `ViewOpToLLVM.cpp` still rejected dynamic sub-32-bit TMEM indexes whose
+  leading index basis mapped to a non-hardware-word-aligned element column.
+  That was now too strict because the memdesc SSA value carries a physical
+  element-column `taddr`; consumers should decide whether the resulting phase
+  is legal. After removing the guard, the new dynamic-index result layout
+  exposed a zero physical column basis: static phase-zero views and dynamic
+  views must both honor the same interleaved layout, not silently floor to
+  contiguous hardware word columns.
+- Completed source slice:
+  dynamic TMEM `memdesc_index` lowering now advances the runtime base in
+  element-column coordinates without an upfront hardware-column-alignment
+  rejection. `memdesc_index` result inference preserves the interior zero
+  physical column basis needed to express selected buffers interleaved by
+  subword lane. LLVM ld/st support-query lowering now has a sparse subword
+  fallback for zero-column-basis query layouts: it composes the current
+  register layout with the current query layout, computes per-element physical
+  row/element-column offsets from that layout, derives runtime phase from the
+  current `taddr`, projects only the final ISA operand to hardware word
+  columns, and stores with scalar `32x32b.x1.b32` read/modify/write. Hardware
+  `ld.red` and copy execution were not widened; sub-32-bit `load_max` uses
+  software reduction over normal loads, and packed-lane `tcgen05.copy` remains
+  a clean scheduling boundary.
+- Tests added/updated:
+  added f16/i8 dynamic odd-index ld/st runtime positives with explicit
+  candidate readback, f16/i8 dynamic odd-index `load_max` software-reduction
+  positives, and a dynamic odd-index copy clean-negative row that checks the
+  backend reaches the copy scheduler rather than the old dynamic-index guard.
+- Validation evidence:
+  required `make -j8`; exact dynamic-index ld/st row passed `4 passed`; exact
+  dynamic-index `load_max` software-reduction row passed `4 passed`; exact
+  dynamic-index copy clean-negative row passed `1 passed`; four-GPU
+  `unaligned_subword` selector passed as group1 `7 passed`, group2 `7 passed`,
+  group3 `7 passed`, group4 `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue with helper cleanup/generalization
+  around sparse subword ld/st and then the remaining conservative consumers:
+  copy packed-lane scheduling, hardware `ld.red` where the ISA admits it, and
+  MMAv5/scales dynamic subword boundaries.

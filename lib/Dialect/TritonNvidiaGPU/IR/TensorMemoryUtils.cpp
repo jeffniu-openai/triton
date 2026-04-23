@@ -1475,9 +1475,29 @@ static LogicalResult verifyTMemIndexProjection(
     std::string *error) {
   auto maybeDstInv = computeLeftInverseLayout(dstLayout, error);
   if (failed(maybeDstInv)) {
-    if (error && error->empty())
-      *error = "unsupported tensor memory memdesc_index view";
-    return failure();
+    // Descriptor index views can retain zero physical bases in the result layout
+    // to encode that the surviving logical dimension starts at a larger physical
+    // step. For example, indexing away an fp16 subword selector leaves logical
+    // columns striding by two element columns. Prove the active image is
+    // injective after removing those semantic zero bases, then use the original
+    // pseudoinverse so the verification still compares in the uncompressed TMEM
+    // row/column coordinate system.
+    auto normalized = normalizeTensorMemoryLinearLayoutForAnalysis(dstLayout);
+    std::string normalizedError;
+    auto normalizedInv = computeLeftInverseLayout(normalized, &normalizedError);
+    if (succeeded(normalizedInv) &&
+        normalized.getNumOutDims() == dstLayout.getNumOutDims() &&
+        llvm::equal(normalized.getOutDimSizes(), dstShape) &&
+        static_cast<int64_t>(normalized.getTotalInDimSize()) ==
+            product<int64_t>(dstShape)) {
+      maybeDstInv = dstLayout.pseudoinvert();
+      if (error)
+        error->clear();
+    } else {
+      if (error && error->empty())
+        *error = "unsupported tensor memory memdesc_index view";
+      return failure();
+    }
   }
 
   auto baseCoords = srcInv.apply(makeFullLinearLayoutCoords(srcLogicalDims, {}));
@@ -1957,6 +1977,7 @@ tryMakeLeadingUnitSubviewLayout(const LinearLayout &srcLayout,
                                 ArrayRef<int64_t> dstShape,
                                 ArrayRef<int32_t> offsets,
                                 ArrayRef<int32_t> srcOrigin,
+                                bool preserveInteriorZeroBases,
                                 std::string *error) {
   if (srcShape.size() != dstShape.size() || srcShape.size() != offsets.size() ||
       srcShape.size() != static_cast<size_t>(srcLayout.getNumOutDims()))
@@ -2083,13 +2104,22 @@ tryMakeLeadingUnitSubviewLayout(const LinearLayout &srcLayout,
         return std::nullopt;
       }
     }
+    unsigned trailingStart = basesIt->second.size();
+    SmallVector<unsigned> eraseIndices;
     for (unsigned idx = basisIndices.size(); idx > 0; --idx) {
       unsigned basisIdx = basisIndices[idx - 1];
-      if (basisIdx + 1 != basesIt->second.size()) {
+      if (basisIdx + 1 == trailingStart) {
+        eraseIndices.push_back(basisIdx);
+        trailingStart = basisIdx;
+        continue;
+      }
+      if (!preserveInteriorZeroBases) {
         if (error)
           *error = "unsupported tensor memory leading-unit memdesc_subslice view";
         return std::nullopt;
       }
+    }
+    for (unsigned basisIdx : eraseIndices) {
       basesIt->second.erase(basesIt->second.begin() + basisIdx);
     }
   }
@@ -2127,7 +2157,8 @@ inferTMemSubsliceQueryLayout(ArrayRef<int64_t> srcShape,
 
   if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
           ll, srcShape.drop_front(extraRank), dstShape.drop_front(extraRank),
-          offsets.drop_front(extraRank), srcQuery.origin, error)) {
+          offsets.drop_front(extraRank), srcQuery.origin,
+          /*preserveInteriorZeroBases=*/false, error)) {
     return TMemLdStQueryLayout{
         leadingUnit->layout, srcQuery.twoCTAs,
         addPrefixOffsetsToQueryOrigin(leadingUnit->layout, leadingUnit->origin,
@@ -2328,7 +2359,7 @@ inferTMemIndexQueryLayout(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape
     std::string localError;
     if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
             ll, srcShape, unitDstShape, zeroOffsets, srcQuery.origin,
-            &localError)) {
+            /*preserveInteriorZeroBases=*/true, &localError)) {
       auto outDimNames =
           standardOutDimNames(ctx, leadingUnit->layout.getNumOutDims());
       SmallVector<std::pair<StringAttr, int32_t>> outDims;
@@ -5143,7 +5174,7 @@ uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
                 srcQuery->layout, ArrayRef<int64_t>(srcShape).drop_front(extraRank),
                 ArrayRef<int64_t>(dstShape).drop_front(extraRank),
                 ArrayRef<int32_t>(offsets).drop_front(extraRank),
-                srcQuery->origin, &error)) {
+                srcQuery->origin, /*preserveInteriorZeroBases=*/false, &error)) {
           auto dstQuery = inferStandaloneTMemLdStQueryLayout(
               op.getResult(), /*preserveNonCanonicalView=*/true, &error);
           if (succeeded(dstQuery)) {
@@ -7934,7 +7965,8 @@ LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
         if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
                 maybeSrcLayout->layout, srcShape.drop_front(extraRank),
                 dstShape.drop_front(extraRank), offsets.drop_front(extraRank),
-                /*srcOrigin=*/{}, &leadingUnitError)) {
+                /*srcOrigin=*/{}, /*preserveInteriorZeroBases=*/false,
+                &leadingUnitError)) {
           if (auto result = tryMakeTMemViewEncoding(
                   ctx, leadingUnit->layout, maybeSrcLayout->twoCTAs,
                   &leadingUnitError)) {
@@ -8017,7 +8049,8 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
 
   if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
           ll, srcShape.drop_front(extraRank), dstShape.drop_front(extraRank),
-          offsets.drop_front(extraRank), /*srcOrigin=*/{}, error)) {
+          offsets.drop_front(extraRank), /*srcOrigin=*/{},
+          /*preserveInteriorZeroBases=*/false, error)) {
     auto result = tryMakeTMemViewEncoding(ctx, leadingUnit->layout,
                                           maybeSrcLayout->twoCTAs, error);
     if (!result)
@@ -8338,8 +8371,9 @@ inferTMemIndexEncoding(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
 
   auto result = tryMakeTMemViewEncoding(ctx, std::move(*dstLayout),
                                         maybeSrcLayout->twoCTAs, error);
-  if (!result)
+  if (!result) {
     return failure();
+  }
   if (failed(verifyTMemIndexProjection(*maybeSrcInv, srcLogicalDims,
                                        result->getLinearLayout(), dstShape,
                                        error))) {

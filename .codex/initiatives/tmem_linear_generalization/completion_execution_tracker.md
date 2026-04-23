@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 17:50 UTC
+Last updated: 2026-04-23 19:11 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -190,6 +190,10 @@ Active implementation checklist:
   parent-encoding views. First clean-negative copy slice: too-narrow current
   descriptors such as `128x1xf32` and `128x2xf32` now report an explicit
   hardware copy-atom boundary.
+- [x] Dynamic subword `memdesc_index` ld/st slice: dynamic indexes now lower
+  in element-column coordinates without the old hardware-word guard; f16/i8
+  sparse zero-column-basis ld/st and `load_max` are runtime positives, while
+  packed-lane copy remains a clean negative.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
   and producer-chain matchers are optimizer-only.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
@@ -215,17 +219,17 @@ itself, so ld/st support planning still uses the canonical family support
 layout. Remaining work continues with broader type-local MMAv5/scales cleanup,
 `ld.red` cleanup, and helper API separation.
 
-Current element-column runtime checkpoint: aligned subword TMEM descriptors now
-use the intended runtime representation for the cases covered by current
-tests. The memdesc SSA value stores the physical element-column `taddr`; view
-and index lowering add element-column offsets derived from the current
+Current element-column runtime checkpoint: subword TMEM descriptors now use the
+intended runtime representation for the covered aligned and dynamic-index
+ld/st cases. The memdesc SSA value stores the physical element-column `taddr`;
+view and index lowering add element-column offsets derived from the current
 `MemDescType` layout; and the shared NVIDIA LLVM helper
-`projectTMemElementBaseToWordBase` is the only boundary used by ld/st, copy,
-plain MMAv5, scaled MMAv5 accumulator, and scaled-MMA scale operands before
-emitting ISA addresses. The unaligned subword guard remains in place for
-consumers that do not yet have a local phase-aware lowering. Packed contiguous
-`32x32b` ld/st is the first consumer migrated to the runtime
-`subword_index`/RMW path.
+`projectTMemElementBaseToWordBase` is the only boundary used before emitting
+ISA addresses. Packed contiguous `32x32b` ld/st and sparse zero-column-basis
+subword ld/st are migrated consumers. Copy, hardware `ld.red`, plain MMAv5,
+scaled MMAv5 accumulator, and scaled-MMA scale operands still keep their own
+consumer-specific legality gates when subword phase or packed-lane scheduling
+is not modeled.
 
 Current unaligned packed-subword ld/st checkpoint: the first executable
 `subword_index`/RMW consumer is implemented for packed contiguous `32x32b`
@@ -323,6 +327,19 @@ word base only at ISA emission. Remaining gap: dynamic sub-32-bit
 runtime phase through element-column `taddr`, so the next implementation slice
 should move that legality decision to consumers and let dynamic index lowering
 produce the element-column runtime base.
+
+Current dynamic subword index checkpoint: dynamic leading `memdesc_index` over
+a layout-present TMEM dimension may now produce a current `taddr` whose element
+column is not hardware-word aligned. The result layout keeps the interior zero
+physical column basis that describes the remaining logical columns as an
+interleaved subword-lane stream. Ld/st support-query lowering recognizes that
+layout shape and lowers through scalar `32x32b.x1.b32` RMW, so both static
+phase-zero candidate views and dynamic selected views use the same layout-driven
+addressing. Validation: required `make -j8`; dynamic-index ld/st `4 passed`;
+dynamic-index `load_max` `4 passed`; dynamic-index copy clean negative
+`1 passed`; four-GPU `unaligned_subword` split passed as group1 `7 passed`,
+group2 `7 passed`, group3 `7 passed`, group4 `6 passed`; lit
+`tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:
