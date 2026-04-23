@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 00:10 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 00:25 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -34,10 +34,25 @@ current descriptor's row plan instead of borrowing a backing parent row plan.
 Active self-contained ld/st raw-query construction now dispatches through
 `inferTypeLocalTMemLdStQueryLayout(MemDescType)`, and ld/st query-type
 selection and support-query planning now return type-local plans for the same
-descriptor class. Remaining work continues through broader type-local ld/st
-lowering/verifiers, `ld.red`, MMAv5/scales, and helper API cleanup.
+descriptor class. Active raw-query/direct-support/reduction fallback row plans
+now stay local instead of borrowing hidden backing rows. Remaining work
+continues through broader type-local ld/st lowering/verifiers, `ld.red`,
+MMAv5/scales, and helper API cleanup.
 
-Latest validation checkpoint: 2026-04-23 00:10 UTC completed the active-subview
+Latest validation checkpoint: 2026-04-23 00:25 UTC tightened active-subview
+row-plan fallback behavior. `getTMemLdStRowPlanForRawQuery`,
+`getTMemLdStDirectSupportTensorType`, and
+`getTMemLoadReductionLayoutForMemDesc` no longer fall back to
+`getBackingTMemLdStRowPlan` for active self-contained descriptors when their
+type-local row plan is absent. Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st selector
+`78 passed, 1547 deselected`; focused `ld_red and not reports and not scales`
+selector `239 passed, 1386 deselected`; 4-GPU
+`(ldst or ld_red) and not reports and not scales` split passed as group1
+`120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+`128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`.
+
+Previous validation checkpoint: 2026-04-23 00:10 UTC completed the active-subview
 ld/st support-query slice. `getTypeLocalTMemLdStSupportQueryPlan(MemDescType)`
 returns the type-local query layout and row plan for active self-contained
 descriptors, and `getTMemLdStSupportQueryPlan(Value)` now dispatches to it

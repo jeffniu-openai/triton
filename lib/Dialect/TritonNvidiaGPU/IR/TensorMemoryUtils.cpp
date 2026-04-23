@@ -21,6 +21,8 @@ using namespace mlir::triton::gpu;
 
 namespace mlir::triton::nvidia_gpu {
 
+static bool hasSelfContainedTMemSubviewLayout(MemDescType memTy);
+
 namespace {
 
 constexpr int maxRegisters = 256;
@@ -376,7 +378,9 @@ getTMemLdStDirectSupportTensorType(Value memDesc, unsigned numWarps) {
   if (!memTy)
     return std::nullopt;
 
-  auto backingRowPlan = getBackingTMemLdStRowPlan(memDesc);
+  bool hasTypeLocalLayout = hasSelfContainedTMemSubviewLayout(memTy);
+  auto fallbackRowPlan = hasTypeLocalLayout ? getTMemLdStRowPlanForType(memTy)
+                                            : getBackingTMemLdStRowPlan(memDesc);
   auto isInvalidScalesLoadLayout = [&](RankedTensorType regTy,
                                        MemDescType queryTy) {
     if (!isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding()) ||
@@ -483,7 +487,7 @@ getTMemLdStDirectSupportTensorType(Value memDesc, unsigned numWarps) {
         continue;
       if (succeeded(computeTMemLdStEncodingInfo(
               regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
-              backingRowPlan))) {
+              fallbackRowPlan))) {
         return regTy;
       }
     }
@@ -3222,8 +3226,6 @@ bool isTMemLdStReductionCompatible(const TMemLdStEncodingInfo &info) {
   return !info.unpacked && getTMemLdStReductionRepeats(info) >= 2;
 }
 
-static bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy);
-
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
     // TMEM scales use logical broadcast row bases in their linear layout, but
@@ -3604,6 +3606,7 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
       isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp, TMEMSubSliceOp,
                       gpu::MemDescReshapeOp, gpu::MemDescTransOp,
                       gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
+  bool hasTypeLocalLayout = hasSelfContainedTMemSubviewLayout(memDescTy);
   if (!isReductionFriendlyTmemSourceLayout(memDescTy) && !isViewLikeMemDesc)
     return std::nullopt;
 
@@ -3621,7 +3624,7 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
     rawQueryLayout = *maybeRawQuery;
     rawRowPlan =
         getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy, *rawQueryLayout);
-    if (!rawRowPlan)
+    if (!rawRowPlan && !hasTypeLocalLayout)
       rawRowPlan = getBackingTMemLdStRowPlan(memDesc);
   }
 
@@ -3686,7 +3689,7 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
       supportRowPlan =
           getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy,
                                            supportPlan->query);
-    if (!supportRowPlan)
+    if (!supportRowPlan && !hasTypeLocalLayout)
       supportRowPlan = getBackingTMemLdStRowPlan(memDesc);
 
     SmallVector<gpu::DistributedEncodingTrait> layouts;
@@ -3739,7 +3742,7 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
       return std::nullopt;
 
     auto queryRowPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
-    if (!queryRowPlan)
+    if (!queryRowPlan && !hasTypeLocalLayout)
       queryRowPlan = getBackingTMemLdStRowPlan(memDesc);
 
     if (rawQueryLayout && isViewLikeMemDesc) {
@@ -4214,7 +4217,8 @@ getTMemLdStRowPlanForRawQuery(Value memDesc, MemDescType queryTy,
   std::optional<TMemLdStRowPlan> rowPlan;
   if (!disallowTMemLdStRawQueryRowPlanOverride(memDesc)) {
     rowPlan = getTMemLdStRowPlanForQueryLayout(memDesc, queryTy, queryLayout);
-    if (!rowPlan)
+    auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+    if (!rowPlan && (!memTy || !hasSelfContainedTMemSubviewLayout(memTy)))
       rowPlan = getBackingTMemLdStRowPlan(memDesc);
   }
   if (!rowPlan)

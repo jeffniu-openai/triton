@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 00:25 UTC tightened active-subview row-plan fallback
+  behavior. `getTMemLdStRowPlanForRawQuery`,
+  `getTMemLdStDirectSupportTensorType`, and
+  `getTMemLoadReductionLayoutForMemDesc` no longer borrow
+  `getBackingTMemLdStRowPlan` for active self-contained descriptors when a
+  type-local row plan is absent; they keep active legality local to the current
+  descriptor and query layout. Validation: required `make -j8`; exact warpx2
+  active subview copy/load row `4 passed`; focused ld/st selector `78 passed`;
+  focused ld.red selector `239 passed`; 4-GPU
+  `(ldst or ld_red) and not reports and not scales` split passed as group1
+  `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+  `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed
+  `6/6`.
+
 - Latest: 2026-04-23 00:10 UTC completed the active-subview ld/st
   support-query slice. Added `getTypeLocalTMemLdStSupportQueryPlan(MemDescType)`,
   which builds support-query layout and row-plan facts from the current

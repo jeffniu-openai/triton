@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 00:10 UTC
+Last updated: 2026-04-23 00:25 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -30,7 +30,10 @@ Active implementation checklist:
   slice: active self-contained subviews now return query types from
   `getTypeLocalTMemLdStQueryTypes(MemDescType)`. First ld/st support-query
   slice: active self-contained subviews now return support-query plans from
-  `getTypeLocalTMemLdStSupportQueryPlan(MemDescType)`. First copy-planning slice:
+  `getTypeLocalTMemLdStSupportQueryPlan(MemDescType)`. First fallback-tightening
+  slice: active self-contained raw-query, direct-support, and reduction row-plan
+  paths no longer borrow backing row plans when a type-local row plan is absent.
+  First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
   keeping legacy standalone/exact selection for direct roots and older
@@ -184,6 +187,20 @@ plan from the current type or query layout. `getTMemLdStSupportQueryPlan(Value)`
 returns that plan immediately for active self-contained descriptors, leaving
 legacy descriptor views on the existing support-image reconstruction stack.
 Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+selector `78 passed, 1547 deselected`; focused `ld_red and not reports and not
+scales` selector `239 passed, 1386 deselected`; 4-GPU
+`(ldst or ld_red) and not reports and not scales` split passed as group1
+`120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+`128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`.
+
+Completed ninth implementation slice: active self-contained TMEM subviews no
+longer borrow hidden parent row plans in fallback paths after type-local query
+planning. `getTMemLdStRowPlanForRawQuery`,
+`getTMemLdStDirectSupportTensorType`, and
+`getTMemLoadReductionLayoutForMemDesc` now use the current type's row plan for
+active self-contained descriptors and only call `getBackingTMemLdStRowPlan` for
+legacy descriptors. Validation: required `make -j8`; exact
 `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
 selector `78 passed, 1547 deselected`; focused `ld_red and not reports and not
 scales` selector `239 passed, 1386 deselected`; 4-GPU

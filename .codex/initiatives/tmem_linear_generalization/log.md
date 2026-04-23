@@ -33965,6 +33965,37 @@ Open after this slice:
   the shared support-query helper is type-local for active descriptors. Keep
   exact producer-chain reconstruction out of semantic lowering for this class.
 
+## 2026-04-23 00:25 UTC: active-subview row-plan fallback tightening
+
+- Branch/HEAD before this slice:
+  `4fc9f30fe Use type-local ld/st support queries for active TMEM subviews`.
+- Context:
+  type-local query/support helpers were in place, but several fallback paths
+  still called `getBackingTMemLdStRowPlan` after a type-local query could not
+  provide a row plan. For active self-contained descriptors, that fallback would
+  reintroduce hidden parent footprint into raw-query, direct support, and
+  reduction planning.
+- Completed implementation:
+  `getTMemLdStRowPlanForRawQuery` now skips backing-row fallback for active
+  self-contained descriptors. `getTMemLdStDirectSupportTensorType` uses the
+  current descriptor type's row plan as its fallback plan for that descriptor
+  class. `getTMemLoadReductionLayoutForMemDesc` similarly avoids backing-row
+  fallback in raw, support, and query-type reduction paths for active
+  self-contained descriptors. Legacy descriptor views are unchanged.
+- Validation evidence:
+  required `make -j8`; exact active-subview warpx2 copy/load row `4 passed`;
+  focused ld/st selector `78 passed, 1547 deselected`; focused
+  `ld_red and not reports and not scales` selector `239 passed, 1386 deselected`;
+  4-GPU `(ldst or ld_red) and not reports and not scales` split passed as
+  group1 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+  `128 passed, 20 skipped`, and group4 `146 passed`; targeted lit set passed
+  `6/6`.
+- Remaining frontier:
+  inspect operation verifiers and LLVM lowering entry points for direct
+  `getBackingTMemLdStRowPlan` fallbacks that are still semantically reachable
+  for active descriptors, then move MMAv5/scales address planning toward the
+  same current-type/current-`taddr` model.
+
 ## 2026-04-22 03:13 UTC: upstream merge and post-merge address refactor
 
 - Merge:
