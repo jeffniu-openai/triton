@@ -4907,6 +4907,8 @@ inferStandaloneTMemViewTypeImpl(Value memDesc, bool preserveNonCanonicalView,
                             memDescTy.getMutableMemory(),
                             memDescTy.getShape());
   }
+  if (hasSelfContainedTMemSubviewLayout(memDescTy))
+    return getSelfContainedTMemSubviewPlanningType(memDescTy);
 
   Operation *defOp = memDesc.getDefiningOp();
   bool hasDescriptorViewProducer =

@@ -1531,3 +1531,16 @@ High-priority hacks and debt to remove after replacement coverage exists:
   physical-bitcast rows `4 passed`; broad
   `tmem_linear_runtime_views or physical_bitcast` selector `15 passed`;
   targeted lit set `6/6`.
+
+### 2026-04-23 Standalone View/Reg-Layout Query Type Locality
+
+- `inferStandaloneTMemViewTypeImpl` now returns the active self-contained
+  planning type for migrated active descriptors before checking for a visible
+  descriptor-view producer. This prevents selected or loop-carried compact
+  active subviews from falling through to the old shape-vs-alloc error.
+- The change also covers `inferStandaloneTMemRegLayoutQueryType` and
+  standalone physical-query fallback because those helpers share the same
+  view-type inference.
+- Validation after this slice: required `make -j8`; selected active-subview
+  ld/st and ld.red rows `6 passed`; selected/broad physical-bitcast selector
+  `17 passed`; targeted lit set `6/6`.

@@ -35111,3 +35111,26 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Continue remaining helper audit, with
   special attention to bitcast/reinterpret and direct-support fallback paths.
+
+## 2026-04-23 05:36 UTC: standalone view/reg-layout query type helper made active-subview local
+
+- Branch/HEAD before this checkpoint:
+  `99a1e5376 Keep active TMEM bitcasts local`.
+- Dirty files before checkpoint commit:
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`, plus initiative docs.
+- Completed source slice:
+  `inferStandaloneTMemViewTypeImpl` now returns
+  `getSelfContainedTMemSubviewPlanningType(memTy)` for active self-contained
+  descriptors before requiring a visible descriptor-view producer. This also
+  makes `inferStandaloneTMemRegLayoutQueryType` and standalone physical-query
+  fallback local for migrated active descriptors.
+- Result:
+  selected or loop-carried compact active subviews no longer fall through to
+  the shape-vs-alloc standalone-view error in public query helpers.
+- Validation evidence:
+  required `make -j8`; selected active-subview ld/st and ld.red rows
+  `6 passed`; selected/broad physical-bitcast selector `17 passed`; targeted
+  lit set `6/6`.
+- Next concrete step:
+  commit and push this checkpoint. Continue final helper audit and then run
+  a staged broader runtime matrix slice.

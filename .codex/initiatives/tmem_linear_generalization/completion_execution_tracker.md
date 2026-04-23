@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:33 UTC
+Last updated: 2026-04-23 05:36 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -214,6 +214,13 @@ no-op `memdesc_subslice` marker while preserving runtime and opcode checks.
 Validation: required `make -j8`; exact selected/preserved physical-bitcast rows
 `4 passed`; broad `tmem_linear_runtime_views or physical_bitcast` selector
 `15 passed`; targeted lit set `6/6`.
+
+Current standalone view/reg-layout query checkpoint:
+public standalone TMEM view/reg-layout query type inference now returns the
+active self-contained planning type before requiring a visible view producer.
+Validation: required `make -j8`; selected active-subview ld/st and ld.red rows
+`6 passed`; selected/broad physical-bitcast selector `17 passed`; targeted lit
+set `6/6`.
 
 Current normal ld/st selected-subview checkpoint:
 a representative dynamic selected active column subview now has runtime

@@ -18176,3 +18176,11 @@ rejection, not rescue
   selected/preserved physical-bitcast rows `4 passed`; broad
   `tmem_linear_runtime_views or physical_bitcast` selector `15 passed`;
   targeted lit set `6/6`.
+
+- 2026-04-23 standalone view/reg-layout query helper cleanup completed.
+  `inferStandaloneTMemViewTypeImpl` now returns the active self-contained
+  planning type before requiring a visible descriptor-view producer. This
+  covers `inferStandaloneTMemRegLayoutQueryType` and standalone physical-query
+  fallback for migrated active descriptors. Validation: required `make -j8`;
+  selected active-subview ld/st and ld.red rows `6 passed`; selected/broad
+  physical-bitcast selector `17 passed`; targeted lit set `6/6`.
