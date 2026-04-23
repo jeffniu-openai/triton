@@ -2178,7 +2178,8 @@ void init_gluon_ir(py::module &&m) {
             auto rowPlan = supportPlan->rowPlan;
             if (!rowPlan)
               rowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, memDescTy);
-            if (!rowPlan)
+            if (!rowPlan &&
+                !ttng::hasSelfContainedTMemSubviewLayout(memDescTy))
               rowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
             if (isCompatible(ttng::computeTMemLdStEncodingInfo(
                     rankedTy, memDescTy, supportPlan->query, maxnreg,

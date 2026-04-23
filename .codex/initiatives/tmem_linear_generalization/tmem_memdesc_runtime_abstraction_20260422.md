@@ -1476,3 +1476,17 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; selected active-subview
   ld/st rows `4 passed`; M64 split-N ld/st cluster `20 passed`; targeted lit
   set `6/6`.
+
+### 2026-04-23 Ld.Red Active-Subview Helper Locality
+
+- `getTMemLoadReductionLayoutForMemDesc` now treats active self-contained
+  descriptors as view-like based on the current descriptor type/layout. A
+  selected or loop-carried active subview therefore does not need a visible
+  `memdesc_subslice` producer to enter the reduction-support path.
+- The Gluon reduction support predicate no longer falls back to backing-row
+  plans for active self-contained descriptors. That keeps the support decision
+  local to the current descriptor class while preserving legacy compatibility
+  for older descriptor-view chains.
+- Validation after this slice: required `make -j8`; selected active-subview
+  ld.red rows `4 passed, 1646 deselected`; descriptor-chain ld.red N-sweep
+  `12 passed`; targeted lit set `6/6`.

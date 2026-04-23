@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:19 UTC
+Last updated: 2026-04-23 05:23 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -182,6 +182,14 @@ loop-carried case proves the reduction frontend/lowering does not require a
 local visible subview producer at the consumer. Validation: required
 `make -j8`; exact loop-carried rows `2 passed`; adjacent
 `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
+
+Current ld.red helper-locality checkpoint:
+reduction register-layout inference treats active self-contained descriptors as
+view-like from their current type/layout even when the value is selected or
+loop-carried, and the Gluon reduction support predicate no longer falls back to
+backing row plans for that descriptor class. Validation: required `make -j8`;
+selected active-subview ld.red rows `4 passed`; descriptor-chain ld.red N-sweep
+`12 passed`; targeted lit set `6/6`.
 
 Current normal ld/st selected-subview checkpoint:
 a representative dynamic selected active column subview now has runtime

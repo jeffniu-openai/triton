@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 05:19 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 05:23 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -68,6 +68,9 @@ for same-parent subviews, proving hardware row reduction uses the selected
 memdesc SSA value's current `taddr` and the current descriptor type/layout.
 Loop-carried active column-subview ld.red now has matching coverage, so
 `load_max` is guarded for no-local-producer selected memdesc values too.
+Reduction layout inference now treats active self-contained descriptors as
+view-like from type/layout facts and avoids backing-row fallback for that class
+in the Gluon reduction support predicate.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -95,7 +98,12 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 05:19 UTC routed active-subview Gluon
+Latest validation checkpoint: 2026-04-23 05:23 UTC tightened ld.red
+helper-locality for active self-contained descriptors. Validation: required
+`make -j8`; selected active-subview ld.red rows `4 passed`;
+descriptor-chain ld.red N-sweep `12 passed`; targeted lit set `6/6`.
+
+Previous validation checkpoint: 2026-04-23 05:19 UTC routed active-subview Gluon
 M64 layout ordering through a type-local helper. Validation: required
 `make -j8`; selected active-subview ld/st rows `4 passed`; M64 split-N ld/st
 cluster `20 passed`; targeted lit set `6/6`.

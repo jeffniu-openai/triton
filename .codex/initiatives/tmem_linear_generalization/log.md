@@ -35020,3 +35020,28 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Continue reducing remaining Value-shaped
   semantic helpers, especially reduction layout and support diagnostics.
+
+## 2026-04-23 05:23 UTC: ld.red active-subview helper locality
+
+- Branch/HEAD before this checkpoint:
+  `0519a2974 Route active Gluon M64 ordering locally`.
+- Dirty files before checkpoint commit:
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+  `python/src/gluon_ir.cc`, plus initiative docs.
+- Completed source slice:
+  `getTMemLoadReductionLayoutForMemDesc` now treats active self-contained
+  descriptors as view-like from their current type/layout, even when the SSA
+  value is a select or loop result. The Gluon
+  `is_tmem_load_reduction_memdesc_supported` helper also avoids backing-row
+  fallback for active self-contained descriptors.
+- Result:
+  reduction layout/support decisions for migrated active subviews no longer
+  need a visible view producer or hidden backing row plan. Legacy descriptor
+  views keep the existing compatibility behavior.
+- Validation evidence:
+  required `make -j8`; selected active-subview ld.red rows
+  `4 passed, 1646 deselected`; descriptor-chain ld.red N-sweep `12 passed`;
+  targeted lit set `6/6`.
+- Next concrete step:
+  commit and push this checkpoint. Continue helper cleanup around diagnostics
+  and unsupported-direct predicates.

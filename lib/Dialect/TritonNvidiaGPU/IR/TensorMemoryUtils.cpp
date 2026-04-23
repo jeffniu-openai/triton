@@ -3722,11 +3722,12 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
   if (!memDescTy || numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
     return std::nullopt;
 
+  bool hasTypeLocalLayout = hasSelfContainedTMemSubviewLayout(memDescTy);
   bool isViewLikeMemDesc =
+      hasTypeLocalLayout ||
       isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp, TMEMSubSliceOp,
                       gpu::MemDescReshapeOp, gpu::MemDescTransOp,
                       gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
-  bool hasTypeLocalLayout = hasSelfContainedTMemSubviewLayout(memDescTy);
   if (!isReductionFriendlyTmemSourceLayout(memDescTy) && !isViewLikeMemDesc)
     return std::nullopt;
 

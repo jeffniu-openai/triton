@@ -18142,3 +18142,12 @@ rejection, not rescue
   path otherwise. Validation: required `make -j8`; selected active-subview
   ld/st rows `4 passed`; M64 split-N ld/st cluster `20 passed`; targeted lit
   set `6/6`.
+
+- 2026-04-23 ld.red active-subview helper-locality cleanup completed.
+  `getTMemLoadReductionLayoutForMemDesc` now treats active self-contained
+  descriptors as view-like from type/layout facts even when the SSA value is
+  selected or loop-carried. The Gluon reduction support predicate also avoids
+  backing-row fallback for active self-contained descriptors. Validation:
+  required `make -j8`; selected active-subview ld.red rows
+  `4 passed, 1646 deselected`; descriptor-chain ld.red N-sweep `12 passed`;
+  targeted lit set `6/6`.
