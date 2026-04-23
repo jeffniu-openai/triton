@@ -1700,9 +1700,10 @@ def tmem_ld_red_loop_carried_linear_subslice_view_kernel(
 
 
 @gluon.jit
-def tmem_ld_red_unaligned_subword_linear_subslice_view_kernel(
+def tmem_ld_red_offset_column_linear_subslice_view_kernel(
     in_ptr, out_ptr, red_ptr, parent_layout: ttgl.constexpr,
-    M: ttgl.constexpr, N: ttgl.constexpr, propagate_nan: ttgl.constexpr
+    M: ttgl.constexpr, N: ttgl.constexpr, OFFSET: ttgl.constexpr,
+    propagate_nan: ttgl.constexpr
 ):
     num_warps: ttgl.constexpr = 4
     global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
@@ -1717,8 +1718,7 @@ def tmem_ld_red_unaligned_subword_linear_subslice_view_kernel(
     tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
     view0 = tmem.slice(0, N, dim=1)
     view1 = tmem.slice(N, N, dim=1)
-    view = tmem.slice(1, N, dim=1)
-    tail_view = tmem.slice(N - 1, N, dim=1)
+    view = tmem.slice(OFFSET, N, dim=1)
     store_layout: ttgl.constexpr = view.get_reg_layout()
     converted = ttgl.convert_layout(value, store_layout)
 
@@ -1731,9 +1731,9 @@ def tmem_ld_red_unaligned_subword_linear_subslice_view_kernel(
     ttgl.store(out_ptr + offs, ttgl.convert_layout(output, global_layout))
 
     out0 = view0.load(load_layout)
-    out_tail = tail_view.load(load_layout)
+    out1 = view1.load(load_layout)
     ttgl.store(out_ptr + M * N + offs, ttgl.convert_layout(out0, global_layout))
-    ttgl.store(out_ptr + 2 * M * N + offs, ttgl.convert_layout(out_tail, global_layout))
+    ttgl.store(out_ptr + 2 * M * N + offs, ttgl.convert_layout(out1, global_layout))
 
     red_offs = ttgl.arange(0, M, global_layout_1d)
     reduced = ttgl.convert_layout(reduced, global_layout_1d)
@@ -6996,6 +6996,15 @@ def _assert_ld_red_uses_software_reduce(compiled):
     ]
     assert ptx_ld_ops
 
+
+def _expected_offset_column_views(inp, offset, left_fill, right_fill):
+    expected0 = torch.full_like(inp, left_fill)
+    expected0[:, offset:] = inp[:, :-offset]
+    expected1 = torch.full_like(inp, right_fill)
+    expected1[:, :offset] = inp[:, -offset:]
+    return expected0, expected1
+
+
 LD_RED_NON_F32_SOFTWARE_CASES = [
     pytest.param(
         "i32_plain",
@@ -9855,30 +9864,72 @@ def test_tmem_runtime_matrix_ld_red_unaligned_subword_linear_subslice_view_uses_
     dtype_name, torch_dtype
 ):
     M = N = 128
+    offset = 1
     layout = _make_tmem_linear_layout(M, 2 * N)
     base = torch.arange(M * N, dtype=torch.int32, device="cuda").reshape(M, N) % 16
     inp = base.to(torch_dtype)
     out = torch.empty((3, M, N), dtype=torch_dtype, device="cuda")
     red = torch.empty((M,), dtype=torch_dtype, device="cuda")
 
-    compiled = tmem_ld_red_unaligned_subword_linear_subslice_view_kernel[(1, )](
-        inp, out, red, layout, M, N, tl.PropagateNan.NONE, num_warps=4
+    compiled = tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
+        inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
     )
 
     torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
-    expected0 = torch.full((M, N), 11, dtype=torch_dtype, device="cuda")
-    expected0[:, 1:] = inp[:, :-1]
-    expected_tail = torch.full((M, N), 17, dtype=torch_dtype, device="cuda")
-    expected_tail[:, 0] = inp[:, -2]
-    expected_tail[:, 1] = inp[:, -1]
+    expected0, expected1 = _expected_offset_column_views(inp, offset, 11, 17)
     torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
-    torch.testing.assert_close(out[2], expected_tail, atol=0, rtol=0)
+    torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
     torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
 
     _assert_ld_red_uses_software_reduce(compiled)
     observed_opcodes = [op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"])]
     assert "tcgen05.ld.sync.aligned.32x32b.x1.b32" in observed_opcodes
     assert "tcgen05.st.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize(
+    "offset,expect_hardware",
+    [
+        pytest.param(1, False, id="misaligned-software"),
+        pytest.param(4, True, id="aligned-hardware"),
+    ],
+)
+def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view(offset, expect_hardware):
+    M = 128
+    N = 32
+    layout = _make_tmem_linear_layout(M, 2 * N)
+    inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N) % 16
+    out = torch.empty((3, M, N), dtype=torch.float32, device="cuda")
+    red = torch.empty((M,), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
+        inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
+    )
+
+    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
+    expected0, expected1 = _expected_offset_column_views(inp, offset, 11, 17)
+    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
+
+    red_pairs = [
+        pair
+        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        if ".ld.red." in pair[0]
+    ]
+    if expect_hardware:
+        assert len(red_pairs) == 1
+        red_op, red_offset = red_pairs[0]
+        assert red_offset == 0
+        assert red_op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x32.max")
+        assert red_op.endswith(".f32")
+    else:
+        assert red_pairs == []
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_load" in ttgir

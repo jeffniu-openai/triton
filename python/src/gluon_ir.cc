@@ -2148,6 +2148,9 @@ void init_gluon_ir(py::module &&m) {
                   memDesc, /*reason=*/nullptr)) {
             return false;
           }
+          if (!ttng::isTMemLoadReductionAddressAligned(memDesc)) {
+            return false;
+          }
 
           constexpr int maxnreg = 256;
           auto isCompatible =

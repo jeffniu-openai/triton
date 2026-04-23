@@ -761,6 +761,12 @@ lowerTMemLdStFromTypes(
                    << static_cast<int>(phaseStatus) << "\n";
     useSubwordPhasePath = phaseStatus != TMemSubwordPhaseStatus::KnownZero;
   }
+  if (redOp && memDescValue && !isTMemLoadReductionAddressAligned(memDescValue)) {
+    emitError(loc)
+        << "unsupported tensor memory origin for tcgen05.ld.red: hardware "
+           "reduction requires a 128-bit-aligned tensor memory address";
+    return failure();
+  }
   MemDescType planningMemTy = memTy;
   if (typeLocalScalesStorageTy) {
     planningMemTy = *typeLocalScalesStorageTy;

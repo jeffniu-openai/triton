@@ -1838,3 +1838,28 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; exact new rows `2 passed,
   1682 deselected`; adjacent ld.red/software-reduce selector `50 passed,
   1634 deselected`.
+
+### 2026-04-23 Hardware Ld.Red Address Alignment
+
+- A f32 active view at element-column offset 1 showed that hardware
+  `tcgen05.ld.red` has an address-alignment requirement that normal TMEM loads
+  do not share. The old support query considered only the current
+  `MemDescType`/register layout and allowed the hardware reduction, which then
+  faulted at runtime with a misaligned address.
+- Added `isTMemLoadReductionAddressAligned(Value)`. It asks the same
+  element-column residue engine used for subword and copy alignment whether
+  the current memdesc SSA value is proven aligned to a 128-bit hardware
+  address. For f32 this is element-column modulo 4.
+- The check is now applied at every place that can select or accept hardware
+  `ld.red`: the Gluon frontend support query, the `OptimizeTMemLayouts`
+  load+reduce fusion pass, the `TMEMLoadOp` verifier, and LLVM lowering. This
+  keeps legality local to the current memdesc value/type/layout and prevents
+  later rewrites from reintroducing a bad hardware red op.
+- Misaligned and unknown origins remain semantically valid through normal
+  TMEM load plus software reduction. Runtime coverage checks f32 offset 1
+  takes that path and f32 offset 4 still emits `tcgen05.ld.red`, with explicit
+  neighboring-view readback to prove the selected current `taddr` is honored.
+- Validation after this slice: required `make -j8`; exact subword/software and
+  f32 offset-column reduction rows `4 passed, 1682 deselected`; adjacent
+  ld.red/software-reduce selector `52 passed, 1634 deselected`; lit
+  `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.

@@ -531,6 +531,8 @@ bool disallowTMemLdStRawQueryRowPlanOverride(Value memDesc);
 std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps);
 
+bool isTMemLoadReductionAddressAligned(Value memDesc);
+
 RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
                                                    Value memDesc,
                                                    unsigned numWarps);

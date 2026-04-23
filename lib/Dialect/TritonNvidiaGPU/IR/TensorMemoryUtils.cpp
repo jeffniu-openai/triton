@@ -405,6 +405,21 @@ TMemSubwordPhaseStatus getTMemElementOffsetModuloStatus(Value memDesc,
       .getStatus();
 }
 
+bool isTMemLoadReductionAddressAligned(Value memDesc) {
+  if (!memDesc)
+    return false;
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!memTy)
+    return false;
+  uint32_t elementBitwidth = memTy.getElementTypeBitWidth();
+  if (elementBitwidth == 0)
+    return false;
+  uint32_t b128ElementAlignment =
+      elementBitwidth >= 128 ? 1 : 128 / elementBitwidth;
+  return getTMemElementOffsetModuloStatus(memDesc, b128ElementAlignment) ==
+         TMemSubwordPhaseStatus::KnownZero;
+}
+
 bool mayHaveNonZeroTMemSubwordPhase(Value memDesc) {
   return getTMemSubwordPhaseStatus(memDesc) ==
          TMemSubwordPhaseStatus::MayBeNonZero;

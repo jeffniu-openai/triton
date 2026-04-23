@@ -35506,3 +35506,32 @@ Open after this slice:
   hardware f32 `ld.red` on unaligned active views, where the current
   phase-aware lowerer rejects `redOp` and may need either a local clean
   negative or a dedicated lowering.
+
+## 2026-04-23 08:27 UTC: hardware ld.red current-origin alignment
+
+- Branch/HEAD at slice start:
+  `d7edcb69a Cover subword TMEM load_max software reduction`.
+- Finding:
+  a f32 active column subview at element-column offset 1 compiled to hardware
+  `tcgen05.ld.red` and then faulted at runtime with a CUDA misaligned-address
+  error. Normal TMEM loads can realize that descriptor, but the hardware
+  reduction atom requires a 128-bit-aligned current TMEM address.
+- Completed source/test slice:
+  added `isTMemLoadReductionAddressAligned(Value)` backed by the existing
+  element-column residue analysis. The Gluon support query now returns false
+  for misaligned or unknown origins, so the frontend chooses normal
+  `tmem.load` plus software reduction. `OptimizeTMemLayouts` also refuses to
+  fuse such software reductions back into hardware `ld.red`, and verifier/LLVM
+  lowering have a final clean guard for hand-written or later-generated red
+  ops. Runtime coverage checks f32 offset 1 as software reduction and f32
+  offset 4 as hardware `ld.red`, with neighboring view readback to prove the
+  current `taddr` is honored.
+- Validation evidence:
+  required `make -j8`; exact reduction rows passed `4 passed, 1682 deselected`;
+  adjacent ld.red/software-reduce selector passed `52 passed, 1634 deselected`;
+  lit `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue with non-contiguous/unpacked
+  subword ld/st classification and then broader 4-GPU reduction/copy sweeps
+  once the remaining local consumer gaps are either implemented or cleanly
+  bounded.

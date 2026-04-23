@@ -18167,6 +18167,17 @@ rejection, not rescue
   required `make -j8`; exact new rows `2 passed`; adjacent
   `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
 
+- 2026-04-23 hardware `tcgen05.ld.red` address alignment fixed. A f32
+  active view at element-column offset 1 compiled to hardware `ld.red` and
+  faulted at runtime with a misaligned address. Added a shared
+  `isTMemLoadReductionAddressAligned` helper and wired it into the Gluon
+  support query, load+reduce fusion, verifier, and LLVM lowering guard. Offset
+  1 now uses normal TMEM load plus software reduction; offset 4 still emits
+  hardware `ld.red`. Validation: required `make -j8`; exact reduction rows
+  `4 passed, 1682 deselected`; adjacent ld.red/software-reduce selector
+  `52 passed, 1634 deselected`; lit `tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.
+
 - 2026-04-23 subword `load_max` software-reduction sentinel added. f16 and i8
   odd-column active views now run through `load_max`, which lowers to software
   reduction over normal TMEM loads rather than hardware `ld.red`. The test

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 08:17 UTC
+Last updated: 2026-04-23 08:27 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -163,6 +163,11 @@ Active implementation checklist:
   reduction over normal TMEM loads rather than hardware `ld.red`. The rows
   check the reduction result plus neighboring packed-lane preservation, proving
   the phase-aware ld/st RMW path works beyond plain roundtrip load/store.
+  First hardware ld.red address-alignment slice: f32 active column subviews
+  now prove 128-bit current-origin alignment before the frontend support query,
+  load+reduce fusion pass, verifier, or LLVM lowering may select
+  `tcgen05.ld.red`. A column-offset-1 view falls back to software reduction;
+  a column-offset-4 view still emits hardware `ld.red`.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -244,6 +249,14 @@ verify both reduction output and the boundary RMW behavior of the underlying
 phase-aware TMEM loads/stores. Hardware f32 `ld.red` unaligned-subview behavior
 still needs separate classification because it uses the `redOp` path rejected
 by the current phase-aware lowerer.
+
+Current hardware ld.red alignment checkpoint: f32 `tcgen05.ld.red` is only
+selected when the current memdesc SSA value is proven 128-bit aligned in
+element-column coordinates. The shared legality helper uses residue analysis
+over the current value, so static offsets and dynamic selected/carried values
+are handled with the same local facts as copy alignment. Misaligned or unknown
+origins remain semantically supported through software reduction over normal
+TMEM loads; aligned offset views keep the hardware path.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

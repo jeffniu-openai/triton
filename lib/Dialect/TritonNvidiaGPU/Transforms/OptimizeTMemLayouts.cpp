@@ -2036,6 +2036,8 @@ public:
         srcTy.getElementType().isF32() == false ||
         isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding()))
       return failure();
+    if (!isTMemLoadReductionAddressAligned(loadOp.getSrc()))
+      return failure();
 
     struct ReduceMatch {
       triton::ReduceOp reduceOp;
