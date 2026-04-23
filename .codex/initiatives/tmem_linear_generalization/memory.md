@@ -18603,3 +18603,16 @@ rejection, not rescue
   Validation: required `make -j8`; focused `ldst_scales and
   (descriptor_view or reports)` selector `20 passed, 1687 deselected`;
   lit `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+- 2026-04-23 21:48 UTC ld/st + ld.red type-local closeout completed. Added type-local
+  reduction layout/canonicalization overloads and shared reduction encoding
+  planning, then routed TMEMLoad verification, load+reduce fusion, Gluon
+  reduction helpers, and NVIDIA LLVM type-local reduction lowering through that
+  helper. Normal ld/st verifier/lowering/front-end paths now use
+  `hasTypeLocalTMemLdStLayout` for active self-contained subviews and scales
+  descriptor views before legacy producer-chain fallback. Alignment for
+  hardware `ld.red` intentionally remains current-value based. Validation:
+  `make -j8`; `git diff --check`; ld.red runtime matrix `256 passed`; core
+  reductions `84 passed`; four-GPU ldst split `96/57+39s/57+39s/76+20s`;
+  four-GPU ld.red split `64/64/64/64`; four-GPU ldst_scales split `9/9/9/6`;
+  lit `tmem_layouts.mlir` passed.

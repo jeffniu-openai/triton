@@ -929,9 +929,6 @@ lowerTMemLdStFromTypes(
       return failure();
     }
   }
-  auto queryTypes =
-      memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
-                   : SmallVector<MemDescType>{memTy};
   std::optional<MemDescType> typeLocalScalesStorageTy;
   if (!isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
     if (auto storageTy = getMMAv5ScaleStorageType(memTy))
@@ -939,6 +936,11 @@ lowerTMemLdStFromTypes(
   }
   bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
   bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(memTy);
+  auto queryTypes =
+      hasTypeLocalLdStLayout
+          ? triton::nvidia_gpu::getTypeLocalTMemLdStQueryTypes(memTy)
+          : (memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
+                          : SmallVector<MemDescType>{memTy});
   bool useSubwordPhasePath = false;
   if (memTy.getElementTypeBitWidth() < 32 && memDescValue) {
     TMemSubwordPhaseStatus phaseStatus =
@@ -961,7 +963,7 @@ lowerTMemLdStFromTypes(
     planningMemTy = getSelfContainedTMemSubviewPlanningType(memTy);
   }
   auto makeBaseOffsetRelativeToCurrentTAddr = [&](uint32_t baseOffset) {
-    return hasTypeLocalSubviewLayout
+    return hasTypeLocalLdStLayout
                ? baseOffset
                : getTMemSubviewRelativeBaseOffset(memDescValue, baseOffset);
   };
@@ -979,6 +981,19 @@ lowerTMemLdStFromTypes(
   }();
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret =
       disallowTMemLdStQueryTypeRescue(memTy);
+  if (redOp && hasTypeLocalLdStLayout) {
+    auto encodingInfoOr = computeTMemLoadReductionEncodingInfo(
+        regTy, memTy, memDescValue, maxnreg, diag);
+    if (failed(encodingInfoOr))
+      return failure();
+    auto lowered = lowerTMemLdStFromInfo(
+        loc, rewriter, *encodingInfoOr, pred, llvmElemTy,
+        memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs, useNaN,
+        useSubwordPhasePath);
+    if (failed(lowered))
+      return failure();
+    return *lowered;
+  }
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
   bool phaseAwareLoweringFailed = false;
@@ -1106,7 +1121,7 @@ lowerTMemLdStFromTypes(
       return failure();
     };
     std::string supportError;
-    if (!hasTypeLocalSubviewLayout) {
+    if (!hasTypeLocalLdStLayout) {
       if (auto subslice = getTMemLdStPure2DColumnSubview(memDescValue)) {
         if (auto srcSupportPlan =
                 getTMemLdStSourceColumnSubviewSupportQueryPlan(memDescValue,

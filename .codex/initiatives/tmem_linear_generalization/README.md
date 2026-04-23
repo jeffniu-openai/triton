@@ -56,6 +56,17 @@ public index/subslice result-type helpers delegate to op-encoding inference.
 Focused runtime, lit, and four-GPU ldst validation are recorded in
 `memory.md`, `log.md`, and `completion_execution_tracker.md`.
 
+Latest ld/st + ld.red closeout: as of 2026-04-23 21:48 UTC,
+normal tensor-memory load/store planning and hardware load-reduction planning
+are closed for active type-local descriptor classes. The semantic verifier,
+Gluon frontend helpers, load+reduce fusion, and NVIDIA LLVM type-local lowering
+use current `MemDescType`/layout facts through shared ld/st and reduction
+planning helpers. Producer-chain walking remains for legacy compatibility,
+optimizer replay, and current-value phase/alignment analysis; hardware
+`ld.red` address alignment intentionally remains a current memdesc SSA-value
+fact. Validation is recorded in `completion_execution_tracker.md`, `memory.md`,
+and `log.md`.
+
 Active execution plan: as of 2026-04-23 08:11 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in

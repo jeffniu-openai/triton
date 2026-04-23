@@ -945,9 +945,14 @@ void init_gluon_ir(py::module &&m) {
             BoolAttr nanAttr = nullptr;
 
             if (redOp) {
-              if (auto rankedTy = dyn_cast<RankedTensorType>(resultTy))
-                resultTy = ttng::canonicalizeTMemLoadReductionType(
-                    rankedTy, memDesc, numWarps);
+              if (auto rankedTy = dyn_cast<RankedTensorType>(resultTy)) {
+                auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+                resultTy = ttng::hasTypeLocalTMemLdStLayout(memDescTy)
+                               ? ttng::canonicalizeTMemLoadReductionType(
+                                     rankedTy, memDescTy, numWarps)
+                               : ttng::canonicalizeTMemLoadReductionType(
+                                     rankedTy, memDesc, numWarps);
+              }
               redOpAttr = ttng::TMEMLoadReduceModifierAttr::get(
                   self.getContext(), redOp.value());
               if (useAbs)
@@ -1800,11 +1805,17 @@ void init_gluon_ir(py::module &&m) {
               return py::none();
             }
           }
+          bool hasTypeLocalLdStLayout =
+              ttng::hasTypeLocalTMemLdStLayout(queryMemDescTy);
           bool isViewLikeMemDesc =
+              hasTypeLocalLdStLayout ||
               ttng::isExplicitTMemLdStViewProducer(queryMemDesc);
-          auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
+          auto queryTypes = hasTypeLocalLdStLayout
+                                ? ttng::getTypeLocalTMemLdStQueryTypes(
+                                      queryMemDescTy)
+                                : ttng::getTMemLdStQueryTypes(queryMemDesc);
           auto preferQueryTypeLayoutsBeforeRawQuery =
-              ttng::hasSelfContainedTMemSubviewLayout(queryMemDescTy)
+              hasTypeLocalLdStLayout
                   ? ttng::shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
                         queryMemDescTy, numWarps, desiredAtom)
                   : ttng::shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
@@ -2118,8 +2129,12 @@ void init_gluon_ir(py::module &&m) {
         if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
-        if (auto layout =
-                ttng::getTMemLoadReductionLayoutForMemDesc(memDesc, numWarps))
+        auto layout = ttng::hasTypeLocalTMemLdStLayout(memDescTy)
+                          ? ttng::getTMemLoadReductionLayoutForMemDesc(
+                                memDescTy, numWarps)
+                          : ttng::getTMemLoadReductionLayoutForMemDesc(
+                                memDesc, numWarps);
+        if (layout)
           return layoutToGluon(*layout);
         return py::none();
       });
@@ -2153,56 +2168,8 @@ void init_gluon_ir(py::module &&m) {
           }
 
           constexpr int maxnreg = 256;
-          auto isCompatible =
-              [](FailureOr<ttng::TMemLdStEncodingInfo> info) {
-                return succeeded(info) &&
-                       ttng::isTMemLdStReductionCompatible(*info);
-              };
-          if (ttng::isReductionFriendlyTmemSourceLayout(memDescTy)) {
-            auto rowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, memDescTy);
-            if (isCompatible(ttng::computeTMemLdStEncodingInfo(
-                    rankedTy, memDescTy, maxnreg, /*emitError=*/{}, rowPlan))) {
-              return true;
-            }
-          }
-          for (ttg::MemDescType queryTy :
-               ttng::getTMemLdStQueryTypes(memDesc)) {
-            if (!ttng::isReductionFriendlyTmemSourceLayout(queryTy))
-              continue;
-            auto rowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, queryTy);
-            if (isCompatible(ttng::computeTMemLdStEncodingInfo(
-                    rankedTy, queryTy, maxnreg, /*emitError=*/{}, rowPlan))) {
-              return true;
-            }
-          }
-          if (auto supportPlan =
-                  ttng::getTMemLdStSupportQueryPlan(memDesc,
-                                                    /*error=*/nullptr)) {
-            auto rowPlan = supportPlan->rowPlan;
-            if (!rowPlan)
-              rowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, memDescTy);
-            if (!rowPlan &&
-                !ttng::hasSelfContainedTMemSubviewLayout(memDescTy))
-              rowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
-            if (isCompatible(ttng::computeTMemLdStEncodingInfo(
-                    rankedTy, memDescTy, supportPlan->query, maxnreg,
-                    /*emitError=*/{}, rowPlan))) {
-              return true;
-            }
-          }
-          if (auto rawQuery = ttng::inferStandaloneTMemLdStQueryLayout(
-                  memDesc, /*preserveNonCanonicalView=*/true,
-                  /*error=*/nullptr);
-              succeeded(rawQuery)) {
-            auto rowPlan = ttng::getTMemLdStRowPlanForRawQuery(
-                memDesc, memDescTy, *rawQuery);
-            if (isCompatible(ttng::computeTMemLdStEncodingInfo(
-                    rankedTy, memDescTy, *rawQuery, maxnreg,
-                    /*emitError=*/{}, rowPlan))) {
-              return true;
-            }
-          }
-          return false;
+          return succeeded(ttng::computeTMemLoadReductionEncodingInfo(
+              rankedTy, memDescTy, memDesc, maxnreg, /*emitError=*/{}));
         });
 
   m.def(

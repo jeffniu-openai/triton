@@ -2094,64 +2094,14 @@ public:
     if (!isTMemLoadReductionAddressAligned(loadOp.getSrc()))
       return failure();
 
-    auto isReductionCompatible =
-        [](FailureOr<TMemLdStEncodingInfo> info) -> bool {
-      return succeeded(info) && isTMemLdStReductionCompatible(*info);
-    };
     int maxnreg = getContextualMaxNReg(loadOp);
     auto canLowerType = [&](RankedTensorType candidateTy) {
       auto support = getTmemLoadReductionLayoutSupport(
           candidateTy, ttg::toLinearLayout(candidateTy));
       if (!support)
         return false;
-
-      if (isReductionFriendlyTmemSourceLayout(srcTy)) {
-        auto rowPlan = getTMemLdStRowPlanForQuery(loadOp.getSrc(), srcTy);
-        if (isReductionCompatible(computeTMemLdStEncodingInfo(
-                candidateTy, srcTy, maxnreg, /*emitError=*/{}, rowPlan))) {
-          return true;
-        }
-      }
-
-      std::string supportError;
-      if (auto supportPlan =
-              getTMemLdStSupportQueryPlan(loadOp.getSrc(), &supportError)) {
-        auto rowPlan = supportPlan->rowPlan;
-        if (!rowPlan)
-          rowPlan = getTMemLdStRowPlanForQueryLayout(
-              loadOp.getSrc(), srcTy, supportPlan->query);
-        if (!rowPlan)
-          rowPlan = getBackingTMemLdStRowPlan(loadOp.getSrc());
-        if (isReductionCompatible(computeTMemLdStEncodingInfo(
-                candidateTy, srcTy, supportPlan->query, maxnreg,
-                /*emitError=*/{}, rowPlan))) {
-          return true;
-        }
-      }
-
-      std::string rawError;
-      if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
-              loadOp.getSrc(), /*preserveNonCanonicalView=*/true, &rawError);
-          succeeded(rawQuery)) {
-        auto rowPlan =
-            getTMemLdStRowPlanForQueryLayout(loadOp.getSrc(), srcTy, *rawQuery);
-        if (!rowPlan)
-          rowPlan = getBackingTMemLdStRowPlan(loadOp.getSrc());
-        if (isReductionCompatible(computeTMemLdStEncodingInfo(
-                candidateTy, srcTy, *rawQuery, maxnreg, /*emitError=*/{},
-                rowPlan))) {
-          return true;
-        }
-      }
-
-      for (ttg::MemDescType queryTy : getTMemLdStQueryTypes(loadOp.getSrc())) {
-        auto rowPlan = getTMemLdStRowPlanForQuery(loadOp.getSrc(), queryTy);
-        if (isReductionCompatible(computeTMemLdStEncodingInfo(
-                candidateTy, queryTy, maxnreg, /*emitError=*/{}, rowPlan))) {
-          return true;
-        }
-      }
-      return false;
+      return succeeded(computeTMemLoadReductionEncodingInfo(
+          candidateTy, srcTy, loadOp.getSrc(), maxnreg, /*emitError=*/{}));
     };
 
     RankedTensorType fusedTy = loadTy;

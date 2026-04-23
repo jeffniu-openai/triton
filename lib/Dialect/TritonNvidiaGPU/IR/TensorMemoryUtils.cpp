@@ -782,7 +782,7 @@ getTMemLdStDirectSupportTensorType(Value memDesc, unsigned numWarps) {
   if (!memTy)
     return std::nullopt;
 
-  bool hasTypeLocalLayout = hasSelfContainedTMemSubviewLayout(memTy);
+  bool hasTypeLocalLayout = hasTypeLocalTMemLdStLayout(memTy);
   auto fallbackRowPlan = hasTypeLocalLayout ? getTMemLdStRowPlanForType(memTy)
                                             : getBackingTMemLdStRowPlan(memDesc);
   auto isInvalidScalesLoadLayout = [&](RankedTensorType regTy,
@@ -3998,7 +3998,7 @@ bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
 bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
     Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom) {
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
-  if (hasSelfContainedTMemSubviewLayout(memTy)) {
+  if (hasTypeLocalTMemLdStLayout(memTy)) {
     return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
         memTy, numWarps, desiredAtom);
   }
@@ -4035,7 +4035,7 @@ bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
     Value memDesc, MemDescType memTy, RankedTensorType regTy) {
   if (!memDesc)
     return false;
-  if (hasSelfContainedTMemSubviewLayout(memTy))
+  if (hasTypeLocalTMemLdStLayout(memTy))
     return shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(memTy, regTy);
   auto regLayout = toLinearEncoding(regTy).getLinearLayout();
   auto kWarp = StringAttr::get(memTy.getContext(), "warp");
@@ -4083,10 +4083,182 @@ bool disallowTMemLdStRawQueryRowPlanOverride(Value memDesc) {
          memTy.getShape()[1] == 32;
 }
 
+static llvm::SmallVector<MemDescType>
+getCurrentTMemLdStQueryTypes(MemDescType memTy, Value memDescValue) {
+  if (hasTypeLocalTMemLdStLayout(memTy))
+    return getTypeLocalTMemLdStQueryTypes(memTy);
+  if (memDescValue)
+    return getTMemLdStQueryTypes(memDescValue);
+  llvm::SmallVector<MemDescType> queryTypes;
+  if (memTy)
+    queryTypes.push_back(memTy);
+  return queryTypes;
+}
+
+static FailureOr<TMemLdStQueryLayout>
+inferCurrentTMemLdStQueryLayout(MemDescType memTy, Value memDescValue,
+                                std::string *error) {
+  if (hasTypeLocalTMemLdStLayout(memTy))
+    return inferTypeLocalTMemLdStQueryLayout(memTy, error);
+  if (memDescValue)
+    return inferStandaloneTMemLdStQueryLayout(
+        memDescValue, /*preserveNonCanonicalView=*/true, error);
+  return inferTypeLocalTMemLdStQueryLayout(memTy, error);
+}
+
+static std::optional<TMemLdStSupportQueryPlan>
+getCurrentTMemLdStSupportQueryPlan(MemDescType memTy, Value memDescValue,
+                                   std::string *error) {
+  if (hasTypeLocalTMemLdStLayout(memTy))
+    return getTypeLocalTMemLdStSupportQueryPlan(memTy, error);
+  if (memDescValue)
+    return getTMemLdStSupportQueryPlan(memDescValue, error);
+  return std::nullopt;
+}
+
+static std::optional<TMemLdStRowPlan>
+getCurrentTMemLdStRowPlanForQuery(MemDescType currentTy, Value memDescValue,
+                                  MemDescType queryTy) {
+  if (hasTypeLocalTMemLdStLayout(currentTy) || !memDescValue)
+    return getTMemLdStRowPlanForType(queryTy);
+  return getTMemLdStRowPlanForQuery(memDescValue, queryTy);
+}
+
+static std::optional<TMemLdStRowPlan>
+getCurrentTMemLdStRowPlanForRawQuery(MemDescType currentTy, Value memDescValue,
+                                     const TMemLdStQueryLayout &query) {
+  if (hasTypeLocalTMemLdStLayout(currentTy) || !memDescValue) {
+    if (auto rowPlan = getTMemLdStRowPlanForType(currentTy))
+      return rowPlan;
+    return getTMemLdStRowPlan(query.layout);
+  }
+  return getTMemLdStRowPlanForRawQuery(memDescValue, currentTy, query);
+}
+
+static std::optional<TMemLdStRowPlan>
+getCurrentTMemLdStRowPlanForSupportQuery(
+    MemDescType currentTy, Value memDescValue,
+    const TMemLdStSupportQueryPlan &supportPlan) {
+  if (hasTypeLocalTMemLdStLayout(currentTy) || !memDescValue) {
+    if (supportPlan.rowPlan)
+      return supportPlan.rowPlan;
+    if (auto rowPlan = getTMemLdStRowPlanForType(currentTy))
+      return rowPlan;
+    return getTMemLdStRowPlan(supportPlan.query.layout);
+  }
+  return getTMemLdStRowPlanForSupportQuery(
+      memDescValue, currentTy, supportPlan.query, supportPlan.rowPlan);
+}
+
+FailureOr<TMemLdStEncodingInfo> computeTMemLoadReductionEncodingInfo(
+    RankedTensorType regTy, MemDescType memTy, Value memDescValue, int maxnreg,
+    std::function<InFlightDiagnostic()> emitError) {
+  if (!memTy)
+    return failure();
+
+  auto isReductionCompatible = [](FailureOr<TMemLdStEncodingInfo> info) {
+    return succeeded(info) && isTMemLdStReductionCompatible(*info);
+  };
+  auto tryEncoding = [&](MemDescType queryTy,
+                         std::optional<TMemLdStRowPlan> rowPlan)
+      -> FailureOr<TMemLdStEncodingInfo> {
+    auto maybeInfo = computeTMemLdStEncodingInfo(regTy, queryTy, maxnreg,
+                                                 emitError, rowPlan);
+    if (isReductionCompatible(maybeInfo))
+      return maybeInfo;
+    return failure();
+  };
+  auto tryQueryEncoding = [&](const TMemLdStQueryLayout &query,
+                              std::optional<TMemLdStRowPlan> rowPlan)
+      -> FailureOr<TMemLdStEncodingInfo> {
+    auto maybeInfo = computeTMemLdStEncodingInfo(regTy, memTy, query, maxnreg,
+                                                 emitError, rowPlan);
+    if (isReductionCompatible(maybeInfo))
+      return maybeInfo;
+    return failure();
+  };
+
+  if (isReductionFriendlyTmemSourceLayout(memTy)) {
+    auto rowPlan = getCurrentTMemLdStRowPlanForQuery(memTy, memDescValue, memTy);
+    if (auto maybeInfo = tryEncoding(memTy, rowPlan); succeeded(maybeInfo))
+      return maybeInfo;
+  }
+
+  auto queryTypes = getCurrentTMemLdStQueryTypes(memTy, memDescValue);
+  for (MemDescType queryTy : queryTypes) {
+    if (!isReductionFriendlyTmemSourceLayout(queryTy))
+      continue;
+    auto rowPlan = getCurrentTMemLdStRowPlanForQuery(memTy, memDescValue, queryTy);
+    if (auto maybeInfo = tryEncoding(queryTy, rowPlan); succeeded(maybeInfo))
+      return maybeInfo;
+  }
+
+  std::string supportError;
+  if (auto supportPlan = getCurrentTMemLdStSupportQueryPlan(memTy, memDescValue,
+                                                            &supportError)) {
+    auto rowPlan = getCurrentTMemLdStRowPlanForSupportQuery(memTy, memDescValue,
+                                                            *supportPlan);
+    if (auto maybeInfo = tryQueryEncoding(supportPlan->query, rowPlan);
+        succeeded(maybeInfo)) {
+      return maybeInfo;
+    }
+  }
+
+  std::string rawError;
+  if (auto rawQuery = inferCurrentTMemLdStQueryLayout(memTy, memDescValue,
+                                                      &rawError);
+      succeeded(rawQuery)) {
+    auto rowPlan = getCurrentTMemLdStRowPlanForRawQuery(memTy, memDescValue,
+                                                        *rawQuery);
+    if (auto maybeInfo = tryQueryEncoding(*rawQuery, rowPlan);
+        succeeded(maybeInfo)) {
+      return maybeInfo;
+    }
+  }
+
+  for (MemDescType queryTy : queryTypes) {
+    if (!isReductionFriendlyTmemSourceLayout(queryTy))
+      continue;
+    auto rowPlan = getCurrentTMemLdStRowPlanForQuery(memTy, memDescValue, queryTy);
+    if (auto maybeInfo = tryEncoding(queryTy, rowPlan); succeeded(maybeInfo))
+      return maybeInfo;
+  }
+  return failure();
+}
+
+RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
+                                                   MemDescType memDescTy,
+                                                   unsigned numWarps) {
+  if (!isM64SplitNDescriptorType(memDescTy, numWarps))
+    return resultTy;
+
+  int64_t n = memDescTy.getShape()[1];
+  if (n < 2 || !llvm::isPowerOf2_64(n))
+    return resultTy;
+
+  auto rawQuery = inferTypeLocalTMemLdStQueryLayout(memDescTy, /*error=*/nullptr);
+  if (failed(rawQuery) || hasCanonicalM64SplitNRows(rawQuery->layout))
+    return resultTy;
+
+  auto canonical =
+      getCanonicalM64SplitNLayoutForRawQuery(memDescTy, *rawQuery, numWarps);
+  if (!canonical)
+    return resultTy;
+
+  auto attr = LinearEncodingAttr::get(resultTy.getContext(), std::move(*canonical));
+  auto canonicalTy = resultTy.cloneWithEncoding(attr);
+  if (!isReductionFriendlyTmemLoadLayout(canonicalTy,
+                                         toLinearLayout(canonicalTy)))
+    return resultTy;
+  return canonicalTy;
+}
+
 RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
                                                    Value memDesc,
                                                    unsigned numWarps) {
   auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
+  if (hasTypeLocalTMemLdStLayout(memDescTy))
+    return canonicalizeTMemLoadReductionType(resultTy, memDescTy, numWarps);
   if (!isM64SplitNDescriptorType(memDescTy, numWarps))
     return resultTy;
 
@@ -4113,37 +4285,36 @@ RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
   return canonicalTy;
 }
 
-std::optional<gpu::DistributedEncodingTrait>
-getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
-  auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
+static std::optional<gpu::DistributedEncodingTrait>
+getTMemLoadReductionLayoutForMemDescImpl(MemDescType memDescTy,
+                                         Value memDescValue,
+                                         unsigned numWarps) {
   if (!memDescTy || numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
     return std::nullopt;
 
-  bool hasTypeLocalLayout = hasSelfContainedTMemSubviewLayout(memDescTy);
+  bool hasTypeLocalLayout = hasTypeLocalTMemLdStLayout(memDescTy);
   bool isViewLikeMemDesc =
       hasTypeLocalLayout ||
-      isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp, TMEMSubSliceOp,
-                      gpu::MemDescReshapeOp, gpu::MemDescTransOp,
-                      gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
+      (memDescValue &&
+       isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp,
+                       TMEMSubSliceOp, gpu::MemDescReshapeOp,
+                       gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(
+           memDescValue.getDefiningOp()));
   if (!isReductionFriendlyTmemSourceLayout(memDescTy) && !isViewLikeMemDesc)
     return std::nullopt;
 
   auto shape = llvm::to_vector(memDescTy.getShape());
   auto elementType = memDescTy.getElementType();
   auto tensorTy = RankedTensorType::get(shape, elementType);
-  auto *ctx = memDesc.getContext();
+  auto *ctx = memDescTy.getContext();
 
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
-  std::optional<TMemLdStRowPlan> rawRowPlan;
   std::string rawError;
-  if (auto maybeRawQuery = inferStandaloneTMemLdStQueryLayout(
-          memDesc, /*preserveNonCanonicalView=*/true, &rawError);
+  if (auto maybeRawQuery = inferCurrentTMemLdStQueryLayout(memDescTy,
+                                                           memDescValue,
+                                                           &rawError);
       succeeded(maybeRawQuery)) {
     rawQueryLayout = *maybeRawQuery;
-    rawRowPlan =
-        getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy, *rawQueryLayout);
-    if (!rawRowPlan && !hasTypeLocalLayout)
-      rawRowPlan = getBackingTMemLdStRowPlan(memDesc);
   }
 
   auto tryRawQueryCompatibleM64Layout =
@@ -4156,23 +4327,18 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
     if (hasCanonicalM64SplitNRows(rawQueryLayout->layout))
       return std::nullopt;
 
-    auto canonical =
-        getCanonicalM64SplitNLayoutForRawQuery(memDescTy, *rawQueryLayout,
-                                               numWarps);
+    auto canonical = getCanonicalM64SplitNLayoutForRawQuery(
+        memDescTy, *rawQueryLayout, numWarps);
     if (!canonical)
       return std::nullopt;
     auto attr = LinearEncodingAttr::get(ctx, std::move(*canonical));
     auto regTy = RankedTensorType::get(shape, elementType, attr);
     if (!isReductionFriendlyTmemLoadLayout(tensorTy, toLinearLayout(regTy)))
       return std::nullopt;
-    return attr;
-  };
-
-  auto isReductionCompatible =
-      [](FailureOr<TMemLdStEncodingInfo> info) -> bool {
-    if (failed(info))
-      return false;
-    return isTMemLdStReductionCompatible(*info);
+    if (succeeded(computeTMemLoadReductionEncodingInfo(
+            regTy, memDescTy, memDescValue, /*maxnreg=*/256)))
+      return attr;
+    return std::nullopt;
   };
 
   auto tryLayoutWithQuery =
@@ -4183,9 +4349,11 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
     auto regTy = RankedTensorType::get(shape, elementType, layout);
     if (!isReductionFriendlyTmemLoadLayout(tensorTy, toLinearLayout(regTy)))
       return std::nullopt;
-    if (isReductionCompatible(computeTMemLdStEncodingInfo(
+    if (succeeded(computeTMemLdStEncodingInfo(
             regTy, memDescTy, queryLayout, /*maxnreg=*/256,
-            /*emitError=*/{}, rowPlan))) {
+            /*emitError=*/{}, rowPlan)) &&
+        succeeded(computeTMemLoadReductionEncodingInfo(
+            regTy, memDescTy, memDescValue, /*maxnreg=*/256))) {
       return layout;
     }
     return std::nullopt;
@@ -4194,21 +4362,14 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
   auto trySupportReductionLayout =
       [&]() -> std::optional<gpu::DistributedEncodingTrait> {
     std::string supportError;
-    auto supportPlan = getTMemLdStSupportQueryPlan(memDesc, &supportError);
+    auto supportPlan = getCurrentTMemLdStSupportQueryPlan(memDescTy,
+                                                          memDescValue,
+                                                          &supportError);
     if (!supportPlan)
       return std::nullopt;
 
-    auto supportRowPlan = supportPlan->rowPlan;
-    if (!supportRowPlan) {
-      supportRowPlan = getTMemLdStRowPlanForSupportQuery(
-          memDesc, memDescTy, supportPlan->query, supportPlan->rowPlan);
-    }
-    if (!supportRowPlan)
-      supportRowPlan =
-          getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy,
-                                           supportPlan->query);
-    if (!supportRowPlan && !hasTypeLocalLayout)
-      supportRowPlan = getBackingTMemLdStRowPlan(memDesc);
+    auto supportRowPlan = getCurrentTMemLdStRowPlanForSupportQuery(
+        memDescTy, memDescValue, *supportPlan);
 
     SmallVector<gpu::DistributedEncodingTrait> layouts;
     auto addLinearLayout = [&](std::optional<LinearLayout> layout) {
@@ -4224,14 +4385,12 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
 
     for (TMemAccessAtom atom : getTMemLdStAtomSearchOrder(std::nullopt)) {
       addLinearLayout(getDistributedLayoutForTmemLdSt(
-          memDescTy, atom, numWarps, supportRowPlan,
-          supportPlan->query.layout));
+          memDescTy, atom, numWarps, supportRowPlan, supportPlan->query.layout));
     }
     if (auto splitLongM =
             getTmemLoadLayoutSplitLongM(tensorTy, memDescTy, numWarps)) {
       if (llvm::none_of(layouts, [&](gpu::DistributedEncodingTrait existing) {
-            return cast<Attribute>(existing) ==
-                   cast<Attribute>(*splitLongM);
+            return cast<Attribute>(existing) == cast<Attribute>(*splitLongM);
           })) {
         layouts.push_back(*splitLongM);
       }
@@ -4259,41 +4418,37 @@ getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
     if (!isReductionFriendlyTmemLoadLayout(tensorTy, toLinearLayout(regTy)))
       return std::nullopt;
 
-    auto queryRowPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
-    if (!queryRowPlan && !hasTypeLocalLayout)
-      queryRowPlan = getBackingTMemLdStRowPlan(memDesc);
-
     if (rawQueryLayout && isViewLikeMemDesc) {
       if (auto supportLayout = trySupportReductionLayout())
         return supportLayout;
     }
 
-    if (rawQueryLayout &&
-        isReductionCompatible(computeTMemLdStEncodingInfo(
-            regTy, memDescTy, *rawQueryLayout, /*maxnreg=*/256,
-            /*emitError=*/{}, rawRowPlan))) {
-      return *maybeLayout;
-    }
-    if (rawQueryLayout && isViewLikeMemDesc) {
-      if (auto supportLayout = trySupportReductionLayout())
-        return supportLayout;
-      return std::nullopt;
-    }
-    if (isReductionCompatible(computeTMemLdStEncodingInfo(
-            regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
-            queryRowPlan))) {
+    if (succeeded(computeTMemLoadReductionEncodingInfo(
+            regTy, memDescTy, memDescValue, /*maxnreg=*/256))) {
       return *maybeLayout;
     }
     if (auto supportLayout = trySupportReductionLayout())
       return supportLayout;
-    return std::nullopt;
+    return tryRawQueryCompatibleM64Layout();
   };
 
-  for (MemDescType queryTy : getTMemLdStQueryTypes(memDesc)) {
+  for (MemDescType queryTy : getCurrentTMemLdStQueryTypes(memDescTy,
+                                                          memDescValue)) {
     if (auto layout = tryReductionLayout(queryTy))
       return layout;
   }
   return std::nullopt;
+}
+
+std::optional<gpu::DistributedEncodingTrait>
+getTMemLoadReductionLayoutForMemDesc(MemDescType memTy, unsigned numWarps) {
+  return getTMemLoadReductionLayoutForMemDescImpl(memTy, Value{}, numWarps);
+}
+
+std::optional<gpu::DistributedEncodingTrait>
+getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
+  auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
+  return getTMemLoadReductionLayoutForMemDescImpl(memDescTy, memDesc, numWarps);
 }
 
 bool preferBackingTMemLdStQueryTypes(Value memDesc) {

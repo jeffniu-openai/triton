@@ -1431,10 +1431,17 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     return success();
 
   bool disallowQueryTypeRescue = disallowTMemLdStQueryTypeRescue(memdesc);
+  bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(memdesc);
+
+  auto getQueryRowPlan = [&](MemDescType queryTy) {
+    return hasTypeLocalLdStLayout ? getTMemLdStRowPlanForType(queryTy)
+                                  : getTMemLdStRowPlanForQuery(memdescValue,
+                                                               queryTy);
+  };
 
   auto maxnreg = getContextualMaxNReg(op);
   if (!disallowQueryTypeRescue) {
-    auto directRowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+    auto directRowPlan = getQueryRowPlan(memdesc);
     if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, maxnreg,
                                               /*emitError=*/{},
                                               directRowPlan))) {
@@ -1442,10 +1449,12 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     }
   }
 
-  auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
+  auto queryTypes = hasTypeLocalLdStLayout
+                        ? triton::nvidia_gpu::getTypeLocalTMemLdStQueryTypes(memdesc)
+                        : triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
   if (!disallowQueryTypeRescue) {
     for (MemDescType queryTy : queryTypes) {
-      auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, queryTy);
+      auto rowPlan = getQueryRowPlan(queryTy);
       if (succeeded(computeTMemLdStEncodingInfo(type, queryTy, maxnreg,
                                                 /*emitError=*/{}, rowPlan))) {
         return success();
@@ -1478,7 +1487,6 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
       return success();
   }
 
-  bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(memdesc);
   std::string standaloneError;
   if (!hasTypeLocalLdStLayout) {
     if (auto standaloneTy =
@@ -1527,7 +1535,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     if (requestedLayoutDetails.empty() &&
         !disallowQueryTypeRescue) {
       for (MemDescType queryTy : queryTypes) {
-        auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, queryTy);
+        auto rowPlan = getQueryRowPlan(queryTy);
         (void)computeTMemLdStEncodingInfo(
             type, queryTy, maxnreg,
             [&]() { return mlir::emitError(op->getLoc()); }, rowPlan);
@@ -1666,84 +1674,14 @@ LogicalResult TMEMLoadOp::verify() {
                                               getType());
     auto maxnreg = getContextualMaxNReg(*this);
     auto srcMemTy = cast<MemDescType>(getSrc().getType());
-    bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(srcMemTy);
-    bool directSourceFriendly = isReductionFriendlyTmemSourceLayout(srcMemTy);
     std::string encodingDetails;
     auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
       llvm::raw_string_ostream os(encodingDetails);
       ScopedDiagnosticHandler handler(getContext(),
                                       [&](Diagnostic &diag) { diag.print(os); });
-      auto directRowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
-      if (directSourceFriendly) {
-        if (auto maybeInfo = computeTMemLdStEncodingInfo(
-                regTy, srcMemTy, maxnreg, /*emitError=*/{}, directRowPlan);
-            succeeded(maybeInfo) && isTMemLdStReductionCompatible(*maybeInfo)) {
-          return maybeInfo;
-        }
-      }
-
-      auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(getSrc());
-      for (MemDescType queryTy : queryTypes) {
-        if (!isReductionFriendlyTmemSourceLayout(queryTy))
-          continue;
-        auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), queryTy);
-        if (auto maybeInfo = computeTMemLdStEncodingInfo(
-                regTy, queryTy, maxnreg,
-                [&]() { return mlir::emitError(getOperation()->getLoc()); },
-                rowPlan);
-            succeeded(maybeInfo) &&
-            isTMemLdStReductionCompatible(*maybeInfo)) {
-          return maybeInfo;
-        }
-        if (!encodingDetails.empty())
-          break;
-      }
-      std::string supportError;
-      if (auto supportPlan = getTMemLdStSupportQueryPlan(getSrc(),
-                                                         &supportError)) {
-        auto rowPlan = supportPlan->rowPlan;
-        if (!rowPlan)
-          rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
-        if (!rowPlan && !hasTypeLocalLdStLayout)
-          rowPlan = getBackingTMemLdStRowPlan(getSrc());
-        if (auto maybeInfo = computeTMemLdStEncodingInfo(
-                regTy, srcMemTy, supportPlan->query, maxnreg,
-                [&]() { return mlir::emitError(getOperation()->getLoc()); },
-                rowPlan);
-            succeeded(maybeInfo)) {
-          return maybeInfo;
-        }
-      }
-      std::string rawError;
-      if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
-              getSrc(), /*preserveNonCanonicalView=*/true, &rawError);
-          succeeded(rawQuery)) {
-        auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
-        if (!rowPlan && !hasTypeLocalLdStLayout)
-          rowPlan = getBackingTMemLdStRowPlan(getSrc());
-        if (auto maybeInfo = computeTMemLdStEncodingInfo(
-                regTy, srcMemTy, *rawQuery, maxnreg,
-                [&]() { return mlir::emitError(getOperation()->getLoc()); },
-                rowPlan);
-            succeeded(maybeInfo)) {
-          return maybeInfo;
-        }
-      }
-      for (MemDescType queryTy : queryTypes) {
-        if (!isReductionFriendlyTmemSourceLayout(queryTy))
-          continue;
-        auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), queryTy);
-        if (auto maybeInfo = computeTMemLdStEncodingInfo(
-                regTy, queryTy, maxnreg,
-                [&]() { return mlir::emitError(getOperation()->getLoc()); },
-                rowPlan);
-            succeeded(maybeInfo)) {
-          return maybeInfo;
-        }
-        if (!encodingDetails.empty())
-          break;
-      }
-      return failure();
+      return computeTMemLoadReductionEncodingInfo(
+          regTy, srcMemTy, getSrc(), maxnreg,
+          [&]() { return mlir::emitError(getOperation()->getLoc()); });
     }();
     if (failed(encodingInfoOr)) {
       InFlightDiagnostic diag = emitOpError(

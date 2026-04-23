@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 21:15 UTC
+Last updated: 2026-04-23 21:48 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -36,18 +36,26 @@ Current checkpoint summary:
   `ttng.tmem_subslice` uses the same source-type view-offset helper as public
   subslice, and public TMEM index/subslice type helpers delegate to op encoding
   inference.
+- [x] Closed the ld/st type-local and ld.red/reduction planning workstream:
+  normal load/store query and row-plan selection, direct support layout
+  helpers, reduction canonicalization/layout selection, TMEM verifier checks,
+  load+reduce fusion, NVIDIA LLVM lowering, and Gluon frontend helpers now use
+  type-local planning for descriptors covered by `hasTypeLocalTMemLdStLayout`.
+  Value-shaped producer-chain helpers remain for legacy descriptor-view
+  compatibility, optimizer replay, and current-value phase/alignment analysis.
 
 Active implementation checklist:
 
-Active closeout slice: finish view result type/layout inference and runtime `taddr` updates for origin-changing descriptor views before opening more backend areas.
+Completed closeout slice: ld/st type-local planning and ld.red/reduction planning across verifier, LLVM lowering, and Gluon frontend surfaces are closed for active type-local descriptor classes.
 
 Closeout checklist for this slice:
 
-- [x] Audit and classify every origin-changing TMEM descriptor op: `ttg.memdesc_index`, `ttg.memdesc_subslice`, `ttg.memdesc_reinterpret` with `tmem_physical_bitcast`, and `ttng.tmem_subslice`. Treat `ttg.memdesc_trans` and `ttg.memdesc_reshape` as layout/type transforms with unchanged origin.
-- [x] Align duplicated generic and NVIDIA high-benefit lowering so each origin-changing op computes runtime base updates from the current source `MemDescType`/layout and the current SSA value only.
-- [x] Ensure result-type/layout inference for index/subslice shapes prefers self-contained descriptor-relative layouts when the current layout algebra can represent them, and preserves parent encodings only as a documented compatibility fallback.
-- [x] Add focused runtime/codegen tests for static and dynamic index views, exact and unaligned subslice views, `ttng.tmem_subslice`, and physical bitcast views where the consumer cannot walk back to a direct producer.
-- [x] Rebuild and run the affected focused pytest/lit selectors before committing this closeout.
+- [x] Audit remaining ld/st and ld.red call sites that still ask value-shaped helpers for semantic planning facts when the current `MemDescType` is self-contained.
+- [x] Add or complete `MemDescType`-local reduction helpers for layout selection and canonicalization, leaving value-shaped reduction/alignment wrappers only where current-value phase or legacy producer compatibility is required.
+- [x] Switch NVIDIA LLVM ld/st lowering so active self-contained/scales descriptors use type-local query, support-query, row-plan, and reduction planning without source-column or backing-parent rescue paths.
+- [x] Switch TMEM load/store verifier and Gluon register/reduction layout helpers to the same type-local planning path for `hasTypeLocalTMemLdStLayout` descriptors.
+- [x] Keep producer-chain walkers as compatibility/optimizer-only adapters for legacy descriptor views and replay transforms, not as required semantic lowering facts for self-contained memdesc classes.
+- [x] Rebuild and run focused plus broad `ldst`/`ld.red`/scales validation before checking this slice complete.
 
 - [x] Rehydrate the initiative and record the newer memdesc-model plan in the
   durable design note.
@@ -279,7 +287,9 @@ Closeout checklist for this slice:
   still lacks a lane-aware source-storage, descriptor-synthesis, and tile
   footprint model that would make such copies legal.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
-  and producer-chain matchers are optimizer-only. Latest completed slices:
+  and producer-chain matchers are optimizer-only. Ld/st and ld.red are closed
+  for the active type-local descriptor classes as of 2026-04-23 21:48 UTC.
+  Latest completed slices:
   scales descriptor-view load/store support planning now uses the
   type-local query and row-plan helpers directly, dynamic selector
   coverage proves distinct selected scale roots produce distinct values,
@@ -293,6 +303,21 @@ Closeout checklist for this slice:
   active self-contained subviews and scales descriptor views.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
   and example performance checks before considering the migration complete.
+
+Current ld/st + ld.red closeout checkpoint: semantic load/store and hardware
+reduction planning now share type-local helper APIs for self-contained active
+subviews and scales descriptor views. The new shared reduction planner is used
+by TMEMLoad verification, load+reduce fusion, Gluon reduction support checks,
+and the type-local NVIDIA LLVM reduction-lowering path. Validation: required
+`make -j8`; single-process `ld_red and not reports and not scales` `256
+passed, 1455 deselected`; `test_core.py -k tmem_reduction` `84 passed,
+18036 deselected`; four-GPU `ldst and not reports and not scales` passed as
+group1 `96 passed`, group2 `57 passed, 39 skipped`, group3 `57 passed, 39
+skipped`, group4 `76 passed, 20 skipped`; four-GPU `ld_red and not reports
+and not scales` passed as four groups of `64 passed`; four-GPU `ldst_scales
+and not reports` passed as group1 `9 passed`, group2 `9 passed`, group3 `9
+passed`, group4 `6 passed`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1
+passed`; `git diff --check` passed.
 
 Current invariant for this phase: user-facing TMEM APIs do not change. The only
 planned semantic tightening is clean rejection of `tcgen05.copy` descriptors

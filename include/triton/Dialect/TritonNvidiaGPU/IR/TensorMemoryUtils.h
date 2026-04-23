@@ -529,13 +529,25 @@ bool shouldUseExactTMemLdStViewLayoutForM64DirectView(
 bool disallowTMemLdStRawQueryRowPlanOverride(Value memDesc);
 
 std::optional<gpu::DistributedEncodingTrait>
+getTMemLoadReductionLayoutForMemDesc(gpu::MemDescType memTy,
+                                     unsigned numWarps);
+
+std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps);
 
 bool isTMemLoadReductionAddressAligned(Value memDesc);
 
 RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
+                                                   gpu::MemDescType memTy,
+                                                   unsigned numWarps);
+
+RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
                                                    Value memDesc,
                                                    unsigned numWarps);
+
+FailureOr<TMemLdStEncodingInfo> computeTMemLoadReductionEncodingInfo(
+    RankedTensorType regTy, gpu::MemDescType memTy, Value memDescValue,
+    int maxnreg, std::function<InFlightDiagnostic()> emitError = {});
 
 FailureOr<std::optional<TMemAccessAtom>>
 parseTMemAccessAtomName(StringRef atomName, bool allowAuto = false,

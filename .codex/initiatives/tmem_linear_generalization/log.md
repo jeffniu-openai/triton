@@ -36015,3 +36015,54 @@ Open after this slice:
   is outside this slice: continue closing semantic producer-chain fallbacks in
   copy/verifier/MMAv5/scales and the separate packed-lane copy modeling
   frontier.
+
+## 2026-04-23 21:35 UTC: ld/st and ld.red type-local closeout started
+
+- User direction:
+  close out ld/st type-local planning and ld.red/reduction planning across all
+  surfaces so this workstream can be checked off in the implementation plan.
+- Initial scope:
+  audit verifier, LLVM lowering, Gluon layout helpers, and public TMEM utility
+  APIs for remaining semantic uses of value-shaped producer-chain planning on
+  descriptors whose current `MemDescType`/layout is self-contained.
+- Completion criteria:
+  self-contained active subviews and type-local scales descriptor views must use
+  `MemDescType`-local query/support/row/reduction planning in semantic paths;
+  value-shaped helpers may remain only as legacy compatibility or optimizer
+  replay adapters. Reduction address alignment remains current-value based
+  where runtime phase/alignment facts are required.
+
+## 2026-04-23 21:48 UTC: ld/st and ld.red type-local closeout completed
+
+- Source change:
+  added `MemDescType`-local reduction layout/canonicalization entry points and a
+  shared `computeTMemLoadReductionEncodingInfo` helper. The helper chooses query
+  types, raw-query layout, support-query layout, and row plans from the current
+  type/layout for `hasTypeLocalTMemLdStLayout` descriptors, while keeping the
+  value-shaped wrappers for legacy descriptor-view compatibility.
+- Source change:
+  TMEMLoad verification, load+reduce fusion, Gluon reduction layout/support
+  helpers, and the type-local NVIDIA LLVM reduction path now call the shared
+  reduction planner. Normal ld/st verifier and LLVM lowering gates now use the
+  broadened type-local predicate for both active self-contained subviews and
+  scales descriptor views before considering producer-chain source-column or
+  backing-parent rescue paths.
+- Boundary retained:
+  reduction address alignment remains a current-value fact, not a type-only
+  fact, because static and dynamic descriptor SSA values can carry different
+  runtime element-column residues with the same `MemDescType`.
+- Validation evidence:
+  required `make -j8`; `git diff --check`; single-process runtime-matrix
+  `ld_red and not reports and not scales` `256 passed, 1455 deselected`;
+  `test_core.py -k tmem_reduction` `84 passed, 18036 deselected`; four-GPU
+  `ldst and not reports and not scales` group1 `96 passed`, group2 `57 passed,
+  39 skipped`, group3 `57 passed, 39 skipped`, group4 `76 passed, 20 skipped`;
+  four-GPU `ld_red and not reports and not scales` group1/group2/group3/group4
+  each `64 passed`; four-GPU `ldst_scales and not reports` group1 `9 passed`,
+  group2 `9 passed`, group3 `9 passed`, group4 `6 passed`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`.
+- Remaining boundary:
+  this closes ld/st and ld.red planning for active type-local descriptor classes.
+  The broader project still has non-ld/st surfaces to close, especially packed
+  lane-aware `tcgen05.copy` scheduling/modeling and remaining MMAv5/scales
+  producer-chain cleanup outside the load/store/reduction path.
