@@ -18158,3 +18158,10 @@ rejection, not rescue
   fallback for that descriptor class. Validation: required `make -j8`; scales
   ld/st descriptor-view and variant-report selector `18 passed`; unsupported
   ld/st selector `4 passed`; targeted lit set `6/6`.
+
+- 2026-04-23 broader active/scales validation sweep completed on current HEAD.
+  Selector
+  `(linear_subslice_view or ldst_scales or dynamic_scale_descriptor_view or
+  dynamic_bscale_descriptor_view) and not reports` ran as four GPU split
+  commands with distinct caches and passed as group1 `18 passed`, group2
+  `18 passed`, group3 `18 passed`, group4 `15 passed`.

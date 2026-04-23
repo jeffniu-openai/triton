@@ -1503,3 +1503,13 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; scales ld/st
   descriptor-view and variant-report selector `18 passed`; unsupported ld/st
   selector `4 passed`; targeted lit set `6/6`.
+
+### 2026-04-23 Broader Active/Scales Validation
+
+- After the ld.red and unsupported-direct helper-locality slices, ran the
+  active/scales runtime selector
+  `(linear_subslice_view or ldst_scales or dynamic_scale_descriptor_view or
+  dynamic_bscale_descriptor_view) and not reports` as four GPU split commands
+  with separate caches.
+- Result: group1 `18 passed`, group2 `18 passed`, group3 `18 passed`, group4
+  `15 passed`.

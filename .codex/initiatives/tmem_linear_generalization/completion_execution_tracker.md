@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:26 UTC
+Last updated: 2026-04-23 05:28 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -197,6 +197,13 @@ raw-query path for active self-contained descriptors and avoid backing-row
 fallbacks for that descriptor class. Validation: required `make -j8`; scales
 ld/st descriptor-view and variant-report selector `18 passed`; unsupported
 ld/st selector `4 passed`; targeted lit set `6/6`.
+
+Current broader validation checkpoint:
+the active/scales selector
+`(linear_subslice_view or ldst_scales or dynamic_scale_descriptor_view or
+dynamic_bscale_descriptor_view) and not reports` was run as four GPU split
+commands with distinct caches and passed as group1 `18 passed`, group2
+`18 passed`, group3 `18 passed`, group4 `15 passed`.
 
 Current normal ld/st selected-subview checkpoint:
 a representative dynamic selected active column subview now has runtime

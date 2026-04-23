@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 05:26 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 05:28 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -100,7 +100,13 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 05:26 UTC tightened unsupported-direct
+Latest validation checkpoint: 2026-04-23 05:28 UTC ran a broader active/scales
+runtime selector across four GPU split commands:
+`(linear_subslice_view or ldst_scales or dynamic_scale_descriptor_view or
+dynamic_bscale_descriptor_view) and not reports` passed as group1 `18 passed`,
+group2 `18 passed`, group3 `18 passed`, group4 `15 passed`.
+
+Previous validation checkpoint: 2026-04-23 05:26 UTC tightened unsupported-direct
 ld/st diagnostics for active self-contained descriptors. Validation: required
 `make -j8`; scales ld/st descriptor-view/variant-report selector `18 passed`;
 unsupported ld/st selector `4 passed`; targeted lit set `6/6`.

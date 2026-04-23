@@ -35069,3 +35069,18 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Continue auditing remaining helper uses,
   then run a broader 4-GPU active-subview/scales sweep.
+
+## 2026-04-23 05:28 UTC: broader active/scales validation sweep
+
+- Branch/HEAD:
+  `064fdb4ee Keep active ld/st diagnostics local`.
+- Validation-only checkpoint:
+  ran
+  `python/test/gluon/test_tmem_runtime_matrix.py -k '(linear_subslice_view or ldst_scales or dynamic_scale_descriptor_view or dynamic_bscale_descriptor_view) and not reports'`
+  as four GPU split commands with distinct `TRITON_CACHE_DIR` values.
+- Result:
+  group1 `18 passed`, group2 `18 passed`, group3 `18 passed`, group4
+  `15 passed`.
+- Next concrete step:
+  continue remaining semantic helper audit and convert any active-subview
+  legality/lowering facts that still rely on producer-chain helpers.
