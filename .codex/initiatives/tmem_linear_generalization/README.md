@@ -183,7 +183,16 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 20:11 UTC introduced the shared
+Latest validation checkpoint: 2026-04-23 20:13 UTC tightened direct ld/st
+diagnostic locality. Clean-unsupported variant and descriptor-view
+diagnostics now use `hasTypeLocalTMemLdStLayout` before considering
+backing row-plan recovery, keeping scales descriptor views on the
+current-type diagnostic path. Validation: required `make -j8`;
+focused `ldst_scales and (descriptor_view or reports)` selector
+`20 passed, 1687 deselected`; lit `tmem_layouts.mlir` `1 passed`;
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 20:11 UTC introduced the shared
 `hasTypeLocalTMemLdStLayout` predicate. Query, row-plan,
 query-type refinement, verifier, and lowering fallback gates now use
 one public descriptor-class predicate when the semantic path should

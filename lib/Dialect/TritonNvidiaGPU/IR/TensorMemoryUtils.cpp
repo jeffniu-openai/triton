@@ -6062,7 +6062,7 @@ getUnsupportedDirectTMemLdStVariantReason(Value memDesc, TMemAccessAtom atom,
     return std::nullopt;
   auto rowPlan =
       getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy, *maybeQuery);
-  if (!rowPlan && !hasSelfContainedTMemSubviewLayout(memDescTy))
+  if (!rowPlan && !hasTypeLocalTMemLdStLayout(memDescTy))
     rowPlan = getBackingTMemLdStRowPlan(memDesc);
   if (!rowPlan)
     rowPlan = getTMemLdStRowPlan(maybeQuery->layout);
@@ -6173,7 +6173,7 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
   }
   if (auto reason = getUnsupportedDirectTMemLdStReason(queryTy))
     return unsupported(*reason);
-  bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(queryTy);
+  bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(queryTy);
   if (isDirectHalfRowsSubview(memDesc) ||
       isHigherRankHalfRowsSubview(memDesc)) {
     return unsupported(getUnsupportedDirectTMemLdStHalfRowsReason());
@@ -6255,16 +6255,16 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
   }
 
   auto queryPlan = getTMemLdStRowPlanForType(queryTy);
-  auto backingPlan =
-      hasTypeLocalSubviewLayout ? std::optional<TMemLdStRowPlan>{}
-                                : getBackingTMemLdStRowPlan(memDesc);
+  auto backingPlan = hasTypeLocalLdStLayout
+                         ? std::optional<TMemLdStRowPlan>{}
+                         : getBackingTMemLdStRowPlan(memDesc);
   if (shouldPreferDirectHalfRowsSubviewRowPlan(memDesc, queryTy, queryPlan,
                                                backingPlan)) {
     return false;
   }
 
   auto rowPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
-  if (!rowPlan && !hasTypeLocalSubviewLayout)
+  if (!rowPlan && !hasTypeLocalLdStLayout)
     rowPlan = backingPlan;
   if (auto anchorRequirement =
           getUnsupportedTMemLdStDescriptorViewRowAnchorRequirement(memDesc,

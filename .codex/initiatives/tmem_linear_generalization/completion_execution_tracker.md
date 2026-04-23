@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 20:11 UTC
+Last updated: 2026-04-23 20:13 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -225,6 +225,10 @@ Active implementation checklist:
   query-type refinement, verifier, and lowering fallback gates through it
   where the semantic choice should include both active self-contained
   subviews and scales descriptor views.
+- [x] Direct ld/st diagnostic locality slice: clean-unsupported variant and
+  descriptor-view diagnostics now use `hasTypeLocalTMemLdStLayout` before
+  considering producer-chain backing row plans, so scales descriptor views
+  stay on the current-type diagnostic path.
 - [ ] Packed-lane `tcgen05.copy` scheduling remains a real planner/modeling
   boundary: the current scheduler can identify the lane/dword projection, but
   still lacks a lane-aware source-storage, descriptor-synthesis, and tile

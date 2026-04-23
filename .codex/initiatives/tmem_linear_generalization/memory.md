@@ -18513,3 +18513,13 @@ rejection, not rescue
   reports` selector passed as group1 `9 passed`, group2 `9 passed`,
   group3 `9 passed`, group4 `6 passed`; lit `tmem_layouts.mlir`
   `1 passed`; `git diff --check` passed.
+
+- 2026-04-23 20:13 UTC direct ld/st diagnostic locality slice completed.
+  `getUnsupportedDirectTMemLdStVariantReason` and
+  `isUnsupportedDirectTMemLdStDescriptorView` now use
+  `hasTypeLocalTMemLdStLayout` before falling back to backing row-plan
+  recovery. This keeps scales descriptor-view clean diagnostics derived
+  from current type/layout facts rather than producer-chain backing plans.
+  Validation: required `make -j8`; focused `ldst_scales and
+  (descriptor_view or reports)` selector `20 passed, 1687 deselected`;
+  lit `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.

@@ -35810,3 +35810,22 @@ Open after this slice:
   commit and push this checkpoint. Continue auditing remaining producer-chain
   helpers; likely next targets are standalone physical-query/copy helper
   paths or the packed-lane `tcgen05.copy` scheduling model.
+
+## 2026-04-23 20:13 UTC: direct ld/st diagnostic locality checkpoint
+
+- Branch/HEAD at slice start:
+  `c52d487d5 Share type-local ld/st descriptor predicate`.
+- Completed source slice:
+  routed the remaining direct ld/st clean-unsupported variant and
+  descriptor-view diagnostic row-plan fallbacks through
+  `hasTypeLocalTMemLdStLayout`, so scales descriptor views do not borrow
+  producer-chain backing row plans for diagnostics.
+- Validation evidence:
+  required `make -j8`; focused `ldst_scales and (descriptor_view or
+  reports)` selector `20 passed, 1687 deselected`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue auditing remaining semantic
+  value-chain fallbacks, with copy physical-query scheduling/modeling still
+  the largest open boundary.
