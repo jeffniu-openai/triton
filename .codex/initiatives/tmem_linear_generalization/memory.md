@@ -18082,3 +18082,16 @@ rejection, not rescue
   `ldst and not reports and not scales` split passed as group1 `89 passed`,
   group2 `35 passed, 54 skipped`, group3 `65 passed, 24 skipped`, group4
   `68 passed, 20 skipped`.
+
+- 2026-04-23 loop-carried active-subview copy sentinel completed. Added
+  `tmem_copy_no_scales_loop_carried_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_cp_no_scales_loop_carried_linear_subslice_view`,
+  carrying a same-typed active column subview through an `scf.for` result
+  before `tcgen05.copy` and then reading back both explicit candidate views.
+  This proves the type-local copy physical-query path handles no-local-producer
+  selected values and that copy/readback cannot hide a shared selected-base
+  bug. Validation: required `make -j8`; exact new rows `2 passed`; adjacent
+  copy selector `42 passed, 1606 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `57 passed, 4 skipped`, group2 `61 passed`, group3 `61 passed`, group4
+  `58 passed`.

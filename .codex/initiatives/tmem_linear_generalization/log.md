@@ -34793,6 +34793,35 @@ Open after this slice:
   continue helper API separation and classify/replace remaining value-taking
   semantic helpers with type-local overloads where possible.
 
+## 2026-04-23 04:51 UTC: loop-carried selected copy active-subview coverage
+
+- Branch/HEAD before this validation slice:
+  `959376132 Cover loop-carried ld/st column subviews`.
+- Motivation:
+  branch-selected copy rows existed, but loading back through the selected
+  descriptor alone can hide a bug if copy and selected load both use the same
+  wrong base. The copy path also needed a no-local-producer control-flow row
+  where the selected descriptor reaches `tcgen05.copy` through an `scf.for`
+  result.
+- Completed coverage:
+  added `tmem_copy_no_scales_loop_carried_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_cp_no_scales_loop_carried_linear_subslice_view`.
+  The kernel initializes both candidate subviews with distinct values, copies
+  shared memory into the loop-carried selected descriptor, and reads back both
+  explicit candidates.
+- Result:
+  no backend repair was required. The active self-contained copy physical-query
+  gate handles this control-flow selected value from the current descriptor
+  type/layout, and the emitted copy writes the selected runtime `taddr`.
+- Validation evidence:
+  required `make -j8`; exact new rows `2 passed`; adjacent copy selector
+  `42 passed, 1606 deselected`; 4-GPU `cp_no_scales and not reports` split
+  passed as group1 `57 passed, 4 skipped`, group2 `61 passed`, group3
+  `61 passed`, group4 `58 passed`.
+- Remaining migration frontier:
+  continue helper API separation and remove value-taking semantic dependencies
+  where type-local facts are now sufficient.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

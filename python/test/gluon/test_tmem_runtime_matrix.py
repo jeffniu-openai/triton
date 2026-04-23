@@ -2040,6 +2040,52 @@ def tmem_copy_no_scales_dynamic_linear_subslice_view_kernel(in_ptr, out_ptr, sel
 
 
 @gluon.jit
+def tmem_copy_no_scales_loop_carried_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
+                                                                 parent_layout: ttgl.constexpr,
+                                                                 M: ttgl.constexpr, N: ttgl.constexpr,
+                                                                 swizzle: ttgl.constexpr):
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    view1 = tmem.slice(N, N, dim=1)
+    selected = view0
+    selector = ttgl.load(selector_ptr)
+    for i in range(0, 2, 1):
+        if i == selector:
+            selected = view1
+        else:
+            selected = selected
+
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+    value = ttgl.convert_layout(value, reg_layout)
+    view0.store(value + ttgl.full([M, N], 3.0, ttgl.float32, layout=reg_layout))
+    view1.store(value + ttgl.full([M, N], 7.0, ttgl.float32, layout=reg_layout))
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
+        rank=2,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    smem.store(value)
+    fence_async_shared()
+    tcgen05_copy(smem, selected)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    out0 = view0.load(reg_layout)
+    out1 = view1.load(reg_layout)
+    ttgl.store(out_ptr + offs, out0)
+    ttgl.store(out_ptr + M * N + offs, out1)
+
+
+@gluon.jit
 def tmem_copy_no_scales_twocta_linear_subslice_view_kernel(in_ptr, out_ptr, parent_layout: ttgl.constexpr,
                                                            cga_layout: ttgl.constexpr, M: ttgl.constexpr,
                                                            N: ttgl.constexpr, swizzle: ttgl.constexpr):
@@ -10191,6 +10237,48 @@ def test_tmem_runtime_matrix_cp_no_scales_dynamic_linear_subslice_view(selector)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     ttgir = compiled.asm["ttgir"]
     assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "selector,selects_view1",
+    [
+        pytest.param(0, True, id="select-view1"),
+        pytest.param(2, False, id="keep-view0"),
+    ],
+)
+def test_tmem_runtime_matrix_cp_no_scales_loop_carried_linear_subslice_view(selector, selects_view1):
+    M = 128
+    N = 128
+    swizzle = 32
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty((2, M, N), device="cuda", dtype=torch.float32)
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    parent_layout = _make_tmem_linear_layout(M, 2 * N)
+    compiled = tmem_copy_no_scales_loop_carried_linear_subslice_view_kernel[(1, )](
+        inp,
+        out,
+        selector_tensor,
+        parent_layout,
+        M,
+        N,
+        swizzle,
+        num_warps=4,
+    )
+
+    expected0 = inp + 3 if selects_view1 else inp
+    expected1 = inp if selects_view1 else inp + 7
+    torch.testing.assert_close(out[0], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[1], expected1, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * 16)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "scf.for" in ttgir
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_copy" in ttgir

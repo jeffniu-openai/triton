@@ -1384,3 +1384,22 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `ldst and not reports and not scales` split passed as group1 `89 passed`,
   group2 `35 passed, 54 skipped`, group3 `65 passed, 24 skipped`, group4
   `68 passed, 20 skipped`.
+
+### 2026-04-23 Loop-Carried Active-Subview Copy Sentinel
+
+- Added runtime coverage for `tcgen05.copy` after a selected active column
+  subview flows through an `scf.for` result. The kernel initializes both
+  candidate `128x128xf32` subviews of one `128x256xf32` parent with distinct
+  values, copies shared memory into the loop-carried selected descriptor, and
+  reads back both explicit candidates.
+- This is stronger than selected-copy loadback alone. If both copy and selected
+  load ignored the selected runtime `taddr`, a selected roundtrip could pass;
+  explicit candidate readback catches that class of mistake.
+- No backend change was required. The active self-contained copy physical-query
+  gate handles this no-local-producer selected value from current
+  `MemDescType`/layout facts.
+- Validation after this slice: required `make -j8`; exact new rows `2 passed`;
+  adjacent copy selector `42 passed, 1606 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `57 passed, 4 skipped`, group2 `61 passed`, group3 `61 passed`, group4
+  `58 passed`.

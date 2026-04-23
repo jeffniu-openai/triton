@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:45 UTC
+Last updated: 2026-04-23 04:51 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -76,7 +76,10 @@ Active implementation checklist:
   dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
   `128x256b` copy families, proving `tcgen05.copy` writes through the selected
   runtime `taddr` while legality is derived from the current self-contained
-  `MemDescType`/layout. First copy helper-locality slice:
+  `MemDescType`/layout. First loop-carried active copy sentinel: a same-parent
+  column subview now flows through an `scf.for` result before `tcgen05.copy`,
+  with explicit candidate readback proving copy and load cannot hide a shared
+  base mistake. First copy helper-locality slice:
   `selectTMemCopyPhysicalQuery` now chooses or rejects active self-contained
   subview destinations through the type-local physical query before attempting
   standalone/exact producer-chain reconstruction. First normal ld/st dynamic
@@ -218,6 +221,17 @@ descriptor. Selector `1` would fail if copy lowering ignored the selected
 memdesc value's current `taddr` and borrowed the first visible producer origin.
 The current copy type-local physical-query path already handles these rows; no
 backend repair was required.
+
+Current loop-carried copy selected-subview checkpoint:
+a same-parent active column subview now flows through an `scf.for` result before
+`tcgen05.copy`. The kernel initializes both candidate subviews, copies shared
+memory into the loop-carried selected descriptor, then loads both explicit
+candidate views. This stronger readback catches a shared selected-base bug even
+if copy and selected load made the same mistake. Validation: required
+`make -j8`; exact new rows `2 passed`; adjacent copy selector
+`42 passed, 1606 deselected`; 4-GPU `cp_no_scales and not reports` split
+passed as group1 `57 passed, 4 skipped`, group2 `61 passed`, group3
+`61 passed`, group4 `58 passed`.
 
 Current copy helper-locality checkpoint:
 `selectTMemCopyPhysicalQuery` now treats active self-contained TMEM subviews as

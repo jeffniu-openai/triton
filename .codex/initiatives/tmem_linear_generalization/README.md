@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 04:45 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 04:51 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -70,6 +70,8 @@ Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
 while legality comes from the current self-contained memdesc type/layout.
+Loop-carried active copy subviews now also have coverage with explicit
+candidate readback after `tcgen05.copy`.
 The active self-contained copy helper now enforces that split directly:
 `selectTMemCopyPhysicalQuery` chooses or rejects through the type-local
 physical query before attempting legacy standalone/exact producer-chain
@@ -80,7 +82,14 @@ The same active-subview ld/st surface is now also covered through an `scf.for`
 carried memdesc value, including handle-aware `get_reg_layout()`, selected
 load, selected store, and explicit candidate readback.
 
-Latest validation checkpoint: 2026-04-23 04:45 UTC added loop-carried selected
+Latest validation checkpoint: 2026-04-23 04:51 UTC added loop-carried selected
+copy active column-subview coverage. Validation: required `make -j8`; exact
+new rows `2 passed`; adjacent copy selector `42 passed, 1606 deselected`;
+4-GPU `cp_no_scales and not reports` split passed as group1
+`57 passed, 4 skipped`, group2 `61 passed`, group3 `61 passed`, group4
+`58 passed`.
+
+Previous validation checkpoint: 2026-04-23 04:45 UTC added loop-carried selected
 normal ld/st active column-subview coverage. Validation: required `make -j8`;
 exact new rows `2 passed`; adjacent ld/st selector
 `42 passed, 1604 deselected`; 4-GPU `ldst and not reports and not scales`
