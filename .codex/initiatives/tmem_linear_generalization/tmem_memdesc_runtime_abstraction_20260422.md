@@ -903,6 +903,27 @@ High-priority hacks and debt to remove after replacement coverage exists:
   group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
   `67 passed, 20 skipped`; targeted lit set passed `6/6`.
 
+### 2026-04-23 Active Subview Load/Store Support-Query Slice
+
+- Added `getTypeLocalTMemLdStSupportQueryPlan(MemDescType)`. For an active
+  self-contained descriptor, support-query facts are now the same local facts
+  that valid lowering is allowed to use: the current descriptor's type-local
+  query layout and a row plan derived from that type/query layout.
+- `getTMemLdStSupportQueryPlan(Value)` dispatches to the type-local helper
+  before the legacy support-image reconstruction stack. This keeps support-query
+  consumers, including normal ld/st verification and load-reduction planning,
+  from making active-descriptor legality depend on producer-chain context.
+- Legacy descriptor views still use the existing direct half-row, higher-rank
+  half-row, outer-index, column-subview, and generic support-query helpers until
+  their result types are made self-contained or are rewritten by an optimizer.
+- Validation after this slice: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+  selector `78 passed, 1547 deselected`; focused
+  `ld_red and not reports and not scales` selector `239 passed, 1386 deselected`;
+  4-GPU `(ldst or ld_red) and not reports and not scales` split passed as
+  group1 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+  `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`.
+
 ### 2026-04-22 Active Subview Load/Store Raw-Query Slice
 
 - Added `inferTypeLocalTMemLdStQueryLayout(MemDescType)` as the ld/st analogue

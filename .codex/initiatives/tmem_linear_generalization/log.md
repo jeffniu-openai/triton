@@ -33935,6 +33935,36 @@ Open after this slice:
   producer-chain walkers only for legacy fallback, allocation, effects, or
   optimizer peepholes.
 
+## 2026-04-23 00:10 UTC: active-subview ld/st support-query locality
+
+- Branch/HEAD before this slice:
+  `f569bb4b9 Use type-local ld/st query types for active TMEM subviews`.
+- Context:
+  active self-contained descriptors had type-local row plans, raw query layouts,
+  and query-type candidates, but `getTMemLdStSupportQueryPlan(Value)` still
+  tried legacy support-image reconstruction from producer chains. Support-query
+  users include normal ld/st verification, direct register-layout selection,
+  and load-reduction planning.
+- Completed implementation:
+  added `getTypeLocalTMemLdStSupportQueryPlan(MemDescType)`. It derives the
+  support query from `inferTypeLocalTMemLdStQueryLayout` and the row plan from
+  the current descriptor type, falling back only to the query layout itself.
+  `getTMemLdStSupportQueryPlan(Value)` returns this plan immediately for active
+  self-contained descriptors and leaves legacy descriptor views on the existing
+  support-query reconstruction path.
+- Validation evidence:
+  required `make -j8`; exact active-subview warpx2 copy/load row `4 passed`;
+  focused ld/st selector `78 passed, 1547 deselected`; focused
+  `ld_red and not reports and not scales` selector `239 passed, 1386 deselected`;
+  4-GPU `(ldst or ld_red) and not reports and not scales` split passed as
+  group1 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+  `128 passed, 20 skipped`, and group4 `146 passed`; targeted lit set passed
+  `6/6`.
+- Remaining frontier:
+  audit remaining `ld.red` and MMAv5/scales value-chain fallback sites now that
+  the shared support-query helper is type-local for active descriptors. Keep
+  exact producer-chain reconstruction out of semantic lowering for this class.
+
 ## 2026-04-22 03:13 UTC: upstream merge and post-merge address refactor
 
 - Merge:

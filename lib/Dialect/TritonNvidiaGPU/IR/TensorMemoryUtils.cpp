@@ -6201,6 +6201,13 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   auto queryTy = dyn_cast<MemDescType>(memDesc.getType());
   if (!queryTy)
     return std::nullopt;
+  if (hasSelfContainedTMemSubviewLayout(queryTy)) {
+    auto support = getTypeLocalTMemLdStSupportQueryPlan(queryTy, error);
+    if (debug && support)
+      llvm::errs() << "[tmem-ldst-support] type-local support layout:\n"
+                   << support->query.layout.toString() << "\n";
+    return support;
+  }
   if (auto support = getDirectHalfRowsTMemLdStSupportQueryPlan(memDesc, error)) {
     if (debug)
       llvm::errs() << "[tmem-ldst-support] direct half-rows support layout:\n"
@@ -6233,6 +6240,18 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     return support;
   }
   return std::nullopt;
+}
+
+std::optional<TMemLdStSupportQueryPlan>
+getTypeLocalTMemLdStSupportQueryPlan(MemDescType memTy, std::string *error) {
+  auto maybeQuery = inferTypeLocalTMemLdStQueryLayout(memTy, error);
+  if (failed(maybeQuery))
+    return std::nullopt;
+
+  auto rowPlan = getTMemLdStRowPlanForType(memTy);
+  if (!rowPlan)
+    rowPlan = getTMemLdStRowPlan(maybeQuery->layout);
+  return TMemLdStSupportQueryPlan{*maybeQuery, rowPlan};
 }
 
 std::optional<TMemLdStQueryLayout>

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-22 23:53 UTC
+Last updated: 2026-04-23 00:10 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -28,7 +28,9 @@ Active implementation checklist:
   ld/st raw-query slice: active self-contained subviews now dispatch through
   `inferTypeLocalTMemLdStQueryLayout(MemDescType)`. First ld/st query-type
   slice: active self-contained subviews now return query types from
-  `getTypeLocalTMemLdStQueryTypes(MemDescType)`. First copy-planning slice:
+  `getTypeLocalTMemLdStQueryTypes(MemDescType)`. First ld/st support-query
+  slice: active self-contained subviews now return support-query plans from
+  `getTypeLocalTMemLdStSupportQueryPlan(MemDescType)`. First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
   keeping legacy standalone/exact selection for direct roots and older
@@ -174,6 +176,20 @@ selector `78 passed, 1547 deselected`; 4-GPU
 group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
 `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
 passed.
+
+Completed eighth implementation slice: active self-contained TMEM subviews now
+have type-local ld/st support-query planning. `getTypeLocalTMemLdStSupportQueryPlan`
+builds the query layout from the current descriptor type and derives the row
+plan from the current type or query layout. `getTMemLdStSupportQueryPlan(Value)`
+returns that plan immediately for active self-contained descriptors, leaving
+legacy descriptor views on the existing support-image reconstruction stack.
+Validation: required `make -j8`; exact
+`warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+selector `78 passed, 1547 deselected`; focused `ld_red and not reports and not
+scales` selector `239 passed, 1386 deselected`; 4-GPU
+`(ldst or ld_red) and not reports and not scales` split passed as group1
+`120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+`128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`.
 
 Current prototype evidence: hand-written LLVM IR passed through
 `opt -S -O2` shows unused or statically zero subword-phase arithmetic is removed

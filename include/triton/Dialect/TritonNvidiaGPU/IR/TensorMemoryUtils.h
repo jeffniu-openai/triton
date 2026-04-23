@@ -623,6 +623,10 @@ inferStandaloneTMemLdStQueryLayout(Value memDesc,
 std::optional<TMemLdStSupportQueryPlan>
 getTMemLdStSupportQueryPlan(Value memDesc, std::string *error = nullptr);
 
+std::optional<TMemLdStSupportQueryPlan>
+getTypeLocalTMemLdStSupportQueryPlan(gpu::MemDescType memTy,
+                                     std::string *error = nullptr);
+
 std::optional<TMemLdStQueryLayout> getTMemLdStSupportQueryLayout(
     Value memDesc, std::string *error = nullptr);
 
