@@ -493,14 +493,21 @@ static Value zextSubwordValueToI32(Location loc,
   return bitwidth == 32 ? bits : b.zext(i32_ty, bits);
 }
 
+static uint32_t getSubwordValueMask(unsigned bitwidth) {
+  assert(bitwidth > 0 && bitwidth < 32 &&
+         "subword value masks are only valid below one hardware word");
+  return (1u << bitwidth) - 1u;
+}
+
 static Value extractSubwordValue(Location loc,
                                  ConversionPatternRewriter &rewriter,
                                  Value word, Value phase, Type elemTy) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
+  uint32_t lowMask = getSubwordValueMask(bitwidth);
   Value phaseBits = b.mul(phase, b.i32_val(bitwidth));
   Value shifted = b.lshr(word, phaseBits);
-  Value masked = b.and_(shifted, b.i32_val((1u << bitwidth) - 1u));
+  Value masked = b.and_(shifted, b.i32_val(lowMask));
   Value narrowed = b.trunc(int_ty(bitwidth), masked);
   return elemTy.isInteger() ? narrowed : b.bitcast(narrowed, elemTy);
 }
@@ -511,7 +518,7 @@ static Value mergeSubwordValue(Location loc,
                                Type elemTy) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   unsigned bitwidth = elemTy.getIntOrFloatBitWidth();
-  uint32_t lowMask = (1u << bitwidth) - 1u;
+  uint32_t lowMask = getSubwordValueMask(bitwidth);
   Value phaseBits = b.mul(phase, b.i32_val(bitwidth));
   Value laneMask = b.shl(b.i32_val(lowMask), phaseBits);
   Value valueBits = b.shl(b.and_(zextSubwordValueToI32(loc, rewriter, newValue,
@@ -521,8 +528,12 @@ static Value mergeSubwordValue(Location loc,
   return b.or_(b.and_(oldWord, b.xor_(laneMask, b.i32_val(-1))), valueBits);
 }
 
+// Fallback for legal packed-subword layouts that cannot be grouped into a
+// contiguous tcgen05 subword message. The layout still describes each element's
+// physical row/element-column; this path scalarizes through 32-bit RMW words and
+// derives the active packed-lane phase from the current runtime taddr.
 static FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>>
-lowerSparseSubwordElementWiseLdSt(
+lowerElementwisePackedSubwordLdSt(
     Location loc, ConversionPatternRewriter &rewriter, RankedTensorType regTy,
     const TMemLdStQueryLayout &query, Value pred, Type llvmElemTy,
     uint32_t tmemElementBitwidth, ArrayRef<Value> vals, Value tmemBase,
@@ -1066,7 +1077,7 @@ lowerTMemLdStFromTypes(
         supportRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       supportRowPlan = preferBackingRowPlanForDirectRootLoad(
           memTy, supportRowPlan, &supportQuery);
-      auto sparseLowered = lowerSparseSubwordElementWiseLdSt(
+      auto sparseLowered = lowerElementwisePackedSubwordLdSt(
           loc, rewriter, regTy, supportQuery, pred, llvmElemTy,
           memTy.getElementTypeBitWidth(), vals, tmemBase, redOp);
       if (succeeded(sparseLowered))

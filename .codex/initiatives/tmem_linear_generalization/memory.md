@@ -18436,3 +18436,21 @@ rejection, not rescue
   misaligned clean negative `3 passed, 1678 deselected`; adjacent subword
   copy/ldst selector `49 passed, 1632 deselected`; adjacent non-subword active
   copy selector `26 passed, 1655 deselected`; lit `tmem_layouts.mlir` `1 passed`.
+
+- 2026-04-23 dynamic consumer coverage cleanup. The scalar packed-subword
+  ld/st fallback was renamed to describe its actual role as an elementwise
+  packed-subword lowering, and its subword mask construction now has one
+  guarded helper. Runtime coverage now proves a dynamic f32 `memdesc_index`
+  selected by physical column bit 5 is 128-bit aligned enough for hardware
+  `tcgen05.ld.red`, while a selector on column bit 1 remains a software
+  reduction. Packed-lane dynamic-index `tcgen05.copy` is intentionally still a
+  clean negative and is now covered for both f16 and i8. Scaled MMAv5 B-scale
+  descriptor-view selection now uses distinct B-scale tensors for selector 0
+  and selector 1 across padded and unpadded storage views, proving the selected
+  runtime scale `taddr` is semantically live. Validation: required `make -j8`;
+  exact dynamic-index ld.red rows `4 passed`; exact dynamic-index copy
+  clean-negative rows `2 passed`; exact dynamic B-scale descriptor-view rows
+  `4 passed`; adjacent dynamic-index ld/st/load_max rows `8 passed`; four-GPU
+  dynamic selector passed as group1 `5 passed`, group2 `5 passed`, group3
+  `5 passed`, group4 `3 passed`; lit `tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.

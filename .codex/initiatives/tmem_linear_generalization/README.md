@@ -183,7 +183,23 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 19:11 UTC removed the dynamic
+Latest validation checkpoint: 2026-04-23 19:27 UTC cleaned up the
+scalar packed-subword ld/st fallback naming/masks and added dynamic consumer
+coverage. Dynamic f32 `memdesc_index` views now prove the split between
+hardware `ld.red` when the selector lives on physical column bit 5 and
+software reduction when it lives on misaligned column bit 1. Packed-lane
+dynamic-index copy remains a clean negative, now covered for f16 and i8.
+Dynamic B-scale descriptor-view scaled MMAv5 now selects between distinct
+runtime scale tensors for both padded and unpadded B-scale storage. Validation:
+required `make -j8`; exact dynamic-index ld.red rows `4 passed`; exact
+dynamic-index copy clean-negative rows `2 passed`; exact dynamic B-scale
+descriptor-view rows `4 passed`; existing dynamic-index ld/st and `load_max`
+rows `8 passed`; four-GPU selector
+`dynamic_index_view or dynamic_bscale_descriptor_view` passed as group1
+`5 passed`, group2 `5 passed`, group3 `5 passed`, group4 `3 passed`; lit
+`tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 19:11 UTC removed the dynamic
 subword `memdesc_index` hardware-word-alignment guard, added sparse
 zero-column-basis ld/st lowering from the current query layout, and covered
 f16/i8 dynamic odd-index views as runtime positives. Copy remains a clean

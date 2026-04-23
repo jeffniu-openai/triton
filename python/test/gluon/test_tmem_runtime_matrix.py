@@ -60,12 +60,26 @@ def _make_tmem_linear_layout(m, n):
     )
 
 
-def _make_tmem_linear_layout_dynamic_subword_index(m, n):
+def _make_tmem_linear_layout_dynamic_index_col_bit(m, n, index_col_bit):
+    n_bits = int(math.log2(n))
+    cols = []
+    next_n_bit = 0
+    for col_bit in range(n_bits + 1):
+        if col_bit == index_col_bit:
+            cols.append([1, 0, 0])
+        else:
+            cols.append([0, 0, 1 << next_n_bit])
+            next_n_bit += 1
+    assert next_n_bit == n_bits
     return TensorMemoryLinearLayout(
         rows=[[0, 1 << i, 0] for i in range(int(math.log2(m)))],
-        cols=[[1, 0, 0]] + [[0, 0, 1 << i] for i in range(int(math.log2(n)))],
+        cols=cols,
         shape=[2, m, n],
     )
+
+
+def _make_tmem_linear_layout_dynamic_subword_index(m, n):
+    return _make_tmem_linear_layout_dynamic_index_col_bit(m, n, 0)
 
 
 def _make_tmem_acc_layout(layout_kind, m, n):
@@ -1061,6 +1075,28 @@ def tmem_ld_red_unaligned_subword_dynamic_index_view_kernel(
     ttgl.store(out_ptr + offs, out_selected)
     ttgl.store(out_ptr + M * N + offs, out0)
     ttgl.store(out_ptr + 2 * M * N + offs, out1)
+    red_m = ttgl.arange(0, M, red_layout)
+    ttgl.store(red_ptr + red_m, ttgl.convert_layout(reduced, red_layout))
+
+
+@gluon.jit
+def tmem_ld_red_dynamic_index_view_kernel(
+    in_ptr, out_ptr, red_ptr, selector_ptr, parent_layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr
+):
+    num_warps: ttgl.constexpr = 4
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [2, M, N], layout=parent_layout)
+    selected = tmem.index(ttgl.load(selector_ptr))
+
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+    red_layout: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.convert_layout(ttgl.load(in_ptr + offs), reg_layout)
+
+    selected.store(value)
+    out_selected, reduced = selected.load_max(layout=reg_layout)
+    ttgl.store(out_ptr + offs, out_selected)
     red_m = ttgl.arange(0, M, red_layout)
     ttgl.store(red_ptr + red_m, ttgl.convert_layout(reduced, red_layout))
 
@@ -7082,7 +7118,7 @@ def _make_ld_red_non_f32_input(shape, dtype):
     return torch.randn(shape, dtype=dtype, device="cuda")
 
 
-def _assert_ld_red_uses_software_reduce(compiled):
+def _extract_ld_red_pairs(compiled):
     ptx_red_pairs = [
         pair
         for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
@@ -7093,13 +7129,27 @@ def _assert_ld_red_uses_software_reduce(compiled):
         for pair in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", ))
         if ".ld.red." in pair[0]
     ]
-    assert ptx_red_pairs == llir_red_pairs == []
+    assert ptx_red_pairs == llir_red_pairs
+    return ptx_red_pairs
+
+
+def _assert_ld_red_uses_software_reduce(compiled):
+    assert _extract_ld_red_pairs(compiled) == []
     ptx_ld_ops = [
         op
         for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
         if op.startswith("tcgen05.ld.sync.aligned.")
     ]
     assert ptx_ld_ops
+
+
+def _assert_ld_red_uses_hardware(compiled, expected_shape):
+    red_pairs = _extract_ld_red_pairs(compiled)
+    assert len(red_pairs) == 1
+    red_op, red_offset = red_pairs[0]
+    assert red_offset == 0
+    assert red_op.startswith(f"tcgen05.ld.red.sync.aligned.{expected_shape}.max")
+    assert red_op.endswith(".f32")
 
 
 def _expected_offset_column_views(inp, offset, left_fill, right_fill):
@@ -10122,6 +10172,41 @@ def test_tmem_runtime_matrix_ld_red_unaligned_subword_dynamic_index_view_uses_so
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize(
+    "n,index_col_bit,expect_hardware,expected_shape",
+    [
+        pytest.param(2, 1, False, "32x32b.x2", id="misaligned-software"),
+        pytest.param(32, 5, True, "32x32b.x32", id="aligned-hardware"),
+    ],
+)
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_runtime_matrix_ld_red_dynamic_index_view_address_alignment(
+    selector, n, index_col_bit, expect_hardware, expected_shape
+):
+    m = 128
+    layout = _make_tmem_linear_layout_dynamic_index_col_bit(m, n, index_col_bit)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n) % 16
+    out = torch.empty_like(inp)
+    red = torch.empty((m,), dtype=torch.float32, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_ld_red_dynamic_index_view_kernel[(1, )](
+        inp, out, red, selector_tensor, layout, m, n, num_warps=4
+    )
+
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
+    if expect_hardware:
+        _assert_ld_red_uses_hardware(compiled, expected_shape)
+    else:
+        _assert_ld_red_uses_software_reduce(compiled)
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize(
     "offset,expect_hardware",
     [
         pytest.param(1, False, id="misaligned-software"),
@@ -11427,12 +11512,15 @@ def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_loop_carried_view_re
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_dynamic_index_view_reports_error(capfd):
+@pytest.mark.parametrize("dtype_name,torch_dtype", (("f16", torch.float16), ("i8", torch.int8)))
+def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_dynamic_index_view_reports_error(
+    capfd, dtype_name, torch_dtype
+):
     m = 128
     n = 128
     layout = _make_tmem_linear_layout_dynamic_subword_index(m, n)
     base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 16
-    inp = base.to(torch.float16)
+    inp = base.to(torch_dtype)
     out = torch.empty_like(inp)
     selector_tensor = torch.tensor(1, dtype=torch.int32, device="cuda")
 
@@ -15656,8 +15744,9 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_view_extra_u
 
 
 @pytest.mark.parametrize("pad_b_scale_storage", [False, True])
+@pytest.mark.parametrize("selector_value", [0, 1])
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view(pad_b_scale_storage):
+def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view(pad_b_scale_storage, selector_value):
     m = n = k = 128
     a_format = b_format = "mxfp8"
     layout = _make_tmem_linear_layout_tile_permuted(m, n, 32)
@@ -15667,8 +15756,11 @@ def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view(pad_b_sca
 
     torch.manual_seed(0)
     a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
-    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
-    selector = torch.tensor(1, dtype=torch.int32, device="cuda")
+    b, b_scale0, b_ref0 = random_quantized_tensor(n, k, b_format)
+    b_scale1 = torch.randint(64, 130, (n, k // vec_size), dtype=torch.uint8, device="cuda")
+    b_ref1 = b.to(torch.float32) * _fp8e8m0_to_float32(b_scale1).repeat_interleave(vec_size, dim=1)
+    b_ref = b_ref1 if selector_value else b_ref0
+    selector = torch.tensor(selector_value, dtype=torch.int32, device="cuda")
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
     compiled = tmem_mma_scaled_dynamic_bscale_descriptor_view_format_kernel[(1, )](
@@ -15680,8 +15772,8 @@ def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view(pad_b_sca
         a,
         b,
         a_scale,
-        b_scale,
-        b_scale,
+        b_scale0,
+        b_scale1,
         layout,
         vec_size,
         a_elem_per_byte,

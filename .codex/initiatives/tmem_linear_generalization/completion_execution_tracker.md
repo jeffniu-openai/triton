@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 19:11 UTC
+Last updated: 2026-04-23 19:27 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -194,6 +194,17 @@ Active implementation checklist:
   in element-column coordinates without the old hardware-word guard; f16/i8
   sparse zero-column-basis ld/st and `load_max` are runtime positives, while
   packed-lane copy remains a clean negative.
+- [x] Dynamic consumer coverage cleanup slice: a dynamic f32 `memdesc_index`
+  whose selector is carried by physical column bit 5 now proves 128-bit
+  alignment and emits hardware `tcgen05.ld.red`, while a selector on column bit
+  1 remains on software reduction. Packed-lane dynamic-index copy is now
+  covered as a clean negative for both f16 and i8, and dynamic B-scale
+  descriptor-view scaled MMAv5 now selects between distinct runtime scale
+  tensors for both padded and unpadded storage views.
+- [ ] Packed-lane `tcgen05.copy` scheduling remains a real planner/modeling
+  boundary: the current scheduler can identify the lane/dword projection, but
+  still lacks a lane-aware source-storage, descriptor-synthesis, and tile
+  footprint model that would make such copies legal.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
   and producer-chain matchers are optimizer-only.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
