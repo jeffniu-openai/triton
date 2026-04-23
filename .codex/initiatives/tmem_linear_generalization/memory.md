@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 17:50 UTC clarified the phase/alignment invariant and
+  audited the current helpers. The intended model is not "phase from type":
+  `MemDescType` plus layout supplies only relative physical row and
+  element-column deltas, while absolute phase/alignment comes from the current
+  memdesc SSA value plus those deltas. Audited semantic gates:
+  `isTMemLoadReductionAddressAligned(Value)`, copy subword/128-bit alignment
+  checks, static `memdesc_subslice`/`ttng.tmem_subslice` base advancement, and
+  phase-aware packed ld/st lowering. Current reduction/copy gates use
+  current-value residue analysis, and phase-aware ld/st computes the actual
+  subword phase from the runtime base before projecting to a hardware word
+  base. Remaining gap found by the audit: dynamic sub-32-bit
+  `memdesc_index` still rejects non-hardware-column-aligned index bits during
+  view lowering in `ViewOpToLLVM.cpp`. That is safe but over-strict now that
+  element-column `taddr` plus phase-aware consumers exist; the next slice
+  should lower dynamic indexes to element-column bases and leave copy/ld.red/
+  MMAv5 legality to the consumers.
+
 - Latest: 2026-04-23 06:01 UTC split the scalar query-type refinement API.
   Active self-contained lowering now calls
   `refineTMemLdStQueryTypeEncodingInfo(MemDescType, ...)`; the Value overload

@@ -35622,3 +35622,28 @@ Open after this slice:
   commit and push this helper-separation checkpoint. Continue with
   non-contiguous subword classification and remaining lowering-facing helper
   splits.
+
+## 2026-04-23 17:50 UTC: phase/alignment invariant wording and audit
+
+- Clarified the docs after the "phase from type" wording concern. The durable
+  invariant is now explicit: current `MemDescType`/layout describes relative
+  physical row and element-column deltas; absolute phase/alignment is derived
+  from the current memdesc SSA value plus those deltas.
+- Audited the semantic phase/alignment helpers:
+  `getTMemSubwordPhaseStatus(Value)`,
+  `getTMemElementOffsetModuloStatus(Value, modulus)`,
+  `isTMemLoadReductionAddressAligned(Value)`, copy destination subword/128-bit
+  gates, `memdesc_subslice`/`ttng.tmem_subslice` base advancement, and the
+  phase-aware packed ld/st lowering in
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`.
+- Result: reduction and copy legality gates use current-value residue analysis,
+  not type-only absolute alignment. Static view lowering adds a relative
+  element-column offset from the current source type/layout to the runtime base.
+  Phase-aware packed ld/st computes the actual phase from the runtime base and
+  projects to hardware word columns only at ISA emission.
+- Remaining gap: dynamic sub-32-bit `memdesc_index` still has an upfront
+  hardware-column-alignment rejection in `ViewOpToLLVM.cpp`. This is safe but
+  over-strict for ld/st consumers that can handle runtime phase; the next
+  implementation slice should lower dynamic indexes to element-column bases and
+  let each consumer decide legality.
+- Validation: documentation-only audit; ran `git diff --check`.

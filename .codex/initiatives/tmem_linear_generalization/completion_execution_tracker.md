@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 09:35 UTC
+Last updated: 2026-04-23 17:50 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -299,12 +299,30 @@ passed; exact warpx2 runtime row `2 passed`; focused subword ld/st selector
 Current phase helper-separation checkpoint: after the pointwise query landed,
 the static `memdesc_subslice` phase analysis no longer needs to reconstruct
 source/result standalone query origins from the producer chain. That fallback
-has been removed; if the current source `MemDescType`/layout cannot represent
-the requested offset, phase analysis returns unknown and consumers choose a
-conservative lowering or diagnostic. Validation: required `make -j8`; focused
-subword ld/st selector `12 passed`; subword copy selector `39 passed`;
-ld.red subword/linear-subslice selector `8 passed`; `git diff --check`
-passed.
+has been removed. The precise invariant is: the current source
+`MemDescType`/layout can only provide a relative physical row and element-column
+delta for the requested logical offset; the absolute phase/alignment is a
+property of the current memdesc SSA value plus that delta. If the source layout
+cannot represent the requested point, compile-time phase analysis returns
+unknown and consumers choose a conservative lowering or diagnostic. Validation:
+required `make -j8`; focused subword ld/st selector `12 passed`; subword copy
+selector `39 passed`; ld.red subword/linear-subslice selector `8 passed`;
+`git diff --check` passed.
+
+Current phase/alignment audit checkpoint: 2026-04-23 17:50 UTC audited the
+semantic phase/alignment helpers after the wording concern. Current reduction
+and copy legality gates do not derive absolute alignment from type alone:
+`isTMemLoadReductionAddressAligned(Value)` and copy's subword/128-bit gates call
+the current-value residue classifier, while view/subslice lowering advances the
+runtime base by a relative element-column offset computed from the current
+source type/layout. Phase-aware packed ld/st computes the actual subword phase
+from the runtime memdesc base at LLVM lowering time and projects to a hardware
+word base only at ISA emission. Remaining gap: dynamic sub-32-bit
+`memdesc_index` still has an upfront hardware-column-alignment guard in
+`ViewOpToLLVM.cpp`; this is safe but over-strict for consumers that can handle
+runtime phase through element-column `taddr`, so the next implementation slice
+should move that legality decision to consumers and let dynamic index lowering
+produce the element-column runtime base.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

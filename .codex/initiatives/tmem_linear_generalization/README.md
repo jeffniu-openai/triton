@@ -86,7 +86,7 @@ passed after that cleanup as group1 `14 passed`, group2 `14 passed`, group3
 The scalar refinement helper now also has a `MemDescType` overload, and active
 lowering calls that overload directly; the Value-taking overload remains as
 legacy descriptor-view compatibility.
-TMEM view-offset lowering now uses a type/local pointwise preimage solve
+TMEM view-offset lowering now uses a type-local pointwise preimage solve
 instead of requiring a global `LinearLayout::pseudoinvert()`. Non-surjective
 layouts such as `warpx2` copy views can therefore advance the current `taddr`
 when the requested logical offset is representable, while optional query
@@ -95,8 +95,12 @@ TMEM `memdesc_subslice` lowering derives its element-column offset directly
 from the current source `MemDescType` and layout; no chain-query element-offset
 workaround is needed. The follow-up cleanup removed the remaining static
 `memdesc_subslice` phase fallback that reconstructed source/result query
-origins from the producer chain; subword phase now uses the optional
-type/layout point query and otherwise returns unknown.
+origins from the producer chain. The important invariant is that type/layout
+queries provide only relative physical row/element-column deltas; absolute
+phase and alignment come from the current memdesc SSA value plus those deltas.
+Subword phase analysis uses the optional type/layout point query for view
+deltas and otherwise returns unknown, rather than recovering origins from a
+producer chain.
 Subword active selected column subviews now have runtime coverage for f16 and
 i8 dynamic-select and loop-carried values across both ld/st and dense
 `tcgen05.copy`. The shared sentinel kernels now allocate TMEM with the input
