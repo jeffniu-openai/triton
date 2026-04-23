@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 20:54 UTC
+Last updated: 2026-04-23 21:15 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -30,8 +30,24 @@ Current checkpoint summary:
   query when it matches the legacy standalone/exact physical projection, so
   copy lowering can keep the selected runtime `taddr` without changing the copy
   family.
+- [x] Closed the origin-changing view/taddr workstream: the shared TMEM
+  LLVM lowering helpers now live in common conversion utility code, NVIDIA
+  high-benefit `memdesc_index` handles dynamic encoded index views directly,
+  `ttng.tmem_subslice` uses the same source-type view-offset helper as public
+  subslice, and public TMEM index/subslice type helpers delegate to op encoding
+  inference.
 
 Active implementation checklist:
+
+Active closeout slice: finish view result type/layout inference and runtime `taddr` updates for origin-changing descriptor views before opening more backend areas.
+
+Closeout checklist for this slice:
+
+- [x] Audit and classify every origin-changing TMEM descriptor op: `ttg.memdesc_index`, `ttg.memdesc_subslice`, `ttg.memdesc_reinterpret` with `tmem_physical_bitcast`, and `ttng.tmem_subslice`. Treat `ttg.memdesc_trans` and `ttg.memdesc_reshape` as layout/type transforms with unchanged origin.
+- [x] Align duplicated generic and NVIDIA high-benefit lowering so each origin-changing op computes runtime base updates from the current source `MemDescType`/layout and the current SSA value only.
+- [x] Ensure result-type/layout inference for index/subslice shapes prefers self-contained descriptor-relative layouts when the current layout algebra can represent them, and preserves parent encodings only as a documented compatibility fallback.
+- [x] Add focused runtime/codegen tests for static and dynamic index views, exact and unaligned subslice views, `ttng.tmem_subslice`, and physical bitcast views where the consumer cannot walk back to a direct producer.
+- [x] Rebuild and run the affected focused pytest/lit selectors before committing this closeout.
 
 - [x] Rehydrate the initiative and record the newer memdesc-model plan in the
   durable design note.
@@ -41,10 +57,12 @@ Active implementation checklist:
   `subword_index` arithmetic is removed for f32/aligned cases.
 - [x] Add type-local planner scaffolding that can compare against the current
   chain-dependent planner without changing codegen.
-- [ ] Fix view result type/layout computation and source-type-only `taddr`
-  updates for origin-changing views. First completed slice: TMEM
-  `memdesc_subslice`/`ttng.tmem_subslice` now prefer active
-  descriptor-relative result encodings before preserving parent encodings.
+- [x] Fix view result type/layout computation and source-type-only `taddr`
+  updates for origin-changing views. Closed 2026-04-23 21:15 UTC: shared
+  TMEM base-update lowering now covers generic and NVIDIA high-benefit
+  `memdesc_index`, dynamic encoded index, physical bitcast reinterpret, and
+  `ttng.tmem_subslice`; public index/subslice result-type helpers route
+  through the same op-encoding inference entry points.
 - [ ] Migrate ld/st, subword packing, `ld.red`, copy, and MMAv5/scales in
   vertical slices with focused tests after each slice. First ld/st-facing
   completed slice: active self-contained subview layouts now try their

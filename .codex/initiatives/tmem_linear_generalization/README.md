@@ -47,6 +47,15 @@ selected copy family while letting lowering rely on the current runtime `taddr`
 for the matched destination instead of subtracting a producer-chain-derived
 view offset.
 
+Latest view/taddr closeout: as of 2026-04-23 21:15 UTC,
+origin-changing descriptor views are closed for this phase. Shared TMEM base
+update lowering now lives in the common LLVM conversion utility, generic and
+NVIDIA lowering use the same dynamic encoded-index and physical-bitcast base
+helpers, `ttng.tmem_subslice` uses source-type `getTMemViewElementOffset`, and
+public index/subslice result-type helpers delegate to op-encoding inference.
+Focused runtime, lit, and four-GPU ldst validation are recorded in
+`memory.md`, `log.md`, and `completion_execution_tracker.md`.
+
 Active execution plan: as of 2026-04-23 08:11 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in

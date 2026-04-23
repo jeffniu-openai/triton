@@ -330,6 +330,20 @@ constexpr int kSharedMemoryOffset = -3;
 
 namespace triton {
 
+Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
+                              Value base, uint32_t offset);
+Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
+                              Value base, Value offset);
+
+Value reinterpretTensorMemoryBase(Location loc,
+                                  ConversionPatternRewriter &rewriter,
+                                  Value base, uint32_t srcBitwidth,
+                                  uint32_t dstBitwidth);
+
+Value buildDynamicTensorMemoryIndexOffset(Location loc,
+                                          ConversionPatternRewriter &rewriter,
+                                          Value index, gpu::MemDescType srcTy);
+
 namespace gpu {
 
 std::pair<SmallVector<LocalMemOpTile>, SmallVector<LocalMemOpTile>>

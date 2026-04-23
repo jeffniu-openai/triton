@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 21:15 UTC closed the origin-changing view/taddr slice. Shared TMEM
+  base update helpers (`advanceTensorMemoryBase`, physical-bitcast
+  `reinterpretTensorMemoryBase`, dynamic encoded-index offset synthesis) moved
+  to common LLVM conversion utility code. Generic and NVIDIA high-benefit
+  lowering now use the same helper surface; NVIDIA `memdesc_index` no longer
+  rejects dynamic encoded TMEM indices before generic fallback, and
+  `ttng.tmem_subslice` computes offsets through `getTMemViewElementOffset` from
+  the current source `MemDescType`. Public `inferTMemIndexOpType` and
+  `inferTMemSubsliceOpType` now route through the same op-encoding inference
+  entry points used by verifier/layout inference. Added dynamic encoded ldst
+  index runtime coverage for subword and high-column index bits. Validation:
+  required `make -j8`; new plus existing dynamic-index ldst rows `8 passed`;
+  `test_core.py -k 'physical_bitcast or tmem_linear_runtime_views or
+  tmem_subslice_block_m_64'` `23 passed`; focused runtime-matrix view slices
+  `14 passed` and copy-adjacent view slices `20 passed`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` passed; four-GPU `ldst and not reports
+  and not scales` split passed as group1 `96 passed`, group2 `57 passed, 39
+  skipped`, group3 `57 passed, 39 skipped`, group4 `76 passed, 20 skipped`.
+
 - Latest: 2026-04-23 20:54 UTC broadened `tcgen05.copy` physical-query
   selection toward type-local lowering. For non-active-subview descriptors,
   `selectTMemCopyPhysicalQuery` now computes the same legacy standalone/exact

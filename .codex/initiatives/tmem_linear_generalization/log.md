@@ -35954,3 +35954,64 @@ Open after this slice:
   commit and push this copy-locality checkpoint. Continue with remaining copy
   verifier/lowering producer-chain fallbacks and ld/st support-query row-plan
   fallbacks.
+
+
+## 2026-04-23 21:05 UTC: view/taddr closeout slice started
+
+- User direction:
+  close out opened areas instead of broadening the surface; start by finishing
+  view result type/layout inference and runtime `taddr` updates for all
+  origin-changing TMEM view shapes.
+- Initial audit classification:
+  origin-changing descriptor operations are `ttg.memdesc_index`,
+  `ttg.memdesc_subslice`, `ttng.tmem_subslice`, and physical-bitcast
+  `ttg.memdesc_reinterpret`. `ttg.memdesc_trans` and `ttg.memdesc_reshape`
+  may change layout/type but should not change the runtime origin.
+- Initial risk found:
+  generic view lowering has layout-local dynamic TMEM index support, while the
+  NVIDIA high-benefit subview lowering still carries an older dynamic-index
+  rejection and separately computes `ttng.tmem_subslice` offsets. This slice
+  will align those taddr paths with the source `MemDescType` helper model and
+  add focused coverage.
+
+
+## 2026-04-23 21:15 UTC: origin-changing view/taddr closeout
+
+- Source change:
+  moved shared TMEM base update lowering helpers into
+  `lib/Conversion/TritonGPUToLLVM/Utility.cpp` with declarations in the common
+  LLVM conversion utility header. Generic view lowering and NVIDIA high-benefit
+  tensor-memory subview lowering now call the same helpers for descriptor base
+  advancement, physical-bitcast element-column rescaling, and dynamic encoded
+  index offset synthesis.
+- Source change:
+  NVIDIA `MemDescIndexOpConversion` now handles dynamic encoded TMEM indices
+  directly instead of rejecting them and relying on lower-benefit generic
+  fallback. `TMEMSubSliceOpConversion` now builds the source offsets vector and
+  calls `getTMemViewElementOffset(srcTy, offsets)`, matching public
+  `memdesc_subslice` lowering and keeping offset computation source-type-local.
+- Source change:
+  `inferTMemIndexOpType` and `inferTMemSubsliceOpType` now delegate to the same
+  op-encoding inference entry points used by dialect layout inference, reducing
+  duplicated result-layout logic and keeping compatibility-preserve fallback in
+  one place.
+- Test change:
+  added `test_tmem_runtime_matrix_ldst_dynamic_encoded_index_view_roundtrip`,
+  covering dynamic encoded `memdesc_index` ldst roundtrips where the indexed
+  dimension maps to both a subword column bit and a higher column bit.
+- Validation evidence:
+  required `make -j8`; new plus existing dynamic-index ldst rows `8 passed`;
+  `test_core.py -k 'physical_bitcast or tmem_linear_runtime_views or
+  tmem_subslice_block_m_64'` `23 passed`; focused runtime-matrix view slices
+  `14 passed`; copy-adjacent view slices `20 passed`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; four-GPU
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and not reports and
+  not scales'` passed as group1 `96 passed`, group2 `57 passed, 39 skipped`,
+  group3 `57 passed, 39 skipped`, group4 `76 passed, 20 skipped`; `git diff
+  --check` passed.
+- Remaining boundary:
+  origin-changing view/taddr closeout is now complete for index, subslice,
+  `ttng.tmem_subslice`, and physical-bitcast reinterpret. Remaining open work
+  is outside this slice: continue closing semantic producer-chain fallbacks in
+  copy/verifier/MMAv5/scales and the separate packed-lane copy modeling
+  frontier.

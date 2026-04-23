@@ -1046,6 +1046,35 @@ def tmem_ldst_unaligned_subword_dynamic_index_view_kernel(
 
 
 @gluon.jit
+def tmem_ldst_dynamic_index_view_kernel(
+    in_ptr, out_ptr, selector_ptr, parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr, N: ttgl.constexpr
+):
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [2, M, N], layout=parent_layout)
+    view0 = tmem.index(0)
+    view1 = tmem.index(1)
+    selected = tmem.index(ttgl.load(selector_ptr))
+
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.convert_layout(ttgl.load(in_ptr + offs), reg_layout)
+
+    view0.store(ttgl.full([M, N], 11, element_ty, layout=reg_layout))
+    view1.store(ttgl.full([M, N], 17, element_ty, layout=reg_layout))
+    selected.store(value)
+
+    out_selected = selected.load(reg_layout)
+    out0 = view0.load(reg_layout)
+    out1 = view1.load(reg_layout)
+    ttgl.store(out_ptr + offs, out_selected)
+    ttgl.store(out_ptr + M * N + offs, out0)
+    ttgl.store(out_ptr + 2 * M * N + offs, out1)
+
+
+@gluon.jit
 def tmem_ld_red_unaligned_subword_dynamic_index_view_kernel(
     in_ptr, out_ptr, red_ptr, selector_ptr, parent_layout: ttgl.constexpr, M: ttgl.constexpr
 ):
@@ -7849,6 +7878,43 @@ def test_tmem_runtime_matrix_ldst_unaligned_subword_selected_view_roundtrip(
         assert "scf.for" in ttgir
     else:
         assert "arith.select" in ttgir or "scf.if" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "index_col_bit,n",
+    [
+        pytest.param(0, 128, id="subword-column-bit"),
+        pytest.param(5, 64, id="high-column-bit"),
+    ],
+)
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_runtime_matrix_ldst_dynamic_encoded_index_view_roundtrip(
+    selector, index_col_bit, n
+):
+    m = 128
+    layout = _make_tmem_linear_layout_dynamic_index_col_bit(m, n, index_col_bit)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n) % 16
+    out = torch.empty((3, m, n), dtype=torch.float32, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_ldst_dynamic_index_view_kernel[(1, )](
+        inp, out, selector_tensor, layout, m, n, num_warps=4
+    )
+
+    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
+    expected0 = inp if selector == 0 else torch.full_like(inp, 11)
+    expected1 = inp if selector == 1 else torch.full_like(inp, 17)
+    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert any(op.startswith("tcgen05.st.sync.aligned.") for op in observed_opcodes)
+    assert any(op.startswith("tcgen05.ld.sync.aligned.") for op in observed_opcodes)
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_index" in ttgir
+    assert "tensor_memory_linear" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

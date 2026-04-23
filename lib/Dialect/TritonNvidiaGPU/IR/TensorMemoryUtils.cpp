@@ -8438,43 +8438,22 @@ inferTMemIndexOpType(gpu::MemDescType srcTy, std::string *error) {
       *error = "result rank must be input rank - 1";
     return failure();
   }
+
+  SmallVector<int64_t> srcShape(srcTy.getShape().begin(), srcTy.getShape().end());
   SmallVector<int64_t> dstShape = llvm::to_vector(srcTy.getShape().drop_front());
   SmallVector<int64_t> dstAllocShape =
       llvm::to_vector(srcTy.getAllocShape().drop_front());
-  auto dstEncoding = srcTy.getEncoding();
-  auto dstTy = tryCreateMemDescType(srcTy.getContext(), dstShape,
-                                    srcTy.getElementType(), dstEncoding,
-                                    srcTy.getMemorySpace(),
-                                    srcTy.getMutableMemory(), dstAllocShape,
-                                    error);
-  if (!dstTy)
-    return failure();
-  SmallVector<int64_t> srcShape(srcTy.getShape().begin(), srcTy.getShape().end());
-  SmallVector<int64_t> dstShapeCopy(dstTy->getShape().begin(),
-                                    dstTy->getShape().end());
-  SmallVector<int64_t> dstAllocShapeCopy(dstTy->getAllocShape().begin(),
-                                         dstTy->getAllocShape().end());
-  if (auto preserved = tryPreserveOuterIndexedTMemEncoding(
-          srcTy.getContext(), srcShape, dstShapeCopy, dstAllocShapeCopy,
-          srcTy.getEncoding(), error)) {
-    auto resultTy = tryCreateMemDescType(
-        srcTy.getContext(), dstShape, srcTy.getElementType(), *preserved,
-        srcTy.getMemorySpace(), srcTy.getMutableMemory(), dstAllocShape,
-        error);
-    if (!resultTy)
-      return failure();
-    return *resultTy;
-  }
-  auto maybeDstEnc =
-      inferTMemIndexEncoding(srcShape, dstShapeCopy, dstAllocShapeCopy,
-                             srcTy.getEncoding(), error);
-  if (failed(maybeDstEnc)) {
+
+  Attribute dstEncoding;
+  if (failed(inferTMemIndexOpEncoding(srcShape, dstShape, dstAllocShape,
+                                      srcTy.getEncoding(), dstEncoding))) {
     if (error && error->empty())
       *error = "unsupported tensor memory memdesc_index view";
     return failure();
   }
+
   auto resultTy = tryCreateMemDescType(srcTy.getContext(), dstShape,
-                                       srcTy.getElementType(), *maybeDstEnc,
+                                       srcTy.getElementType(), dstEncoding,
                                        srcTy.getMemorySpace(),
                                        srcTy.getMutableMemory(), dstAllocShape,
                                        error);
@@ -8486,29 +8465,24 @@ inferTMemIndexOpType(gpu::MemDescType srcTy, std::string *error) {
 FailureOr<gpu::MemDescType>
 inferTMemSubsliceOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
                         ArrayRef<int32_t> offsets, std::string *error) {
-  auto dstEncoding = srcTy.getEncoding();
-  auto dstAllocShape = llvm::to_vector(srcTy.getAllocShape());
-  auto dstTy = tryCreateMemDescType(srcTy.getContext(), dstShape,
-                                    srcTy.getElementType(), dstEncoding,
-                                    srcTy.getMemorySpace(),
-                                    srcTy.getMutableMemory(), dstAllocShape,
-                                    error);
-  if (!dstTy)
-    return failure();
   SmallVector<int64_t> srcShape(srcTy.getShape().begin(), srcTy.getShape().end());
-  SmallVector<int64_t> dstShapeCopy(dstTy->getShape().begin(),
-                                    dstTy->getShape().end());
-  auto maybeDstEnc = inferTMemSubsliceEncoding(srcShape, srcTy.getEncoding(),
-                                               dstShapeCopy, offsets, error);
-  if (failed(maybeDstEnc)) {
+  SmallVector<int64_t> srcAllocShape(srcTy.getAllocShape().begin(),
+                                     srcTy.getAllocShape().end());
+  SmallVector<int64_t> dstShapeVec(dstShape.begin(), dstShape.end());
+
+  Attribute dstEncoding;
+  if (failed(inferTMemSubsliceOpEncoding(srcShape, srcAllocShape,
+                                         srcTy.getEncoding(), dstShapeVec,
+                                         offsets, dstEncoding))) {
     if (error && error->empty())
       *error = "unsupported tensor memory memdesc_subslice view";
     return failure();
   }
+
   auto resultTy = tryCreateMemDescType(srcTy.getContext(), dstShape,
-                                       srcTy.getElementType(), *maybeDstEnc,
+                                       srcTy.getElementType(), dstEncoding,
                                        srcTy.getMemorySpace(),
-                                       srcTy.getMutableMemory(), dstAllocShape,
+                                       srcTy.getMutableMemory(), srcAllocShape,
                                        error);
   if (!resultTy)
     return failure();

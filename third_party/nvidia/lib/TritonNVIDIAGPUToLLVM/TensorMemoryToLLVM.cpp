@@ -28,47 +28,6 @@ using namespace mlir::triton::NVIDIA;
 
 namespace {
 
-Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
-                              Value base, uint32_t offset) {
-  auto b = TritonLLVMOpBuilder(loc, rewriter);
-  Value newBase = b.add(b.ptrtoint(i32_ty, base), b.i32_val(offset));
-  return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
-}
-
-Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
-                              Value base, Value offset) {
-  auto b = TritonLLVMOpBuilder(loc, rewriter);
-  Value newBase = b.add(b.ptrtoint(i32_ty, base), offset);
-  return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
-}
-
-// Tensor-memory taddrs encode row bits plus an element-column field. A
-// physical bitcast keeps the same bits live but changes the element size, so
-// the memdesc SSA value must switch to the result element-column coordinate.
-Value reinterpretTensorMemoryBase(Location loc,
-                                  ConversionPatternRewriter &rewriter,
-                                  Value base, uint32_t srcBitwidth,
-                                  uint32_t dstBitwidth) {
-  if (srcBitwidth == dstBitwidth)
-    return base;
-
-  auto b = TritonLLVMOpBuilder(loc, rewriter);
-  Value baseInt = b.ptrtoint(i32_ty, base);
-  Value row = b.and_(
-      baseInt, b.i32_val(static_cast<int32_t>(~kTMemPackedOffsetColMask)));
-  Value col = b.and_(baseInt, b.i32_val(kTMemPackedOffsetColMask));
-  Value dstCol;
-  if (srcBitwidth > dstBitwidth && srcBitwidth % dstBitwidth == 0) {
-    dstCol = b.mul(col, b.i32_val(srcBitwidth / dstBitwidth));
-  } else if (dstBitwidth > srcBitwidth && dstBitwidth % srcBitwidth == 0) {
-    dstCol = b.udiv(col, b.i32_val(dstBitwidth / srcBitwidth));
-  } else {
-    return base;
-  }
-  Value newBase = b.or_(row, dstCol, /*disjoint=*/true);
-  return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
-}
-
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -1760,9 +1719,11 @@ struct MemDescIndexOpConversion
 
     APInt index;
     if (!matchPattern(op.getIndex(), m_ConstantInt(&index))) {
-      return rewriter.notifyMatchFailure(
-          op, "dynamic tensor memory indexing is only supported for the "
-              "unencoded leading buffer dimension");
+      Value dynamicOffset = buildDynamicTensorMemoryIndexOffset(
+          loc, rewriter, adaptor.getIndex(), srcTy);
+      rewriter.replaceOp(
+          op, advanceTensorMemoryBase(loc, rewriter, tmemBase, dynamicOffset));
+      return success();
     }
 
     SmallVector<int32_t> offsets(srcTy.getRank(), 0);
@@ -1811,7 +1772,6 @@ struct TMEMSubSliceOpConversion
   matchAndRewrite(triton::nvidia_gpu::TMEMSubSliceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
-    auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto srcTy = cast<MemDescType>(op.getSrc().getType());
     // Physical TMEM pointer arithmetic is defined in the source tile's address
     // space. Using the narrowed result type can erase high-order column bits
@@ -1819,13 +1779,10 @@ struct TMEMSubSliceOpConversion
     // subslices onto the same base address.
     SmallVector<int32_t> offsets(srcTy.getRank(), 0);
     offsets.back() = op.getN();
-    uint32_t offset = getTMemSubSliceElementOffset(srcTy, op.getN());
+    uint32_t offset = getTMemViewElementOffset(srcTy, offsets);
 
-    Value tmemBase = adaptor.getSrc();
-    Value offsetVal = b.i32_val(offset);
-    Value newBase = b.add(b.ptrtoint(i32_ty, tmemBase), offsetVal);
-    auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
-    rewriter.replaceOp(op, b.inttoptr(elemPtrTy, newBase));
+    rewriter.replaceOp(
+        op, advanceTensorMemoryBase(loc, rewriter, adaptor.getSrc(), offset));
     return success();
   }
 };
