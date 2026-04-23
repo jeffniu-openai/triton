@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:48 UTC
+Last updated: 2026-04-23 05:56 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -97,6 +97,10 @@ Active implementation checklist:
   query-ordering slice: active self-contained descriptors now choose M64
   query-type-before-raw-query lowering order from their current
   `MemDescType`/register layout instead of a value-chain raw-query probe.
+  First scalar query-type refinement slice: active self-contained descriptors
+  are now considered view-like from current type/layout facts when refining
+  `32x32` query-type lowering to scalar packets, so selected/loop-carried
+  active values do not need a visible view producer for that lowering detail.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -222,6 +226,17 @@ Validation: required `make -j8`; selected active-subview ld/st and ld.red rows
 `6 passed`; selected/broad physical-bitcast selector `17 passed`; targeted lit
 set `6/6`.
 
+Current scalar refinement locality checkpoint:
+`refineTMemLdStQueryTypeEncodingInfo` now treats active self-contained
+descriptors as view-like from their current `MemDescType`, not only from a
+visible view producer. This keeps the `32x32` query-type scalar-packet
+refinement available after an active subview has flowed through `arith.select`,
+`scf.for`, or another SSA boundary. Validation: required `make -j8`; active
+ld/st linear-subview selector `4 passed`; loop-carried active
+ld/st/ld.red/copy selector `6 passed`; `test_core.py` physical-bitcast/runtime
+view selector `12 passed`; lit `tmem_layouts.mlir` `1 passed` (the other
+requested tmem lit paths contained no tests in this checkout).
+
 Current broad non-scale runtime checkpoint:
 after the active-subview query/diagnostic/bitcast helper cleanup, selector
 `(ldst or ld_red or cp_no_scales) and not reports and not scales` passed as a
@@ -232,6 +247,13 @@ Current MMAv5/scales runtime checkpoint:
 selector `mma and not reports and not clean and not unsupported` passed as a
 four-GPU split runtime sweep: group1 `134 passed, 14 skipped`, group2
 `148 passed`, group3 `148 passed`, group4 `148 passed`.
+
+Current `test_core.py` TMEM checkpoint:
+the broader `test_core.py` selector
+`tmem and (copy or ld or load or store or mma or tcgen05)` was rerun after the
+scalar-refinement cleanup as a four-GPU split and passed as group1 `14 passed`,
+group2 `14 passed`, group3 `14 passed`, group4 `8 passed, 5 skipped`. The
+skips are the existing out-of-resource TMEM copy matrix guards.
 
 Current normal ld/st selected-subview checkpoint:
 a representative dynamic selected active column subview now has runtime

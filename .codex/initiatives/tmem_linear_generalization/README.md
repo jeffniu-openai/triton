@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 05:48 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 05:56 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -78,6 +78,11 @@ runtime coverage for selected active-subview bitcasts and updated TTGIR marker
 expectations for no-op full-slice folding.
 Standalone TMEM view/reg-layout query type inference now returns the active
 self-contained planning type before requiring a visible view producer.
+The last lowering-facing scalar refinement helper now also treats active
+self-contained descriptors as view-like from current type/layout facts rather
+than only from a visible producer operation. A broad `test_core.py` TMEM split
+passed after that cleanup as group1 `14 passed`, group2 `14 passed`, group3
+`14 passed`, group4 `8 passed, 5 skipped`.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,

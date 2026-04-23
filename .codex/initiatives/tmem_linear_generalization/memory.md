@@ -1,5 +1,28 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 05:56 UTC completed another lowering-facing active
+  locality cleanup. `refineTMemLdStQueryTypeEncodingInfo` now treats active
+  self-contained descriptors as view-like from their current `MemDescType`,
+  so the `32x32` query-type scalar-packet refinement does not require a local
+  view producer after a selected or loop-carried active subview crosses an SSA
+  boundary. Validation: required `make -j8`; active ld/st linear-subview
+  selector `4 passed`; loop-carried active ld/st/ld.red/copy selector
+  `6 passed`; `test_core.py` physical-bitcast/runtime-view selector
+  `12 passed`; lit `tmem_layouts.mlir` `1 passed` with warnings that other
+  requested tmem lit paths contained no tests; broad `test_core.py` TMEM split
+  passed as group1 `14 passed`, group2 `14 passed`, group3 `14 passed`, group4
+  `8 passed, 5 skipped`.
+
+- Latest: 2026-04-23 05:56 UTC final audit state for active semantics:
+  remaining direct producer-chain walkers in `TensorMemoryUtils.cpp` are either
+  legacy compatibility for descriptor classes not yet self-contained, guarded
+  behind `hasSelfContainedTMemSubviewLayout`, or optimizer/allocation/effect
+  pattern matchers. The active self-contained paths for ld/st query layout,
+  query types, row plans, support queries, copy physical queries, ld.red layout
+  inference, bitcast type inference, M64 ordering, query-rescue gating, and
+  scalar query-type refinement now use current type/layout facts before any
+  legacy value-chain fallback.
+
 - Latest: 2026-04-23 04:27 UTC added dynamic selected normal ld/st
   column-subview runtime coverage. The new row initializes two same-typed
   `128x128xf32` column subviews of one `128x256xf32` TMEM allocation with

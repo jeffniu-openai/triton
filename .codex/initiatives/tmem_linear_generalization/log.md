@@ -35166,3 +35166,32 @@ Open after this slice:
   commit and push this validation checkpoint. Continue final code audit, then
   decide whether remaining producer-chain uses are optimizer-only/legacy
   compatibility or still need active type-local routing.
+
+## 2026-04-23 05:56 UTC: scalar query-type refinement made active-subview local
+
+- Branch/HEAD at slice start:
+  `64b1f9433 Record broad MMAv5 TMEM validation`.
+- Dirty files before checkpoint commit:
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`, plus initiative
+  docs.
+- Completed source slice:
+  `refineTMemLdStQueryTypeEncodingInfo` now treats active self-contained
+  descriptors as view-like from the current `MemDescType`. The `32x32`
+  query-type scalar refinement therefore remains available for selected or
+  loop-carried active subviews without checking for a visible view producer.
+- Audit classification:
+  remaining direct producer-chain walkers are either guarded behind active
+  type-local checks, legacy descriptor-view compatibility, or optimizer /
+  allocation / diagnostic pattern matching. No additional active semantic
+  helper gap was found in this pass.
+- Validation evidence:
+  required `make -j8`; active ld/st `linear_subslice_view` selector
+  `4 passed`; loop-carried active ld/st/ld.red/copy selector `6 passed`;
+  `test_core.py` physical-bitcast/runtime-view selector `12 passed`;
+  lit `tmem_layouts.mlir` `1 passed` with warnings that the other requested
+  tmem lit paths contained no tests; broad `test_core.py` TMEM split passed as
+  group1 `14 passed`, group2 `14 passed`, group3 `14 passed`, group4
+  `8 passed, 5 skipped`.
+- Next concrete step:
+  commit and push this checkpoint. Continue with helper API cleanup and staged
+  validation unless interrupted.

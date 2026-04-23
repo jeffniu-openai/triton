@@ -1560,3 +1560,44 @@ High-priority hacks and debt to remove after replacement coverage exists:
   commands with distinct caches.
 - Result: group1 `134 passed, 14 skipped`, group2 `148 passed`, group3
   `148 passed`, group4 `148 passed`.
+
+### 2026-04-23 Scalar Query-Type Refinement Locality
+
+- `refineTMemLdStQueryTypeEncodingInfo` now treats active self-contained
+  descriptors as view-like based on the current `MemDescType`, rather than only
+  when the SSA value has a visible view producer. This is a lowering-facing
+  semantic cleanup: the selected current `taddr` remains the only runtime base,
+  and the current descriptor layout determines whether the `32x32` query-type
+  path should be refined to scalar packets.
+- This closes the last active-subview use found in the final helper audit where
+  "view-like" still meant "visible producer operation". Legacy descriptor views
+  still use the producer-chain compatibility paths until their result types are
+  made self-contained or an optimizer rewrite materializes a supported view.
+- Validation after this slice: required `make -j8`; active ld/st
+  `linear_subslice_view` selector `4 passed`; loop-carried active
+  ld/st/ld.red/copy selector `6 passed`; `test_core.py`
+  `physical_bitcast_selected_subview or tmem_linear_runtime_views` selector
+  `12 passed`; lit `tmem_layouts.mlir` `1 passed` (the other requested tmem
+  lit paths contained no tests in this checkout); broad `test_core.py` TMEM
+  split passed as group1 `14 passed`, group2 `14 passed`, group3 `14 passed`,
+  group4 `8 passed, 5 skipped`.
+
+### 2026-04-23 Final Active-Semantics Audit Classification
+
+- Lowering/verifier paths for active self-contained descriptors now dispatch to
+  type-local facts for ld/st raw-query layout, query-type lists, row plans,
+  support-query plans, copy physical-query selection, `ld.red` layout
+  inference, physical bitcast type inference, M64 query ordering, row-zero
+  query-rescue gating, unsupported-direct diagnostics, and scalar query-type
+  refinement.
+- Remaining producer-chain walkers in `TensorMemoryUtils.cpp` are classified as
+  either legacy compatibility for older descriptor views that still preserve
+  parent encodings, source/replay helpers for known clean-boundary diagnostic
+  paths, or optimizer/allocation/effect analysis. They are not used to define
+  active self-contained legality before the type-local path has had the chance
+  to choose or reject the lowering.
+- The next architectural cleanup remains splitting those compatibility helpers
+  into clearly named optimizer-only or legacy-only utilities. That cleanup
+  should be mechanical after the active semantic path is covered, but it should
+  keep the same validation cadence because many legacy descriptor-view tests
+  still exercise those fallbacks intentionally.

@@ -10068,11 +10068,15 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
 }
 
 static bool isViewLikeTMemLdStMemDesc(Value memDesc) {
-  return memDesc &&
-         isa_and_nonnull<gpu::MemDescIndexOp, TMEMSubSliceOp,
+  if (!memDesc)
+    return false;
+  if (hasSelfContainedTMemSubviewLayout(
+          dyn_cast_if_present<MemDescType>(memDesc.getType())))
+    return true;
+  return isa_and_nonnull<gpu::MemDescIndexOp, TMEMSubSliceOp,
                          gpu::MemDescSubsliceOp, gpu::MemDescReshapeOp,
                          gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(
-             memDesc.getDefiningOp());
+      memDesc.getDefiningOp());
 }
 
 TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
