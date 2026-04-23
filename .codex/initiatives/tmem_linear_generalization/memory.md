@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 03:54 UTC added dynamic selected descriptor-chain ld.red
+  runtime coverage. The new row selects between two same-typed descriptor-chain
+  views, stores distinct payloads into each candidate, reduces through the
+  selected view, and checks runtime output, row reductions, selected forwarding,
+  descriptor-view TTGIR markers, and exact `tcgen05.ld.red` opcode shape. This
+  representative selected-value ld.red case is already supported by the current
+  type-local ld/st planning; no backend change was needed beyond broadening the
+  opcode helper to allow two producer store waits in this test. Validation:
+  required `make -j8`; exact new row `1 passed`; 4-GPU
+  `ld_red and not reports and not scales` split passed as group1 `60 passed`,
+  group2 `60 passed`, group3 `60 passed`, group4 `60 passed`; `git diff --check`
+  passed.
+
 - Latest: 2026-04-23 03:45 UTC repaired selected scales descriptor-view
   load/store lowering. A dynamic selected
   `reshape -> trans -> reshape` scales descriptor view has a

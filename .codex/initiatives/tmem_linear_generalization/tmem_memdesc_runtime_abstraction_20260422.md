@@ -1074,6 +1074,24 @@ High-priority hacks and debt to remove after replacement coverage exists:
   passed as group1 `12 passed`, group2 `12 passed`, group3 `12 passed`, group4
   `11 passed`; `git diff --check` passed.
 
+### 2026-04-23 Dynamic Selected Descriptor-Chain LD.Red Coverage
+
+- Added a runtime positive for a selected descriptor-chain ld.red consumer.
+  The kernel initializes two TMEM descriptor chains with distinct f32 payloads,
+  selects between same-typed descriptor views with dynamic control flow, and
+  performs `load_max` through the selected descriptor.
+- This is an important sentinel for the memdesc model because the selected SSA
+  value has no single producer chain that lowering can legally inspect. The
+  current `MemDescType` plus selected runtime `taddr` must be sufficient.
+- The representative row already passed with the current type-local ld/st and
+  ld.red planning. No backend change was required; only the test helper was
+  generalized so rows with two producer stores can expect two store waits while
+  preserving the existing default of one wait.
+- Validation after this slice: required `make -j8`; exact new row `1 passed`;
+  4-GPU `ld_red and not reports and not scales` split passed as group1
+  `60 passed`, group2 `60 passed`, group3 `60 passed`, group4 `60 passed`;
+  `git diff --check` passed.
+
 ### 2026-04-23 Type-Local MMAv5 Family Address Slice
 
 - `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects narrowed

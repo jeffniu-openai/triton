@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 03:45 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 03:54 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -60,9 +60,21 @@ longer require a visible root scales producer chain. Scales descriptor-view
 load/store planning now also uses the type-local storage classification: dynamic
 selected row-permuted scales descriptor views plan against the recovered
 `tensor_memory_scales` storage type, keep the selected runtime `taddr`, and no
-longer fall through to an unsafe canonical dense-linear surrogate.
+longer fall through to an unsafe canonical dense-linear surrogate. Dynamic
+selected descriptor-chain ld.red now has runtime coverage as a positive
+sentinel; no additional backend change was needed for that representative row.
 
-Latest validation checkpoint: 2026-04-23 03:45 UTC repaired the scales ld/st
+Latest validation checkpoint: 2026-04-23 03:54 UTC added dynamic selected
+descriptor-chain ld.red coverage. The new row selects between two same-typed
+descriptor-chain views, loads/reduces through the selected descriptor, and
+asserts runtime output, row reductions, selected forwarding, descriptor-view
+TTGIR markers, and exact `tcgen05.ld.red` opcode shape. Validation: required
+`make -j8`; exact new ld.red row `1 passed`; 4-GPU
+`ld_red and not reports and not scales` split passed as group1 `60 passed`,
+group2 `60 passed`, group3 `60 passed`, group4 `60 passed`; `git diff --check`
+passed.
+
+Previous validation checkpoint: 2026-04-23 03:45 UTC repaired the scales ld/st
 descriptor-view selected-value gap. Type-local generated scale storage
 classification now covers two-CTA generic scales descriptor views, while the
 B-scale-specific scaled-MMA path keeps its narrower one-CTA padded-storage

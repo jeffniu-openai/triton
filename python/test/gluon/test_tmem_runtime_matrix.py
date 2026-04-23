@@ -1411,6 +1411,50 @@ def tmem_ld_red_descriptor_chain_kernel(
 
 
 @gluon.jit
+def tmem_ld_red_dynamic_descriptor_chain_kernel(
+    in_ptr, out_ptr, red_ptr, selector_ptr, layout: ttgl.constexpr, N: ttgl.constexpr,
+    load_variant: ttgl.constexpr, propagate_nan: ttgl.constexpr
+):
+    M: ttgl.constexpr = 128
+    num_warps: ttgl.constexpr = 4
+    global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
+    global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, global_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, global_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem0 = allocate_tensor_memory(in_ptr.dtype.element_ty, [2, M, N], layout=layout)
+    tmem1 = allocate_tensor_memory(in_ptr.dtype.element_ty, [2, M, N], layout=layout)
+    base0 = tmem0.slice(1, 1, dim=0).index(0)
+    base1 = tmem1.slice(1, 1, dim=0).index(0)
+    base_layout: ttgl.constexpr = base0.get_reg_layout()
+    base0.store(ttgl.convert_layout(value, base_layout))
+    value1 = value + ttgl.full([M, N], 5.0, ttgl.float32, layout=global_layout)
+    base1.store(ttgl.convert_layout(value1, base_layout))
+
+    view0 = base0.reshape((M // 2, 2, N)).reshape((M, N))
+    view0 = view0.slice(0, M, dim=0).slice(0, N, dim=1)
+    view1 = base1.reshape((M // 2, 2, N)).reshape((M, N))
+    view1 = view1.slice(0, M, dim=0).slice(0, N, dim=1)
+    selected = view0
+    if ttgl.load(selector_ptr) != 0:
+        selected = view1
+    else:
+        selected = view0
+
+    load_layout: ttgl.constexpr = selected.get_reg_layout(instr_variant=load_variant)
+    output, reduced = selected.load_max(layout=load_layout, abs=False, propagate_nan=propagate_nan)
+    output = ttgl.convert_layout(output, global_layout)
+    ttgl.store(out_ptr + offs, output)
+
+    red_offs = ttgl.arange(0, M, global_layout_1d)
+    reduced = ttgl.convert_layout(reduced, global_layout_1d)
+    ttgl.store(red_ptr + red_offs, reduced)
+
+
+@gluon.jit
 def tmem_ld_red_m64_explicit_layout_kernel(
     in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, N: ttgl.constexpr, load_variant: ttgl.constexpr,
     red_op: ttgl.constexpr, use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
@@ -5982,6 +6026,7 @@ def _assert_ld_red_opcode_pairs(
     use_abs,
     propagate_nan,
     expected_offsets=None,
+    expected_store_waits=1,
 ):
     ptx = compiled.asm["ptx"]
     llir = compiled.asm["llir"]
@@ -6000,9 +6045,9 @@ def _assert_ld_red_opcode_pairs(
         expected_offsets = LD_RED_EXPECTED_OFFSETS[N]
     assert len(ptx_red_pairs) == len(expected_offsets)
     assert [offset for _, offset in ptx_red_pairs] == list(expected_offsets)
-    assert ptx.count("tcgen05.wait::st.sync.aligned;") == 1
+    assert ptx.count("tcgen05.wait::st.sync.aligned;") == expected_store_waits
     assert ptx.count("tcgen05.wait::ld.sync.aligned;") == 1
-    assert llir.count("tail call void @llvm.nvvm.tcgen05.wait.st()") == 1
+    assert llir.count("tail call void @llvm.nvvm.tcgen05.wait.st()") == expected_store_waits
     assert llir.count("tail call void @llvm.nvvm.tcgen05.wait.ld()") == 1
     assert ptx.index("tcgen05.st.sync.aligned") < ptx.index("tcgen05.wait::st.sync.aligned")
     assert ptx.index("tcgen05.wait::st.sync.aligned") < ptx.index("tcgen05.ld.red.sync.aligned")
@@ -8744,6 +8789,46 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain(
     _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, use_abs, propagate_nan)
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+def test_tmem_runtime_matrix_ld_red_dynamic_descriptor_chain():
+    M = N = 128
+    layout = _make_tmem_linear_layout(M, N)
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+    selector = torch.tensor(1, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_ld_red_dynamic_descriptor_chain_kernel[(1, )](
+        inp,
+        out,
+        red,
+        selector,
+        layout,
+        N,
+        "auto",
+        tl.PropagateNan.NONE,
+        num_warps=4,
+    )
+
+    expected = inp + 5
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.max(expected, dim=1).values, atol=0, rtol=0)
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        "32x32b.x128",
+        "max",
+        False,
+        tl.PropagateNan.NONE,
+        expected_store_waits=2,
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_load" in ttgir
     assert "ttg.memdesc_index" in ttgir
 
 

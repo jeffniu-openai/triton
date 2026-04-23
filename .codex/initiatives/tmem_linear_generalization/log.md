@@ -34551,6 +34551,40 @@ Open after this slice:
   to optimization or legacy fallback paths that do not define legality for a
   selected descriptor SSA value.
 
+## 2026-04-23 03:54 UTC: dynamic selected descriptor-chain ld.red coverage
+
+- Branch/HEAD before this validation slice:
+  `052bb038a Use type-local scales storage for selected ld/st views`.
+- Motivation:
+  after repairing selected scales ld/st, the next adjacent risk was whether
+  ld.red still needed producer-chain-visible descriptor views for correctness.
+  A dynamic same-typed descriptor selection is the useful sentinel because
+  lowering cannot recover branch provenance locally.
+- Completed coverage:
+  added `tmem_ld_red_dynamic_descriptor_chain_kernel` and
+  `test_tmem_runtime_matrix_ld_red_dynamic_descriptor_chain`. The test stores
+  distinct payloads into two candidate descriptor chains, selects between their
+  same-typed views, performs `load_max` through the selected descriptor, and
+  checks runtime output, row reductions, selected forwarding, descriptor-view
+  TTGIR markers, and exact `tcgen05.ld.red` shape.
+- Helper change:
+  `_assert_ld_red_opcode_pairs` now accepts an optional expected producer
+  store-wait count. Existing tests keep the default of one wait; the new
+  two-candidate row expects two store waits before the reduction.
+- Result:
+  no backend repair was required for this representative ld.red selected-value
+  row; current type-local ld/st/ld.red planning already handles it.
+- Validation evidence:
+  required `make -j8`; exact new row `1 passed`; 4-GPU
+  `ld_red and not reports and not scales` split passed as group1 `60 passed`,
+  group2 `60 passed`, group3 `60 passed`, group4 `60 passed`;
+  `git diff --check` passed.
+- Remaining migration frontier:
+  continue with copy selected-view/control-flow sentinels and the remaining
+  value-taking helper audit. Any new backend fix should still target the shared
+  planner/type-local abstraction instead of adding consumer-specific rescue
+  stacks.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

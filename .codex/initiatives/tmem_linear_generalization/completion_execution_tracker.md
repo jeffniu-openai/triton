@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 03:45 UTC
+Last updated: 2026-04-23 03:54 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -66,7 +66,11 @@ Active implementation checklist:
   descriptor-view slice: generated A/B scales descriptor views now use their
   type-local recovered `tensor_memory_scales` storage type for load/store
   query-type rescue and LLVM planning, preserving the current selected runtime
-  `taddr` and avoiding unsafe canonical dense-linear surrogate lowering.
+  `taddr` and avoiding unsafe canonical dense-linear surrogate lowering. First
+  dynamic ld.red selected-view sentinel: a same-typed descriptor-chain
+  `arith.select` row is covered as a runtime positive, proving the current
+  ld.red path handles that representative selected value without additional
+  backend changes.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -141,6 +145,16 @@ uses the recovered storage type as the semantic planning type for raw/support
 attempts. The selected descriptor's runtime `taddr` still carries the dynamic
 base; only the static storage semantics change. This fixed the 1CTA
 row-permuted selected scales view miscompile and kept the 2CTA row green.
+
+Current ld.red selected-view checkpoint:
+a representative dynamic selected descriptor-chain ld.red row is covered as a
+runtime positive. The test stores distinct payloads into two candidate TMEM
+descriptor chains, selects between same-typed descriptor views, and performs
+`load_max` through the selected descriptor. It validates the selected runtime
+`taddr`, row reductions, descriptor-view TTGIR markers, and exact
+`tcgen05.ld.red` shape. The existing type-local ld/st/ld.red planning already
+handles this row; the only test-helper change was allowing two store waits for
+the two initialized candidates.
 
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
@@ -235,6 +249,18 @@ dynamic selected scales ld/st rows `2 passed`; focused `ldst_scales` selector
 `ldst_scales or scale_descriptor_view or bscale_descriptor_view` split passed
 as group1 `12 passed`, group2 `12 passed`, group3 `12 passed`, group4
 `11 passed`; `git diff --check` passed.
+
+Completed eighteenth implementation slice: dynamic selected descriptor-chain
+ld.red coverage. Added a runtime positive that selects between two same-typed
+descriptor-chain TMEM views and reduces through the selected descriptor. This
+was an adversarial validation of the current type-local ld.red path rather than
+a backend repair; runtime correctness and exact opcode checks passed. The
+ld.red opcode helper now accepts an optional producer store-wait count so this
+two-candidate setup can assert the extra wait without weakening existing tests.
+Validation: required `make -j8`; exact new row `1 passed`; 4-GPU
+`ld_red and not reports and not scales` split passed as group1 `60 passed`,
+group2 `60 passed`, group3 `60 passed`, group4 `60 passed`; `git diff --check`
+passed.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but
