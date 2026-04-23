@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 20:01 UTC
+Last updated: 2026-04-23 20:05 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -210,15 +210,24 @@ Active implementation checklist:
   chooses row plans from the current `MemDescType`; dynamic scales ld/st
   descriptor-view coverage now tests selector 0 and selector 1 with distinct
   roots so the selected runtime `taddr` is observable.
+- [x] Scales query-helper generalization slice: the public
+  `inferTypeLocalTMemLdStQueryLayout(MemDescType)` and
+  `getTypeLocalTMemLdStQueryTypes(MemDescType)` helpers now cover scales
+  descriptor views as well as active self-contained subviews, so value-shaped
+  wrappers no longer own a separate semantic branch for that descriptor
+  class.
 - [ ] Packed-lane `tcgen05.copy` scheduling remains a real planner/modeling
   boundary: the current scheduler can identify the lane/dword projection, but
   still lacks a lane-aware source-storage, descriptor-synthesis, and tile
   footprint model that would make such copies legal.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
-  and producer-chain matchers are optimizer-only. Latest completed slice:
+  and producer-chain matchers are optimizer-only. Latest completed slices:
   scales descriptor-view load/store support planning now uses the
-  type-local query and row-plan helpers directly, and dynamic selector
-  coverage proves distinct selected scale roots produce distinct values.
+  type-local query and row-plan helpers directly, dynamic selector
+  coverage proves distinct selected scale roots produce distinct values,
+  and the public type-local ld/st query/query-type helpers now include
+  scales descriptor views instead of leaving that semantic branch in the
+  value wrapper.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
   and example performance checks before considering the migration complete.
 

@@ -183,7 +183,19 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 20:01 UTC completed the scales ld/st
+Latest validation checkpoint: 2026-04-23 20:05 UTC generalized the scales ld/st
+type-local helper surface. `inferTypeLocalTMemLdStQueryLayout` and
+`getTypeLocalTMemLdStQueryTypes` now cover scales descriptor views
+directly, so the value-shaped wrappers delegate through one
+`MemDescType` semantic path for active self-contained subviews and
+scale descriptor views. Validation: required `make -j8`; focused
+`ldst_scales and (descriptor_view or reports)` selector `20 passed,
+1687 deselected`; four-GPU `ldst_scales and not reports` selector
+passed as group1 `9 passed`, group2 `9 passed`, group3 `9 passed`,
+group4 `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
+`git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 20:01 UTC completed the scales ld/st
 helper-locality slice. Scales descriptor-view load/store support planning
 now uses a type-local scales descriptor-view query helper and type-local
 row-plan selection instead of routing the semantic support path through the

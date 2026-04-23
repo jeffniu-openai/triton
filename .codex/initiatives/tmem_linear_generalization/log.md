@@ -35740,3 +35740,27 @@ Open after this slice:
   semantic lowering/verifier helpers away from producer-chain compatibility
   wrappers, then return to the packed-lane `tcgen05.copy` scheduler/model
   boundary when the helper surface is clean.
+
+## 2026-04-23 20:05 UTC: scales query-helper generalization checkpoint
+
+- Branch/HEAD at slice start:
+  `5bd14b733 Split scales ld/st support planning`.
+- Completed source slice:
+  generalized the public type-local ld/st helper surface so
+  `inferTypeLocalTMemLdStQueryLayout(MemDescType)` covers scales
+  descriptor views and `getTypeLocalTMemLdStQueryTypes(MemDescType)`
+  returns the scales storage query plus current descriptor-view type. The
+  value-shaped wrappers now delegate through those type-local helpers
+  instead of retaining a separate semantic branch for scales views.
+- Validation evidence:
+  required `make -j8`; focused `ldst_scales and (descriptor_view or
+  reports)` selector `20 passed, 1687 deselected`; four-GPU
+  `ldst_scales and not reports` selector passed as group1 `9 passed`,
+  group2 `9 passed`, group3 `9 passed`, group4 `6 passed`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed.
+- Next concrete step:
+  commit and push this helper-generalization checkpoint. Continue with the
+  remaining semantic helper split, especially lowering/verifier call sites
+  that still depend on value-shaped row-plan or standalone compatibility
+  wrappers before optimizer-only producer-chain code is isolated.

@@ -4879,9 +4879,6 @@ getTypeLocalTMemLdStQueryTypes(gpu::MemDescType memTy) {
   llvm::SmallVector<gpu::MemDescType> queryTypes;
   if (!memTy)
     return queryTypes;
-  bool hasCompactTypeLocalLayout =
-      getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr).has_value();
-  memTy = getSelfContainedTMemSubviewPlanningType(memTy);
 
   auto add = [&](gpu::MemDescType ty) {
     if (llvm::none_of(queryTypes, [&](gpu::MemDescType existing) {
@@ -4890,6 +4887,17 @@ getTypeLocalTMemLdStQueryTypes(gpu::MemDescType memTy) {
       queryTypes.push_back(ty);
     }
   };
+
+  if (isTypeLocalTMemScalesDescriptorView(memTy)) {
+    if (auto storageType = getMMAv5ScaleStorageType(memTy))
+      add(*storageType);
+    add(memTy);
+    return queryTypes;
+  }
+
+  bool hasCompactTypeLocalLayout =
+      getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr).has_value();
+  memTy = getSelfContainedTMemSubviewPlanningType(memTy);
 
   auto rowPlan = getTMemLdStRowPlanForType(memTy);
   if (hasCompactTypeLocalLayout) {
@@ -4908,7 +4916,8 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
   auto memTy = dyn_cast<gpu::MemDescType>(memDesc.getType());
   if (!memTy)
     return queryTypes;
-  if (hasSelfContainedTMemSubviewLayout(memTy))
+  if (hasSelfContainedTMemSubviewLayout(memTy) ||
+      isTypeLocalTMemScalesDescriptorView(memTy))
     return getTypeLocalTMemLdStQueryTypes(memTy);
 
   auto add = [&](gpu::MemDescType ty) {
@@ -4918,13 +4927,6 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
       queryTypes.push_back(ty);
     }
   };
-
-  if (isTypeLocalTMemScalesDescriptorView(memTy)) {
-    if (auto storageType = getMMAv5ScaleStorageType(memTy))
-      add(*storageType);
-    add(memTy);
-    return queryTypes;
-  }
 
   bool explicitViewProducer =
       isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
@@ -5543,6 +5545,8 @@ inferTypeLocalTMemScalesDescriptorViewLdStQueryLayout(MemDescType memTy,
 
 FailureOr<TMemLdStQueryLayout>
 inferTypeLocalTMemLdStQueryLayout(MemDescType memTy, std::string *error) {
+  if (isTypeLocalTMemScalesDescriptorView(memTy))
+    return inferTypeLocalTMemScalesDescriptorViewLdStQueryLayout(memTy, error);
   if (!memTy ||
       memTy.getMemorySpace() != TensorMemorySpaceAttr::get(memTy.getContext())) {
     if (error)
@@ -5573,10 +5577,9 @@ inferStandaloneTMemLdStQueryLayout(Value memDesc,
                                    bool preserveNonCanonicalView,
                                    std::string *error) {
   if (auto memTy = dyn_cast<MemDescType>(memDesc.getType())) {
-    if (hasSelfContainedTMemSubviewLayout(memTy))
+    if (hasSelfContainedTMemSubviewLayout(memTy) ||
+        isTypeLocalTMemScalesDescriptorView(memTy))
       return inferTypeLocalTMemLdStQueryLayout(memTy, error);
-    if (isTypeLocalTMemScalesDescriptorView(memTy))
-      return inferTypeLocalTMemScalesDescriptorViewLdStQueryLayout(memTy, error);
   }
 
   auto maybeQuery = inferStandaloneTMemLdStQueryLayoutImpl(
@@ -6873,10 +6876,7 @@ getTypeLocalTMemLdStSupportQueryPlan(MemDescType memTy, std::string *error) {
                                ? memTy
                                : getSelfContainedTMemSubviewPlanningType(memTy);
   FailureOr<TMemLdStQueryLayout> maybeQuery =
-      isTypeLocalTMemScalesDescriptorView(planningTy)
-          ? inferTypeLocalTMemScalesDescriptorViewLdStQueryLayout(planningTy,
-                                                                  error)
-          : inferTypeLocalTMemLdStQueryLayout(planningTy, error);
+      inferTypeLocalTMemLdStQueryLayout(planningTy, error);
   if (failed(maybeQuery))
     return std::nullopt;
 

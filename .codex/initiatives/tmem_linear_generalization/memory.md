@@ -18471,3 +18471,17 @@ rejection, not rescue
   helper split work continues with semantic lowering/verifier callers that
   still expose value-shaped compatibility wrappers, while packed-lane
   `tcgen05.copy` scheduling remains a separate planner/modeling boundary.
+
+- 2026-04-23 20:05 UTC scales ld/st type-local helper surface generalized.
+  `inferTypeLocalTMemLdStQueryLayout(MemDescType)` now handles scales
+  descriptor views directly, and
+  `getTypeLocalTMemLdStQueryTypes(MemDescType)` now returns the scales
+  storage query type plus current descriptor-view type from the same public
+  type-local entry point used by active self-contained subviews. The
+  value-shaped wrappers now delegate instead of owning a separate semantic
+  scales branch. Validation: required `make -j8`; focused
+  `ldst_scales and (descriptor_view or reports)` selector `20 passed,
+  1687 deselected`; four-GPU `ldst_scales and not reports` selector
+  passed as group1 `9 passed`, group2 `9 passed`, group3 `9 passed`,
+  group4 `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
+  `git diff --check` passed.
