@@ -2,6 +2,7 @@
 #include "Dialect/NVGPU/IR/Dialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "triton/Tools/LinearLayout.h"
 #include "llvm/Support/raw_ostream.h"
@@ -181,6 +182,46 @@ Value getLeaderAddress(Location loc, ConversionPatternRewriter &rewriter,
   Value barrierInt = b.ptrtoint(i32_ty, barrierPtr);
   barrierInt = b.and_(barrierInt, b.i32_val(fullMask));
   return b.inttoptr(barrierPtr.getType(), barrierInt);
+}
+
+Value projectTMemElementBaseToWordBase(Location loc, RewriterBase &rewriter,
+                                       Value tmemBase,
+                                       uint32_t elementBitwidth) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value base = b.ptrtoint(i32_ty, tmemBase);
+  if (elementBitwidth >= 32)
+    return base;
+
+  uint32_t elementsPerWord =
+      triton::nvidia_gpu::getTMemElementsPerWord(elementBitwidth);
+  unsigned shift = 0;
+  while ((1u << shift) < elementsPerWord)
+    ++shift;
+
+  Value row = b.and_(base, b.i32_val(static_cast<int32_t>(
+                               ~triton::nvidia_gpu::kTMemPackedOffsetColMask)));
+  Value elementCol = b.and_(
+      base, b.i32_val(triton::nvidia_gpu::kTMemPackedOffsetColMask));
+  Value wordCol = b.lshr(elementCol, b.i32_val(shift));
+  return b.or_(row, wordCol, /*disjoint=*/true);
+}
+
+Value projectTMemWordBaseToElementBase(Location loc, RewriterBase &rewriter,
+                                       Value tmemBase,
+                                       uint32_t elementBitwidth) {
+  if (elementBitwidth >= 32)
+    return tmemBase;
+
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  uint32_t elementsPerWord =
+      triton::nvidia_gpu::getTMemElementsPerWord(elementBitwidth);
+  Value row =
+      b.and_(tmemBase, b.i32_val(static_cast<int32_t>(
+                           ~triton::nvidia_gpu::kTMemPackedOffsetColMask)));
+  Value wordCol = b.and_(
+      tmemBase, b.i32_val(triton::nvidia_gpu::kTMemPackedOffsetColMask));
+  Value elementCol = b.mul(wordCol, b.i32_val(elementsPerWord));
+  return b.or_(row, elementCol, /*disjoint=*/true);
 }
 
 Value createLeadCTAPredicate(Location loc, RewriterBase &rewriter) {

@@ -77,6 +77,16 @@ Value getLeaderAddress(Location loc, ConversionPatternRewriter &rewriter,
                        Value barrierPtr,
                        mlir::triton::gpu::MemDescType barrierTy);
 
+// Convert between Triton's runtime memdesc representation, where the low taddr
+// bits track TMEM element columns, and Blackwell ISA operands, where the low
+// taddr bits address 32-bit hardware columns.
+Value projectTMemElementBaseToWordBase(Location loc, RewriterBase &rewriter,
+                                       Value tmemBase,
+                                       uint32_t elementBitwidth);
+Value projectTMemWordBaseToElementBase(Location loc, RewriterBase &rewriter,
+                                       Value tmemBase,
+                                       uint32_t elementBitwidth);
+
 /// Create a predicate where only the lead CTA is active for two CTA mode.
 Value createLeadCTAPredicate(Location loc, RewriterBase &rewriter);
 } // namespace NVIDIA

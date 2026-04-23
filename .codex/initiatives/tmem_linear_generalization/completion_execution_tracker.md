@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 06:22 UTC
+Last updated: 2026-04-23 06:43 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -114,6 +114,16 @@ Active implementation checklist:
   static subword subviews and lowering-only subview/index paths reject
   non-32-bit-column-aligned origins cleanly instead of silently flooring the
   element column to a hardware word column.
+  First element-column runtime slice: the runtime TMEM memdesc value now
+  carries physical element columns for allocation results and aligned
+  subviews/indexes. Generic and NVIDIA view/index lowering advance the
+  current `taddr` by `getTMemViewElementOffset`, root allocation converts the
+  hardware word-column address returned by `tcgen05.alloc` into the
+  element-column representation, and ISA lowerings project back to hardware
+  word columns only at ld/st, copy, MMAv5 operand/accumulator, and scaled-MMA
+  scale-address emission. `lowerTMemLdSt` now threads the memdesc element
+  bitwidth separately from the packed LLVM packet type, so f16/i8 packed b32
+  messages still project the TMEM base correctly.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -145,6 +155,17 @@ a raw tile-permuted current layout is not a valid direct support query by
 itself, so ld/st support planning still uses the canonical family support
 layout. Remaining work continues with broader type-local MMAv5/scales cleanup,
 `ld.red` cleanup, and helper API separation.
+
+Current element-column runtime checkpoint: aligned subword TMEM descriptors now
+use the intended runtime representation for the cases covered by current
+tests. The memdesc SSA value stores the physical element-column `taddr`; view
+and index lowering add element-column offsets derived from the current
+`MemDescType` layout; and the shared NVIDIA LLVM helper
+`projectTMemElementBaseToWordBase` is the only boundary used by ld/st, copy,
+plain MMAv5, scaled MMAv5 accumulator, and scaled-MMA scale operands before
+emitting ISA addresses. The unaligned subword guard remains in place for
+physical element origins that are not 32-bit hardware-column aligned because
+the separate dynamic `subword_index`/RMW path is still not implemented.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

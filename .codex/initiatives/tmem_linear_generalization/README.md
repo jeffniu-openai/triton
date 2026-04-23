@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 06:22 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 06:43 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -100,6 +100,15 @@ the hardware word-column projection, and the frontend/lowering rejects
 non-32-bit-column-aligned subword view origins cleanly until the planned
 element-column `taddr` plus subword-index codegen path is implemented. This is
 tracked as a temporary correctness guard, not a final ISA-impossible boundary.
+The first aligned element-column runtime slice is now implemented: allocation
+results are converted from hardware word-column bases to element-column
+memdesc bases, view/index/subslice lowering advances by element-column offsets
+computed from the current `MemDescType`, and ld/st, copy, MMAv5, and
+scaled-MMAv5 scale operands project back to hardware word-column addresses only
+at ISA emission. Validation fixed two important details: packed f16/i8 ld/st
+must project using the memdesc element bitwidth rather than the packed LLVM b32
+packet type, and scaled-MMAv5 scale bases are TMEM ISA operands that need the
+same projection boundary.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -127,7 +136,17 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 06:22 UTC added a clean negative for
+Latest validation checkpoint: 2026-04-23 06:43 UTC implemented the aligned
+element-column runtime slice while keeping the unaligned subword guard in
+place. Validation: required `make -j8`; selector
+`linear_subslice_view_subword or ldst_unaligned_subword_linear_subslice_view`
+passed across four GPU split groups as group1 `5 passed`, group2 `5 passed`,
+group3 `5 passed`, group4 `2 passed`; direct subword ld/st/copy selector
+passed as group1 `5 passed`, group2 `5 passed`, group3 `5 passed`, group4
+`5 passed`; tmem-backed MMAv5 smoke rows `4 passed`; lit
+`tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 06:22 UTC added a clean negative for
 unaligned packed-subword active views after proving the prior behavior
 miscompiled `f16` physical element column 1 as hardware word column 0.
 Validation: required `make -j8`; selector

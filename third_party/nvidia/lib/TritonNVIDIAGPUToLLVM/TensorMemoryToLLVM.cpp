@@ -314,8 +314,9 @@ static SmallVector<Value> unpackResults(Value packedValues, Type elemTy,
 // contribute partial reductions, they are combined into one.
 std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
     Location loc, ConversionPatternRewriter &rewriter, const LinearLayout &reps,
-    ArrayRef<Value> vals, TMemAccessAtom atom, Type llvmElemTy, Value tmemBase,
-    Value pred, int valsPerMessage, bool unpacked,
+    ArrayRef<Value> vals, TMemAccessAtom atom, Type llvmElemTy,
+    uint32_t tmemElementBitwidth, Value tmemBase, Value pred,
+    int valsPerMessage, bool unpacked,
     std::optional<uint32_t> secondHalfOffset, uint32_t baseOffset,
     uint32_t warpBaseOffset0, uint32_t warpBaseOffset1,
     ArrayRef<int32_t> packetOffsets,
@@ -330,7 +331,8 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
   auto kRow = str_attr("row");
   bool isStore = !vals.empty();
 
-  tmemBase = b.ptrtoint(i32_ty, tmemBase);
+  tmemBase = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
+      loc, rewriter, tmemBase, tmemElementBitwidth);
   if (baseOffset != 0)
     tmemBase = b.add(tmemBase, b.i32_val(baseOffset));
 
@@ -485,7 +487,8 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
 static FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>>
 lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
                       TMemLdStEncodingInfo &info, Value pred, Type llvmElemTy,
-                      ArrayRef<Value> vals, Value tmemBase,
+                      uint32_t tmemElementBitwidth, ArrayRef<Value> vals,
+                      Value tmemBase,
                       std::optional<TMEMLoadReduceModifier> redOp, bool useAbs,
                       bool useNaN) {
   bool isStore = !vals.empty();
@@ -497,9 +500,9 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
     if (isStore) {
       inVals = removeBroadcast.apply(inVals);
     }
-    auto outOr = lowerTMemLdStFromInfo(loc, rewriter, info, pred, llvmElemTy,
-                                       inVals, tmemBase, redOp, useAbs,
-                                       useNaN);
+    auto outOr = lowerTMemLdStFromInfo(
+        loc, rewriter, info, pred, llvmElemTy, tmemElementBitwidth, inVals,
+        tmemBase, redOp, useAbs, useNaN);
     if (failed(outOr))
       return failure();
     auto [outVals, redvalVals] = *outOr;
@@ -526,9 +529,9 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
     if (isStore) {
       inVals = pack(inVals, packedElemTy, loc, rewriter, padding);
     }
-    auto outOr = lowerTMemLdStFromInfo(loc, rewriter, info, pred, packedElemTy,
-                                       inVals, tmemBase, redOp, useAbs,
-                                       useNaN);
+    auto outOr = lowerTMemLdStFromInfo(
+        loc, rewriter, info, pred, packedElemTy, tmemElementBitwidth, inVals,
+        tmemBase, redOp, useAbs, useNaN);
     if (failed(outOr))
       return failure();
     auto [outVals, redvalVals] = *outOr;
@@ -551,10 +554,11 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
   }
   auto [outVals, redvalVals] =
       lowerTMemLdSt(loc, rewriter, info.reps, inVals, info.atom, llvmElemTy,
-                    tmemBase, pred, info.numRegsPerMessage, info.unpacked,
-                    info.secondHalfOffset, info.baseOffset, info.warpBaseOffset0,
-                    info.warpBaseOffset1, info.packetOffsets, redOp, useAbs,
-                    useNaN);
+                    tmemElementBitwidth, tmemBase, pred,
+                    info.numRegsPerMessage, info.unpacked,
+                    info.secondHalfOffset, info.baseOffset,
+                    info.warpBaseOffset0, info.warpBaseOffset1,
+                    info.packetOffsets, redOp, useAbs, useNaN);
   if (!isStore) {
     outVals = info.perm.inverse().apply(outVals);
   }
@@ -677,8 +681,9 @@ lowerTMemLdStFromTypes(
         encodingInfoOr->baseOffset =
             makeBaseOffsetRelativeToCurrentTAddr(encodingInfoOr->baseOffset);
         if (auto lowered = lowerTMemLdStFromInfo(
-                loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals,
-                tmemBase, redOp, useAbs, useNaN);
+                loc, rewriter, *encodingInfoOr, pred, llvmElemTy,
+                memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs,
+                useNaN);
             succeeded(lowered)) {
           return *lowered;
         }
@@ -726,8 +731,9 @@ lowerTMemLdStFromTypes(
         encodingInfo.baseOffset =
             makeBaseOffsetRelativeToCurrentTAddr(encodingInfo.baseOffset);
         return lowerTMemLdStFromInfo(
-            loc, rewriter, encodingInfo, pred, llvmElemTy, vals, tmemBase,
-            redOp, useAbs, useNaN);
+            loc, rewriter, encodingInfo, pred, llvmElemTy,
+            memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs,
+            useNaN);
       }
       return failure();
     };
@@ -769,7 +775,8 @@ lowerTMemLdStFromTypes(
                     memDescValue, sourceRawEncodingInfo->baseOffset);
             if (auto lowered = lowerTMemLdStFromInfo(
                     loc, rewriter, *sourceRawEncodingInfo, pred, llvmElemTy,
-                    vals, tmemBase, redOp, useAbs, useNaN);
+                    memTy.getElementTypeBitWidth(), vals, tmemBase, redOp,
+                    useAbs, useNaN);
                 succeeded(lowered)) {
               return *lowered;
             }
@@ -823,8 +830,9 @@ lowerTMemLdStFromTypes(
                       memDescValue, regTy, queryTy, maxnreg, rowPlan,
                       *encodingInfoOr);
         return lowerTMemLdStFromInfo(
-            loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals, tmemBase,
-            redOp, useAbs, useNaN);
+            loc, rewriter, *encodingInfoOr, pred, llvmElemTy,
+            memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs,
+            useNaN);
       }
     }
   }
@@ -1017,15 +1025,21 @@ struct TensorMemoryAllocOpConversion
     int rowOffset = cast<IntegerAttr>(op->getAttr("tensor_memory_row_offset"))
                         .getValue()
                         .getZExtValue();
-    Value allocAddress =
-        b.add(baseInt, b.i32_val(packTMemRowColOffset(rowOffset, colOffset)));
+    auto memTy = cast<MemDescType>(op.getResult().getType());
+    baseInt = LLVM::NVIDIA::projectTMemWordBaseToElementBase(
+        loc, rewriter, baseInt, memTy.getElementTypeBitWidth());
+    uint32_t elementsPerWord =
+        getTMemElementsPerWord(memTy.getElementTypeBitWidth());
+    uint32_t elementColOffset =
+        static_cast<uint32_t>(colOffset) * elementsPerWord;
+    Value allocAddress = b.add(
+        baseInt, b.i32_val(packTMemRowColOffset(rowOffset, elementColOffset)));
     SmallVector<unsigned> order(op.getType().getRank());
     std::iota(order.begin(), order.end(), 0);
     std::reverse(order.begin(), order.end());
 
     if (op.getSrc()) {
       auto regTy = cast<RankedTensorType>(op.getSrc().getType());
-      auto memTy = cast<MemDescType>(op.getResult().getType());
       auto llvmElemTy = getTypeConverter()->convertType(regTy.getElementType());
       auto maxnreg = getContextualMaxNReg(op);
       SmallVector<Value> srcValues =
@@ -1132,6 +1146,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto cvt = *maybeCvt;
 
   auto bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
+  Value wordBaseDst = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
+      loc, rewriter, baseDst, bitwidth);
   auto copyPlans = getTMemCopyPlans(cvt, bitwidth);
   if (copyPlans.empty()) {
     auto diag = op->emitOpError("failed to classify tcgen05.copy family from "
@@ -1233,8 +1249,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     }
     uint32_t messageDestinationOffset =
         destinationBaseOffset + instruction.destination.offset;
-    auto tmemAddr = b.add(b.ptrtoint(i32_ty, baseDst),
-                          b.i32_val(messageDestinationOffset));
+    auto tmemAddr = b.add(wordBaseDst, b.i32_val(messageDestinationOffset));
     createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, messagePlan.atom,
                     messagePlan.sourceFormat, twoCTAs);
   }
@@ -1295,10 +1310,9 @@ struct MemDescIndexOpConversion
     auto ll = triton::nvidia_gpu::getCanonicalTensorMemoryLinearLayout(srcTy);
     int layoutRank = ll.getNumOutDims();
     Value tmemBase = adaptor.getSrc();
-    uint32_t bitwidth = srcTy.getElementTypeBitWidth();
     if (srcTy.getRank() > layoutRank) {
       auto kCol = StringAttr::get(ctx, "col");
-      int singleBufferCols = ll.getInDimSize(kCol) / (32 / bitwidth);
+      int singleBufferCols = ll.getInDimSize(kCol);
       int64_t prefixStride = product<int64_t>(srcTy.getShape().drop_front().take_front(
           srcTy.getRank() - layoutRank - 1));
       Value offset =
@@ -1321,7 +1335,7 @@ struct MemDescIndexOpConversion
       return failure();
     rewriter.replaceOp(
         op, advanceTensorMemoryBase(loc, rewriter, tmemBase,
-                                    triton::nvidia_gpu::getTMemViewOffset(
+                                    triton::nvidia_gpu::getTMemViewElementOffset(
                                         srcTy, offsets)));
     return success();
   }
@@ -1365,7 +1379,7 @@ struct TMEMSubSliceOpConversion
     offsets.back() = op.getN();
     if (failed(verifyHardwareColumnAlignedTMemView(loc, srcTy, offsets)))
       return failure();
-    uint32_t offset = getTMemSubSliceOffset(srcTy, op.getN());
+    uint32_t offset = getTMemSubSliceElementOffset(srcTy, op.getN());
 
     Value tmemBase = adaptor.getSrc();
     Value offsetVal = b.i32_val(offset);

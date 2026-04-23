@@ -18262,3 +18262,22 @@ rejection, not rescue
   selector passed as group1 `5 passed`, group2 `5 passed`, group3 `5 passed`,
   group4 `5 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
   passed.
+
+- 2026-04-23 aligned subword element-column runtime slice completed. Runtime
+  TMEM memdesc SSA values now carry physical element columns for root
+  allocation results and aligned view/index offsets. Root allocation converts
+  the hardware word-column base from `tcgen05.alloc` into element columns;
+  generic and NVIDIA view/index/subslice lowering add element-column offsets;
+  and ld/st, copy, MMAv5 tmem operands/accumulators, and scaled-MMAv5 scale
+  addresses project back to hardware word columns at the ISA boundary through a
+  shared NVIDIA LLVM helper. Validation exposed and fixed two important gaps:
+  packed f16/i8 ld/st messages must project using the memdesc element bitwidth,
+  not the packed LLVM b32 packet type, and scaled-MMAv5 scale bases must be
+  projected just like other TMEM ISA operands. Validation: required
+  `make -j8`; aligned subword active-view/unaligned-clean selector passed as
+  group1 `5 passed`, group2 `5 passed`, group3 `5 passed`, group4 `2 passed`;
+  direct subword ld/st/copy selector passed as group1 `5 passed`, group2
+  `5 passed`, group3 `5 passed`, group4 `5 passed`; tmem-backed MMAv5 smoke
+  rows `4 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed. The unaligned subword guard remains until the dynamic
+  `subword_index`/RMW path is implemented.

@@ -21,8 +21,8 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Value memDescValue, Value tmemBase, bool useRawWordColumns) {
   auto ll = ttng::getMMAv5TMemAddressLayout(memTy, memDescValue);
   auto bitwidth = memTy.getElementTypeBitWidth();
-  auto tb = TritonLLVMOpBuilder(loc, rewriter);
-  Value address = tb.ptrtoint(i32_ty, tmemBase);
+  Value address = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
+      loc, rewriter, tmemBase, bitwidth);
   return DotOpMmaV5TmemLoader(ll.pseudoinvert(), address, bitwidth,
                               useRawWordColumns);
 }
@@ -692,10 +692,14 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.numBitsPerElementA = scaledInfo.numBitsPerElementA;
   dot.numBitsPerElementB = scaledInfo.numBitsPerElementB;
 
-  TritonLLVMOpBuilder tb(loc, rewriter);
-  Value baseScaleA = tb.ptrtoint(i32_ty, adaptor.getAScale());
-  Value baseScaleB = tb.ptrtoint(i32_ty, adaptor.getBScale());
   auto aScaleTy = cast<MemDescType>(op.getAScale().getType());
+  auto bScaleRuntimeTy = cast<MemDescType>(op.getBScale().getType());
+  TritonLLVMOpBuilder tb(loc, rewriter);
+  Value baseScaleA = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
+      loc, rewriter, adaptor.getAScale(), aScaleTy.getElementTypeBitWidth());
+  Value baseScaleB = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
+      loc, rewriter, adaptor.getBScale(),
+      bScaleRuntimeTy.getElementTypeBitWidth());
   MemDescType bScaleTy = bScaleTyForPlanning;
   bool twoCTAs = ttng::getModuleTwoCTAs(op);
   SmallVector<Value> commitDescs = op.getCompletionDescs();

@@ -35287,3 +35287,49 @@ Open after this slice:
   commit and push this checkpoint. Continue with the actual runtime memdesc
   representation/codegen work needed to carry and consume subword phase instead
   of rejecting these views.
+
+## 2026-04-23 06:43 UTC: aligned subword element-column runtime slice
+
+- Branch/HEAD at slice start:
+  `cb9ba81d9 Reject unaligned subword TMEM views cleanly`.
+- Dirty files before checkpoint commit:
+  `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`,
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`,
+  `lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Utility.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Utility.h`, plus initiative
+  docs.
+- Completed source slice:
+  runtime TMEM memdesc SSA values now carry physical element columns for
+  allocation bases and aligned view/index updates. Root TMEM allocation
+  converts the hardware word-column result from `tcgen05.alloc` into
+  element-column form; generic and NVIDIA view/index/subslice lowering add
+  `getTMemViewElementOffset` / `getTMemSubSliceElementOffset`; and ISA
+  lowerings project element-column bases back to hardware word-column addresses
+  only at ld/st, copy, MMAv5 tmem operand/accumulator, and scaled-MMAv5 scale
+  address emission.
+- Bugs found while validating:
+  `lowerTMemLdSt` initially projected by the packed LLVM packet type after
+  f16/i8 packing, so packed b32 messages skipped subword projection. It now
+  carries the memdesc element bitwidth separately from the LLVM packet type.
+  Scaled-MMAv5 scale operands also still used raw `ptrtoint`; their bases now
+  use the shared element-to-word projection helper.
+- Boundary note:
+  the prior unaligned subword clean rejection remains. This slice covers the
+  aligned element-column representation and ISA-boundary projection; dynamic
+  `subword_index` plus software pack/unpack/RMW for unaligned subword origins
+  is still the next semantic slice.
+- Validation evidence:
+  required `make -j8`; split selector
+  `linear_subslice_view_subword or
+  ldst_unaligned_subword_linear_subslice_view` passed as group1 `5 passed`,
+  group2 `5 passed`, group3 `5 passed`, group4 `2 passed`; direct subword
+  ld/st/copy selector passed as group1 `5 passed`, group2 `5 passed`, group3
+  `5 passed`, group4 `5 passed`; tmem-backed MMAv5 smoke rows `4 passed`; lit
+  `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue with the unaligned subword
+  `subword_index`/RMW path or the next high-priority helper separation slice
+  from the tracker.

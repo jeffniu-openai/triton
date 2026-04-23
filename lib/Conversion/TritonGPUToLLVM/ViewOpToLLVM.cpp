@@ -88,7 +88,8 @@ Value buildDynamicTensorMemoryIndexOffset(Location loc,
   for (int64_t bit = 1; bit < dimSize; bit <<= 1) {
     SmallVector<int32_t> offsets(srcTy.getRank(), 0);
     offsets.front() = bit;
-    uint32_t bitOffset = triton::nvidia_gpu::getTMemViewOffset(srcTy, offsets);
+    uint32_t bitOffset =
+        triton::nvidia_gpu::getTMemViewElementOffset(srcTy, offsets);
     if (bitOffset == 0)
       continue;
     Value bitSet = b.icmp_ne(b.and_(index, b.i32_val(bit)), b.i32_val(0));
@@ -578,10 +579,9 @@ struct MemDescIndexOpConversion
       auto ll = triton::nvidia_gpu::getCanonicalTensorMemoryLinearLayout(srcTy);
       auto layoutRank = ll.getNumOutDims();
       Value tmemBase = adaptor.getSrc();
-      uint32_t bitwidth = srcTy.getElementTypeBitWidth();
       if (srcTy.getRank() > layoutRank) {
         auto kCol = StringAttr::get(ctx, "col");
-        int singleBufferCols = ll.getInDimSize(kCol) / (32 / bitwidth);
+        int singleBufferCols = ll.getInDimSize(kCol);
         int64_t prefixStride =
             product<int64_t>(srcTy.getShape().drop_front().take_front(
                 srcTy.getRank() - layoutRank - 1));
@@ -609,7 +609,7 @@ struct MemDescIndexOpConversion
         return failure();
       rewriter.replaceOp(
           op, advanceTensorMemoryBase(loc, rewriter, tmemBase,
-                                      triton::nvidia_gpu::getTMemViewOffset(
+                                      triton::nvidia_gpu::getTMemViewElementOffset(
                                           srcTy, offsets)));
       return success();
     }
@@ -681,7 +681,8 @@ struct MemDescSubsliceOpConversion
       rewriter.replaceOp(
           op, advanceTensorMemoryBase(loc, rewriter, adaptor.getSrc(),
                                       triton::nvidia_gpu::
-                                          getTMemSubviewOffsetForLowering(op)));
+                                          getTMemViewElementOffset(
+                                              srcTy, op.getOffsets())));
       return success();
     }
     auto llvmElemTy = getTypeConverter()->convertType(srcTy.getElementType());

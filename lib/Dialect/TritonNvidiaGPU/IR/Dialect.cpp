@@ -2439,6 +2439,13 @@ uint32_t getTMemSubSliceOffset(MemDescType memDescType, int32_t nOffset) {
   return getTMemViewOffset(memDescType, offsets);
 }
 
+uint32_t getTMemSubSliceElementOffset(MemDescType memDescType,
+                                      int32_t nOffset) {
+  SmallVector<int32_t> offsets(memDescType.getRank(), 0);
+  offsets.back() = nOffset;
+  return getTMemViewElementOffset(memDescType, offsets);
+}
+
 static std::pair<uint32_t, uint32_t>
 getTMemViewPhysicalRowElementColImpl(const LinearLayout &ll, unsigned memRank,
                                      ArrayRef<int32_t> offsets,
@@ -2531,6 +2538,13 @@ getTMemViewPhysicalRowElementCol(MemDescType memDescType,
           memDescType.getRank() > ll.getNumOutDims()
               ? memDescType.getRank() - ll.getNumOutDims()
               : 0));
+}
+
+uint32_t getTMemViewElementOffset(MemDescType memDescType,
+                                  ArrayRef<int32_t> offsets) {
+  auto [offsetRow, elementCol] =
+      getTMemViewPhysicalRowElementCol(memDescType, offsets);
+  return packTMemRowColOffset(offsetRow, elementCol);
 }
 
 uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {

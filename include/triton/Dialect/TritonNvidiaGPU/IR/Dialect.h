@@ -133,6 +133,8 @@ LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
 TMemAllocation getTmemAllocSizes(gpu::MemDescType memDescType);
 
 uint32_t getTMemSubSliceOffset(gpu::MemDescType memDescType, int32_t nOffset);
+uint32_t getTMemSubSliceElementOffset(gpu::MemDescType memDescType,
+                                      int32_t nOffset);
 
 uint32_t getTMemViewOffset(const LinearLayout &layout,
                            ArrayRef<int32_t> offsets, uint32_t bitwidth,
@@ -141,6 +143,9 @@ uint32_t getTMemViewOffset(const LinearLayout &layout,
 std::pair<uint32_t, uint32_t>
 getTMemViewPhysicalRowElementCol(gpu::MemDescType memDescType,
                                  ArrayRef<int32_t> offsets);
+
+uint32_t getTMemViewElementOffset(gpu::MemDescType memDescType,
+                                  ArrayRef<int32_t> offsets);
 
 uint32_t getTMemViewOffset(gpu::MemDescType memDescType,
                            ArrayRef<int32_t> offsets);

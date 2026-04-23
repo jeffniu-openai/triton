@@ -1672,3 +1672,33 @@ High-priority hacks and debt to remove after replacement coverage exists:
   selector passed as group1 `5 passed`, group2 `5 passed`, group3 `5 passed`,
   group4 `5 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
   passed.
+
+### 2026-04-23 Aligned Element-Column Runtime Slice
+
+- Implemented the first runtime slice of the planned memdesc abstraction for
+  aligned subword views. The lowered memdesc SSA value now carries a physical
+  element-column `taddr`: `tcgen05.alloc` word-column results are converted to
+  element columns, and generic/NVIDIA view/index/subslice lowering advances by
+  element-column offsets computed from the current `MemDescType` layout.
+- ISA emission is the projection boundary. Shared NVIDIA LLVM helpers convert
+  element-column memdesc bases back to hardware word-column addresses for
+  `tcgen05.ld/st`, `tcgen05.copy`, MMAv5 tmem operands/accumulators, and
+  scaled-MMAv5 scale operands. This keeps semantic view lowering independent
+  of producer chains while preserving the hardware address form required by
+  PTX.
+- Two validation findings tightened the abstraction:
+  packed f16/i8 ld/st lowering cannot use the packed LLVM packet type to decide
+  TMEM address projection, because software packs subword elements into b32
+  registers before emission. `lowerTMemLdSt` now carries the memdesc element
+  bitwidth separately from the LLVM packet type. Scaled-MMAv5 scale operands
+  also needed the same element-to-word projection as other TMEM ISA operands.
+- This slice does not remove the unaligned subword guard. Non-32-bit-column
+  aligned physical element origins still require a runtime `subword_index` plus
+  software pack/unpack/RMW path before they can be accepted as positives.
+- Validation after this slice: required `make -j8`; split selector
+  `linear_subslice_view_subword or
+  ldst_unaligned_subword_linear_subslice_view` passed as group1 `5 passed`,
+  group2 `5 passed`, group3 `5 passed`, group4 `2 passed`; direct subword
+  ld/st/copy selector passed as group1 `5 passed`, group2 `5 passed`, group3
+  `5 passed`, group4 `5 passed`; tmem-backed MMAv5 smoke rows `4 passed`; lit
+  `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
