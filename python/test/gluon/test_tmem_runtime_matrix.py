@@ -829,6 +829,36 @@ def tmem_ldst_auto_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.const
 
 
 @gluon.jit
+def tmem_ldst_dynamic_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
+                                                  parent_layout: ttgl.constexpr,
+                                                  M: ttgl.constexpr, N: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.float32, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    view1 = tmem.slice(N, N, dim=1)
+    selected = view0
+    if ttgl.load(selector_ptr) != 0:
+        selected = view1
+    else:
+        selected = view0
+
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+    value = ttgl.convert_layout(value, reg_layout)
+
+    view0.store(value + ttgl.full([M, N], 3.0, ttgl.float32, layout=reg_layout))
+    view1.store(value + ttgl.full([M, N], 7.0, ttgl.float32, layout=reg_layout))
+    selected.store(value)
+
+    out0 = view0.load(reg_layout)
+    out1 = view1.load(reg_layout)
+    ttgl.store(out_ptr + offs, out0)
+    ttgl.store(out_ptr + M * N + offs, out1)
+
+
+@gluon.jit
 def tmem_alloc_source_init_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -6827,6 +6857,42 @@ def test_tmem_runtime_matrix_ldst(layout_name, n, variant, expected_shape):
     assert all(op in (expected_st, expected_ld) for op in observed_opcodes)
     assert expected_st in observed_opcodes
     assert expected_ld in observed_opcodes
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_runtime_matrix_ldst_dynamic_linear_subslice_view(selector):
+    m = 128
+    n = 128
+    layout = _make_tmem_linear_layout(m, 2 * n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty((2, m, n), dtype=torch.float32, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_ldst_dynamic_linear_subslice_view_kernel[(1, )](
+        inp, out, selector_tensor, layout, m, n, num_warps=4
+    )
+
+    expected0 = inp if selector == 0 else inp + 3
+    expected1 = inp if selector == 1 else inp + 7
+    torch.testing.assert_close(out[0], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[1], expected1, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_ops = [
+        ("tcgen05.st.sync.aligned.32x32b.x128.b32", 0),
+        ("tcgen05.st.sync.aligned.32x32b.x128.b32", 0),
+        ("tcgen05.st.sync.aligned.32x32b.x128.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x128.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x128.b32", 0),
+    ]
+    assert ops == expected_ops
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tmem_store" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

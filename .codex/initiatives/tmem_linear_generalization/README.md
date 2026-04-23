@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 04:17 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 04:27 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -71,8 +71,17 @@ The active self-contained copy helper now enforces that split directly:
 `selectTMemCopyPhysicalQuery` chooses or rejects through the type-local
 physical query before attempting legacy standalone/exact producer-chain
 reconstruction.
+Normal ld/st selected active column subviews now also have runtime coverage
+that checks both candidate views after storing through the selected descriptor.
 
-Latest validation checkpoint: 2026-04-23 04:17 UTC tightened active
+Latest validation checkpoint: 2026-04-23 04:27 UTC added dynamic selected
+normal ld/st column-subview coverage. Validation: required `make -j8`; exact
+new rows `2 passed`; adjacent ld/st selector `40 passed, 1602 deselected`;
+4-GPU `ldst and not reports and not scales` split passed as group1 `89 passed`,
+group2 `33 passed, 56 skipped`, group3 `67 passed, 22 skipped`, group4
+`66 passed, 20 skipped`.
+
+Previous validation checkpoint: 2026-04-23 04:17 UTC tightened active
 self-contained copy helper locality. Validation: required `make -j8`; combined
 selected-copy rows `8 passed`; 4-GPU `cp_no_scales and not reports` split
 passed as group1 `56 passed, 4 skipped`, group2 `60 passed`, group3

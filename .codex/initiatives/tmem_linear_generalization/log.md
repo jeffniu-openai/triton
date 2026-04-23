@@ -34705,6 +34705,35 @@ Open after this slice:
   rule: migrated self-contained descriptor classes should choose/reject from
   type-local facts before legacy chain recovery is consulted.
 
+## 2026-04-23 04:27 UTC: dynamic selected normal ld/st subview coverage
+
+- Branch/HEAD before this validation slice:
+  `647dd918a Choose active copy queries type-locally`.
+- Motivation:
+  copy and scales ld/st selected-value rows were covered, but normal
+  `ttng.tmem_store`/`ttng.tmem_load` over active column subviews did not have a
+  direct selected-value sentinel. A store-then-load-through-selected-only row
+  can miss a shared base bug if both operations make the same mistake, so the
+  test must inspect both candidate views after the selected store.
+- Completed coverage:
+  added `tmem_ldst_dynamic_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_ldst_dynamic_linear_subslice_view`. The kernel
+  initializes two same-typed `128x128xf32` subviews with distinct values,
+  stores through the selected descriptor, and then loads both explicit views.
+- Result:
+  no backend repair was required. Existing type-local ld/st query, support,
+  row-plan, and LLVM lowering paths already handle this representative selected
+  active subview.
+- Validation evidence:
+  required `make -j8`; exact new rows `2 passed`; adjacent ld/st selector
+  `40 passed, 1602 deselected`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `89 passed`,
+  group2 `33 passed, 56 skipped`, group3 `67 passed, 22 skipped`, group4
+  `66 passed, 20 skipped`.
+- Remaining migration frontier:
+  continue ld.red selected active-subview coverage and then resume helper
+  separation for ld/st verifier/lowering diagnostics.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

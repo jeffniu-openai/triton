@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:17 UTC
+Last updated: 2026-04-23 04:27 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -78,7 +78,11 @@ Active implementation checklist:
   `MemDescType`/layout. First copy helper-locality slice:
   `selectTMemCopyPhysicalQuery` now chooses or rejects active self-contained
   subview destinations through the type-local physical query before attempting
-  standalone/exact producer-chain reconstruction.
+  standalone/exact producer-chain reconstruction. First normal ld/st dynamic
+  selected-subview sentinel: selected active column subviews now have a
+  runtime positive that initializes both candidates, stores through the selected
+  descriptor, and loads both candidates to prove the selected store uses the
+  current runtime `taddr`.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -153,6 +157,16 @@ uses the recovered storage type as the semantic planning type for raw/support
 attempts. The selected descriptor's runtime `taddr` still carries the dynamic
 base; only the static storage semantics change. This fixed the 1CTA
 row-permuted selected scales view miscompile and kept the 2CTA row green.
+
+Current normal ld/st selected-subview checkpoint:
+a representative dynamic selected active column subview now has runtime
+coverage for normal `ttng.tmem_store`/`ttng.tmem_load`. The test initializes
+two same-typed same-parent `128x128xf32` subviews with distinct payloads, stores
+through the selected descriptor, then loads both explicit candidate views. The
+selector-1 case would fail if the selected store ignored the memdesc SSA value's
+current `taddr` while explicit loads still used their own view bases. This
+validates the selected-value contract for normal ld/st independently of the
+copy and scales paths.
 
 Current ld.red selected-view checkpoint:
 a representative dynamic selected descriptor-chain ld.red row is covered as a
@@ -339,6 +353,18 @@ classes keep the existing fallback order. Validation: required `make -j8`;
 combined selected-copy rows `8 passed`; 4-GPU `cp_no_scales and not reports`
 split passed as group1 `56 passed, 4 skipped`, group2 `60 passed`, group3
 `60 passed`, group4 `59 passed`; targeted lit set passed `6/6`.
+
+Completed twenty-third implementation slice: dynamic selected normal ld/st
+column-subview coverage. Added a runtime positive that selects between two
+same-typed same-parent active column subviews, stores through the selected
+descriptor, and then loads both candidate views to verify only the selected
+view was overwritten. No backend repair was required; existing type-local
+ld/st query, row-plan, and lowering paths already handle this representative
+selected active subview. Validation: required `make -j8`; exact new rows
+`2 passed`; adjacent ld/st selector `40 passed, 1602 deselected`; 4-GPU
+`ldst and not reports and not scales` split passed as group1 `89 passed`,
+group2 `33 passed, 56 skipped`, group3 `67 passed, 22 skipped`, group4
+`66 passed, 20 skipped`.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

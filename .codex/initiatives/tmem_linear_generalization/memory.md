@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 04:27 UTC added dynamic selected normal ld/st
+  column-subview runtime coverage. The new row initializes two same-typed
+  `128x128xf32` column subviews of one `128x256xf32` TMEM allocation with
+  distinct values, stores through the selected descriptor, then loads both
+  explicit candidate views. This catches selected-store base mistakes that a
+  store-then-load-through-selected-only test could miss. Validation: required
+  `make -j8`; exact new rows `2 passed`; adjacent ld/st selector `40 passed,
+  1602 deselected`; 4-GPU `ldst and not reports and not scales` split passed
+  as group1 `89 passed`, group2 `33 passed, 56 skipped`, group3
+  `67 passed, 22 skipped`, group4 `66 passed, 20 skipped`.
+
 - Latest: 2026-04-23 04:17 UTC tightened copy physical-query selection for
   active self-contained TMEM subviews. `selectTMemCopyPhysicalQuery` now
   computes the type-local destination query from the current `MemDescType` and

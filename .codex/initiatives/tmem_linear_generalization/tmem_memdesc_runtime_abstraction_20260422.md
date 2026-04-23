@@ -1327,3 +1327,24 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `8 passed`; 4-GPU `cp_no_scales and not reports` split passed as group1
   `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
   `59 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
+
+### 2026-04-23 Dynamic Selected Normal Ld/St Sentinel
+
+- Added runtime coverage for normal `ttng.tmem_store`/`ttng.tmem_load` over a
+  selected active column subview. The kernel initializes two same-typed
+  `128x128xf32` views of a `128x256xf32` parent with distinct values, stores
+  through the selected descriptor, and then loads both explicit candidate
+  views.
+- This is intentionally stronger than loading only through the selected
+  descriptor: if selected store and selected load both ignored the selected
+  runtime `taddr`, a simple roundtrip could pass. Checking both candidates
+  proves the selected store writes the selected runtime base while the explicit
+  view loads read their own bases.
+- No backend change was required. Existing type-local ld/st query, support,
+  row-plan, and LLVM lowering paths already handle this representative selected
+  active subview.
+- Validation after this slice: required `make -j8`; exact new rows `2 passed`;
+  adjacent ld/st selector `40 passed, 1602 deselected`; 4-GPU
+  `ldst and not reports and not scales` split passed as group1 `89 passed`,
+  group2 `33 passed, 56 skipped`, group3 `67 passed, 22 skipped`, group4
+  `66 passed, 20 skipped`.
