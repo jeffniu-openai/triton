@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:15 UTC
+Last updated: 2026-04-23 05:19 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -137,7 +137,9 @@ value-taking helpers still preserve physical-bitcast behavior and legacy
 producer-chain fallback, but the semantic type-local path is now callable and
 auditable independently. Ld/st query-rescue and M64 query-ordering now also
 have type-local entry points for active self-contained descriptors; legacy
-Value wrappers remain for descriptor classes not migrated yet.
+Value wrappers remain for descriptor classes not migrated yet. The Gluon
+register-layout picker now uses the type-local M64 query-ordering overload for
+active self-contained descriptors instead of entering the Value-shaped helper.
 
 Current B-scale checkpoint: scaled-MMAv5 B-scale storage classification now has
 a type-local entry point, `getMMAv5ScaledBScaleStorageType(MemDescType)`.

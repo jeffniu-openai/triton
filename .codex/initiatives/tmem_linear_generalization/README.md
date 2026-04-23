@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 05:15 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 05:19 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -91,8 +91,16 @@ M64 split-N query-type-vs-raw-query ordering now has an active-subview
 type-local overload as well, so migrated active descriptors choose lowering
 order from the current `MemDescType`/register layout rather than a producer
 chain raw-query probe.
+The Gluon register-layout picker now calls the type-local M64 ordering helper
+for active self-contained descriptors before falling back to the legacy
+Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 05:15 UTC added loop-carried
+Latest validation checkpoint: 2026-04-23 05:19 UTC routed active-subview Gluon
+M64 layout ordering through a type-local helper. Validation: required
+`make -j8`; selected active-subview ld/st rows `4 passed`; M64 split-N ld/st
+cluster `20 passed`; targeted lit set `6/6`.
+
+Previous validation checkpoint: 2026-04-23 05:15 UTC added loop-carried
 active-subview ld.red coverage. Validation: required `make -j8`; exact
 loop-carried rows `2 passed`; adjacent
 `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.

@@ -1804,8 +1804,11 @@ void init_gluon_ir(py::module &&m) {
               ttng::isExplicitTMemLdStViewProducer(queryMemDesc);
           auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
           auto preferQueryTypeLayoutsBeforeRawQuery =
-              ttng::shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
-                  queryMemDesc, numWarps, desiredAtom);
+              ttng::hasSelfContainedTMemSubviewLayout(queryMemDescTy)
+                  ? ttng::shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+                        queryMemDescTy, numWarps, desiredAtom)
+                  : ttng::shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+                        queryMemDesc, numWarps, desiredAtom);
           auto tryQueryTypeLayouts = [&]() -> py::object {
             for (ttg::MemDescType queryTy : queryTypes) {
               auto layouts = getCompatibleLayouts(queryMemDesc, queryTy);

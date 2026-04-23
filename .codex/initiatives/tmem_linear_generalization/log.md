@@ -34995,3 +34995,28 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Then continue helper API separation and
   reduce remaining semantic use of producer-chain helpers.
+
+## 2026-04-23 05:19 UTC: Gluon M64 ordering helper made type-local for active subviews
+
+- Branch/HEAD before this checkpoint:
+  `dcd1ff9bb Cover loop-carried ld.red column subviews`.
+- Dirty files before checkpoint commit:
+  `include/triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h`,
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+  `python/src/gluon_ir.cc`, plus initiative docs.
+- Completed source slice:
+  added a `MemDescType` overload of
+  `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery` and routed active
+  self-contained descriptors in the Gluon register-layout picker through that
+  overload. The existing Value wrapper now delegates to the type-local overload
+  for the same descriptor class and remains the legacy path otherwise.
+- Result:
+  frontend M64 split-N layout ordering for migrated active subviews no longer
+  enters a Value-shaped producer-chain helper. It derives the needed raw-query
+  layout from the current descriptor type/layout.
+- Validation evidence:
+  required `make -j8`; selected active-subview ld/st rows `4 passed`; M64
+  split-N ld/st cluster `20 passed`; targeted lit set `6/6`.
+- Next concrete step:
+  commit and push this checkpoint. Continue reducing remaining Value-shaped
+  semantic helpers, especially reduction layout and support diagnostics.

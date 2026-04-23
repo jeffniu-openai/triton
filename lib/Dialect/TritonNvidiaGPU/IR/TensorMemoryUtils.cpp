@@ -3586,8 +3586,25 @@ static bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQueryImpl(
 }
 
 bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+    MemDescType memTy, unsigned numWarps,
+    std::optional<TMemAccessAtom> desiredAtom) {
+  std::optional<TMemLdStQueryLayout> rawQuery;
+  if (auto maybeRawQuery =
+          inferTypeLocalTMemLdStQueryLayout(memTy, /*error=*/nullptr);
+      succeeded(maybeRawQuery)) {
+    rawQuery = *maybeRawQuery;
+  }
+  return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQueryImpl(
+      memTy, rawQuery, numWarps, desiredAtom);
+}
+
+bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
     Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom) {
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (hasSelfContainedTMemSubviewLayout(memTy)) {
+    return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+        memTy, numWarps, desiredAtom);
+  }
   std::optional<TMemLdStQueryLayout> rawQuery;
   if (auto maybeRawQuery = inferStandaloneTMemLdStQueryLayout(
           memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);

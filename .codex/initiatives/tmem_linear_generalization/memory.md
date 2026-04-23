@@ -18133,3 +18133,12 @@ rejection, not rescue
   `get_reg_layout()` and `load_max`. No backend change was needed. Validation:
   required `make -j8`; exact new rows `2 passed`; adjacent
   `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
+
+- 2026-04-23 Gluon M64 ordering helper separation completed. Added a
+  `MemDescType` overload of
+  `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery` and routed active
+  self-contained descriptors in the Gluon register-layout picker through it.
+  The Value wrapper now delegates for active descriptors and remains the legacy
+  path otherwise. Validation: required `make -j8`; selected active-subview
+  ld/st rows `4 passed`; M64 split-N ld/st cluster `20 passed`; targeted lit
+  set `6/6`.

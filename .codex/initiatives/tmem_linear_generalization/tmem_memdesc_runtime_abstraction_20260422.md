@@ -1463,3 +1463,16 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; exact new rows `2 passed`;
   adjacent `ld_red and linear_subslice_view` selector
   `4 passed, 1646 deselected`.
+
+### 2026-04-23 Gluon M64 Ordering Helper Separation
+
+- `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery` now has a
+  `MemDescType` overload. The Value overload delegates to it for active
+  self-contained descriptors, and the Gluon register-layout picker calls the
+  type-local overload directly for that descriptor class.
+- This removes another frontend layout-selection dependency on visible
+  producer-chain raw-query inference for migrated active subviews while keeping
+  legacy view-chain descriptors on the compatibility path.
+- Validation after this slice: required `make -j8`; selected active-subview
+  ld/st rows `4 passed`; M64 split-N ld/st cluster `20 passed`; targeted lit
+  set `6/6`.
