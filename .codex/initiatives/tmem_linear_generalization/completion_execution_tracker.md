@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:00 UTC
+Last updated: 2026-04-23 04:08 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -70,10 +70,11 @@ Active implementation checklist:
   dynamic ld.red selected-view sentinel: a same-typed descriptor-chain
   `arith.select` row is covered as a runtime positive, proving the current
   ld.red path handles that representative selected value without additional
-  backend changes. First dynamic copy selected-subview sentinel: a same-parent
-  column-subview `arith.select` row is covered as a runtime positive, proving
-  `tcgen05.copy` writes through the selected runtime `taddr` while legality is
-  derived from the current self-contained `MemDescType`/layout.
+  backend changes. First dynamic copy selected-subview sentinels: same-parent
+  column-subview `arith.select` rows are covered as runtime positives for both
+  dense `128x256b` and non-dense `warpx2::{01_23,02_13}` copy families,
+  proving `tcgen05.copy` writes through the selected runtime `taddr` while
+  legality is derived from the current self-contained `MemDescType`/layout.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -160,13 +161,16 @@ handles this row; the only test-helper change was allowing two store waits for
 the two initialized candidates.
 
 Current copy selected-subview checkpoint:
-a representative dynamic selected same-parent column subview now has runtime
-coverage. The test selects at runtime between two same-typed `128x128xf32`
-subviews of a `128x256xf32` TMEM allocation, copies shared memory into the
-selected view, and loads from that same selected descriptor. Selector `1` would
-fail if copy lowering ignored the selected memdesc value's current `taddr` and
-borrowed the first visible producer origin. The current copy type-local
-physical-query path already handles this row; no backend repair was required.
+representative dynamic selected same-parent column subviews now have runtime
+coverage for dense and non-dense copy families. The dense row selects between
+two same-typed `128x128xf32` subviews of a `128x256xf32` TMEM allocation. The
+non-dense row selects between two same-typed `128x4xf32` subviews of a
+`128x8xf32` TMEM allocation and covers both `warpx2::01_23` and
+`warpx2::02_13` schedules. Each test copies shared memory into the selected
+view and loads from that same selected descriptor. Selector `1` would fail if
+copy lowering ignored the selected memdesc value's current `taddr` and borrowed
+the first visible producer origin. The current copy type-local physical-query
+path already handles these rows; no backend repair was required.
 
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
@@ -286,6 +290,17 @@ row `2 passed`; adjacent copy subview/indexed selector `23 passed,
 1611 deselected`; 4-GPU `cp_no_scales and not reports` split passed as group1
 `55 passed, 4 skipped`, group2 `59 passed`, group3 `59 passed`, group4
 `56 passed`.
+
+Completed twentieth implementation slice: dynamic selected `warpx2` copy
+column-subview coverage. Added runtime positives that select between two
+same-typed same-parent `128x4xf32` column subviews and issue `tcgen05.copy`
+using both non-dense copy schedules, `warpx2::01_23` and `warpx2::02_13`. This
+extends the selected-copy `taddr` sentinel beyond the dense `128x256b` family.
+No backend repair was required. Validation: required `make -j8`; exact new
+rows `4 passed`; adjacent `warpx2` subview/indexed selector `40 passed,
+1598 deselected`; 4-GPU `cp_no_scales and not reports` split passed as group1
+`56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+`57 passed`.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

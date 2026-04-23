@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 04:08 UTC added dynamic selected `warpx2` copy
+  column-subview runtime coverage. The new rows select at runtime between two
+  same-typed `128x4xf32` column subviews of one `128x8xf32` TMEM allocation,
+  copy shared memory into the selected descriptor, then load from that selected
+  descriptor. Both non-dense copy schedules are covered:
+  `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b` and
+  `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b`. This extends the selected
+  copy `taddr` sentinel beyond the dense `128x256b` family. Validation:
+  required `make -j8`; exact new rows `4 passed`; adjacent `warpx2`
+  subview/indexed selector `40 passed, 1598 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+  `57 passed`.
+
 - Latest: 2026-04-23 04:00 UTC added dynamic selected copy column-subview
   runtime coverage. The new row selects at runtime between two same-typed
   `128x128xf32` column subviews of one `128x256xf32` TMEM allocation, copies

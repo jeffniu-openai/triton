@@ -2240,6 +2240,58 @@ def tmem_copy_no_scales_warpx2_subslice_view_kernel(
 
 
 @gluon.jit
+def tmem_copy_no_scales_warpx2_dynamic_subslice_view_kernel(
+    in_ptr,
+    out_ptr,
+    selector_ptr,
+    shared_layout: ttgl.constexpr,
+    parent_layout: ttgl.constexpr,
+):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 4
+    PARENT_N: ttgl.constexpr = 8
+    shared_reg_layout: ttgl.constexpr = ttgl.DistributedLinearLayout(
+        reg_bases=[[0, 1], [0, 2]],
+        lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]],
+        warp_bases=[[32, 0], [64, 0]],
+        block_bases=[],
+        shape=[M, N],
+    )
+    in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, shared_reg_layout))
+    in_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, shared_reg_layout))
+    in_offs = in_offs_m[:, None] * N + in_offs_n[None, :]
+    value = ttgl.load(in_ptr + in_offs)
+    parent = allocate_tensor_memory(
+        in_ptr.dtype.element_ty, [M, PARENT_N], layout=parent_layout
+    )
+    view0 = parent.slice(0, N, dim=1)
+    view1 = parent.slice(N, N, dim=1)
+    tmem = view0
+    if ttgl.load(selector_ptr) != 0:
+        tmem = view1
+    else:
+        tmem = view0
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+
+    smem = ttgl.allocate_shared_memory(
+        in_ptr.dtype.element_ty, [M, N], layout=shared_layout, value=value
+    )
+    fence_async_shared()
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    out = tmem.load(reg_layout)
+    out_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    out_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    out_offs = out_offs_m[:, None] * N + out_offs_n[None, :]
+    ttgl.store(out_ptr + out_offs, out)
+
+
+@gluon.jit
 def tmem_copy_no_scales_warpx2_indexed_view_kernel(
     in_ptr,
     out_ptr,
@@ -10024,6 +10076,57 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_subslice_view_positive(
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_subslice" not in ttgir
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("selector", (0, 1))
+@pytest.mark.parametrize(
+    "family,parent_layout_fn,expected_fn,expected_opcode",
+    [
+        (
+            "01_23",
+            _make_tmem_copy_warpx2_parent_tmem_layout,
+            _expected_tmem_copy_warpx2_01_23_output,
+            "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        ),
+        (
+            "02_13",
+            _make_tmem_copy_warpx2_parent_tmem_layout_02_13,
+            _expected_tmem_copy_warpx2_02_13_output,
+            "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        ),
+    ],
+)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_dynamic_subslice_view_positive(
+    selector,
+    family,
+    parent_layout_fn,
+    expected_fn,
+    expected_opcode,
+):
+    M = 128
+    N = 4
+    shared_layout = _make_tmem_copy_warpx2_shared_layout()
+    parent_layout = parent_layout_fn()
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_copy_no_scales_warpx2_dynamic_subslice_view_kernel[(1, )](
+        inp, out, selector_tensor, shared_layout, parent_layout, num_warps=4
+    )
+
+    expected = expected_fn(inp)
+    assert not torch.equal(out, inp)
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+    assert family in expected_opcode
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_opcode])
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_copy" in ttgir
 
 

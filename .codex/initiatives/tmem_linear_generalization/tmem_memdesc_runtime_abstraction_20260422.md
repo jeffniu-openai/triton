@@ -1275,3 +1275,23 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `cp_no_scales and not reports` split passed as group1
   `55 passed, 4 skipped`, group2 `59 passed`, group3 `59 passed`, group4
   `56 passed`.
+
+### 2026-04-23 Dynamic Selected Warpx2 Copy Sentinel
+
+- Added runtime sentinels for selected same-parent `warpx2` copy column
+  subviews. The kernel selects between two same-typed `128x4xf32` views of a
+  `128x8xf32` parent, copies shared memory into the selected descriptor, and
+  then loads through the selected descriptor.
+- The test covers both non-dense copy schedules,
+  `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b` and
+  `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b`, including their
+  schedule-specific output transforms. This checks the selected runtime-`taddr`
+  contract on copy families whose legal instruction schedule is more involved
+  than dense `128x256b`.
+- No backend change was required. The existing type-local copy physical-query
+  path already handles these representative non-dense selected-copy rows.
+- Validation after this slice: required `make -j8`; exact new rows `4 passed`;
+  adjacent `warpx2` subview/indexed selector `40 passed, 1598 deselected`;
+  4-GPU `cp_no_scales and not reports` split passed as group1
+  `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+  `57 passed`.

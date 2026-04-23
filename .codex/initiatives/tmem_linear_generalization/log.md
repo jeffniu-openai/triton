@@ -34616,6 +34616,38 @@ Open after this slice:
   continue the value-taking helper audit and add/repair selected-value
   sentinels where semantics still depend on a visible producer chain.
 
+## 2026-04-23 04:08 UTC: dynamic selected warpx2 copy subview coverage
+
+- Branch/HEAD before this validation slice:
+  `cc88a7999 Cover selected copy column subviews`.
+- Motivation:
+  the dense selected-copy sentinel proved the destination `taddr` contract for
+  `128x256b`, but non-dense `warpx2` copy families use different source and
+  destination schedules. Covering `warpx2::{01_23,02_13}` checks that the
+  selected-copy contract is not limited to dense atoms.
+- Completed coverage:
+  added `tmem_copy_no_scales_warpx2_dynamic_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_cp_no_scales_warpx2_dynamic_subslice_view_positive`.
+  The test selects between two same-typed `128x4xf32` column subviews of a
+  `128x8xf32` parent, copies shared memory into the selected view, loads from
+  the selected descriptor, and checks the schedule-specific transformed output
+  plus exact `tcgen05.cp` and commit opcodes.
+- Result:
+  no backend repair was required. The same type-local destination physical
+  query path that handled the dense selected-copy row also handles the
+  non-dense `warpx2` rows.
+- Validation evidence:
+  required `make -j8`; exact new rows `4 passed`; adjacent `warpx2`
+  subview/indexed selector `40 passed, 1598 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `56 passed, 4 skipped`, group2 `60 passed`, group3 `60 passed`, group4
+  `57 passed`.
+- Remaining migration frontier:
+  continue the value-taking helper audit. The next useful probes are 2CTA copy
+  selected views and any remaining semantic verifier/lowering callers that
+  still use producer-chain recovery for legality rather than for diagnostics or
+  optimizer-only rewrites.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:
