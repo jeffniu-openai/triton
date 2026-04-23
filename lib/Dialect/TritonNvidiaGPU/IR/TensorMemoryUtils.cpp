@@ -3643,14 +3643,6 @@ getTypeLocalMMAv5TMemAddressLayout(MemDescType memTy) {
 
 LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
   std::string layoutError;
-  if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
-    // The lowered TMEM base already includes the source slice/subview offset.
-    // Physical bitcasts consume the result descriptor in this typed coordinate
-    // frame instead of a possibly non-surjective physical query layout.
-    if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
-      return *maybeLayout;
-  }
-
   if (auto maybeLayout = getTypeLocalMMAv5TMemAddressLayout(memTy))
     return *maybeLayout;
 
@@ -3690,14 +3682,10 @@ uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
                                            ArrayRef<int32_t> offsets) {
   assert(offsets.size() == memTy.getRank());
 
-  // Keep tile ordering in the same typed coordinate frame as
-  // getMMAv5TMemAddressLayout for physical bitcasts.
-  if (memDescValue && isTMemPhysicalBitcast(memDescValue))
-    return getTMemViewOffset(memTy, offsets);
   if (auto maybeOffset =
           getTypeLocalMMAv5TMemViewOffsetForLowering(memTy, offsets))
     return *maybeOffset;
-  if (memDescValue && !isTMemPhysicalBitcast(memDescValue))
+  if (memDescValue)
     return getTMemViewOffsetForLowering(memDescValue, offsets);
   return getTMemViewOffset(memTy, offsets);
 }

@@ -662,7 +662,10 @@ Checklist state:
   derive address layout and tile-order offsets from current `MemDescType`
   family facts before legacy producer-chain fallback. First helper-split slice
   complete: type-local MMAv5 address and tile-order computations now have
-  explicit APIs separate from value-taking fallback wrappers.
+  explicit APIs separate from value-taking fallback wrappers. Physical-bitcast
+  MMAv5 address and tile-order lowering now no longer inspect the defining
+  reinterpret op; they rely on the current type/layout and rescaled runtime
+  `taddr`.
 - [ ] Split public helper APIs into lowering-facing type-local helpers and
   optimizer-only producer-chain matchers.
 - [ ] Delete or quarantine obsolete support-query, backing-row, and
@@ -1931,3 +1934,24 @@ High-priority hacks and debt to remove after replacement coverage exists:
   selector `12 passed, 1677 deselected`; subword copy selector `39 passed,
   1650 deselected`; ld.red subword/linear-subslice selector `8 passed, 1681
   deselected`; `git diff --check` passed.
+
+### 2026-04-23 MMAv5 Physical-Bitcast Locality
+
+- After runtime `taddr` rescaling for physical bitcasts, MMAv5 lowering no
+  longer needs to ask whether the current memdesc SSA value was directly
+  defined by `tmem_physical_bitcast`. The runtime base is already in the result
+  element-column coordinate frame, and the current `MemDescType`/layout carries
+  the static address family.
+- Removed the physical-bitcast special case from
+  `getMMAv5TMemAddressLayout` and `getMMAv5TMemViewOffsetForLowering`. Both
+  helpers now try type-local planning first, then use legacy value fallback only
+  for descriptor classes not yet migrated.
+- Added a selected physical-bitcast MMA lhs test: two f32 column subviews are
+  bitcast to same-typed bf16 TMEM views, populated with different constants,
+  selected dynamically, and consumed by `tcgen05_mma`. This ensures valid MMAv5
+  lowering does not depend on a visible reinterpret producer.
+- Validation after this slice: required `make -j8`; direct plus selected
+  physical-bitcast MMA rows `3 passed`; `test_core.py -k physical_bitcast`
+  `7 passed`; runtime-matrix `mma and not reports` selector passed across four
+  GPUs as group1 `135 passed, 14 skipped`, group2 `149 passed`, group3
+  `149 passed`, group4 `147 passed`; lit `tmem_layouts.mlir` `1 passed`.

@@ -2829,16 +2829,22 @@ def tmem_physical_bitcast_mma_lhs_kernel(out, layout: ttgl.constexpr, acc_layout
     lhs = ttgl.full((M, K), 1.0, dtype=ttgl.bfloat16, layout=lhs_layout)
     lhs_tmem.store(lhs)
 
-    b_reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+    b_reg_layout: ttgl.constexpr = ttgl.BlockedLayout(
+        [1, 1], [1, 32], [4, 1], [1, 0]
+    )
     b = ttgl.full((K, N), 1.0, dtype=ttgl.bfloat16, layout=b_reg_layout)
     b_smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
         [K, N], ttgl.bfloat16, transposed=True
     )
-    b_smem = ttgl.allocate_shared_memory(ttgl.bfloat16, [K, N], layout=b_smem_layout)
+    b_smem = ttgl.allocate_shared_memory(
+        ttgl.bfloat16, [K, N], layout=b_smem_layout
+    )
     b_smem.store(b)
 
     acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
-    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    bar = ttgl.allocate_shared_memory(
+        ttgl.int64, [1], mbarrier.MBarrierLayout()
+    )
     mbarrier.init(bar, count=1)
     tcgen05_mma(lhs_tmem, b_smem, acc_tmem, use_acc=False)
     tcgen05_commit(bar)
@@ -2862,6 +2868,84 @@ def test_tmem_physical_bitcast_mma_lhs():
 
     torch.testing.assert_close(out, torch.full_like(out, 128), atol=0, rtol=0)
     ttgir = compiled.asm["ttgir"]
+    assert "tmem_physical_bitcast" in ttgir
+    assert "ttng.tc_gen5_mma" in ttgir
+
+
+@gluon.jit
+def tmem_physical_bitcast_selected_mma_lhs_kernel(
+    out, selector_ptr, layout: ttgl.constexpr, acc_layout: ttgl.constexpr
+):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    K: ttgl.constexpr = 128
+    scratch = allocate_tensor_memory(ttgl.float32, [M, K], layout)
+    p_layout: ttgl.constexpr = TensorMemoryLayout((M, K), col_stride=1)
+    lhs0_tmem = scratch.slice(0, K // 2, dim=1).bitcast(
+        ttgl.bfloat16, (M, K), p_layout
+    )
+    lhs1_tmem = scratch.slice(K // 2, K // 2, dim=1).bitcast(
+        ttgl.bfloat16, (M, K), p_layout
+    )
+
+    lhs_layout: ttgl.constexpr = lhs0_tmem.get_reg_layout()
+    lhs0 = ttgl.full((M, K), 1.0, dtype=ttgl.bfloat16, layout=lhs_layout)
+    lhs1 = ttgl.full((M, K), 2.0, dtype=ttgl.bfloat16, layout=lhs_layout)
+    lhs0_tmem.store(lhs0)
+    lhs1_tmem.store(lhs1)
+
+    selected = lhs0_tmem
+    if ttgl.load(selector_ptr) != 0:
+        selected = lhs1_tmem
+    else:
+        selected = lhs0_tmem
+
+    b_reg_layout: ttgl.constexpr = ttgl.BlockedLayout(
+        [1, 1], [1, 32], [4, 1], [1, 0]
+    )
+    b = ttgl.full((K, N), 1.0, dtype=ttgl.bfloat16, layout=b_reg_layout)
+    b_smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [K, N], ttgl.bfloat16, transposed=True
+    )
+    b_smem = ttgl.allocate_shared_memory(
+        ttgl.bfloat16, [K, N], layout=b_smem_layout
+    )
+    b_smem.store(b)
+
+    acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
+    bar = ttgl.allocate_shared_memory(
+        ttgl.int64, [1], mbarrier.MBarrierLayout()
+    )
+    mbarrier.init(bar, count=1)
+    tcgen05_mma(selected, b_smem, acc_tmem, use_acc=False)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    mbarrier.invalidate(bar)
+
+    out_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    ttgl.store(out + offs, acc_tmem.load(out_layout))
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_physical_bitcast_selected_mma_lhs(selector):
+    out = torch.empty((128, 128), dtype=torch.float32, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+    compiled = tmem_physical_bitcast_selected_mma_lhs_kernel[(1, )](
+        out,
+        selector_tensor,
+        _make_tmem_linear_layout(128, 128),
+        TensorMemoryLayout((128, 128), col_stride=1),
+        num_warps=4,
+    )
+
+    expected = 256 if selector else 128
+    torch.testing.assert_close(
+        out, torch.full_like(out, expected), atol=0, rtol=0
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
     assert "tmem_physical_bitcast" in ttgir
     assert "ttng.tc_gen5_mma" in ttgir
 

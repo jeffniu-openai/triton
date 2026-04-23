@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 20:47 UTC removed MMAv5 lowering's semantic
+  dependence on a physical-bitcast producer op. `getMMAv5TMemAddressLayout`
+  and `getMMAv5TMemViewOffsetForLowering` now try the type-local
+  `MemDescType`/layout path before legacy fallback without special-casing
+  `isTMemPhysicalBitcast(value)`. This is valid because the previous checkpoint
+  made `memdesc_reinterpret` update the runtime `taddr` into the result
+  element-column coordinate frame. Added a runtime sentinel that stores two
+  distinct bf16 lhs tiles through two same-typed f32-subview physical bitcasts,
+  dynamically selects one of the bitcast memdesc values, and feeds it to
+  `tcgen05_mma`; selector 0 expects `128`, selector 1 expects `256`. Validation:
+  required `make -j8`; direct plus selected physical-bitcast MMA rows
+  `3 passed`; `test_core.py -k physical_bitcast` `7 passed`; four-GPU
+  runtime-matrix `mma and not reports` selector passed as group1 `135 passed,
+  14 skipped`, group2 `149 passed`, group3 `149 passed`, group4 `147 passed`;
+  lit `tmem_layouts.mlir` `1 passed`.
+
 - Latest: 2026-04-23 20:38 UTC fixed the physical-bitcast TMEM
   reinterpret base/phase gap exposed by broad `test_core.py -k tmem` validation.
   The NVIDIA tensor-memory lowering path had its own `MemDescReinterpretOp`

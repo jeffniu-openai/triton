@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 20:38 UTC
+Last updated: 2026-04-23 20:47 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -15,6 +15,12 @@ Current checkpoint summary:
   to an unsupported unknown-origin path.
 - [x] Revalidated the full `test_core.py -k tmem` split and the runtime-matrix
   bitcast/reinterpret slice after the fix.
+
+- [x] Removed the MMAv5 physical-bitcast defining-op check from address-layout
+  and tile-order offset lowering; MMAv5 physical-bitcast semantics now come
+  from current type/layout plus the already-rescaled runtime `taddr`.
+- [x] Added a selected physical-bitcast MMA lhs runtime sentinel where two
+  same-typed bitcast views are selected before `tcgen05_mma`.
 
 Active implementation checklist:
 

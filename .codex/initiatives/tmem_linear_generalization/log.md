@@ -35873,3 +35873,34 @@ Open after this slice:
   memdesc-model migration by auditing remaining tensor-memory reinterpret users
   and then returning to the next still-open helper-locality or packed-lane copy
   scheduler bucket.
+
+## 2026-04-23 20:47 UTC: MMAv5 physical-bitcast locality checkpoint
+
+- Branch/HEAD at slice start:
+  `faea671b7 Fix physical-bitcast TMEM reinterpret base lowering`.
+- Source change:
+  removed the MMAv5 address-layout and tile-order offset special cases that
+  inspected whether the current memdesc value was defined by a
+  `tmem_physical_bitcast` reinterpret op. MMAv5 now tries the type-local
+  current `MemDescType`/layout plan first and falls back to legacy producer
+  analysis only for descriptor classes that have not been migrated yet.
+  Physical-bitcast correctness comes from the previous slice's runtime `taddr`
+  rescale, not from re-identifying the defining op during MMAv5 lowering.
+- Test change:
+  added a selected physical-bitcast MMA lhs runtime sentinel. It stores distinct
+  bf16 lhs tiles through two same-typed bitcast views of the two halves of an
+  f32 TMEM tile, dynamically selects one bitcast memdesc value, and feeds that
+  selected value to `tcgen05_mma`. This covers the case where the consumer sees
+  an `arith.select`/`scf.if` result rather than a direct
+  `memdesc_reinterpret` producer.
+- Validation evidence:
+  required `make -j8`; exact direct plus selected physical-bitcast MMA rows
+  `3 passed`; `test_core.py -k physical_bitcast` `7 passed`; four-GPU
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not reports'`
+  passed as group1 `135 passed, 14 skipped, 1558 deselected`, group2
+  `149 passed, 1558 deselected`, group3 `149 passed, 1558 deselected`, group4
+  `147 passed, 1560 deselected`; lit `TritonNvidiaGPU/tmem_layouts.mlir`
+  `1 passed`.
+- Next concrete step:
+  commit and push this MMAv5-locality checkpoint, then continue removing
+  producer-chain requirements from the next still-semantic helper family.

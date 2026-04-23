@@ -32,6 +32,13 @@ unknown-origin diagnostic. PTX/LLIR exact-immediate expectations were updated
 only where correctness already passed and row displacement moved from the
 instruction immediate into the runtime base value.
 
+Latest MMAv5 follow-up: as of 2026-04-23 20:47 UTC, MMAv5 TMEM address
+and tile-order helpers no longer need a `tmem_physical_bitcast` defining-op
+check. Physical-bitcast MMA lowering now relies on the current `MemDescType`,
+layout, and already-rescaled runtime `taddr`, with a new runtime test covering
+selection between two same-typed bitcast views before MMA. Broad
+`mma and not reports` runtime-matrix validation passed across four GPUs.
+
 Active execution plan: as of 2026-04-23 08:11 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
