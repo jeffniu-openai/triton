@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 04:00 UTC added dynamic selected copy column-subview
+  runtime coverage. The new row selects at runtime between two same-typed
+  `128x128xf32` column subviews of one `128x256xf32` TMEM allocation, copies
+  shared memory into the selected descriptor, then loads from that selected
+  descriptor. Selector `1` is the useful adversarial case: it would fail if
+  `tcgen05.copy` lowering ignored the selected memdesc SSA value's current
+  `taddr` and recovered the first visible producer origin. The current
+  type-local copy physical-query path already handles the row; no backend
+  repair was needed. Validation: required `make -j8`; exact new row `2 passed`;
+  adjacent copy subview/indexed selector `23 passed, 1611 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `55 passed, 4 skipped`, group2 `59 passed`, group3 `59 passed`, group4
+  `56 passed`.
+
 - Latest: 2026-04-23 03:54 UTC added dynamic selected descriptor-chain ld.red
   runtime coverage. The new row selects between two same-typed descriptor-chain
   views, stores distinct payloads into each candidate, reduces through the

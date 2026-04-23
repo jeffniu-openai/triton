@@ -1255,3 +1255,23 @@ High-priority hacks and debt to remove after replacement coverage exists:
   group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
   `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
   passed.
+
+### 2026-04-23 Dynamic Selected Copy Sentinel
+
+- Added a runtime sentinel for `tcgen05.copy` over a selected same-parent column
+  subview. The kernel selects between two same-typed `128x128xf32` views of a
+  `128x256xf32` TMEM allocation, copies shared memory into the selected
+  descriptor, and then loads through the selected descriptor.
+- This validates the intended split for copy lowering: the legal copy family is
+  derived from the current self-contained descriptor type/layout, while the
+  emitted destination address uses the selected memdesc SSA value's runtime
+  `taddr`. The selector-1 row would fail if lowering recovered a fixed
+  producer-chain origin instead of using the selected value.
+- No backend change was required for this sentinel. The existing type-local
+  copy physical-query path already handles this representative selected-copy
+  case.
+- Validation after this slice: required `make -j8`; exact new row `2 passed`;
+  adjacent copy subview/indexed selector `23 passed, 1611 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `55 passed, 4 skipped`, group2 `59 passed`, group3 `59 passed`, group4
+  `56 passed`.

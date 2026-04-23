@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 03:54 UTC
+Last updated: 2026-04-23 04:00 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -70,7 +70,10 @@ Active implementation checklist:
   dynamic ld.red selected-view sentinel: a same-typed descriptor-chain
   `arith.select` row is covered as a runtime positive, proving the current
   ld.red path handles that representative selected value without additional
-  backend changes.
+  backend changes. First dynamic copy selected-subview sentinel: a same-parent
+  column-subview `arith.select` row is covered as a runtime positive, proving
+  `tcgen05.copy` writes through the selected runtime `taddr` while legality is
+  derived from the current self-contained `MemDescType`/layout.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -155,6 +158,15 @@ descriptor chains, selects between same-typed descriptor views, and performs
 `tcgen05.ld.red` shape. The existing type-local ld/st/ld.red planning already
 handles this row; the only test-helper change was allowing two store waits for
 the two initialized candidates.
+
+Current copy selected-subview checkpoint:
+a representative dynamic selected same-parent column subview now has runtime
+coverage. The test selects at runtime between two same-typed `128x128xf32`
+subviews of a `128x256xf32` TMEM allocation, copies shared memory into the
+selected view, and loads from that same selected descriptor. Selector `1` would
+fail if copy lowering ignored the selected memdesc value's current `taddr` and
+borrowed the first visible producer origin. The current copy type-local
+physical-query path already handles this row; no backend repair was required.
 
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
@@ -261,6 +273,19 @@ Validation: required `make -j8`; exact new row `1 passed`; 4-GPU
 `ld_red and not reports and not scales` split passed as group1 `60 passed`,
 group2 `60 passed`, group3 `60 passed`, group4 `60 passed`; `git diff --check`
 passed.
+
+Completed nineteenth implementation slice: dynamic selected copy column-subview
+coverage. Added a runtime positive that selects between two same-typed
+same-parent column subviews, issues `tcgen05.copy` into the selected descriptor,
+then loads through the selected descriptor. This validates the copy lowering
+contract for selected values: the copy atom's destination base comes from the
+selected runtime `taddr`, while the copy family is chosen from the current
+self-contained memdesc type/layout. No backend repair was required for this
+representative selected-copy row. Validation: required `make -j8`; exact new
+row `2 passed`; adjacent copy subview/indexed selector `23 passed,
+1611 deselected`; 4-GPU `cp_no_scales and not reports` split passed as group1
+`55 passed, 4 skipped`, group2 `59 passed`, group3 `59 passed`, group4
+`56 passed`.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

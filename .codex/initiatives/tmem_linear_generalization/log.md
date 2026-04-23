@@ -34585,6 +34585,37 @@ Open after this slice:
   planner/type-local abstraction instead of adding consumer-specific rescue
   stacks.
 
+## 2026-04-23 04:00 UTC: dynamic selected copy column-subview coverage
+
+- Branch/HEAD before this validation slice:
+  `f1210525e Cover selected descriptor-chain ld.red views`.
+- Motivation:
+  after adding the ld.red selected-value sentinel, the next adjacent risk was
+  whether `tcgen05.copy` lowering still needed a producer-chain-visible
+  destination view to compute the destination base. A dynamic same-typed
+  column-subview selection is the useful check because the selected memdesc SSA
+  value carries the only runtime origin available at lowering time.
+- Completed coverage:
+  added `tmem_copy_no_scales_dynamic_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_cp_no_scales_dynamic_linear_subslice_view`. The test
+  selects between two same-typed `128x128xf32` subviews of a `128x256xf32`
+  TMEM allocation, copies shared memory into the selected view, loads through
+  that selected descriptor, and asserts exact `tcgen05.cp` and commit opcodes.
+- Result:
+  no backend repair was required for this representative selected-copy row. The
+  current type-local copy physical-query selection already makes legality local
+  to the current `MemDescType`/layout and leaves the destination base to the
+  selected runtime `taddr`.
+- Validation evidence:
+  required `make -j8`; exact new row `2 passed`; adjacent copy
+  subview/indexed selector `23 passed, 1611 deselected`; 4-GPU
+  `cp_no_scales and not reports` split passed as group1
+  `55 passed, 4 skipped`, group2 `59 passed`, group3 `59 passed`, group4
+  `56 passed`.
+- Remaining migration frontier:
+  continue the value-taking helper audit and add/repair selected-value
+  sentinels where semantics still depend on a visible producer chain.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:
