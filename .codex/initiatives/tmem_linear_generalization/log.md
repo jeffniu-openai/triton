@@ -35150,3 +35150,19 @@ Open after this slice:
   commit and push this validation checkpoint. Continue final helper audit and
   move to broader MMAv5/scales validation if no more active-subview semantic
   helper gaps are found.
+
+## 2026-04-23 05:48 UTC: broad MMAv5/scales runtime validation
+
+- Branch/HEAD:
+  `ac3d0c438 Record broad non-scale TMEM validation`.
+- Validation-only checkpoint:
+  ran
+  `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not reports and not clean and not unsupported'`
+  as four GPU split commands with distinct caches.
+- Result:
+  group1 `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`,
+  group4 `148 passed`.
+- Next concrete step:
+  commit and push this validation checkpoint. Continue final code audit, then
+  decide whether remaining producer-chain uses are optimizer-only/legacy
+  compatibility or still need active type-local routing.

@@ -1552,3 +1552,11 @@ High-priority hacks and debt to remove after replacement coverage exists:
   split commands with distinct caches.
 - Result: group1 `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`,
   group3 `130 passed, 20 skipped`, group4 `149 passed`.
+
+### 2026-04-23 Broad MMAv5/Scales Runtime Validation
+
+- Ran the MMAv5/scales runtime selector
+  `mma and not reports and not clean and not unsupported` as four GPU split
+  commands with distinct caches.
+- Result: group1 `134 passed, 14 skipped`, group2 `148 passed`, group3
+  `148 passed`, group4 `148 passed`.
