@@ -1418,3 +1418,19 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; selected active-subview
   exact rows `10 passed`; focused active-subview selector
   `6 passed, 1642 deselected`; targeted lit set `6/6`.
+
+### 2026-04-23 Query-Rescue Helper Separation
+
+- `disallowTMemLdStQueryTypeRescue` now has a `MemDescType` overload. The
+  verifier and LLVM lowering use that overload directly; the Value-taking
+  wrapper remains only as a compatibility shim.
+- The row-zero lifted rescue decision is therefore based on current descriptor
+  type/layout facts instead of a visible `memdesc_reinterpret` producer. This
+  matches the target rule that legality cannot depend on producer-chain
+  visibility.
+- Validation after this slice: required `make -j8`; targeted lit set `6/6`;
+  focused reinterpret/subword/selected ld/st selector
+  `10 passed, 1638 deselected`; selected ld.red/copy exact rows `4 passed`;
+  4-GPU `(ldst or ld_red) and not reports and not scales` split passed as
+  group1 `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`, group3
+  `130 passed, 20 skipped`, group4 `147 passed`.

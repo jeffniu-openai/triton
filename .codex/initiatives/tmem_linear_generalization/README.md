@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 04:55 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 05:05 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -83,8 +83,18 @@ carried memdesc value, including handle-aware `get_reg_layout()`, selected
 load, selected store, and explicit candidate readback.
 Active-subview raw/support row-plan helpers now short-circuit through
 type-local facts before value-chain backing-row logic.
+Row-zero lifted ld/st query-type rescue gating is now type-local too: verifier
+and LLVM lowering call the `MemDescType` predicate directly.
 
-Latest validation checkpoint: 2026-04-23 04:55 UTC separated active-subview
+Latest validation checkpoint: 2026-04-23 05:05 UTC made query-type rescue
+gating type-local. Validation: required `make -j8`; targeted lit set `6/6`;
+focused reinterpret/subword/selected ld/st selector
+`10 passed, 1638 deselected`; selected ld.red/copy exact rows `4 passed`;
+4-GPU `(ldst or ld_red) and not reports and not scales` split passed as
+group1 `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`, group3
+`130 passed, 20 skipped`, group4 `147 passed`.
+
+Previous validation checkpoint: 2026-04-23 04:55 UTC separated active-subview
 raw/support row-plan helper paths. Validation: required `make -j8`; selected
 active-subview exact rows `10 passed`; focused active-subview selector
 `6 passed, 1642 deselected`; targeted lit set `6/6`.

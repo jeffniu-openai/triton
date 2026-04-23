@@ -34845,6 +34845,31 @@ Open after this slice:
   support paths, and any residual lowering code that still needs a producer
   chain to decide legality.
 
+## 2026-04-23 05:05 UTC: query-rescue helper separation
+
+- Branch/HEAD before this implementation slice:
+  `44ffb5203 Choose active ld/st row plans locally`.
+- Motivation:
+  `disallowTMemLdStQueryTypeRescue` still required a visible
+  `memdesc_reinterpret` producer even though the row-zero lifted rescue
+  condition is expressible from the current descriptor type and linear layout.
+  That made verifier/lowering legality depend on producer-chain visibility.
+- Completed implementation:
+  added `disallowTMemLdStQueryTypeRescue(MemDescType)` and switched
+  `verifyTMEMOperand` plus `lowerTMemLdStFromTypes` to call the type-local
+  overload. The old Value-taking wrapper delegates to the type overload for
+  compatibility.
+- Validation evidence:
+  required `make -j8`; targeted lit set `6/6`; focused
+  reinterpret/subword/selected ld/st selector `10 passed, 1638 deselected`;
+  selected ld.red/copy exact rows `4 passed`; 4-GPU
+  `(ldst or ld_red) and not reports and not scales` split passed as group1
+  `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`, group3
+  `130 passed, 20 skipped`, group4 `147 passed`.
+- Remaining migration frontier:
+  continue query-ordering/M64 helper separation and verifier-facing support
+  cleanup, keeping producer-chain matchers optimizer-only.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

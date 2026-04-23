@@ -18103,3 +18103,15 @@ rejection, not rescue
   backing-row fallback logic. Validation: required `make -j8`; selected
   active-subview exact rows `10 passed`; focused active-subview selector
   `6 passed, 1642 deselected`; targeted lit set `6/6`.
+
+- 2026-04-23 query-rescue helper separation completed.
+  `disallowTMemLdStQueryTypeRescue` now has a `MemDescType` overload and the
+  verifier/lowering callers use it directly. This removes the defining-op
+  requirement from the row-zero lifted query-type rescue legality gate; the
+  decision is now based on the current descriptor type/layout. Validation:
+  required `make -j8`; targeted lit set `6/6`; focused
+  reinterpret/subword/selected ld/st selector `10 passed, 1638 deselected`;
+  selected ld.red/copy exact rows `4 passed`; 4-GPU
+  `(ldst or ld_red) and not reports and not scales` split passed as group1
+  `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`, group3
+  `130 passed, 20 skipped`, group4 `147 passed`.

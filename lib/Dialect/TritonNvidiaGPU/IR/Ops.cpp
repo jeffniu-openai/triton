@@ -1430,8 +1430,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
       isDistributedLayoutTMemCompatible(op, type, memdesc))
     return success();
 
-  bool disallowQueryTypeRescue =
-      disallowTMemLdStQueryTypeRescue(memdescValue);
+  bool disallowQueryTypeRescue = disallowTMemLdStQueryTypeRescue(memdesc);
 
   auto maxnreg = getContextualMaxNReg(op);
   if (!disallowQueryTypeRescue) {

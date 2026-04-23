@@ -598,7 +598,7 @@ lowerTMemLdStFromTypes(
                                                                memTy, regTy);
   }();
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret =
-      memDescValue && disallowTMemLdStQueryTypeRescue(memDescValue);
+      disallowTMemLdStQueryTypeRescue(memTy);
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
   auto tryRawQueryLowering =

@@ -593,6 +593,8 @@ bool isExplicitTMemLdStViewProducer(Value memDesc);
 bool disallowTMemLdStTypeOnlyFallback(Value memDesc,
                                       std::string *reason = nullptr);
 
+bool disallowTMemLdStQueryTypeRescue(gpu::MemDescType memTy);
+
 bool disallowTMemLdStQueryTypeRescue(Value memDesc);
 
 uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);

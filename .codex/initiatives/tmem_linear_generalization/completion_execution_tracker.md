@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:55 UTC
+Last updated: 2026-04-23 05:05 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -91,7 +91,9 @@ Active implementation checklist:
   `get_reg_layout()` correctly without a local view producer at the consumer.
   First row-plan helper-separation slice: raw-query and support-query row-plan
   helpers now return type-local active-subview plans before entering
-  value-chain row-plan/backing-plan logic.
+  value-chain row-plan/backing-plan logic. First query-rescue locality slice:
+  row-zero lifted query-type rescue gating is now a `MemDescType` predicate and
+  verifier/lowering callers use the type-local overload.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -195,6 +197,16 @@ or the provided support query layout before consulting value-taking
 override/backing-row helpers. Validation: required `make -j8`; selected
 active-subview exact rows `10 passed`; focused active-subview selector
 `6 passed, 1642 deselected`; targeted lit set `6/6`.
+
+Current query-rescue helper-separation checkpoint:
+`disallowTMemLdStQueryTypeRescue` now has a `MemDescType` overload, and both
+the TTGIR verifier and LLVM lowering use that type-local predicate. The legacy
+Value wrapper remains for callers not migrated yet. Validation: required
+`make -j8`; targeted lit set `6/6`; focused reinterpret/subword/selected ld/st
+selector `10 passed, 1638 deselected`; selected ld.red/copy exact rows
+`4 passed`; 4-GPU `(ldst or ld_red) and not reports and not scales` split
+passed as group1 `124 passed, 26 skipped`, group2 `98 passed, 52 skipped`,
+group3 `130 passed, 20 skipped`, group4 `147 passed`.
 
 Current ld.red selected-view checkpoint:
 a representative dynamic selected descriptor-chain ld.red row is covered as a

@@ -4051,10 +4051,8 @@ bool disallowTMemLdStTypeOnlyFallback(Value memDesc, std::string *reason) {
   return true;
 }
 
-bool disallowTMemLdStQueryTypeRescue(Value memDesc) {
-  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
-  if (!memTy || memTy.getRank() != 2 ||
-      !isa_and_nonnull<gpu::MemDescReinterpretOp>(memDesc.getDefiningOp())) {
+bool disallowTMemLdStQueryTypeRescue(MemDescType memTy) {
+  if (!memTy || memTy.getRank() != 2) {
     return false;
   }
 
@@ -4089,6 +4087,11 @@ bool disallowTMemLdStQueryTypeRescue(Value memDesc) {
          !hasZeroBasisAlong(memLayout, kCol) &&
          logicalRows == activePhysicalRows &&
          logicalCols == physicalCols * 2;
+}
+
+bool disallowTMemLdStQueryTypeRescue(Value memDesc) {
+  return disallowTMemLdStQueryTypeRescue(
+      dyn_cast_if_present<MemDescType>(memDesc.getType()));
 }
 
 static bool shouldPreferBackingRowPlanForPureOuterIndexView(
