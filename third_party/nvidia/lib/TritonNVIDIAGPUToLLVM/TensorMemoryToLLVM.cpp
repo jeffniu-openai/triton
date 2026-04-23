@@ -752,9 +752,15 @@ lowerTMemLdStFromTypes(
       typeLocalScalesStorageTy = *storageTy;
   }
   bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
-  bool useSubwordPhasePath =
-      memTy.getElementTypeBitWidth() < 32 && memDescValue &&
-      mayHaveNonZeroTMemSubwordPhase(memDescValue);
+  bool useSubwordPhasePath = false;
+  if (memTy.getElementTypeBitWidth() < 32 && memDescValue) {
+    TMemSubwordPhaseStatus phaseStatus =
+        getTMemSubwordPhaseStatus(memDescValue);
+    if (debugQuerySelection)
+      llvm::errs() << "[tmem-ldst] subwordPhaseStatus="
+                   << static_cast<int>(phaseStatus) << "\n";
+    useSubwordPhasePath = phaseStatus != TMemSubwordPhaseStatus::KnownZero;
+  }
   MemDescType planningMemTy = memTy;
   if (typeLocalScalesStorageTy) {
     planningMemTy = *typeLocalScalesStorageTy;
@@ -1304,7 +1310,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto cvt = *maybeCvt;
 
   auto bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
-  if (bitwidth < 32 && mayHaveNonZeroTMemSubwordPhase(op.getDst())) {
+  if (bitwidth < 32 &&
+      getTMemSubwordPhaseStatus(op.getDst()) !=
+          TMemSubwordPhaseStatus::KnownZero) {
     return op->emitOpError()
            << "unsupported sub-32-bit tensor memory destination origin for "
               "tcgen05.copy: the current descriptor may start inside a "

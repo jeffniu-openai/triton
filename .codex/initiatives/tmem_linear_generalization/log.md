@@ -35379,3 +35379,43 @@ Open after this slice:
   lowering beyond the packed contiguous `32x32b` ld/st slice, starting with
   dynamic/unknown phase classification and then non-contiguous or unpacked
   subword layouts.
+
+## 2026-04-23 07:37 UTC: subword phase control-flow widening
+
+- Branch/HEAD at slice start:
+  `8909f8b10 Cover i8 unaligned packed subword ld/st`.
+- Dirty files before checkpoint commit:
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`,
+  `python/test/gluon/test_tmem_runtime_matrix.py`, plus initiative docs.
+- Completed source slice:
+  generalized TMEM block-argument phase forwarding from Triton-only
+  `FuncOp`/`CallOp` to MLIR `FunctionOpInterface`/`CallOpInterface`. The
+  phase-status helper now also classifies `scf.if` results, `scf.for` results
+  and iter args, and lowered CFG block arguments by walking
+  `BranchOpInterface` successor operands. Recurring loop-carried cycles
+  contribute zero phase unless an incoming value or recognized view transform
+  introduces a nonzero element-column phase.
+- Lowering behavior:
+  sub-32-bit ld/st now selects the phase-aware packed contiguous `32x32b`
+  lowering whenever the descriptor phase is not proven zero, so unknown carried
+  values do not silently use the old word-column floor path. Known-aligned
+  dynamic and loop-carried values still avoid the RMW path when all incoming
+  values are aligned. `tcgen05.copy` now rejects any subword destination whose
+  phase is not proven zero, including loop-carried values with an odd-column
+  candidate.
+- Runtime coverage:
+  added f16/i8 dynamic-select and loop-carried unaligned ld/st positives that
+  write through the selected descriptor, load it back, and check both left and
+  right neighboring subword lanes. Added a loop-carried unaligned subword copy
+  diagnostic row.
+- Validation evidence:
+  required `make -j8`; selected unaligned f16/i8 ld/st/copy selector passed
+  `18 passed, 1660 deselected`; broader adjacent subword ld/st/copy selector
+  passed `28 passed, 1650 deselected`; focused `cp_no_scales and subword`
+  sweep passed `36 passed, 1642 deselected`; lit `tmem_layouts.mlir`
+  `1 passed`.
+- Next concrete step:
+  commit and push this checkpoint. Continue with non-contiguous/unpacked
+  subword ld/st, `ld.red`, copy execution semantics, and MMAv5 operand
+  behavior.

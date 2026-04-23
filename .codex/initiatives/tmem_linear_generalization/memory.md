@@ -18297,3 +18297,18 @@ rejection, not rescue
   1636 deselected`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
   passed. Remaining work: non-contiguous/unpacked subword ld/st, `ld.red`,
   copy, MMAv5, and unknown non-local subword phase values.
+
+- 2026-04-23 subword phase control-flow widening completed. Phase
+  classification now follows generic MLIR function/call forwarding,
+  `scf.if`, `scf.for` results and iter args, and lowered CFG block arguments
+  through branch successor operands. Ld/st uses the packed contiguous
+  phase-aware path whenever a subword descriptor is not proven phase-zero,
+  preventing unknown carried values from silently flooring element columns to
+  hardware word columns. Known-aligned carried values still fold to the
+  original non-RMW codegen. Added f16/i8 dynamic-select and loop-carried
+  unaligned ld/st positives plus a loop-carried unaligned copy diagnostic;
+  copy now rejects any subword destination whose phase is not proven zero.
+  Validation: required `make -j8`; selected unaligned f16/i8 ld/st/copy rows
+  `18 passed`; broader adjacent subword ld/st/copy selector `28 passed,
+  1650 deselected`; focused `cp_no_scales and subword` sweep `36 passed,
+  1642 deselected`; lit `tmem_layouts.mlir` `1 passed`.

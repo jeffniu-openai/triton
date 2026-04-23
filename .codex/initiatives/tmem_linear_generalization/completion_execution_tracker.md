@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 07:18 UTC
+Last updated: 2026-04-23 07:37 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -134,6 +134,15 @@ Active implementation checklist:
   subword lanes outside the logical view are preserved. `tcgen05.copy` still
   rejects known nonzero subword destinations because copy has no equivalent
   RMW path in this slice.
+  First subword phase control-flow slice: the phase-status helper now follows
+  `FunctionOpInterface`/`CallOpInterface` forwarding, `scf.if` results,
+  `scf.for` results and iter args, and lowered CFG block arguments through
+  `BranchOpInterface`. Ld/st now uses the phase-aware packed `32x32b` lowering
+  for any subword descriptor whose phase is not proven zero, so unknown carried
+  values no longer silently take the floor-to-word path. Known-aligned carried
+  values still fold to the original non-RMW codegen when all incoming values
+  are aligned. `tcgen05.copy` now rejects any destination whose phase is not
+  proven zero, including loop-carried odd-column candidates.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -180,15 +189,17 @@ consumers that do not yet have a local phase-aware lowering. Packed contiguous
 
 Current unaligned packed-subword ld/st checkpoint: the first executable
 `subword_index`/RMW consumer is implemented for packed contiguous `32x32b`
-load/store plans. The supported f16/i8 odd-column runtime row stores through
-`slice(1, 128)`, loads it back, checks the left neighbor via an aligned view,
-and checks the right boundary through a second odd-column view starting at
-`N-1`; this proves the tail read/modify/write path preserves and updates the
-correct subword lanes for two-lane and four-lane packed words. The
-phase-aware path is intentionally narrow: non-packed
-or non-contiguous subword ld/st layouts, `ld.red`, copy, MMAv5 operands, and
-unknown loop-carried/non-local phase cases still need follow-up work before
-the unaligned-subword migration can be considered complete.
+load/store plans. The supported f16/i8 odd-column rows now cover direct static
+`slice(1, 128)`, dynamic select, and loop-carried selected views. They store
+through the potentially odd descriptor, load it back, check the left neighbor
+via an aligned view, and check the right boundary through a second odd-column
+view starting at `N-1`; this proves the tail read/modify/write path preserves
+and updates the correct subword lanes for two-lane and four-lane packed words.
+The phase-aware path is intentionally narrow: non-packed or non-contiguous
+subword ld/st layouts, `ld.red`, copy execution, MMAv5 operands, and truly
+non-local phase cases that cannot be classified through local CFG/call
+forwarding still need follow-up work before the unaligned-subword migration can
+be considered complete.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

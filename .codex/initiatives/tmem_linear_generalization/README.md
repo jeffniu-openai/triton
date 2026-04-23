@@ -143,7 +143,18 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 07:13 UTC implemented the first
+Latest validation checkpoint: 2026-04-23 07:37 UTC widened subword phase
+classification across dynamic selects, loop-carried values, lowered CFG block
+arguments, and generic function/call forwarding. Packed contiguous `32x32b`
+ld/st now uses runtime phase whenever a subword descriptor is not proven
+aligned, while known-aligned carried values still avoid the RMW path.
+`tcgen05.copy` rejects any destination whose subword phase is not proven zero.
+Validation: required `make -j8`; selected unaligned f16/i8 ld/st and copy
+sentinels `18 passed`; broader adjacent subword ld/st/copy selector
+`28 passed, 1650 deselected`; focused `cp_no_scales and subword` sweep
+`36 passed, 1642 deselected`; lit `tmem_layouts.mlir` `1 passed`.
+
+Previous validation checkpoint: 2026-04-23 07:13 UTC implemented the first
 unaligned packed-subword ld/st slice and then widened the runtime row to i8.
 Validation: required `make -j8`; exact unaligned f16/i8 ld/st runtime positives
 `2 passed`; exact unaligned f16 copy diagnostic row `1 passed`; focused

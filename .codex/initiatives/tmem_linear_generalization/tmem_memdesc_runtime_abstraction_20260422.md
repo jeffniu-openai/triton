@@ -1743,3 +1743,28 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `1 passed`; focused adjacent subword ld/st/copy selector `32 passed,
   1636 deselected`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
   passed.
+
+### 2026-04-23 Subword Phase Control-Flow Widening
+
+- Generalized phase-status value forwarding from Triton-only calls/functions to
+  MLIR `FunctionOpInterface` and `CallOpInterface`, so phase facts survive
+  helper-function boundaries introduced during lowering.
+- Added semantic classification for `scf.if` results, `scf.for` results and
+  iter args, and lowered CFG block arguments using `BranchOpInterface`
+  successor operands. Cyclic carried values are treated as zero contribution
+  unless an incoming value or recognized view transform introduces nonzero
+  phase; unknown operations still classify as unknown.
+- Ld/st now uses the packed contiguous phase-aware `32x32b` lowering whenever a
+  subword descriptor is not proven phase-zero. This prevents unknown carried
+  values from taking the old hardware-word floor path. Known-aligned selected
+  and loop-carried values still lower to the original non-RMW messages.
+- `tcgen05.copy` now rejects any subword destination whose phase is not proven
+  zero, not just statically visible odd-column views. This keeps copy on the
+  clean-negative side until a valid copy lowering exists for odd subword
+  origins.
+- Added f16/i8 dynamic-select and loop-carried unaligned ld/st runtime
+  positives and a loop-carried unaligned copy diagnostic. Validation: required
+  `make -j8`; selected unaligned f16/i8 ld/st/copy rows `18 passed`; broader
+  adjacent subword ld/st/copy selector `28 passed, 1650 deselected`; focused
+  `cp_no_scales and subword` sweep `36 passed, 1642 deselected`; lit
+  `tmem_layouts.mlir` `1 passed`.

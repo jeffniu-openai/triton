@@ -924,6 +924,76 @@ def tmem_ldst_unaligned_subword_linear_subslice_view_kernel(in_ptr, out_ptr,
 
 
 @gluon.jit
+def tmem_ldst_unaligned_subword_dynamic_linear_subslice_view_kernel(
+    in_ptr, out_ptr, selector_ptr, parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr, N: ttgl.constexpr
+):
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    view_after = tmem.slice(N, N, dim=1)
+    odd_view = tmem.slice(1, N, dim=1)
+    tail_view = tmem.slice(N - 1, N, dim=1)
+    selected = view0
+    if ttgl.load(selector_ptr) != 0:
+        selected = odd_view
+    else:
+        selected = view0
+
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+    value = ttgl.convert_layout(value, reg_layout)
+    view0.store(ttgl.full([M, N], 11, element_ty, layout=reg_layout))
+    view_after.store(ttgl.full([M, N], 17, element_ty, layout=reg_layout))
+    selected.store(value)
+    out_selected = selected.load(reg_layout)
+    out0 = view0.load(reg_layout)
+    out_tail = tail_view.load(reg_layout)
+    ttgl.store(out_ptr + offs, out_selected)
+    ttgl.store(out_ptr + M * N + offs, out0)
+    ttgl.store(out_ptr + 2 * M * N + offs, out_tail)
+
+
+@gluon.jit
+def tmem_ldst_unaligned_subword_loop_carried_linear_subslice_view_kernel(
+    in_ptr, out_ptr, selector_ptr, parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr, N: ttgl.constexpr
+):
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    view_after = tmem.slice(N, N, dim=1)
+    odd_view = tmem.slice(1, N, dim=1)
+    tail_view = tmem.slice(N - 1, N, dim=1)
+    selected = view0
+    selector = ttgl.load(selector_ptr)
+    for i in range(0, 2, 1):
+        if i == selector:
+            selected = odd_view
+        else:
+            selected = selected
+
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+    value = ttgl.convert_layout(value, reg_layout)
+    view0.store(ttgl.full([M, N], 11, element_ty, layout=reg_layout))
+    view_after.store(ttgl.full([M, N], 17, element_ty, layout=reg_layout))
+    selected.store(value)
+    out_selected = selected.load(reg_layout)
+    out0 = view0.load(reg_layout)
+    out_tail = tail_view.load(reg_layout)
+    ttgl.store(out_ptr + offs, out_selected)
+    ttgl.store(out_ptr + M * N + offs, out0)
+    ttgl.store(out_ptr + 2 * M * N + offs, out_tail)
+
+
+@gluon.jit
 def tmem_alloc_source_init_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -2101,6 +2171,48 @@ def tmem_copy_no_scales_unaligned_subword_linear_subslice_view_kernel(
     mbarrier.wait(barrier, phase=0)
 
     output = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, output)
+
+
+@gluon.jit
+def tmem_copy_no_scales_unaligned_subword_loop_carried_linear_subslice_view_kernel(
+    in_ptr, out_ptr, selector_ptr, parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr, N: ttgl.constexpr, swizzle: ttgl.constexpr
+):
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    odd_view = tmem.slice(1, N, dim=1)
+    selected = view0
+    selector = ttgl.load(selector_ptr)
+    for i in range(0, 2, 1):
+        if i == selector:
+            selected = odd_view
+        else:
+            selected = selected
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
+        rank=2,
+    )
+    smem = ttgl.allocate_shared_memory(element_ty, [M, N], layout=smem_layout)
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    smem.store(value)
+    fence_async_shared()
+    tcgen05_copy(smem, selected)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    output = selected.load(reg_layout)
     ttgl.store(out_ptr + offs, output)
 
 
@@ -7363,6 +7475,59 @@ def test_tmem_runtime_matrix_ldst_unaligned_subword_linear_subslice_view_roundtr
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", (("f16", torch.float16), ("i8", torch.int8)))
+@pytest.mark.parametrize(
+    "mode,selector,selects_odd",
+    [
+        pytest.param("dynamic", 0, False, id="dynamic-view0"),
+        pytest.param("dynamic", 1, True, id="dynamic-odd"),
+        pytest.param("loop_carried", 2, False, id="loop-view0"),
+        pytest.param("loop_carried", 0, True, id="loop-odd"),
+    ],
+)
+def test_tmem_runtime_matrix_ldst_unaligned_subword_selected_view_roundtrip(
+    dtype_name, torch_dtype, mode, selector, selects_odd
+):
+    m = 128
+    n = 128
+    layout = _make_tmem_linear_layout(m, 2 * n)
+    base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 16
+    inp = base.to(torch_dtype)
+    out = torch.empty((3, m, n), dtype=torch_dtype, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    kernel = (
+        tmem_ldst_unaligned_subword_dynamic_linear_subslice_view_kernel
+        if mode == "dynamic"
+        else tmem_ldst_unaligned_subword_loop_carried_linear_subslice_view_kernel
+    )
+    compiled = kernel[(1, )](inp, out, selector_tensor, layout, m, n, num_warps=4)
+
+    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
+    expected0 = torch.full((m, n), 11, dtype=torch_dtype, device="cuda")
+    expected_tail = torch.full((m, n), 17, dtype=torch_dtype, device="cuda")
+    if selects_odd:
+        expected0[:, 1:] = inp[:, :-1]
+        expected_tail[:, 0] = inp[:, -2]
+        expected_tail[:, 1] = inp[:, -1]
+    else:
+        expected0 = inp
+        expected_tail[:, 0] = inp[:, -1]
+    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[2], expected_tail, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert "tcgen05.ld.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    assert "tcgen05.st.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    ttgir = compiled.asm["ttgir"]
+    if mode == "loop_carried":
+        assert "scf.for" in ttgir
+    else:
+        assert "arith.select" in ttgir or "scf.if" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype,mode,variant,expected_shape", LDST_IDENTITY_N32_CASES)
 def test_tmem_runtime_matrix_ldst_identity_n32_linear_layout(dtype_name, torch_dtype, mode, variant, expected_shape):
     m = 128
@@ -10731,6 +10896,35 @@ def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_linear_subslice_view
         tmem_copy_no_scales_unaligned_subword_linear_subslice_view_kernel[(1, )](
             inp,
             out,
+            parent_layout,
+            M,
+            N,
+            swizzle,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "unsupported sub-32-bit tensor memory destination origin for tcgen05.copy" in text
+    assert "current descriptor may start inside a 32-bit hardware column" in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_loop_carried_view_reports_error(capfd):
+    M = 128
+    N = 128
+    swizzle = 32
+    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
+    inp = base.to(torch.float16)
+    out = torch.empty_like(inp)
+    selector_tensor = torch.tensor(0, dtype=torch.int32, device="cuda")
+    parent_layout = _make_tmem_linear_layout(M, 2 * N)
+
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
+        tmem_copy_no_scales_unaligned_subword_loop_carried_linear_subslice_view_kernel[(1, )](
+            inp,
+            out,
+            selector_tensor,
             parent_layout,
             M,
             N,
