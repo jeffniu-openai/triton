@@ -10079,12 +10079,12 @@ static bool isViewLikeTMemLdStMemDesc(Value memDesc) {
       memDesc.getDefiningOp());
 }
 
-TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
-    Value memDesc, RankedTensorType regTy, MemDescType queryTy, int maxnreg,
+static TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfoImpl(
+    bool viewLike, RankedTensorType regTy, MemDescType queryTy, int maxnreg,
     std::optional<TMemLdStRowPlan> rowPlanOverride, TMemLdStEncodingInfo info) {
-  if (!isViewLikeTMemLdStMemDesc(memDesc) || regTy.getRank() != 2 ||
-      regTy.getShape()[0] != 32 || regTy.getShape()[1] != 32 ||
-      info.atom != TMemAccessAtom::I32x32b || info.numRegsPerMessage <= 1) {
+  if (!viewLike || regTy.getRank() != 2 || regTy.getShape()[0] != 32 ||
+      regTy.getShape()[1] != 32 || info.atom != TMemAccessAtom::I32x32b ||
+      info.numRegsPerMessage <= 1) {
     return info;
   }
 
@@ -10098,6 +10098,22 @@ TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
 
   info.numRegsPerMessage = 1;
   return info;
+}
+
+TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
+    Value memDesc, RankedTensorType regTy, MemDescType queryTy, int maxnreg,
+    std::optional<TMemLdStRowPlan> rowPlanOverride, TMemLdStEncodingInfo info) {
+  return refineTMemLdStQueryTypeEncodingInfoImpl(
+      isViewLikeTMemLdStMemDesc(memDesc), regTy, queryTy, maxnreg,
+      rowPlanOverride, info);
+}
+
+TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
+    MemDescType memTy, RankedTensorType regTy, MemDescType queryTy, int maxnreg,
+    std::optional<TMemLdStRowPlan> rowPlanOverride, TMemLdStEncodingInfo info) {
+  return refineTMemLdStQueryTypeEncodingInfoImpl(
+      hasSelfContainedTMemSubviewLayout(memTy), regTy, queryTy, maxnreg,
+      rowPlanOverride, info);
 }
 
 std::optional<TMemLdStPhysicalSupportPlan>

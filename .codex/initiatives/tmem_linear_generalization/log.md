@@ -35195,3 +35195,26 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Continue with helper API cleanup and staged
   validation unless interrupted.
+
+## 2026-04-23 06:01 UTC: scalar refinement API split
+
+- Branch/HEAD at slice start:
+  `0bd68d071 Keep active TMEM scalar refinement local`.
+- Dirty files before checkpoint commit:
+  `include/triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h`,
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`, plus
+  initiative docs.
+- Completed source slice:
+  added a `MemDescType` overload of
+  `refineTMemLdStQueryTypeEncodingInfo` and routed active self-contained
+  lowering through it. The Value overload remains for legacy descriptor-view
+  compatibility.
+- Validation evidence:
+  required `make -j8`; active ld/st `linear_subslice_view` selector
+  `4 passed`; loop-carried active ld/st/ld.red/copy selector `6 passed`;
+  lit `tmem_layouts.mlir` `1 passed`; unsplit `test_core.py -k 'tmem and (copy
+  or ld or load or store or mma or tcgen05)'` `50 passed, 5 skipped`.
+- Next concrete step:
+  commit and push this checkpoint. Continue splitting active semantic helper
+  calls away from Value-shaped legacy compatibility where practical.

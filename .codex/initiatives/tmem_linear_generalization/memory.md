@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 06:01 UTC split the scalar query-type refinement API.
+  Active self-contained lowering now calls
+  `refineTMemLdStQueryTypeEncodingInfo(MemDescType, ...)`; the Value overload
+  remains only for legacy descriptor-view compatibility where view-like still
+  depends on visible producer-chain matching. Validation: required
+  `make -j8`; active ld/st `linear_subslice_view` selector `4 passed`;
+  loop-carried active ld/st/ld.red/copy selector `6 passed`; lit
+  `tmem_layouts.mlir` `1 passed`; unsplit `test_core.py -k 'tmem and (copy or
+  ld or load or store or mma or tcgen05)'` `50 passed, 5 skipped`.
+
 - Latest: 2026-04-23 05:56 UTC completed another lowering-facing active
   locality cleanup. `refineTMemLdStQueryTypeEncodingInfo` now treats active
   self-contained descriptors as view-like from their current `MemDescType`,

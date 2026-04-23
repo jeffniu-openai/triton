@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:56 UTC
+Last updated: 2026-04-23 06:01 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -101,6 +101,9 @@ Active implementation checklist:
   are now considered view-like from current type/layout facts when refining
   `32x32` query-type lowering to scalar packets, so selected/loop-carried
   active values do not need a visible view producer for that lowering detail.
+  First scalar refinement API-split slice: the active lowering path now calls a
+  `MemDescType` overload of `refineTMemLdStQueryTypeEncodingInfo`, leaving the
+  Value-taking overload as legacy view-chain compatibility.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -236,6 +239,17 @@ ld/st linear-subview selector `4 passed`; loop-carried active
 ld/st/ld.red/copy selector `6 passed`; `test_core.py` physical-bitcast/runtime
 view selector `12 passed`; lit `tmem_layouts.mlir` `1 passed` (the other
 requested tmem lit paths contained no tests in this checkout).
+
+Current scalar refinement API-split checkpoint:
+the active lowering path now calls
+`refineTMemLdStQueryTypeEncodingInfo(MemDescType, ...)` for active
+self-contained descriptors. The Value-taking overload remains for legacy
+descriptor views where view-like still means visible producer-chain
+compatibility. Validation: required `make -j8`; active ld/st
+`linear_subslice_view` selector `4 passed`; loop-carried active
+ld/st/ld.red/copy selector `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
+unsplit `test_core.py -k 'tmem and (copy or ld or load or store or mma or
+tcgen05)'` `50 passed, 5 skipped`.
 
 Current broad non-scale runtime checkpoint:
 after the active-subview query/diagnostic/bitcast helper cleanup, selector

@@ -1601,3 +1601,19 @@ High-priority hacks and debt to remove after replacement coverage exists:
   should be mechanical after the active semantic path is covered, but it should
   keep the same validation cadence because many legacy descriptor-view tests
   still exercise those fallbacks intentionally.
+
+### 2026-04-23 Scalar Refinement API Split
+
+- Added a `MemDescType` overload of
+  `refineTMemLdStQueryTypeEncodingInfo`. Active self-contained lowering now
+  calls this overload directly, so the scalar refinement path no longer needs a
+  `Value` parameter for the migrated descriptor class.
+- The Value-taking overload remains for legacy descriptor-view compatibility,
+  where "view-like" still intentionally means a visible producer-chain view
+  until those descriptors either compute self-contained result types or are
+  rewritten by an optimizer.
+- Validation after this slice: required `make -j8`; active ld/st
+  `linear_subslice_view` selector `4 passed`; loop-carried active
+  ld/st/ld.red/copy selector `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
+  unsplit `test_core.py -k 'tmem and (copy or ld or load or store or mma or
+  tcgen05)'` `50 passed, 5 skipped`.

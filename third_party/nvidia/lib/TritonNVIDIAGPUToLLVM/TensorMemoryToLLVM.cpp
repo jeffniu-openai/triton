@@ -796,8 +796,13 @@ lowerTMemLdStFromTypes(
           computeTMemLdStEncodingInfo(regTy, queryTy, maxnreg, /*emitError=*/{},
                                       rowPlan);
       if (succeeded(encodingInfoOr)) {
-        *encodingInfoOr = refineTMemLdStQueryTypeEncodingInfo(
-            memDescValue, regTy, queryTy, maxnreg, rowPlan, *encodingInfoOr);
+        *encodingInfoOr =
+            hasTypeLocalSubviewLayout
+                ? refineTMemLdStQueryTypeEncodingInfo(
+                      memTy, regTy, queryTy, maxnreg, rowPlan, *encodingInfoOr)
+                : refineTMemLdStQueryTypeEncodingInfo(
+                      memDescValue, regTy, queryTy, maxnreg, rowPlan,
+                      *encodingInfoOr);
         return lowerTMemLdStFromInfo(
             loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals, tmemBase,
             redOp, useAbs, useNaN);
