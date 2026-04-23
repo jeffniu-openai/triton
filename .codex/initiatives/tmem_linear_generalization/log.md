@@ -35535,3 +35535,28 @@ Open after this slice:
   subword ld/st classification and then broader 4-GPU reduction/copy sweeps
   once the remaining local consumer gaps are either implemented or cleanly
   bounded.
+
+## 2026-04-23 08:32 UTC: subword storage-layout positives
+
+- Branch/HEAD at slice start:
+  `e93f66a09 Gate TMEM ld.red on current address alignment`.
+- Completed test slice:
+  added focused runtime positives for odd logical column ld/st over three
+  additional storage classes: tile-permuted packed f16
+  `tensor_memory_linear`, legacy unpacked f16 (`col_stride=2`), and legacy
+  padded i8 (`col_stride=4`).
+- Coverage details:
+  the tile-permuted row proves the current support-query path can still find a
+  valid contiguous packed phase-aware plan when the parent layout is not
+  identity. The unpacked/padded rows prove that logical offset 1 is not
+  automatically a subword-phase case: storage stride can advance the current
+  TMEM address to a 32-bit-word boundary, so those rows lower without packed
+  RMW and still preserve neighboring logical views.
+- Validation evidence:
+  required `make -j8`; focused unaligned subword ld/st selector passed
+  `14 passed, 1675 deselected`; adjacent subword copy/ldst selector passed
+  `53 passed, 1636 deselected`; `git diff --check` passed.
+- Next concrete step:
+  commit and push this coverage checkpoint. Continue with remaining
+  non-contiguous subword negatives/positives and broader 4-GPU sweeps after
+  the local consumer inventory is stable.

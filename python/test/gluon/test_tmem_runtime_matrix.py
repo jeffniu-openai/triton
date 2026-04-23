@@ -7583,6 +7583,61 @@ def test_tmem_runtime_matrix_ldst_unaligned_subword_reversed_columns_reports_err
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "name,torch_dtype,parent_layout",
+    [
+        pytest.param(
+            "f16_tile_permuted",
+            torch.float16,
+            _make_tmem_linear_layout_tile_permuted(128, 256, 32),
+            id="f16-tile-permuted",
+        ),
+        pytest.param(
+            "f16_legacy_unpacked",
+            torch.float16,
+            TensorMemoryLayout((128, 256), col_stride=2),
+            id="f16-legacy-unpacked",
+        ),
+        pytest.param(
+            "i8_legacy_padded_stride4",
+            torch.int8,
+            TensorMemoryLayout((128, 256), col_stride=4),
+            id="i8-legacy-padded-stride4",
+        ),
+    ],
+)
+def test_tmem_runtime_matrix_ldst_unaligned_subword_additional_storage_layouts(
+    name, torch_dtype, parent_layout
+):
+    m = 128
+    n = 128
+    base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 16
+    inp = base.to(torch_dtype)
+    out = torch.empty((3, m, n), dtype=torch_dtype, device="cuda")
+
+    compiled = tmem_ldst_unaligned_subword_linear_subslice_view_kernel[(1, )](
+        inp, out, parent_layout, m, n, num_warps=4
+    )
+
+    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
+    expected0 = torch.full((m, n), 11, dtype=torch_dtype, device="cuda")
+    expected0[:, 1:] = inp[:, :-1]
+    expected1 = torch.full((m, n), 17, dtype=torch_dtype, device="cuda")
+    expected1[:, 0] = inp[:, -2]
+    expected1[:, 1] = inp[:, -1]
+    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
+
+    observed_opcodes = [op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"])]
+    assert any(op.startswith("tcgen05.st.sync.aligned.") for op in observed_opcodes)
+    assert any(op.startswith("tcgen05.ld.sync.aligned.") for op in observed_opcodes)
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    if "tile_permuted" in name:
+        assert "tensor_memory_linear" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype", (("f16", torch.float16), ("i8", torch.int8)))
 @pytest.mark.parametrize(
     "mode,selector,selects_odd",

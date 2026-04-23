@@ -18167,6 +18167,15 @@ rejection, not rescue
   required `make -j8`; exact new rows `2 passed`; adjacent
   `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
 
+- 2026-04-23 subword ld/st storage-layout coverage added. Runtime positives
+  now cover tile-permuted packed f16 storage plus legacy unpacked/padded f16
+  and i8 storage. The latter rows show that logical odd-column views can be
+  physically word-aligned through layout stride and should not enter the
+  packed-lane RMW legality bucket. Validation: required `make -j8`; focused
+  unaligned subword ld/st selector `14 passed, 1675 deselected`; adjacent
+  subword copy/ldst selector `53 passed, 1636 deselected`; `git diff --check`
+  passed.
+
 - 2026-04-23 hardware `tcgen05.ld.red` address alignment fixed. A f32
   active view at element-column offset 1 compiled to hardware `ld.red` and
   faulted at runtime with a misaligned address. Added a shared

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 08:27 UTC
+Last updated: 2026-04-23 08:32 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -168,6 +168,11 @@ Active implementation checklist:
   load+reduce fusion pass, verifier, or LLVM lowering may select
   `tcgen05.ld.red`. A column-offset-1 view falls back to software reduction;
   a column-offset-4 view still emits hardware `ld.red`.
+  First subword storage-layout coverage slice: odd logical column ld/st now
+  has positives for a tile-permuted packed f16 `tensor_memory_linear` parent
+  and for legacy unpacked/padded f16/i8 parents. The unpacked/padded rows
+  document that logical odd columns can be word-aligned through storage stride
+  and must not be conflated with packed-lane RMW legality.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -257,6 +262,13 @@ over the current value, so static offsets and dynamic selected/carried values
 are handled with the same local facts as copy alignment. Misaligned or unknown
 origins remain semantically supported through software reduction over normal
 TMEM loads; aligned offset views keep the hardware path.
+
+Current subword storage-layout checkpoint: the first phase-aware packed RMW
+implementation is no longer only covered by canonical identity packed storage.
+A tile-permuted packed f16 parent proves support-query lowering can still find
+a valid contiguous packed plan, while f16 `col_stride=2` and i8
+`col_stride=4` legacy storage prove unpacked/padded physical layouts advance
+odd logical views to 32-bit-word-aligned current origins.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

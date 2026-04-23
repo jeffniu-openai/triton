@@ -137,6 +137,10 @@ Hardware f32 `tcgen05.ld.red` now proves a 128-bit-aligned current TMEM origin
 before selection/fusion/lowering. Misaligned active column views fall back to
 normal TMEM load plus software reduction, while aligned offset views still use
 hardware `ld.red`.
+Additional subword ld/st storage sentinels now cover a tile-permuted packed
+f16 parent and legacy unpacked/padded f16/i8 parents. The latter prove logical
+odd-column views can be word-aligned through their storage stride and should
+not be treated as packed-lane RMW cases.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -164,7 +168,13 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 08:27 UTC fixed hardware
+Latest validation checkpoint: 2026-04-23 08:32 UTC added subword ld/st storage
+coverage for tile-permuted packed f16 and unpacked/padded f16/i8 layouts.
+Validation: required `make -j8`; focused unaligned subword ld/st selector
+`14 passed, 1675 deselected`; adjacent subword copy/ldst selector `53 passed,
+1636 deselected`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 08:27 UTC fixed hardware
 `tcgen05.ld.red` origin alignment. Validation: required `make -j8`; exact
 subword/software and f32 offset-column reduction rows `4 passed, 1682
 deselected`; adjacent ld.red/software-reduce selector `52 passed, 1634

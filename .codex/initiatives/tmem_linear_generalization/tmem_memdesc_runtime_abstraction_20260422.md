@@ -1863,3 +1863,23 @@ High-priority hacks and debt to remove after replacement coverage exists:
   f32 offset-column reduction rows `4 passed, 1682 deselected`; adjacent
   ld.red/software-reduce selector `52 passed, 1634 deselected`; lit
   `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+### 2026-04-23 Subword Storage-Layout Positives
+
+- Added odd logical column ld/st runtime positives for storage classes that
+  exercise different parts of the memdesc model:
+  tile-permuted packed f16 `tensor_memory_linear`, legacy unpacked f16
+  (`col_stride=2`), and legacy padded i8 (`col_stride=4`).
+- The tile-permuted row is still a packed subword RMW case, but it proves the
+  valid lowering does not require an identity parent layout; support-query
+  planning can recover a contiguous packed `32x32b` plan from the current
+  descriptor facts.
+- The unpacked/padded rows are deliberately different: logical column offset 1
+  maps to a 32-bit-word-aligned current origin because the storage layout
+  spaces f16/i8 elements across whole dword slots. These rows document that
+  "odd logical column" and "nonzero packed subword phase" are not equivalent;
+  legality must come from physical element-column residue in the current
+  memdesc value and layout.
+- Validation after this slice: required `make -j8`; focused unaligned subword
+  ld/st selector `14 passed, 1675 deselected`; adjacent subword copy/ldst
+  selector `53 passed, 1636 deselected`; `git diff --check` passed.
