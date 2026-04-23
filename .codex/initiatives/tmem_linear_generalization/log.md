@@ -34734,6 +34734,36 @@ Open after this slice:
   continue ld.red selected active-subview coverage and then resume helper
   separation for ld/st verifier/lowering diagnostics.
 
+## 2026-04-23 04:34 UTC: dynamic selected ld.red active-subview coverage
+
+- Branch/HEAD before this validation slice:
+  `7ebd6e41e Cover selected ld/st column subviews`.
+- Motivation:
+  descriptor-chain selected `ld.red` and normal selected-subview ld/st were
+  covered, but hardware row reduction through an active selected column
+  subview did not have a direct runtime sentinel. The row needs distinct data
+  in both candidates so selector `1` catches any lowering that recovers a fixed
+  producer-chain origin instead of using the selected descriptor's current
+  runtime `taddr`.
+- Completed coverage:
+  added `tmem_ld_red_dynamic_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_ld_red_dynamic_linear_subslice_view`. The kernel
+  stores `inp` in the first `128x128xf32` subview, `inp + 5` in the second
+  same-typed subview of one `128x256xf32` parent, dynamically selects a view,
+  and performs `load_max` through the selected descriptor.
+- Result:
+  no backend repair was required. Existing type-local ld/st/ld.red planning
+  already handles this representative active selected subview.
+- Validation evidence:
+  required `make -j8`; exact new rows `2 passed`; adjacent ld.red selector
+  `53 passed, 1591 deselected`; 4-GPU
+  `ld_red and not reports and not scales` split passed as group1 `61 passed`,
+  group2 `61 passed`, group3 `61 passed`, group4 `59 passed`.
+- Remaining migration frontier:
+  continue the value-taking helper audit, prioritizing remaining semantic
+  callers where producer-chain recovery can still decide legality instead of
+  current `MemDescType`/layout facts.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

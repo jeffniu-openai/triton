@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:27 UTC
+Last updated: 2026-04-23 04:34 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -67,10 +67,11 @@ Active implementation checklist:
   type-local recovered `tensor_memory_scales` storage type for load/store
   query-type rescue and LLVM planning, preserving the current selected runtime
   `taddr` and avoiding unsafe canonical dense-linear surrogate lowering. First
-  dynamic ld.red selected-view sentinel: a same-typed descriptor-chain
-  `arith.select` row is covered as a runtime positive, proving the current
-  ld.red path handles that representative selected value without additional
-  backend changes. First dynamic copy selected-subview sentinels: same-parent
+  dynamic ld.red selected-view sentinels: same-typed descriptor-chain and
+  same-parent active column-subview `arith.select` rows are covered as runtime
+  positives, proving the current ld.red path handles those representative
+  selected values without additional backend changes. First dynamic copy
+  selected-subview sentinels: same-parent
   column-subview `arith.select` rows are covered as runtime positives for 1CTA
   dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
   `128x256b` copy families, proving `tcgen05.copy` writes through the selected
@@ -177,6 +178,18 @@ descriptor chains, selects between same-typed descriptor views, and performs
 `tcgen05.ld.red` shape. The existing type-local ld/st/ld.red planning already
 handles this row; the only test-helper change was allowing two store waits for
 the two initialized candidates.
+
+Current ld.red selected-subview checkpoint:
+a representative dynamic selected active column subview now has runtime
+coverage for `ttng.tmem_load` with hardware row reduction. The test stores
+distinct payloads into two same-typed `128x128xf32` views of one
+`128x256xf32` parent allocation, selects between those views, and performs
+`load_max` through the selected descriptor. Selector `1` would fail if ld.red
+lowering ignored the memdesc SSA value's current `taddr` and recovered the
+first visible subview origin. Validation: required `make -j8`; exact new rows
+`2 passed`; adjacent ld.red selector `53 passed, 1591 deselected`; 4-GPU
+`ld_red and not reports and not scales` split passed as group1 `61 passed`,
+group2 `61 passed`, group3 `61 passed`, group4 `59 passed`.
 
 Current copy selected-subview checkpoint:
 representative dynamic selected same-parent column subviews now have runtime

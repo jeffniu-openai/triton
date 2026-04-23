@@ -18058,3 +18058,15 @@ rejection, not rescue
   focused `cp_no_scales` selector `63 passed`; 4-GPU
   `cp_no_scales and not reports` split passed as `54 passed, 4 skipped`,
   `58 passed`, `58 passed`, `57 passed`; targeted lit set passed `6/6`.
+
+- 2026-04-23 dynamic selected active-subview ld.red sentinel completed. Added
+  `tmem_ld_red_dynamic_linear_subslice_view_kernel` and
+  `test_tmem_runtime_matrix_ld_red_dynamic_linear_subslice_view`, selecting
+  between two same-typed `128x128xf32` views of a `128x256xf32` parent before
+  `load_max`. The selector-1 row proves hardware row-reduction lowering uses
+  the selected memdesc SSA value's current `taddr`, not a recovered first
+  subview origin. No backend change was required for this representative row.
+  Validation: required `make -j8`; exact new rows `2 passed`; adjacent ld.red
+  selector `53 passed, 1591 deselected`; 4-GPU
+  `ld_red and not reports and not scales` split passed as group1 `61 passed`,
+  group2 `61 passed`, group3 `61 passed`, group4 `59 passed`.

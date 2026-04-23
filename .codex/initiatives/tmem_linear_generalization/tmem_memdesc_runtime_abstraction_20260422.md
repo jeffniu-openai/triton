@@ -1348,3 +1348,20 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `ldst and not reports and not scales` split passed as group1 `89 passed`,
   group2 `33 passed, 56 skipped`, group3 `67 passed, 22 skipped`, group4
   `66 passed, 20 skipped`.
+
+### 2026-04-23 Dynamic Selected Active-Subview Ld.Red Sentinel
+
+- Added runtime coverage for hardware row reduction through a selected active
+  column subview. The kernel initializes two same-typed `128x128xf32` views of
+  one `128x256xf32` parent allocation with distinct values, dynamically
+  selects one view, and performs `load_max` through the selected descriptor.
+- This extends the selected-value contract from normal ld/st and copy to
+  `tcgen05.ld.red`. The selector-1 row catches lowering that ignores the
+  selected memdesc SSA value's current `taddr` and instead recovers the first
+  visible producer-chain subview origin.
+- No backend change was required. Existing type-local ld/st/ld.red planning
+  already handles this representative selected active subview.
+- Validation after this slice: required `make -j8`; exact new rows `2 passed`;
+  adjacent ld.red selector `53 passed, 1591 deselected`; 4-GPU
+  `ld_red and not reports and not scales` split passed as group1 `61 passed`,
+  group2 `61 passed`, group3 `61 passed`, group4 `59 passed`.
