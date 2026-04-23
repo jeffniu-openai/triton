@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 03:23 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 03:45 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -56,9 +56,29 @@ pass now splits through dynamic selects so unpadded selected views can be
 rematerialized into padded scales storage before scaled MMA. General A/B scale
 descriptor views now have the same type-local storage classifier and
 selected-view rematerialization path, so their legality and materialization no
-longer require a visible root scales producer chain.
+longer require a visible root scales producer chain. Scales descriptor-view
+load/store planning now also uses the type-local storage classification: dynamic
+selected row-permuted scales descriptor views plan against the recovered
+`tensor_memory_scales` storage type, keep the selected runtime `taddr`, and no
+longer fall through to an unsafe canonical dense-linear surrogate.
 
-Latest validation checkpoint: 2026-04-23 03:23 UTC generalized the scale
+Latest validation checkpoint: 2026-04-23 03:45 UTC repaired the scales ld/st
+descriptor-view selected-value gap. Type-local generated scale storage
+classification now covers two-CTA generic scales descriptor views, while the
+B-scale-specific scaled-MMA path keeps its narrower one-CTA padded-storage
+boundary. `getTMemLdStQueryTypes` returns the recovered scales storage type for
+type-local scales descriptor views instead of inventing a dense-linear
+surrogate, and LLVM ld/st lowering uses that storage type for planning while
+preserving the current selected descriptor base. Validation: required
+`make -j8`; dynamic selected scales ld/st rows `2 passed`; focused
+`ldst_scales` selector `35 passed, 1596 deselected`; combined
+`scale_descriptor_view or bscale_descriptor_view` selector
+`12 passed, 1619 deselected`; targeted lit set `6/6`; 4-GPU
+`ldst_scales or scale_descriptor_view or bscale_descriptor_view` split passed as
+group1 `12 passed`, group2 `12 passed`, group3 `12 passed`, group4
+`11 passed`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 03:23 UTC generalized the scale
 descriptor-view repair beyond B-scale padding. `getMMAv5ScaleStorageType`
 classifies generated unpadded A/B scale descriptor-view storage from current
 `MemDescType` facts, and the general scale descriptor-view rematerializer now

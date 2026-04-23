@@ -1701,7 +1701,7 @@ getNormalizedMMAv5Rank2I8LinearScaleStorageLayout(MemDescType scaleType) {
 
   auto linear =
       dyn_cast<TensorMemoryLinearEncodingAttr>(scaleType.getEncoding());
-  if (!linear || linear.getTwoCTAs())
+  if (!linear)
     return std::nullopt;
 
   auto shape = scaleType.getShape();
@@ -1782,6 +1782,13 @@ std::optional<MemDescType> getMMAv5ScaleStorageType(MemDescType scaleType) {
 }
 
 static bool isMMAv5ScaledBScaleDescriptorViewStorage(MemDescType bScaleType) {
+  if (bScaleType) {
+    if (auto linear = dyn_cast_if_present<TensorMemoryLinearEncodingAttr>(
+            bScaleType.getEncoding())) {
+      if (linear.getTwoCTAs())
+        return false;
+    }
+  }
   auto maybeLayout = getNormalizedMMAv5Rank2I8LinearScaleStorageLayout(
       bScaleType);
   if (!maybeLayout)

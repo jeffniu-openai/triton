@@ -34510,6 +34510,47 @@ Open after this slice:
   `getTMemScalesRootEncoding` uses in ld/st diagnostics and support checks, and
   move semantic decisions to current-type/layout facts where possible.
 
+## 2026-04-23 03:45 UTC: selected scales descriptor-view ld/st repair
+
+- Branch/HEAD before this repair slice:
+  `caec5b42e Classify selected MMAv5 scale descriptor views locally`.
+- Root cause:
+  a dynamically selected scales descriptor view produced by
+  `reshape -> trans -> reshape` has a current `tensor_memory_linear` type whose
+  layout identifies generated scales storage. The old ld/st path still needed a
+  visible scales root for several semantic checks. After `arith.select`, exact
+  support/raw lowering failed and query-type rescue picked a canonical
+  dense-linear surrogate, which changed the physical access pattern and
+  miscompiled the 1CTA row.
+- Completed implementation:
+  added type-local scales encoding helpers for ld/st planning and diagnostics.
+  Generic generated A/B scale descriptor-view storage is now classified for
+  two-CTA layouts as well; the B-scale-specific scaled-MMA padded-storage
+  predicate keeps rejecting two-CTA. `getTMemLdStQueryTypes` now returns the
+  recovered `tensor_memory_scales` storage type for type-local scales
+  descriptor views instead of adding the unsafe dense-linear surrogate. LLVM
+  ld/st lowering uses the recovered storage type as its planning memdesc while
+  preserving the selected runtime `taddr`.
+- New coverage:
+  `test_tmem_runtime_matrix_ldst_scales_dynamic_descriptor_view_roundtrip`
+  selects dynamically between two same-typed row-permuted scales descriptor
+  views and checks runtime correctness, selected descriptor forwarding,
+  `tensor_memory_linear` TTGIR coverage, load/store presence, and exact
+  tcgen05 opcode sequences for both 1CTA and 2CTA rows.
+- Validation evidence:
+  required `make -j8`; exact dynamic selected scales ld/st rows `2 passed`;
+  focused `ldst_scales` selector `35 passed, 1596 deselected`; combined
+  `scale_descriptor_view or bscale_descriptor_view` selector
+  `12 passed, 1619 deselected`; targeted lit set `6/6`; 4-GPU
+  `ldst_scales or scale_descriptor_view or bscale_descriptor_view` split passed
+  as group1 `12 passed`, group2 `12 passed`, group3 `12 passed`, group4
+  `11 passed`; `git diff --check` passed.
+- Remaining migration frontier:
+  continue auditing non-allocation scales-root users, especially ld.red and any
+  remaining support-query diagnostics, and keep producer-chain walking confined
+  to optimization or legacy fallback paths that do not define legality for a
+  selected descriptor SSA value.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

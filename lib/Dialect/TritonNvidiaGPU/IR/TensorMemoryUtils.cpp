@@ -124,6 +124,34 @@ getTMemScalesRootEncoding(Value memDesc) {
   return std::nullopt;
 }
 
+static std::optional<TensorMemoryScalesEncodingAttr>
+getTypeLocalTMemScalesEncoding(MemDescType memTy) {
+  if (!memTy)
+    return std::nullopt;
+  if (auto scales =
+          dyn_cast<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
+    return scales;
+  auto storageType = getMMAv5ScaleStorageType(memTy);
+  if (!storageType)
+    return std::nullopt;
+  return dyn_cast<TensorMemoryScalesEncodingAttr>(
+      storageType->getEncoding());
+}
+
+static std::optional<TensorMemoryScalesEncodingAttr>
+getTypeLocalOrLegacyTMemScalesEncoding(Value memDesc) {
+  if (auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType())) {
+    if (auto scales = getTypeLocalTMemScalesEncoding(memTy))
+      return scales;
+  }
+  return getTMemScalesRootEncoding(memDesc);
+}
+
+static bool isTypeLocalTMemScalesDescriptorView(MemDescType memTy) {
+  return memTy && !isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()) &&
+         getTypeLocalTMemScalesEncoding(memTy).has_value();
+}
+
 FailureOr<std::optional<TMemAccessAtom>>
 parseTMemAccessAtomName(StringRef atomName, bool allowAuto,
                         bool splitNAsPacked) {
@@ -4433,11 +4461,6 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
   if (hasSelfContainedTMemSubviewLayout(memTy))
     return getTypeLocalTMemLdStQueryTypes(memTy);
 
-  bool explicitViewProducer =
-      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
-                      gpu::MemDescReshapeOp, gpu::MemDescTransOp,
-                      gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
-
   auto add = [&](gpu::MemDescType ty) {
     if (llvm::none_of(queryTypes, [&](gpu::MemDescType existing) {
           return existing == ty;
@@ -4445,6 +4468,18 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
       queryTypes.push_back(ty);
     }
   };
+
+  if (isTypeLocalTMemScalesDescriptorView(memTy)) {
+    if (auto storageType = getMMAv5ScaleStorageType(memTy))
+      add(*storageType);
+    add(memTy);
+    return queryTypes;
+  }
+
+  bool explicitViewProducer =
+      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
+                      gpu::MemDescReshapeOp, gpu::MemDescTransOp,
+                      gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
 
   bool memTyCanonical =
       getCanonicalTMemLinearEncoding(memTy, /*error=*/nullptr).has_value();
@@ -4762,7 +4797,7 @@ uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue) {
     auto srcTy = dyn_cast<MemDescType>(index.getSrc().getType());
     if (!srcTy)
       return 0;
-    if (getTMemScalesRootEncoding(index.getSrc()))
+    if (getTypeLocalOrLegacyTMemScalesEncoding(index.getSrc()))
       return recurse(index.getSrc());
     APInt indexValue;
     if (!matchPattern(index.getIndex(), m_ConstantInt(&indexValue)))
@@ -5065,6 +5100,20 @@ inferStandaloneTMemLdStQueryLayout(Value memDesc,
   if (auto memTy = dyn_cast<MemDescType>(memDesc.getType())) {
     if (hasSelfContainedTMemSubviewLayout(memTy))
       return inferTypeLocalTMemLdStQueryLayout(memTy, error);
+    if (isTypeLocalTMemScalesDescriptorView(memTy)) {
+      auto maybeTwoCTAs = getTensorMemoryTwoCTAs(memTy.getEncoding());
+      if (!maybeTwoCTAs) {
+        if (error)
+          *error = "expected tensor memory layout encoding";
+        return failure();
+      }
+      auto rawLayout = toLinearLayout(memTy);
+      TMemLdStQueryLayout query{
+          rawLayout, *maybeTwoCTAs,
+          SmallVector<int32_t>(rawLayout.getNumInDims(), 0)};
+      canonicalizeTMemLdStQueryOutDims(query, memDesc.getContext());
+      return query;
+    }
   }
 
   auto maybeQuery = inferStandaloneTMemLdStQueryLayoutImpl(
@@ -5533,7 +5582,7 @@ getUnsupportedDirectTMemLdStVariantReason(Value memDesc, TMemAccessAtom atom,
   auto memDescTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (atom != TMemAccessAtom::I16x32bx2 || numWarps != 4 || !memDescTy ||
       memDescTy.getRank() != 2 || memDescTy.getElementTypeBitWidth() != 8 ||
-      !getTMemScalesRootEncoding(memDesc)) {
+      !getTypeLocalOrLegacyTMemScalesEncoding(memDesc)) {
     return std::nullopt;
   }
 
@@ -5674,7 +5723,7 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
     return false;
   };
   auto hasTwoCTATensorMemoryScalesRoot = [&]() {
-    if (auto scales = getTMemScalesRootEncoding(memDesc))
+    if (auto scales = getTypeLocalOrLegacyTMemScalesEncoding(memDesc))
       return product<unsigned>(scales->getCGALayout().getCTAsPerCGA()) > 1;
     return false;
   };
@@ -6304,6 +6353,22 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   auto queryTy = dyn_cast<MemDescType>(memDesc.getType());
   if (!queryTy)
     return std::nullopt;
+  if (isTypeLocalTMemScalesDescriptorView(queryTy)) {
+    auto maybeQuery = inferStandaloneTMemLdStQueryLayout(
+        memDesc, /*preserveNonCanonicalView=*/true, error);
+    if (failed(maybeQuery))
+      return std::nullopt;
+    auto rowPlan = getTMemLdStRowPlanForQueryLayout(
+        memDesc, queryTy, *maybeQuery);
+    if (!rowPlan)
+      rowPlan = getTMemLdStRowPlan(maybeQuery->layout);
+    if (!rowPlan)
+      return std::nullopt;
+    if (debug)
+      llvm::errs() << "[tmem-ldst-support] type-local scales view layout:\n"
+                   << maybeQuery->layout.toString() << "\n";
+    return TMemLdStSupportQueryPlan{*maybeQuery, rowPlan};
+  }
   if (hasSelfContainedTMemSubviewLayout(queryTy)) {
     auto support = getTypeLocalTMemLdStSupportQueryPlan(queryTy, error);
     if (debug && support)

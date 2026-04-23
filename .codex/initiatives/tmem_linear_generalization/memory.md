@@ -1,5 +1,28 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 03:45 UTC repaired selected scales descriptor-view
+  load/store lowering. A dynamic selected
+  `reshape -> trans -> reshape` scales descriptor view has a
+  `tensor_memory_linear` current type whose layout is enough to identify the
+  generated scales storage, but the previous ld/st path failed exact
+  type-local lowering and then rescued with a canonical dense-linear query
+  type, which changed the physical access pattern and miscompiled the 1CTA
+  row. `getTMemLdStQueryTypes` now returns the recovered
+  `tensor_memory_scales` storage type for type-local scales descriptor views
+  instead of the unsafe dense surrogate, and LLVM ld/st lowering plans against
+  that storage type while preserving the selected runtime `taddr`. Generic
+  scale descriptor-view storage classification now accepts two-CTA linear
+  scale views; the B-scale-specific scaled-MMA padded-storage classifier keeps
+  its one-CTA boundary. Added dynamic selected scales ld/st runtime coverage
+  with exact tcgen05 opcode assertions for 1CTA and 2CTA rows. Validation:
+  required `make -j8`; exact dynamic selected scales ld/st rows `2 passed`;
+  focused `ldst_scales` selector `35 passed, 1596 deselected`; combined
+  `scale_descriptor_view or bscale_descriptor_view` selector
+  `12 passed, 1619 deselected`; targeted lit set `6/6`; 4-GPU
+  `ldst_scales or scale_descriptor_view or bscale_descriptor_view` split
+  passed as group1 `12 passed`, group2 `12 passed`, group3 `12 passed`, group4
+  `11 passed`; `git diff --check` passed.
+
 - Latest: 2026-04-23 03:23 UTC generalized selected scale descriptor-view
   rematerialization beyond B-scale padding. Added
   `getMMAv5ScaleStorageType(MemDescType)` to classify generated unpadded A/B

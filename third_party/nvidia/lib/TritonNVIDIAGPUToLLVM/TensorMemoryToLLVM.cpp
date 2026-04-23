@@ -568,10 +568,18 @@ lowerTMemLdStFromTypes(
   auto queryTypes =
       memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
                    : SmallVector<MemDescType>{memTy};
+  std::optional<MemDescType> typeLocalScalesStorageTy;
+  if (!isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    if (auto storageTy = getMMAv5ScaleStorageType(memTy))
+      typeLocalScalesStorageTy = *storageTy;
+  }
   bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
-  MemDescType planningMemTy = hasTypeLocalSubviewLayout
-                                  ? getSelfContainedTMemSubviewPlanningType(memTy)
-                                  : memTy;
+  MemDescType planningMemTy = memTy;
+  if (typeLocalScalesStorageTy) {
+    planningMemTy = *typeLocalScalesStorageTy;
+  } else if (hasTypeLocalSubviewLayout) {
+    planningMemTy = getSelfContainedTMemSubviewPlanningType(memTy);
+  }
   auto makeBaseOffsetRelativeToCurrentTAddr = [&](uint32_t baseOffset) {
     return hasTypeLocalSubviewLayout
                ? baseOffset
@@ -603,7 +611,7 @@ lowerTMemLdStFromTypes(
         succeeded(rawQuery)) {
       rawQueryLayout = *rawQuery;
       MemDescType rawMemTy = planningMemTy;
-      if (!hasTypeLocalSubviewLayout) {
+      if (!hasTypeLocalSubviewLayout && !typeLocalScalesStorageTy) {
         if (auto maybeStandaloneTy = inferStandaloneTMemRegLayoutQueryType(
                 memDescValue, /*error=*/nullptr);
             succeeded(maybeStandaloneTy)) {

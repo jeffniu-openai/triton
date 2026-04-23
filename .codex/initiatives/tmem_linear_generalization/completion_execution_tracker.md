@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 03:23 UTC
+Last updated: 2026-04-23 03:45 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -62,7 +62,11 @@ Active implementation checklist:
   cleanup when the original select is single-use. First general scale
   descriptor-view slice: generated A/B scale descriptor-view storage is
   classified from current type/layout facts, and selected scale descriptor
-  views rematerialize branch-wise for scaled MMA.
+  views rematerialize branch-wise for scaled MMA. First scales ld/st
+  descriptor-view slice: generated A/B scales descriptor views now use their
+  type-local recovered `tensor_memory_scales` storage type for load/store
+  query-type rescue and LLVM planning, preserving the current selected runtime
+  `taddr` and avoiding unsafe canonical dense-linear surrogate lowering.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -126,6 +130,17 @@ descriptor-view rematerializer uses that type-local classification before
 legacy root walking and can split selected descriptors branch-wise, creating a
 rematerialized selected scales descriptor for scaled MMA while preserving
 multi-use originals for unrelated consumers.
+
+Current scales ld/st descriptor-view checkpoint:
+dynamic selected scales descriptor views now lower from type-local facts.
+`getTMemLdStQueryTypes(Value)` recognizes generated scales descriptor-view
+storage from the current `MemDescType` and returns the recovered
+`tensor_memory_scales` storage type before the original linear view type, rather
+than inventing a canonical dense-linear surrogate. LLVM ld/st lowering also
+uses the recovered storage type as the semantic planning type for raw/support
+attempts. The selected descriptor's runtime `taddr` still carries the dynamic
+base; only the static storage semantics change. This fixed the 1CTA
+row-permuted selected scales view miscompile and kept the 2CTA row green.
 
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
@@ -201,6 +216,25 @@ dynamic A/B scale descriptor-view rows `2 passed`; combined
 `12 passed, 1617 deselected`; targeted lit set `6/6`; 4-GPU positive MMAv5
 selector passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
 group3 `148 passed`, group4 `148 passed`; `git diff --check` passed.
+
+Completed seventeenth implementation slice: selected scales descriptor-view
+load/store lowering is type-local. The old path identified scale roots by
+walking descriptor producers; after `arith.select`, exact lowering failed and
+query-type rescue chose a dense-linear surrogate that did not preserve the
+row-permuted physical mapping. The fix treats generated scales descriptor-view
+linear layouts as local scales storage for ld/st query selection and LLVM
+planning. Generic scale descriptor-view storage classification now accepts
+two-CTA layouts; the B-scale-specific scaled-MMA padded-storage classifier still
+rejects two-CTA as before. New runtime coverage selects between two same-typed
+row-permuted scales descriptor views and asserts correctness plus exact tcgen05
+opcode sequences for 1CTA and 2CTA. Validation: required `make -j8`; exact
+dynamic selected scales ld/st rows `2 passed`; focused `ldst_scales` selector
+`35 passed, 1596 deselected`; combined
+`scale_descriptor_view or bscale_descriptor_view` selector
+`12 passed, 1619 deselected`; targeted lit set `6/6`; 4-GPU
+`ldst_scales or scale_descriptor_view or bscale_descriptor_view` split passed
+as group1 `12 passed`, group2 `12 passed`, group3 `12 passed`, group4
+`11 passed`; `git diff --check` passed.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

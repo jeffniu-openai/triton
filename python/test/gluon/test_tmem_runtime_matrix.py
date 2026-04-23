@@ -1309,6 +1309,40 @@ def tmem_scales_ldst_descriptor_view_kernel(in_ptr, out_ptr, M: ttgl.constexpr, 
 
 
 @gluon.jit
+def tmem_scales_ldst_dynamic_descriptor_view_kernel(in_ptr, out_ptr, selector_ptr, M: ttgl.constexpr,
+                                                    N: ttgl.constexpr, instr_variant: ttgl.constexpr,
+                                                    cga_layout: ttgl.constexpr):
+    tmem0 = allocate_tensor_memory(ttgl.int8, [M, N], TensorMemoryScalesLayout(cga_layout=list(cga_layout)))
+    tmem1 = allocate_tensor_memory(ttgl.int8, [M, N], TensorMemoryScalesLayout(cga_layout=list(cga_layout)))
+    root_layout: ttgl.constexpr = tmem0.get_reg_layout(instr_variant=instr_variant)
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, root_layout))[:, None]
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, root_layout))[None, :]
+    offs = offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    converted = ttgl.convert_layout(value, root_layout)
+    tmem0.store(converted)
+    tmem1.store(converted)
+
+    view0 = tmem0.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    view1 = tmem1.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    selected = view0
+    selected_root = tmem0
+    if ttgl.load(selector_ptr) != 0:
+        selected = view1
+        selected_root = tmem1
+    else:
+        selected = view0
+        selected_root = tmem0
+
+    view_layout: ttgl.constexpr = selected.get_reg_layout(instr_variant=instr_variant)
+    view_value = selected.load(view_layout)
+    view_value = view_value + ttgl.full([M, N], 3, ttgl.int8, layout=view_layout)
+    selected.store(view_value)
+    out = selected_root.load(root_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, root_layout))
+
+
+@gluon.jit
 def tmem_ld_red_explicit_layout_kernel(
     in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, N: ttgl.constexpr, load_variant: ttgl.constexpr,
     red_op: ttgl.constexpr, use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
@@ -8287,6 +8321,54 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip(
     assert ops == expected_ops
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_scales_encoding" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tmem_store" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "num_ctas,cga_layout,expected_ops",
+    [
+        (
+            1,
+            tuple(),
+            [
+                ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0),
+                ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0),
+                ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0),
+                ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0),
+                ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0),
+            ],
+        ),
+        (
+            2,
+            ((1, 0),),
+            [
+                ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 0),
+                ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 0),
+                ("tcgen05.ld.sync.aligned.32x32b.x16.b32", 0),
+                ("tcgen05.st.sync.aligned.32x32b.x16.b32", 0),
+                ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 0),
+            ],
+        ),
+    ],
+)
+def test_tmem_runtime_matrix_ldst_scales_dynamic_descriptor_view_roundtrip(num_ctas, cga_layout, expected_ops):
+    M, N = 128, 32
+    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+    selector = torch.tensor(1, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_scales_ldst_dynamic_descriptor_view_kernel[(1, )](
+        inp, out, selector, M, N, "32x32b", cga_layout, num_warps=4, num_ctas=num_ctas
+    )
+    torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == expected_ops
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_load" in ttgir
     assert "ttng.tmem_store" in ttgir
 

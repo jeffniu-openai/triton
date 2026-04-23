@@ -1042,6 +1042,38 @@ High-priority hacks and debt to remove after replacement coverage exists:
   selector passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
   group3 `148 passed`, group4 `148 passed`; `git diff --check` passed.
 
+### 2026-04-23 Selected Scales Descriptor-View Load/Store Slice
+
+- The same current-type-only rule applies to scales load/store, not only scaled
+  MMA allocation rewrites. A dynamically selected row-permuted scales descriptor
+  view has a `tensor_memory_linear` current type, but its layout is enough to
+  classify generated scales storage. The previous ld/st path failed exact
+  support/raw lowering and then fell back to a canonical dense-linear query
+  type, which changed the physical access pattern for the selected value.
+- Added type-local scales encoding helpers in `TensorMemoryUtils.cpp` for
+  ld/st diagnostics and support planning. Generic generated scale
+  descriptor-view classification now accepts two-CTA layouts; the
+  B-scale-specific scaled-MMA padded-storage classifier keeps the narrower
+  one-CTA rule.
+- `getTMemLdStQueryTypes(Value)` now returns the recovered
+  `tensor_memory_scales` storage type for type-local scales descriptor views
+  before the original linear view type, and avoids inventing the unsafe
+  dense-linear surrogate for that descriptor class. LLVM ld/st lowering uses
+  the recovered storage type as the planning memdesc for raw/support attempts
+  while keeping the selected descriptor's runtime `taddr`.
+- Added dynamic selected scales descriptor-view load/store runtime coverage for
+  1CTA and 2CTA. The test selects between two same-typed row-permuted views,
+  stores through the selected view, loads the selected root, and asserts exact
+  tcgen05 opcode sequences.
+- Validation after this slice: required `make -j8`; exact dynamic selected
+  scales ld/st rows `2 passed`; focused `ldst_scales` selector
+  `35 passed, 1596 deselected`; combined
+  `scale_descriptor_view or bscale_descriptor_view` selector
+  `12 passed, 1619 deselected`; targeted lit set `6/6`; 4-GPU
+  `ldst_scales or scale_descriptor_view or bscale_descriptor_view` split
+  passed as group1 `12 passed`, group2 `12 passed`, group3 `12 passed`, group4
+  `11 passed`; `git diff --check` passed.
+
 ### 2026-04-23 Type-Local MMAv5 Family Address Slice
 
 - `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects narrowed
