@@ -4285,6 +4285,12 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
 std::optional<TMemLdStRowPlan>
 getTMemLdStRowPlanForRawQuery(Value memDesc, MemDescType queryTy,
                               const TMemLdStQueryLayout &queryLayout) {
+  if (hasSelfContainedTMemSubviewLayout(queryTy)) {
+    if (auto rowPlan = getTMemLdStRowPlanForType(queryTy))
+      return rowPlan;
+    return getTMemLdStRowPlan(queryLayout.layout);
+  }
+
   std::optional<TMemLdStRowPlan> rowPlan;
   if (!disallowTMemLdStRawQueryRowPlanOverride(memDesc)) {
     rowPlan = getTMemLdStRowPlanForQueryLayout(memDesc, queryTy, queryLayout);
@@ -4300,11 +4306,17 @@ getTMemLdStRowPlanForRawQuery(Value memDesc, MemDescType queryTy,
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForSupportQuery(
     Value memDesc, MemDescType queryTy, const TMemLdStQueryLayout &supportQuery,
     std::optional<TMemLdStRowPlan> supportRowPlan) {
+  if (hasSelfContainedTMemSubviewLayout(queryTy)) {
+    if (supportRowPlan)
+      return supportRowPlan;
+    if (auto rowPlan = getTMemLdStRowPlanForType(queryTy))
+      return rowPlan;
+    return getTMemLdStRowPlan(supportQuery.layout);
+  }
+
   auto rowPlan = supportRowPlan;
   if (!rowPlan)
     rowPlan = getTMemLdStRowPlanForQueryLayout(memDesc, queryTy, supportQuery);
-  if (hasSelfContainedTMemSubviewLayout(queryTy))
-    return rowPlan;
   if (!rowPlan)
     rowPlan = getBackingTMemLdStRowPlan(memDesc);
   return rowPlan;

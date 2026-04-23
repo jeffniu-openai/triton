@@ -1403,3 +1403,18 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `cp_no_scales and not reports` split passed as group1
   `57 passed, 4 skipped`, group2 `61 passed`, group3 `61 passed`, group4
   `58 passed`.
+
+### 2026-04-23 Active-Subview Row-Plan Helper Separation
+
+- `getTMemLdStRowPlanForRawQuery` and
+  `getTMemLdStRowPlanForSupportQuery` now detect active self-contained
+  subviews first and return a row plan from the current descriptor type or
+  support query layout before consulting value-taking override/backing-row
+  helpers.
+- This is a cleanup/generalization step rather than a behavior fix. The
+  selected active-subview sentinels already passed, but this makes the intended
+  semantic boundary explicit: migrated active subviews do not need
+  producer-chain row-plan fallback.
+- Validation after this slice: required `make -j8`; selected active-subview
+  exact rows `10 passed`; focused active-subview selector
+  `6 passed, 1642 deselected`; targeted lit set `6/6`.

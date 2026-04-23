@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 04:51 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 04:55 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -81,8 +81,15 @@ that checks both candidate views after storing through the selected descriptor.
 The same active-subview ld/st surface is now also covered through an `scf.for`
 carried memdesc value, including handle-aware `get_reg_layout()`, selected
 load, selected store, and explicit candidate readback.
+Active-subview raw/support row-plan helpers now short-circuit through
+type-local facts before value-chain backing-row logic.
 
-Latest validation checkpoint: 2026-04-23 04:51 UTC added loop-carried selected
+Latest validation checkpoint: 2026-04-23 04:55 UTC separated active-subview
+raw/support row-plan helper paths. Validation: required `make -j8`; selected
+active-subview exact rows `10 passed`; focused active-subview selector
+`6 passed, 1642 deselected`; targeted lit set `6/6`.
+
+Previous validation checkpoint: 2026-04-23 04:51 UTC added loop-carried selected
 copy active column-subview coverage. Validation: required `make -j8`; exact
 new rows `2 passed`; adjacent copy selector `42 passed, 1606 deselected`;
 4-GPU `cp_no_scales and not reports` split passed as group1

@@ -34822,6 +34822,29 @@ Open after this slice:
   continue helper API separation and remove value-taking semantic dependencies
   where type-local facts are now sufficient.
 
+## 2026-04-23 04:55 UTC: active-subview row-plan helper separation
+
+- Branch/HEAD before this implementation slice:
+  `82461dc3a Cover loop-carried copy column subviews`.
+- Motivation:
+  raw-query and support-query row-plan helpers still entered value-taking
+  override/backing-row code before returning the type-local answer for active
+  self-contained subviews. The selected active-subview sentinels were green,
+  so this was cleanup to make the semantic boundary explicit.
+- Completed implementation:
+  `getTMemLdStRowPlanForRawQuery` and
+  `getTMemLdStRowPlanForSupportQuery` now short-circuit active
+  self-contained subviews through `getTMemLdStRowPlanForType` or the support
+  query layout before consulting value-chain fallbacks.
+- Validation evidence:
+  required `make -j8`; combined selected active-subview exact rows
+  `10 passed`; focused active-subview selector `6 passed, 1642 deselected`;
+  targeted lit set `6/6`.
+- Remaining migration frontier:
+  continue helper API separation on M64/query-ordering helpers, verifier-facing
+  support paths, and any residual lowering code that still needs a producer
+  chain to decide legality.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

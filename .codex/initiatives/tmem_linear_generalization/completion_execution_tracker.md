@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 04:51 UTC
+Last updated: 2026-04-23 04:55 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -89,6 +89,9 @@ Active implementation checklist:
   current runtime `taddr`. First loop-carried active subview sentinel: an
   `scf.for`-carried selected active subview now loads, stores, and feeds
   `get_reg_layout()` correctly without a local view producer at the consumer.
+  First row-plan helper-separation slice: raw-query and support-query row-plan
+  helpers now return type-local active-subview plans before entering
+  value-chain row-plan/backing-plan logic.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -184,6 +187,14 @@ rows `2 passed`; adjacent ld/st selector `42 passed, 1604 deselected`; 4-GPU
 `ldst and not reports and not scales` split passed as group1 `89 passed`,
 group2 `35 passed, 54 skipped`, group3 `65 passed, 24 skipped`, group4
 `68 passed, 20 skipped`.
+
+Current row-plan helper-separation checkpoint:
+`getTMemLdStRowPlanForRawQuery` and `getTMemLdStRowPlanForSupportQuery` now
+short-circuit active self-contained subviews through type-local row-plan facts
+or the provided support query layout before consulting value-taking
+override/backing-row helpers. Validation: required `make -j8`; selected
+active-subview exact rows `10 passed`; focused active-subview selector
+`6 passed, 1642 deselected`; targeted lit set `6/6`.
 
 Current ld.red selected-view checkpoint:
 a representative dynamic selected descriptor-chain ld.red row is covered as a

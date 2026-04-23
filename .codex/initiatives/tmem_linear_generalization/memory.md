@@ -18095,3 +18095,11 @@ rejection, not rescue
   `cp_no_scales and not reports` split passed as group1
   `57 passed, 4 skipped`, group2 `61 passed`, group3 `61 passed`, group4
   `58 passed`.
+
+- 2026-04-23 active-subview row-plan helper separation completed.
+  `getTMemLdStRowPlanForRawQuery` and
+  `getTMemLdStRowPlanForSupportQuery` now return type-local row plans for
+  active self-contained subviews before entering value-chain override and
+  backing-row fallback logic. Validation: required `make -j8`; selected
+  active-subview exact rows `10 passed`; focused active-subview selector
+  `6 passed, 1642 deselected`; targeted lit set `6/6`.
