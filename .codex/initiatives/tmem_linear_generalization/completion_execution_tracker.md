@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:28 UTC
+Last updated: 2026-04-23 05:33 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -204,6 +204,16 @@ the active/scales selector
 dynamic_bscale_descriptor_view) and not reports` was run as four GPU split
 commands with distinct caches and passed as group1 `18 passed`, group2
 `18 passed`, group3 `18 passed`, group4 `15 passed`.
+
+Current physical-bitcast locality checkpoint:
+TMEM bitcast type inference now uses the public raw-query helper so active
+self-contained selected subviews dispatch to type-local query facts. Added a
+selected active-subview physical-bitcast runtime sentinel. Full-slice
+index/reshape bitcast runtime-view cases now allow the frontend to fold the
+no-op `memdesc_subslice` marker while preserving runtime and opcode checks.
+Validation: required `make -j8`; exact selected/preserved physical-bitcast rows
+`4 passed`; broad `tmem_linear_runtime_views or physical_bitcast` selector
+`15 passed`; targeted lit set `6/6`.
 
 Current normal ld/st selected-subview checkpoint:
 a representative dynamic selected active column subview now has runtime

@@ -2632,7 +2632,8 @@ def test_tmem_linear_runtime_views(name, kernel, layout, reinterpret_layout, ins
     torch.testing.assert_close(output_tensor.reshape(-1), expected)
 
     ttgir = compiled.asm["ttgir"]
-    assert ttgir.count("ttg.memdesc_subslice") >= 1
+    if reinterpret_layout.shape != layout.shape:
+        assert ttgir.count("ttg.memdesc_subslice") >= 1
     assert ttgir.count("ttg.memdesc_trans") >= 1
     assert ttgir.count("ttg.memdesc_reshape") >= 1
     assert "ttg.memdesc_index" in ttgir
@@ -2740,6 +2741,35 @@ def tmem_physical_bitcast_preserves_subview_kernel(out, layout: ttgl.constexpr,
     ttgl.store(out + offs, loaded)
 
 
+@gluon.jit
+def tmem_physical_bitcast_selected_subview_kernel(out, selector_ptr, layout: ttgl.constexpr):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    HALF_N: ttgl.constexpr = N // 2
+    tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+
+    ones = ttgl.full((M, N), 1.0, dtype=ttgl.float32, layout=reg_layout)
+    tmem.store(ones)
+
+    view0 = tmem.slice(0, HALF_N, dim=1)
+    view1 = tmem.slice(HALF_N, HALF_N, dim=1)
+    selected = view0
+    if ttgl.load(selector_ptr) != 0:
+        selected = view1
+    else:
+        selected = view0
+
+    selected_as_f16 = selected.bitcast(ttgl.float16, (M, N))
+    bitcast_layout: ttgl.constexpr = selected_as_f16.get_reg_layout()
+    zeros = ttgl.full((M, N), 0.0, dtype=ttgl.float16, layout=bitcast_layout)
+    selected_as_f16.store(zeros)
+
+    loaded = tmem.load(reg_layout)
+    ttgl.store(out + offs, loaded)
+
+
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("slice_start", (0, 64))
 def test_tmem_physical_bitcast_preserves_subview_mapping(slice_start):
@@ -2762,6 +2792,29 @@ def test_tmem_physical_bitcast_preserves_subview_mapping(slice_start):
     ptx = compiled.asm["ptx"]
     assert "tcgen05.st.sync.aligned.32x32b.x64.b32" in ptx
     assert "tcgen05.st.sync.aligned.32x32b.x64.unpack::16b.b32" not in ptx
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_physical_bitcast_selected_subview_mapping(selector):
+    out = torch.empty((128, 128), dtype=torch.float32, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+    compiled = tmem_physical_bitcast_selected_subview_kernel[(1, )](
+        out, selector_tensor, _make_tmem_linear_layout(128, 128), num_warps=4
+    )
+
+    expected = torch.ones_like(out)
+    if selector:
+        expected[:, 64:128] = 0
+    else:
+        expected[:, 0:64] = 0
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reinterpret" in ttgir
+    assert "tmem_physical_bitcast" in ttgir
 
 
 @gluon.jit

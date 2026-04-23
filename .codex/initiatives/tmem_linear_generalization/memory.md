@@ -18165,3 +18165,14 @@ rejection, not rescue
   dynamic_bscale_descriptor_view) and not reports` ran as four GPU split
   commands with distinct caches and passed as group1 `18 passed`, group2
   `18 passed`, group3 `18 passed`, group4 `15 passed`.
+
+- 2026-04-23 physical-bitcast type-local query cleanup completed.
+  `inferTMemBitcastType` now uses the public raw-query wrapper so active
+  self-contained selected subviews infer bitcast result types from current
+  descriptor type/layout facts. Added selected active-subview physical-bitcast
+  runtime coverage. Updated full-slice index/reshape bitcast runtime-view
+  marker expectations to allow no-op `memdesc_subslice` folding while keeping
+  runtime/opcode checks. Validation: required `make -j8`; exact
+  selected/preserved physical-bitcast rows `4 passed`; broad
+  `tmem_linear_runtime_views or physical_bitcast` selector `15 passed`;
+  targeted lit set `6/6`.

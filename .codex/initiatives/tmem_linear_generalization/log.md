@@ -35084,3 +35084,30 @@ Open after this slice:
 - Next concrete step:
   continue remaining semantic helper audit and convert any active-subview
   legality/lowering facts that still rely on producer-chain helpers.
+
+## 2026-04-23 05:33 UTC: physical-bitcast type inference made active-subview local
+
+- Branch/HEAD before this checkpoint:
+  `b13380a38 Record active scales validation sweep`.
+- Dirty files before checkpoint commit:
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+  `python/test/gluon/test_core.py`, plus initiative docs.
+- Completed source slice:
+  `inferTMemBitcastType` now calls the public
+  `inferStandaloneTMemLdStQueryLayout` wrapper, so active self-contained
+  descriptors use type-local query facts instead of the raw producer-chain
+  implementation. Added `tmem_physical_bitcast_selected_subview_kernel` and
+  `test_tmem_physical_bitcast_selected_subview_mapping`.
+- Test expectation cleanup:
+  broad bitcast runtime-view rows were runtime-correct but three full-slice
+  index/reshape cases no longer retained a visible `ttg.memdesc_subslice`.
+  The test now requires the subslice marker only when the reinterpret shape is
+  a real slice of the source layout shape; runtime, reinterpret, physical
+  bitcast, and opcode checks remain.
+- Validation evidence:
+  required `make -j8`; exact selected/preserved physical-bitcast rows
+  `4 passed`; broad `tmem_linear_runtime_views or physical_bitcast` selector
+  `15 passed`; targeted lit set `6/6`.
+- Next concrete step:
+  commit and push this checkpoint. Continue remaining helper audit, with
+  special attention to bitcast/reinterpret and direct-support fallback paths.

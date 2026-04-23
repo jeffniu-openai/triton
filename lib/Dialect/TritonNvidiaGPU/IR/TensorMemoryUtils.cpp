@@ -7224,7 +7224,7 @@ FailureOr<MemDescType> inferTMemBitcastType(Value memDesc,
     return failure();
   }
 
-  auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+  auto srcQuery = inferStandaloneTMemLdStQueryLayout(
       memDesc, /*preserveNonCanonicalView=*/true, error);
   if (failed(srcQuery))
     return failure();

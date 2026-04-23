@@ -1513,3 +1513,21 @@ High-priority hacks and debt to remove after replacement coverage exists:
   with separate caches.
 - Result: group1 `18 passed`, group2 `18 passed`, group3 `18 passed`, group4
   `15 passed`.
+
+### 2026-04-23 Physical-Bitcast Type Inference Locality
+
+- `inferTMemBitcastType` now calls the public
+  `inferStandaloneTMemLdStQueryLayout` wrapper. Active self-contained
+  descriptors therefore use type-local query facts for physical bitcast result
+  type inference instead of the raw producer-chain implementation.
+- Added a runtime sentinel where a selected active column subview is physically
+  bitcast from `f32[128,64]` to `f16[128,128]` before storing through the
+  selected descriptor. Selector `0/1` rows verify that the selected runtime
+  `taddr` controls which half of the parent TMEM allocation is zeroed.
+- Full-slice index/reshape runtime-view bitcast cases now allow the frontend
+  to fold no-op `memdesc_subslice` markers. This is an IR expectation update
+  only; runtime correctness, physical-bitcast markers, and opcode checks remain.
+- Validation after this slice: required `make -j8`; exact selected/preserved
+  physical-bitcast rows `4 passed`; broad
+  `tmem_linear_runtime_views or physical_bitcast` selector `15 passed`;
+  targeted lit set `6/6`.
