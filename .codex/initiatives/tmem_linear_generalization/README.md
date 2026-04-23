@@ -144,11 +144,11 @@ for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
 Latest validation checkpoint: 2026-04-23 07:13 UTC implemented the first
-unaligned packed-subword ld/st slice. Validation: required `make -j8`; exact
-unaligned f16 ld/st runtime positive `1 passed`; exact unaligned f16 copy
-diagnostic row `1 passed`; focused adjacent subword ld/st/copy selector
-passed `32 passed, 1636 deselected`; lit `tmem_layouts.mlir` `1 passed`;
-`git diff --check` passed.
+unaligned packed-subword ld/st slice and then widened the runtime row to i8.
+Validation: required `make -j8`; exact unaligned f16/i8 ld/st runtime positives
+`2 passed`; exact unaligned f16 copy diagnostic row `1 passed`; focused
+adjacent subword ld/st/copy selector passed `32 passed, 1636 deselected`; lit
+`tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
 
 Previous validation checkpoint: 2026-04-23 06:43 UTC implemented the aligned
 element-column runtime slice while keeping the unaligned subword guard in

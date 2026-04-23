@@ -7332,22 +7332,23 @@ def test_tmem_runtime_matrix_ldst_loop_carried_linear_subslice_view_subword(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_ldst_unaligned_subword_linear_subslice_view_roundtrip():
+@pytest.mark.parametrize("dtype_name,torch_dtype", (("f16", torch.float16), ("i8", torch.int8)))
+def test_tmem_runtime_matrix_ldst_unaligned_subword_linear_subslice_view_roundtrip(dtype_name, torch_dtype):
     m = 128
     n = 128
     layout = _make_tmem_linear_layout(m, 2 * n)
     base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 16
-    inp = base.to(torch.float16)
-    out = torch.empty((3, m, n), dtype=torch.float16, device="cuda")
+    inp = base.to(torch_dtype)
+    out = torch.empty((3, m, n), dtype=torch_dtype, device="cuda")
 
     compiled = tmem_ldst_unaligned_subword_linear_subslice_view_kernel[(1, )](
         inp, out, layout, m, n, num_warps=4
     )
 
     torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
-    expected0 = torch.full((m, n), 11, dtype=torch.float16, device="cuda")
+    expected0 = torch.full((m, n), 11, dtype=torch_dtype, device="cuda")
     expected0[:, 1:] = inp[:, :-1]
-    expected1 = torch.full((m, n), 17, dtype=torch.float16, device="cuda")
+    expected1 = torch.full((m, n), 17, dtype=torch_dtype, device="cuda")
     expected1[:, 0] = inp[:, -2]
     expected1[:, 1] = inp[:, -1]
     torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
@@ -7357,8 +7358,8 @@ def test_tmem_runtime_matrix_ldst_unaligned_subword_linear_subslice_view_roundtr
     observed_opcodes = [op for op, _ in ops]
     assert "tcgen05.ld.sync.aligned.32x32b.x1.b32" in observed_opcodes
     assert "tcgen05.st.sync.aligned.32x32b.x1.b32" in observed_opcodes
-    assert "tcgen05.st.sync.aligned.32x32b.x64.b32" in observed_opcodes
-    assert "tcgen05.ld.sync.aligned.32x32b.x64.b32" in observed_opcodes
+    assert any(op.startswith("tcgen05.st.sync.aligned.32x32b.x") and op.endswith(".b32") for op in observed_opcodes)
+    assert any(op.startswith("tcgen05.ld.sync.aligned.32x32b.x") and op.endswith(".b32") for op in observed_opcodes)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

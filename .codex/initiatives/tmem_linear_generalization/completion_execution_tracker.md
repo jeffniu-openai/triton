@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 07:13 UTC
+Last updated: 2026-04-23 07:18 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -180,11 +180,12 @@ consumers that do not yet have a local phase-aware lowering. Packed contiguous
 
 Current unaligned packed-subword ld/st checkpoint: the first executable
 `subword_index`/RMW consumer is implemented for packed contiguous `32x32b`
-load/store plans. The supported f16 odd-column runtime row stores through
+load/store plans. The supported f16/i8 odd-column runtime row stores through
 `slice(1, 128)`, loads it back, checks the left neighbor via an aligned view,
 and checks the right boundary through a second odd-column view starting at
 `N-1`; this proves the tail read/modify/write path preserves and updates the
-correct subword lanes. The phase-aware path is intentionally narrow: non-packed
+correct subword lanes for two-lane and four-lane packed words. The
+phase-aware path is intentionally narrow: non-packed
 or non-contiguous subword ld/st layouts, `ld.red`, copy, MMAv5 operands, and
 unknown loop-carried/non-local phase cases still need follow-up work before
 the unaligned-subword migration can be considered complete.

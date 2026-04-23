@@ -35364,7 +35364,7 @@ Open after this slice:
   equivalent; `ld.red`, non-contiguous/unpacked subword ld/st, MMAv5, and
   unknown non-local phase cases remain follow-up work.
 - Validation evidence:
-  required `make -j8`; exact unaligned f16 ld/st runtime positive `1 passed`;
+  required `make -j8`; exact unaligned f16/i8 ld/st runtime positives `2 passed`;
   exact unaligned f16 copy diagnostic row `1 passed`; focused selector
   `ldst_unaligned_subword_linear_subslice_view_roundtrip or
   ldst_dynamic_linear_subslice_view_subword or

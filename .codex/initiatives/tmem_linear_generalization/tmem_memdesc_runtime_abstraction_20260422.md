@@ -1727,18 +1727,19 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - `tcgen05.copy` now rejects known-nonzero subword destination origins locally.
   The copy ISA path has no RMW sequence in this slice, so accepting those
   descriptors would reintroduce floor-to-word aliasing.
-- Added a f16 `slice(1, 128)` runtime positive that initializes neighboring
+- Added f16/i8 `slice(1, 128)` runtime positives that initialize neighboring
   aligned views, stores through the odd-column view, loads the odd-column view
   back, checks the left boundary through the aligned first view, and checks the
-  right boundary through a second odd-column view starting at `N-1`. Added a
-  copy diagnostic row for the same odd-column destination.
+  right boundary through a second odd-column view starting at `N-1`. This
+  covers both two-lane and four-lane packed word phases. Added a copy
+  diagnostic row for the same odd-column destination.
 - Remaining boundaries: non-packed or non-contiguous subword ld/st layouts,
   `ld.red`, copy, MMAv5, and unknown non-local subword phases still need
   follow-up support or local rejection. The intended end state remains local
   lowering from the current `taddr` plus current type/layout, not producer-chain
   dependence for validity.
-- Validation after this slice: required `make -j8`; exact unaligned f16 ld/st
-  runtime positive `1 passed`; exact unaligned f16 copy diagnostic row
+- Validation after this slice: required `make -j8`; exact unaligned f16/i8
+  ld/st runtime positives `2 passed`; exact unaligned f16 copy diagnostic row
   `1 passed`; focused adjacent subword ld/st/copy selector `32 passed,
   1636 deselected`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
   passed.
