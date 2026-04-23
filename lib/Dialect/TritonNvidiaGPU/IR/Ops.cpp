@@ -1479,14 +1479,18 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
       return success();
   }
 
+  bool hasTypeLocalSubviewLayout =
+      hasSelfContainedTMemSubviewLayout(memdesc);
   std::string standaloneError;
-  if (auto standaloneTy =
-          inferStandaloneTMemViewType(memdescValue, &standaloneError);
-      succeeded(standaloneTy)) {
-    if (auto maybePlan = getTMemLdStPhysicalSupportPlan(
-            *standaloneTy, lookupNumWarps(op), maxnreg);
-        maybePlan && maybePlan->regTy == type) {
-      return success();
+  if (!hasTypeLocalSubviewLayout) {
+    if (auto standaloneTy =
+            inferStandaloneTMemViewType(memdescValue, &standaloneError);
+        succeeded(standaloneTy)) {
+      if (auto maybePlan = getTMemLdStPhysicalSupportPlan(
+              *standaloneTy, lookupNumWarps(op), maxnreg);
+          maybePlan && maybePlan->regTy == type) {
+        return success();
+      }
     }
   }
 
@@ -1654,6 +1658,8 @@ LogicalResult TMEMLoadOp::verify() {
                                               getType());
     auto maxnreg = getContextualMaxNReg(*this);
     auto srcMemTy = cast<MemDescType>(getSrc().getType());
+    bool hasTypeLocalSubviewLayout =
+        hasSelfContainedTMemSubviewLayout(srcMemTy);
     bool directSourceFriendly = isReductionFriendlyTmemSourceLayout(srcMemTy);
     std::string encodingDetails;
     auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
@@ -1691,7 +1697,7 @@ LogicalResult TMEMLoadOp::verify() {
         auto rowPlan = supportPlan->rowPlan;
         if (!rowPlan)
           rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
-        if (!rowPlan)
+        if (!rowPlan && !hasTypeLocalSubviewLayout)
           rowPlan = getBackingTMemLdStRowPlan(getSrc());
         if (auto maybeInfo = computeTMemLdStEncodingInfo(
                 regTy, srcMemTy, supportPlan->query, maxnreg,
@@ -1706,7 +1712,7 @@ LogicalResult TMEMLoadOp::verify() {
               getSrc(), /*preserveNonCanonicalView=*/true, &rawError);
           succeeded(rawQuery)) {
         auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
-        if (!rowPlan)
+        if (!rowPlan && !hasTypeLocalSubviewLayout)
           rowPlan = getBackingTMemLdStRowPlan(getSrc());
         if (auto maybeInfo = computeTMemLdStEncodingInfo(
                 regTy, srcMemTy, *rawQuery, maxnreg,

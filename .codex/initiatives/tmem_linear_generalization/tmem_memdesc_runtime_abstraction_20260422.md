@@ -946,6 +946,22 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `54 passed, 4 skipped`, group2 `58 passed`, group3 `58 passed`, group4
   `57 passed`; targeted lit set passed `6/6`.
 
+### 2026-04-23 Active Subview Verifier Locality
+
+- `verifyTMEMOperand` skips standalone view-type physical-support rescue for
+  active self-contained descriptors. That rescue can still exist for legacy
+  descriptor views, but it no longer defines validity for active layouts whose
+  current type should be sufficient.
+- `TMEMLoadOp::verify` uses the active-layout predicate to avoid
+  `getBackingTMemLdStRowPlan` fallback in support/raw ld.red row-plan checks.
+- Validation after this slice: required `make -j8`; exact
+  `warpx2_01_23_twocta_subslice_view_positive` `4 passed`; focused ld/st
+  selector `78 passed`; focused `ld_red and not reports and not scales`
+  selector `239 passed`; 4-GPU
+  `(ldst or ld_red) and not reports and not scales` split passed as group1
+  `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+  `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`.
+
 ### 2026-04-23 Active Subview Row-Plan Fallback Tightening
 
 - Active self-contained descriptors now reject missing type-local row-plan facts

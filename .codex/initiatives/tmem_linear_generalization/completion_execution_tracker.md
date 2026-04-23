@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 00:44 UTC
+Last updated: 2026-04-23 00:58 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -37,6 +37,10 @@ Active implementation checklist:
   standalone type reconstruction, source-column support rescue, or
   already-adjusted base-offset correction in `lowerTMemLdStFromTypes`, and
   type-local copy queries no longer subtract chain-derived view offsets.
+  First verifier-locality slice: generic ld/st verification skips standalone
+  physical-support rescue for active self-contained descriptors, and ld.red
+  verification no longer uses backing-row fallback for active support/raw
+  row-plan checks.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -230,6 +234,18 @@ as group1 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
 `cp_no_scales and not reports` split passed as group1 `54 passed, 4 skipped`,
 group2 `58 passed`, group3 `58 passed`, group4 `57 passed`; targeted lit set
 passed `6/6`.
+
+Completed eleventh implementation slice: verifier behavior now matches the
+active-layout lowering contract. `verifyTMEMOperand` skips standalone
+view-type physical-support rescue for active self-contained descriptors.
+`TMEMLoadOp::verify` skips `getBackingTMemLdStRowPlan` fallback in support and
+raw reduction checks for the same descriptor class. Validation: required
+`make -j8`; exact `warpx2_01_23_twocta_subslice_view_positive` `4 passed`;
+focused ld/st selector `78 passed`; focused `ld_red and not reports and not
+scales` selector `239 passed`; 4-GPU
+`(ldst or ld_red) and not reports and not scales` split passed as group1
+`120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+`128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`.
 
 Current prototype evidence: hand-written LLVM IR passed through
 `opt -S -O2` shows unused or statically zero subword-phase arithmetic is removed

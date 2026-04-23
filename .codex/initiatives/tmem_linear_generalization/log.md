@@ -34031,6 +34031,34 @@ Open after this slice:
   diagnostics and query-type rescue, and MMAv5/scales address planning still
   relies on value-chain helpers. Continue narrowing those semantic surfaces.
 
+## 2026-04-23 00:58 UTC: active-subview verifier locality
+
+- Branch/HEAD before this slice:
+  `1e9d9bb19 Keep active TMEM LLVM lowering relative to current taddr`.
+- Context:
+  LLVM lowering no longer uses chain-derived row/base rescue for active
+  self-contained descriptors, but verifier paths still had two mismatches:
+  generic load/store verification could accept an active descriptor by
+  reconstructing a standalone view type, and ld.red verification could borrow a
+  backing row plan for support/raw checks.
+- Completed implementation:
+  `verifyTMEMOperand` now skips standalone view-type physical-support rescue for
+  active self-contained descriptors. `TMEMLoadOp::verify` computes the same
+  active-layout predicate and does not call `getBackingTMemLdStRowPlan` for
+  active support/raw reduction row-plan fallback.
+- Validation evidence:
+  required `make -j8`; exact active-subview warpx2 copy/load row `4 passed`;
+  focused ld/st selector `78 passed`; focused `ld_red and not reports and not
+  scales` selector `239 passed`; 4-GPU
+  `(ldst or ld_red) and not reports and not scales` split passed as group1
+  `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+  `128 passed, 20 skipped`, and group4 `146 passed`; targeted lit set passed
+  `6/6`.
+- Remaining frontier:
+  query-type rescue and diagnostic-detail paths still take `Value` and can walk
+  chains, but active helper dispatch now keeps the main legality paths local.
+  Continue toward MMAv5/scales address planning and then clean helper API splits.
+
 ## 2026-04-22 03:13 UTC: upstream merge and post-merge address refactor
 
 - Merge:

@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 00:58 UTC completed the first verifier-locality slice.
+  Generic ld/st verification now skips standalone view-type physical-support
+  rescue for active self-contained descriptors. `TMEMLoadOp` reduction
+  verification also skips `getBackingTMemLdStRowPlan` fallback in support/raw
+  row-plan checks for the same descriptor class. Validation: required
+  `make -j8`; exact active row `4 passed`; focused ld/st `78 passed`; focused
+  ld.red `239 passed`; 4-GPU `(ldst or ld_red) and not reports and not scales`
+  passed as group1 `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`,
+  group3 `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set
+  passed `6/6`.
+
 - Latest: 2026-04-23 00:44 UTC completed the first LLVM lowering-locality
   slice. Exported `hasSelfContainedTMemSubviewLayout(MemDescType)`.
   `lowerTMemLdStFromTypes` now keeps active self-contained descriptors relative
