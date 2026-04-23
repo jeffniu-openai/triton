@@ -18,8 +18,8 @@ using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
-    Value memDescValue, Value tmemBase, bool useRawWordColumns) {
-  auto ll = ttng::getMMAv5TMemAddressLayout(memTy, memDescValue);
+    Value tmemBase, bool useRawWordColumns) {
+  auto ll = ttng::getMMAv5TMemAddressLayout(memTy);
   auto bitwidth = memTy.getElementTypeBitWidth();
   Value address = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
       loc, rewriter, tmemBase, bitwidth);
@@ -44,15 +44,15 @@ MemDescOperand mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::tmemLoad(
 }
 
 static SmallVector<int>
-getSortedTMemTileOrder(Value memDescValue, MemDescType memTy, int varyingDim,
-                       int numRep, int tileSize) {
+getSortedTMemTileOrder(MemDescType memTy, int varyingDim, int numRep,
+                       int tileSize) {
   SmallVector<std::pair<uint32_t, int>> offsets;
   offsets.reserve(numRep);
   for (int rep = 0; rep < numRep; ++rep) {
     SmallVector<int32_t> logicalOffsets(memTy.getRank(), 0);
     logicalOffsets[memTy.getRank() - 2 + varyingDim] = rep * tileSize;
-    uint32_t offset = ttng::getMMAv5TMemViewOffsetForLowering(
-        memDescValue, memTy, logicalOffsets);
+    uint32_t offset =
+        ttng::getMMAv5TMemViewOffsetForLowering(memTy, logicalOffsets);
     offsets.emplace_back(offset, rep);
   }
   llvm::sort(offsets, [](const auto &lhs, const auto &rhs) {
@@ -485,8 +485,8 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
   std::iota(nRepOrder.begin(), nRepOrder.end(), 0);
   if (isa<ttng::TensorMemoryEncodingAttr, ttng::TensorMemoryLinearEncodingAttr>(
           dTensorTy.getEncoding())) {
-    nRepOrder = getSortedTMemTileOrder(d, dTensorTy,
-                                       /*varyingDim=*/1, numRepN, mmaSizeN);
+    nRepOrder = getSortedTMemTileOrder(dTensorTy, /*varyingDim=*/1, numRepN,
+                                       mmaSizeN);
   }
 
   std::unique_ptr<DotOpMmaMemLoader> aLoader;
@@ -510,10 +510,8 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
     }
 
     aLoader = std::make_unique<DotOpMmaV5TmemLoader>(
-        DotOpMmaV5TmemLoader::build(loc, rewriter, aTensorTy, a,
-                                    baseA));
-    kRepOrder = getSortedTMemTileOrder(a, aTensorTy,
-                                       /*varyingDim=*/1, numRepK,
+        DotOpMmaV5TmemLoader::build(loc, rewriter, aTensorTy, baseA));
+    kRepOrder = getSortedTMemTileOrder(aTensorTy, /*varyingDim=*/1, numRepK,
                                        aTMemTileK);
   } else {
     auto isFp4a = op.numBitsPerElementA == 4;
@@ -602,8 +600,7 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
   dot.numBitsPerElementB = bTensorTy.getElementTypeBitWidth();
 
   DotOpMmaV5TmemLoader dLoader =
-      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, op.getD(),
-                                  adaptor.getD(),
+      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
                                   /*useRawWordColumns=*/true);
   dot.getAccAddress = [&](ConversionPatternRewriter &rewriter, Location loc,
                           int m, int n, const DotConversion::InstDesc &desc) {
@@ -662,7 +659,7 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.mmaSizeK = scaledInfo.mmaSizeK;
   auto accSupport = ttng::getMMAv5ScaledAccumulatorSupport(dTensorTy);
   auto bScaleStorageTy =
-      ttng::getMMAv5ScaledBScaleStorageTypeThroughViews(op.getBScale());
+      ttng::getMMAv5ScaledBScaleStorageType(op.getBScale().getType());
   MemDescType bScaleTyForPlanning =
       bScaleStorageTy.value_or(op.getBScale().getType());
   if (accSupport.narrowNScaleFragmentRequirement &&
@@ -708,8 +705,7 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   // TMEM address model as plain MMAv5 and preserves whole-tile permutations
   // and descriptor-view offsets without a separate block-id schedule.
   DotOpMmaV5TmemLoader dLoader =
-      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, op.getD(),
-                                  adaptor.getD(),
+      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
                                   /*useRawWordColumns=*/true);
   dot.getAccumulatorInfo = [dTensorTy, accInfo = accSupport.layoutInfo](
                                MemDescType memTy) {

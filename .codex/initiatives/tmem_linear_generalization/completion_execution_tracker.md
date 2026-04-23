@@ -316,9 +316,10 @@ Closeout checklist for the copy slice:
   columns. Legal packed-lane copy execution would require a future lane-aware
   source-storage, descriptor-synthesis, and tile-footprint model.
 - [ ] Split helper APIs so semantic lowering/verifiers use type-local helpers
-  and producer-chain matchers are optimizer-only. Ld/st, ld.red, and
-  `tcgen05.copy` physical-query selection are closed for the active type-local
-  descriptor classes as of 2026-04-23 22:09 UTC.
+  and producer-chain matchers are optimizer-only. Ld/st, ld.red,
+  `tcgen05.copy` physical-query selection, and MMAv5/MMAv5-scaled semantic
+  lowering are closed for the active type-local descriptor classes as of
+  2026-04-23 22:28 UTC.
   Latest completed slices:
   scales descriptor-view load/store support planning now uses the
   type-local query and row-plan helpers directly, dynamic selector
@@ -330,7 +331,10 @@ Closeout checklist for the copy slice:
   fallback for raw/support/query row-plan selection. The shared
   `hasTypeLocalTMemLdStLayout` predicate now owns this descriptor-class
   split for semantic lowering/verifier gates that should include both
-  active self-contained subviews and scales descriptor views.
+  active self-contained subviews and scales descriptor views. MMAv5 address
+  layout/tile-order helpers are now `MemDescType`-only, and scaled MMA
+  B-scale legality uses the current descriptor type; through-view B-scale
+  recovery remains private to allocation rematerialization.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
   and example performance checks before considering the migration complete.
 
@@ -365,6 +369,19 @@ passed, 4 skipped`, group2 `85 passed`, group3 `85 passed`, group4 `85
 passed`; `test_core.py -k 'tmem_copy or mma_scaled_tcgen05_copy'` `149 passed,
 5 skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`.
 
+Current MMAv5/MMAv5-scaled closeout checkpoint: MMAv5 address layout and
+tile-order offset lowering now use only the current `MemDescType`/layout and the
+runtime `taddr`; the value-taking address/tile-order helper wrappers are gone.
+Scaled MMA verifier and LLVM lowering classify B-scale descriptor-view storage
+from the current B-scale `MemDescType`. The remaining B-scale through-view
+helper is private to tensor-memory allocation and is only used for pre-lowering
+rematerialization. Validation: required `make -j8`; focused dynamic selected
+physical-bitcast/scales rows `10 passed`; four-GPU runtime-matrix `mma and not
+reports` passed as group1 `135 passed, 14 skipped`, group2 `149 passed`, group3
+`149 passed`, group4 `147 passed`; focused `test_core.py` MMA selector
+`17 passed, 3 skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git
+diff --check` passed.
+
 Current invariant for this phase: user-facing TMEM APIs do not change. The only
 planned semantic tightening is clean rejection of `tcgen05.copy` descriptors
 that are too small for any legal ISA atom, such as dense `128x1xf32` or
@@ -379,11 +396,13 @@ support shape and avoid canonical-surrogate query-type invention. The
 tile-permuted scaled-MMAv5 accumulator subslice crash is fixed. MMAv5 address
 layout and tile-order offset lowering now derive the family layout from the
 current narrowed descriptor type when the current type still carries the
-MMAv5-family allocation shape. This is deliberately narrower than direct ld/st:
-a raw tile-permuted current layout is not a valid direct support query by
-itself, so ld/st support planning still uses the canonical family support
-layout. Remaining work continues with broader type-local MMAv5/scales cleanup,
-`ld.red` cleanup, and helper API separation.
+MMAv5-family allocation shape, and lowering no longer has value-taking
+producer-chain fallback wrappers for this path. This is deliberately narrower
+than direct ld/st: a raw tile-permuted current layout is not a valid direct
+support query by itself, so ld/st support planning still uses the canonical
+family support layout. Remaining work continues with final helper API cleanup,
+staged broad validation, and support-planner boundaries outside the closed
+ld/st, ld.red, copy, and MMAv5/scaled semantic lowering surfaces.
 
 Current element-column runtime checkpoint: subword TMEM descriptors now use the
 intended runtime representation for the covered aligned and dynamic-index

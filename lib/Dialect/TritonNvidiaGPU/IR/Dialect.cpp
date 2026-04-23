@@ -1846,36 +1846,6 @@ getMMAv5ScaledBScaleStorageType(MemDescType bScaleType) {
                           bScaleType.getMutableMemory());
 }
 
-std::optional<MemDescType>
-getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale) {
-  auto bScaleType = dyn_cast<MemDescType>(bScale.getType());
-  if (!bScaleType)
-    return std::nullopt;
-  if (auto typeLocal = getMMAv5ScaledBScaleStorageType(bScaleType))
-    return typeLocal;
-
-  Value current = bScale;
-  while (Operation *defOp = current.getDefiningOp()) {
-    if (!defOp->hasTrait<OpTrait::MemDescViewTrait>() ||
-        defOp->getNumOperands() == 0)
-      return std::nullopt;
-
-    current = defOp->getOperand(0);
-    auto currentType = dyn_cast<MemDescType>(current.getType());
-    if (!currentType)
-      return std::nullopt;
-    if (!isa<TensorMemoryScalesEncodingAttr>(currentType.getEncoding()))
-      continue;
-    if (currentType.getElementType() != bScaleType.getElementType() ||
-        currentType.getMemorySpace() != bScaleType.getMemorySpace())
-      return std::nullopt;
-    return MemDescType::get(bScaleType.getShape(), bScaleType.getElementType(),
-                            currentType.getEncoding(),
-                            bScaleType.getMemorySpace(),
-                            bScaleType.getMutableMemory());
-  }
-  return std::nullopt;
-}
 
 static std::optional<unsigned> getMMAv5ScaledRepeatedN32PaddingFactor(
     const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {

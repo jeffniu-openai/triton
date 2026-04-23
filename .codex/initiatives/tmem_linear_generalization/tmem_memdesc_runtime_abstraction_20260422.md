@@ -2004,3 +2004,27 @@ High-priority hacks and debt to remove after replacement coverage exists:
   skipped`, group2 `85 passed`, group3 `85 passed`, group4 `85 passed`;
   `test_core.py -k 'tmem_copy or mma_scaled_tcgen05_copy'` `149 passed, 5
   skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`.
+
+### 2026-04-23 MMAv5/Scaled Semantic Closeout
+
+- Removed the remaining lowering-facing value fallback from MMAv5 address and
+  tile-order planning. `getMMAv5TMemAddressLayout` and
+  `getMMAv5TMemViewOffsetForLowering` now take only the current `MemDescType`,
+  and `DotOpMmaV5TmemLoader` no longer receives the memdesc SSA value for
+  producer-chain query recovery.
+- Scaled MMA verifier and LLVM lowering now classify B-scale padded/unpadded
+  descriptor-view storage with `getMMAv5ScaledBScaleStorageType(MemDescType)`.
+  The public `getMMAv5ScaledBScaleStorageTypeThroughViews(Value)` API was
+  removed; tensor-memory allocation keeps a private through-view helper only to
+  rematerialize scale storage before lowering.
+- This closes the MMAv5/MMAv5-scaled semantic lowering surface for the current
+  memdesc model: legality and PTX address/tile-order facts come from operation
+  semantics, current `MemDescType`/layout, and the runtime `taddr`, not the
+  producer chain. Optimizers may still inspect producer chains to rewrite IR
+  before lowering.
+- Validation after this slice: required `make -j8`; focused dynamic selected
+  physical-bitcast/scales rows `10 passed`; runtime-matrix `mma and not
+  reports` passed across four GPUs as group1 `135 passed, 14 skipped`, group2
+  `149 passed`, group3 `149 passed`, group4 `147 passed`; focused
+  `test_core.py` MMA selector `17 passed, 3 skipped`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.

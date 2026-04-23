@@ -3641,19 +3641,10 @@ getTypeLocalMMAv5TMemAddressLayout(MemDescType memTy) {
   return std::nullopt;
 }
 
-LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
+LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy) {
   std::string layoutError;
   if (auto maybeLayout = getTypeLocalMMAv5TMemAddressLayout(memTy))
     return *maybeLayout;
-
-  if (memDescValue) {
-    if (auto maybeQuery = inferStandaloneTMemLdStQueryLayout(
-            memDescValue, /*preserveNonCanonicalView=*/true, &layoutError);
-        succeeded(maybeQuery)) {
-      return normalizeTensorMemoryLinearLayoutForAnalysis(maybeQuery->layout);
-    }
-  }
-
   if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
     return *maybeLayout;
   return toLinearLayout(memTy);
@@ -3677,16 +3668,13 @@ getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType memTy,
   return std::nullopt;
 }
 
-uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
-                                           MemDescType memTy,
+uint32_t getMMAv5TMemViewOffsetForLowering(MemDescType memTy,
                                            ArrayRef<int32_t> offsets) {
   assert(offsets.size() == memTy.getRank());
 
   if (auto maybeOffset =
           getTypeLocalMMAv5TMemViewOffsetForLowering(memTy, offsets))
     return *maybeOffset;
-  if (memDescValue)
-    return getTMemViewOffsetForLowering(memDescValue, offsets);
   return getTMemViewOffset(memTy, offsets);
 }
 

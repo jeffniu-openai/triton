@@ -18635,3 +18635,19 @@ rejection, not rescue
   as group1 `81 passed, 4 skipped`, group2 `85 passed`, group3 `85 passed`,
   group4 `85 passed`; `test_core.py -k 'tmem_copy or mma_scaled_tcgen05_copy'`
   `149 passed, 5 skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`.
+
+- 2026-04-23 22:28 UTC MMAv5/MMAv5-scaled type-local closeout completed. MMAv5 TMEM
+  address-layout and tile-order helpers are now `MemDescType`-only; LLVM dot
+  lowering no longer passes the memdesc SSA value to recover a standalone query
+  or view offset. Scaled MMA verifier and lowering now classify B-scale padded
+  and unpadded descriptor-view storage from the current B-scale `MemDescType`
+  via `getMMAv5ScaledBScaleStorageType`; the old public through-view helper was
+  removed from the dialect API. The only remaining B-scale view-chain recovery
+  is a private tensor-memory-allocation helper used to rematerialize scale
+  storage before lowering, which is an optimizer rewrite and not a legality
+  dependency. Validation: required `make -j8`; focused dynamic selected
+  physical-bitcast/scales rows `10 passed`; four-GPU runtime-matrix `mma and not
+  reports` passed as group1 `135 passed, 14 skipped`, group2 `149 passed`,
+  group3 `149 passed`, group4 `147 passed`; focused `test_core.py` MMA selector
+  `17 passed, 3 skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git
+  diff --check` passed.

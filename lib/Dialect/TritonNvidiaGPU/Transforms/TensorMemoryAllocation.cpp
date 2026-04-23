@@ -409,6 +409,40 @@ getMMAv5ScaleStorageTypeThroughViews(Value scale) {
   return std::nullopt;
 }
 
+// This pass may inspect a scale view chain because it rewrites the IR before
+// lowering. Verifier and LLVM lowering must use the current MemDescType only.
+static std::optional<ttg::MemDescType>
+getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale) {
+  auto bScaleType = dyn_cast<ttg::MemDescType>(bScale.getType());
+  if (!bScaleType)
+    return std::nullopt;
+  if (auto typeLocal = getMMAv5ScaledBScaleStorageType(bScaleType))
+    return typeLocal;
+
+  Value current = bScale;
+  while (Operation *defOp = current.getDefiningOp()) {
+    if (!defOp->hasTrait<OpTrait::MemDescViewTrait>() ||
+        defOp->getNumOperands() == 0)
+      return std::nullopt;
+
+    current = defOp->getOperand(0);
+    auto currentType = dyn_cast<ttg::MemDescType>(current.getType());
+    if (!currentType)
+      return std::nullopt;
+    if (!isa<TensorMemoryScalesEncodingAttr>(currentType.getEncoding()))
+      continue;
+    if (currentType.getElementType() != bScaleType.getElementType() ||
+        currentType.getMemorySpace() != bScaleType.getMemorySpace())
+      return std::nullopt;
+    return ttg::MemDescType::get(bScaleType.getShape(),
+                                 bScaleType.getElementType(),
+                                 currentType.getEncoding(),
+                                 bScaleType.getMemorySpace(),
+                                 bScaleType.getMutableMemory());
+  }
+  return std::nullopt;
+}
+
 struct TMemScaleStoreInfo {
   SmallVector<Value> aliases;
   DenseSet<Value> aliasSet;

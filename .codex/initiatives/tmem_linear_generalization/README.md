@@ -51,6 +51,16 @@ an attempted raw type-local switch for direct roots exposed real 256-row dense
 root and tile-selector support-query requirements, so those are documented as a
 separate support-planner boundary rather than forced into the copy closeout.
 
+Latest MMAv5/scaled closeout: as of 2026-04-23 22:28 UTC, MMAv5 TMEM address
+layout and tile-order offset lowering no longer take the memdesc SSA value or
+recover a producer-chain query. Plain and scaled MMA lowering derive address
+families and per-tile order from the current `MemDescType`/layout and the
+already-adjusted runtime `taddr`. Scaled MMA verifier and LLVM lowering now use
+the current B-scale descriptor type for padded/unpadded storage legality;
+B-scale view-chain recovery remains only inside tensor-memory allocation as a
+pre-lowering rematerialization optimization. Validation is recorded in
+`completion_execution_tracker.md`, `memory.md`, and `log.md`.
+
 Latest view/taddr closeout: as of 2026-04-23 21:15 UTC,
 origin-changing descriptor views are closed for this phase. Shared TMEM base
 update lowering now lives in the common LLVM conversion utility, generic and
@@ -90,9 +100,11 @@ Active self-contained ld/st raw-query construction now dispatches through
 selection and support-query planning now return type-local plans for the same
 descriptor class. Active raw-query/direct-support/reduction fallback row plans
 now stay local instead of borrowing hidden backing rows. Remaining work
-continues through broader type-local ld/st verifiers, `ld.red`, MMAv5/scales,
-and helper API cleanup. LLVM ld/st and copy lowering, plus the matching
-load/store and ld.red verifier paths, now skip chain-derived base-offset,
+continues through final helper API cleanup, staged broad validation, and any
+remaining support-planner boundaries outside the closed ld/st, ld.red, copy,
+and MMAv5/scaled semantic lowering surfaces. LLVM ld/st and copy lowering,
+plus the matching load/store and ld.red verifier paths, now skip chain-derived
+base-offset,
 source-support, standalone-view, and backing-row rescues when an active
 self-contained descriptor is already relative to the current `taddr`. The
 current slice fixed active column subview inference for layouts whose physical
@@ -102,7 +114,7 @@ planning path. MMAv5 address layout and tile-order offset lowering now derive
 the family address layout from the current `MemDescType` for narrowed
 MMAv5-family descriptors instead of needing producer-chain address recovery.
 The type-local MMAv5 address and tile-order computations now have explicit
-helper APIs, with the old value-taking functions acting as legacy wrappers.
+helper APIs and the old value-taking wrappers have been removed from lowering.
 B-scale descriptor-view storage classification now has a type-local semantic
 helper so dynamically selected same-typed B-scale views do not need to expose
 their producer chain for scaled-MMAv5 legality. The B-scale rematerialization

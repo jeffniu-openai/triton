@@ -36107,3 +36107,23 @@ Open after this slice:
   work is the broader MMAv5/scales producer-chain cleanup and final helper API
   separation; legal packed-lane copy execution would be a future feature with a
   lane-aware source-storage/descriptor/tile model.
+
+
+## 2026-04-23 22:28 UTC: MMAv5/scaled type-local closeout
+
+- Removed the lowering-facing MMAv5 value-history fallback: `getMMAv5TMemAddressLayout`
+  and `getMMAv5TMemViewOffsetForLowering` now take only the current `MemDescType`
+  and derive address/tile-order facts from that type/layout.
+- Updated `DotOpMmaV5TmemLoader` and tile-order sorting so plain and scaled MMA
+  lowering consume the current descriptor type plus runtime `taddr`, without
+  walking a memdesc producer chain.
+- Changed scaled MMA verifier and LLVM lowering to use
+  `getMMAv5ScaledBScaleStorageType(MemDescType)` for B-scale legality/planning.
+  Removed the public `getMMAv5ScaledBScaleStorageTypeThroughViews` dialect API;
+  tensor-memory allocation keeps a private through-view helper only for
+  pre-lowering B-scale rematerialization.
+- Validation: `make -j8`; focused dynamic selected physical-bitcast/scales rows
+  `10 passed`; four-GPU runtime-matrix `mma and not reports` passed as group1
+  `135 passed, 14 skipped`, group2 `149 passed`, group3 `149 passed`, group4
+  `147 passed`; focused `test_core.py` MMA selector `17 passed, 3 skipped`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.

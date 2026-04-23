@@ -638,15 +638,13 @@ uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);
 std::optional<LinearLayout>
 getTypeLocalMMAv5TMemAddressLayout(gpu::MemDescType memTy);
 
-LinearLayout getMMAv5TMemAddressLayout(gpu::MemDescType memTy,
-                                       Value memDescValue);
+LinearLayout getMMAv5TMemAddressLayout(gpu::MemDescType memTy);
 
 std::optional<uint32_t>
 getTypeLocalMMAv5TMemViewOffsetForLowering(gpu::MemDescType memTy,
                                            ArrayRef<int32_t> offsets);
 
-uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
-                                           gpu::MemDescType memTy,
+uint32_t getMMAv5TMemViewOffsetForLowering(gpu::MemDescType memTy,
                                            ArrayRef<int32_t> offsets);
 
 uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op);

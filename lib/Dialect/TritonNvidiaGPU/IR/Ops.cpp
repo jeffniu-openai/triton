@@ -1150,8 +1150,7 @@ LogicalResult TCGen5MMAScaledOp::verify() {
       getShapePerCTA(getCGALayout(getD().getType().getEncoding()).getCTASplitNum(),
                      getD().getType().getShape());
   auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
-  auto bScaleStorageType =
-      getMMAv5ScaledBScaleStorageTypeThroughViews(getBScale());
+  auto bScaleStorageType = getMMAv5ScaledBScaleStorageType(getBScale().getType());
   MemDescType bScaleTypeForPlanning =
       bScaleStorageType.value_or(getBScale().getType());
   if (accSupport.narrowNScaleFragmentRequirement &&
