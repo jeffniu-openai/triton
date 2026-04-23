@@ -18167,6 +18167,14 @@ rejection, not rescue
   required `make -j8`; exact new rows `2 passed`; adjacent
   `ld_red and linear_subslice_view` selector `4 passed, 1646 deselected`.
 
+- 2026-04-23 subword `load_max` software-reduction sentinel added. f16 and i8
+  odd-column active views now run through `load_max`, which lowers to software
+  reduction over normal TMEM loads rather than hardware `ld.red`. The test
+  checks the reduction result, output roundtrip, and neighboring packed-lane
+  preservation. Validation: required `make -j8`; exact new rows `2 passed,
+  1682 deselected`; adjacent ld.red/software-reduce selector `50 passed,
+  1634 deselected`.
+
 - 2026-04-23 phase-aware packed-subword ld/st fallback tightened. A
   reversed-column packed f16 subview exposed that the lowerer could emit the
   intended "unsupported contiguous packed 32x32b" diagnostic and then continue

@@ -1700,6 +1700,47 @@ def tmem_ld_red_loop_carried_linear_subslice_view_kernel(
 
 
 @gluon.jit
+def tmem_ld_red_unaligned_subword_linear_subslice_view_kernel(
+    in_ptr, out_ptr, red_ptr, parent_layout: ttgl.constexpr,
+    M: ttgl.constexpr, N: ttgl.constexpr, propagate_nan: ttgl.constexpr
+):
+    num_warps: ttgl.constexpr = 4
+    global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
+    global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, global_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, global_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+
+    tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    view1 = tmem.slice(N, N, dim=1)
+    view = tmem.slice(1, N, dim=1)
+    tail_view = tmem.slice(N - 1, N, dim=1)
+    store_layout: ttgl.constexpr = view.get_reg_layout()
+    converted = ttgl.convert_layout(value, store_layout)
+
+    view0.store(ttgl.full([M, N], 11, element_ty, layout=store_layout))
+    view1.store(ttgl.full([M, N], 17, element_ty, layout=store_layout))
+    view.store(converted)
+
+    load_layout: ttgl.constexpr = view.get_reg_layout()
+    output, reduced = view.load_max(layout=load_layout, abs=False, propagate_nan=propagate_nan)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(output, global_layout))
+
+    out0 = view0.load(load_layout)
+    out_tail = tail_view.load(load_layout)
+    ttgl.store(out_ptr + M * N + offs, ttgl.convert_layout(out0, global_layout))
+    ttgl.store(out_ptr + 2 * M * N + offs, ttgl.convert_layout(out_tail, global_layout))
+
+    red_offs = ttgl.arange(0, M, global_layout_1d)
+    reduced = ttgl.convert_layout(reduced, global_layout_1d)
+    ttgl.store(red_ptr + red_offs, reduced)
+
+
+@gluon.jit
 def tmem_ld_red_m64_explicit_layout_kernel(
     in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, N: ttgl.constexpr, load_variant: ttgl.constexpr,
     red_op: ttgl.constexpr, use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
@@ -9803,6 +9844,42 @@ def test_tmem_runtime_matrix_ld_red_loop_carried_linear_subslice_view(selector, 
     )
     ttgir = compiled.asm["ttgir"]
     assert "scf.for" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("dtype_name,torch_dtype", (("f16", torch.float16), ("i8", torch.int8)))
+def test_tmem_runtime_matrix_ld_red_unaligned_subword_linear_subslice_view_uses_software_reduce(
+    dtype_name, torch_dtype
+):
+    M = N = 128
+    layout = _make_tmem_linear_layout(M, 2 * N)
+    base = torch.arange(M * N, dtype=torch.int32, device="cuda").reshape(M, N) % 16
+    inp = base.to(torch_dtype)
+    out = torch.empty((3, M, N), dtype=torch_dtype, device="cuda")
+    red = torch.empty((M,), dtype=torch_dtype, device="cuda")
+
+    compiled = tmem_ld_red_unaligned_subword_linear_subslice_view_kernel[(1, )](
+        inp, out, red, layout, M, N, tl.PropagateNan.NONE, num_warps=4
+    )
+
+    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
+    expected0 = torch.full((M, N), 11, dtype=torch_dtype, device="cuda")
+    expected0[:, 1:] = inp[:, :-1]
+    expected_tail = torch.full((M, N), 17, dtype=torch_dtype, device="cuda")
+    expected_tail[:, 0] = inp[:, -2]
+    expected_tail[:, 1] = inp[:, -1]
+    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[2], expected_tail, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
+
+    _assert_ld_red_uses_software_reduce(compiled)
+    observed_opcodes = [op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"])]
+    assert "tcgen05.ld.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    assert "tcgen05.st.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_load" in ttgir
     assert "ttg.memdesc_subslice" in ttgir

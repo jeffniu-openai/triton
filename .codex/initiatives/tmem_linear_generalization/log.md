@@ -35481,3 +35481,28 @@ Open after this slice:
   surface, starting with non-contiguous/unpacked subword ld/st analysis and
   `ld.red` clean-negative/positive classification from current memdesc
   type/layout.
+
+## 2026-04-23 08:17 UTC: subword software-reduction sentinel
+
+- Branch/HEAD at slice start:
+  `25fde80c9 Stop TMEM phase-aware ld/st fallback after diagnostics`.
+- Completed test slice:
+  added a f16/i8 runtime positive for an odd-column active view consumed by
+  `load_max`. For sub-32-bit types this is a software reduction over normal
+  TMEM loads rather than hardware `tcgen05.ld.red`, so it exercises the
+  phase-aware ld/st RMW path through a reduction-facing frontend API.
+- Coverage details:
+  the kernel initializes neighboring aligned views, stores through
+  `slice(1, N)`, performs `load_max` on that odd view, stores the full output
+  and row reduction, then reloads the left and tail neighboring views. The
+  assertions check output equality, row maxima, absence of hardware `ld.red`,
+  presence of scalar tail load/store opcodes, and packed-lane boundary
+  preservation.
+- Validation evidence:
+  required `make -j8`; exact new rows passed `2 passed, 1682 deselected`;
+  adjacent ld.red/software-reduce selector passed `50 passed, 1634 deselected`.
+- Next concrete step:
+  commit and push this coverage checkpoint. Continue by classifying true
+  hardware f32 `ld.red` on unaligned active views, where the current
+  phase-aware lowerer rejects `redOp` and may need either a local clean
+  negative or a dedicated lowering.

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 08:11 UTC
+Last updated: 2026-04-23 08:17 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -158,6 +158,11 @@ Active implementation checklist:
   that can assert while constructing incompatible support layouts. A
   reversed-column packed f16 subview is covered as a clean negative with no
   invalid-basis crash.
+  First subword software-reduction sentinel: f16 and i8 odd-column active
+  subviews are now covered through `load_max`, which lowers to software
+  reduction over normal TMEM loads rather than hardware `ld.red`. The rows
+  check the reduction result plus neighboring packed-lane preservation, proving
+  the phase-aware ld/st RMW path works beyond plain roundtrip load/store.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -231,6 +236,14 @@ terminal for that op, preventing later fallback queries from using support
 layouts that are only valid for aligned word-column paths. The covered
 reversed-column packed f16 subview now fails cleanly with the phase-aware
 diagnostic and does not report `Invalid basis` or segfault.
+
+Current subword reduction checkpoint: for sub-32-bit element types, the Gluon
+`load_max` contract uses software reduction rather than hardware
+`tcgen05.ld.red`. Odd-column active f16/i8 views now exercise that path and
+verify both reduction output and the boundary RMW behavior of the underlying
+phase-aware TMEM loads/stores. Hardware f32 `ld.red` unaligned-subview behavior
+still needs separate classification because it uses the `redOp` path rejected
+by the current phase-aware lowerer.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

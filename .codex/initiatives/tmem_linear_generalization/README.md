@@ -129,6 +129,10 @@ diagnosed lowering failure instead of falling through into raw-query fallback
 that assumes a word-column support layout. A reversed-column packed f16
 subview now reports the intended unsupported contiguous-`32x32b` diagnostic
 and no longer reaches the old invalid-basis assertion.
+Sub-32-bit `load_max` software-reduction paths now have odd-column active-view
+runtime coverage for f16 and i8. These rows prove the phase-aware ld/st RMW
+consumer is exercised outside plain load/store roundtrips and still preserves
+neighboring packed lanes while reduction itself avoids hardware `ld.red`.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -156,7 +160,12 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 08:11 UTC tightened phase-aware
+Latest validation checkpoint: 2026-04-23 08:17 UTC added f16/i8 odd-column
+active-view `load_max` software-reduction positives. Validation: required
+`make -j8`; exact new rows `2 passed, 1682 deselected`; adjacent ld.red and
+software-reduce selector `50 passed, 1634 deselected`.
+
+Previous validation checkpoint: 2026-04-23 08:11 UTC tightened phase-aware
 packed-subword ld/st fallback after a reversed-column f16 subview exposed a
 post-diagnostic raw-query crash. Validation: required `make -j8`; focused
 unaligned subword ld/st selector including the new reversed-column clean

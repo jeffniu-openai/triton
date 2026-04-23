@@ -1822,3 +1822,19 @@ High-priority hacks and debt to remove after replacement coverage exists:
   deselected`; adjacent subword copy/ldst selector including the new row
   `50 passed, 1632 deselected`; lit `tmem_layouts.mlir` `1 passed`;
   `git diff --check` passed.
+
+### 2026-04-23 Subword Software-Reduction Sentinel
+
+- Added f16/i8 odd-column active-view coverage through `load_max`. These
+  element types do not lower to hardware `tcgen05.ld.red`; the frontend uses
+  normal TMEM loads plus software reduction. That makes the row a useful
+  reduction-facing sentinel for the current phase-aware ld/st RMW path without
+  conflating it with the separate hardware f32 `redOp` lowering question.
+- The sentinel stores through `slice(1, N)`, runs `load_max` through the same
+  odd descriptor, checks row maxima, and reloads neighboring aligned/tail views
+  to prove packed-lane preservation across the store and load sequence. It
+  also asserts that no hardware `ld.red` opcodes are emitted and that the
+  scalar tail load/store opcodes needed by phase-aware RMW are present.
+- Validation after this slice: required `make -j8`; exact new rows `2 passed,
+  1682 deselected`; adjacent ld.red/software-reduce selector `50 passed,
+  1634 deselected`.
