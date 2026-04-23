@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 01:54 UTC
+Last updated: 2026-04-23 02:19 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -48,6 +48,9 @@ Active implementation checklist:
   descriptor type/layout facts for self-contained descriptors. Compact active
   layouts still use the current-`taddr` planning type with `allocShape` reset
   to the logical shape; wider exact support layouts keep their support shape.
+  First MMAv5 family-address slice: narrowed MMAv5-family descriptors now
+  derive address layouts and tile-order offsets from current `MemDescType`
+  family facts before legacy producer-chain fallback.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -71,9 +74,30 @@ logical shape exactly, plan with `allocShape == shape` because the lowered
 base is already the current `taddr`. Exact physical-support layouts, whose
 current layout needs a wider support image than the logical slice, keep that
 support shape and avoid canonical-surrogate query-type invention. The
-tile-permuted scaled-MMAv5 accumulator subslice crash is fixed; remaining work
-continues with broader type-local MMAv5/scales cleanup, `ld.red` cleanup, and
-helper API separation.
+tile-permuted scaled-MMAv5 accumulator subslice crash is fixed. MMAv5 address
+layout and tile-order offset lowering now derive the family layout from the
+current narrowed descriptor type when the current type still carries the
+MMAv5-family allocation shape. This is deliberately narrower than direct ld/st:
+a raw tile-permuted current layout is not a valid direct support query by
+itself, so ld/st support planning still uses the canonical family support
+layout. Remaining work continues with broader type-local MMAv5/scales cleanup,
+`ld.red` cleanup, and helper API separation.
+
+Completed twelfth implementation slice: MMAv5 family address/tile-order
+lowering is now type-local for narrowed MMAv5-family descriptors.
+`getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects
+`shape != allocShape`, allowing the existing MMAv5 family-info helpers to use
+the current descriptor's allocation shape for row-preserving N-narrowed
+subviews. `getMMAv5TMemAddressLayout` and
+`getMMAv5TMemViewOffsetForLowering` consult that type-local family layout
+before legacy producer-chain inference. Validation: required `make -j8`; full
+scaled tile-permuted accumulator subslice function `10 passed`; exact two-CTA
+scaled subslice row `1 passed`; 4-GPU positive MMAv5 selector passed as group1
+`133 passed, 14 skipped`, group2 `147 passed`, group3 `147 passed`, group4
+`147 passed`; 4-GPU combined ld/st+ld.red+copy selector passed as group1
+`120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+`128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed `6/6`;
+`git diff --check` passed.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but

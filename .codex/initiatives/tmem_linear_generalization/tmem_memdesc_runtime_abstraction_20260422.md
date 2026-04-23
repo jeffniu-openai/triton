@@ -322,6 +322,27 @@ producer-aware support planning. The invariant remains unchanged: lowering must
 eventually derive legality and address generation from the current `taddr`,
 current `MemDescType`/layout, and operation semantics only.
 
+### Implementation Checkpoint: Type-Local MMAv5 Family Address
+
+As of 2026-04-23 02:19 UTC, MMAv5 address layout and tile-order offset lowering
+derive the family address layout from the current descriptor type for
+row-preserving narrowed MMAv5-family descriptors. The key change is that
+`getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects
+`shape != allocShape`: the current descriptor's allocation shape is still the
+static family footprint, and the existing MMAv5 accumulator/scaled-info helpers
+can use it to recover the family address layout without walking the producer
+chain.
+
+This is an address-generation slice, not a blanket "raw current layout is
+always a support query" rule. A rejected overbroad experiment made direct ld/st
+use the raw current tile-permuted narrowed encoding as a support query and
+failed runtime correctness. The valid direct-support query for those
+descriptors is still the canonical MMAv5 family support layout, derivable from
+the current type's family facts. Operation-specific type-local planning remains
+necessary: MMAv5 address/tile-order can use the family address layout, while
+direct ld/st support planning must select the canonical support family instead
+of blindly using the current tile-permuted encoding.
+
 ## Current Disallowed Chain-Walking Sites
 
 These sites currently use parent operations to decide semantic verifier,
@@ -349,8 +370,10 @@ to pre-lowering canonicalization.
 - `getMMAv5TMemAddressLayout(MemDescType, Value)` and
   `getMMAv5TMemViewOffsetForLowering(Value, MemDescType, offsets)` use the value
   chain to choose MMAv5 address layout and tile order.
-  - MMAv5 lowering should use a type-local address layout plus the runtime
-    `taddr`.
+  - Partially migrated: narrowed MMAv5-family descriptors now derive the family
+    address layout from current `MemDescType` before legacy producer-chain
+    fallback. Remaining fallbacks and physical-bitcast checks still need to be
+    split into type-local semantics versus optimizer-only rewrites.
 - `getBackingTMemLdStRowPlan(Value)` walks through forwarding sources and view
   ops to borrow a wider parent row plan.
   - Any required row plan must be derivable from the current descriptor layout or
@@ -624,7 +647,9 @@ Checklist state:
   `128x1xf32` and `128x2xf32` current descriptors report an explicit hardware
   copy-atom boundary.
 - [ ] Migrate MMAv5/scales address planning to current type/layout plus runtime
-  `taddr`.
+  `taddr`. First partial slice complete: narrowed MMAv5-family descriptors now
+  derive address layout and tile-order offsets from current `MemDescType`
+  family facts before legacy producer-chain fallback.
 - [ ] Split public helper APIs into lowering-facing type-local helpers and
   optimizer-only producer-chain matchers.
 - [ ] Delete or quarantine obsolete support-query, backing-row, and
@@ -911,6 +936,31 @@ High-priority hacks and debt to remove after replacement coverage exists:
   group2 `32 passed, 56 skipped`, group3 `66 passed, 22 skipped`, group4
   `67 passed, 20 skipped`; targeted lit set passed `6/6`; `git diff --check`
   passed.
+
+### 2026-04-23 Type-Local MMAv5 Family Address Slice
+
+- `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects narrowed
+  `shape != allocShape` descriptors. The current descriptor type's allocation
+  shape is enough for the existing MMAv5 family-info helpers to recover the
+  address layout for row-preserving N-narrowed accumulator and scaled
+  accumulator subviews.
+- `getMMAv5TMemAddressLayout` consults that type-local family address layout
+  before entering legacy producer-chain support-layout inference.
+  `getMMAv5TMemViewOffsetForLowering` computes tile-order offsets in the same
+  family coordinate frame before falling back to chain-derived view offsets.
+- A deliberately overbroad local experiment failed correctness when direct
+  ld/st used the raw tile-permuted narrowed current layout as the support query.
+  The durable rule is operation-specific: MMAv5 address/tile-order may use the
+  family address layout, while direct ld/st support must still choose the
+  canonical support family derivable from current descriptor family facts.
+- Validation after this slice: required `make -j8`; full scaled tile-permuted
+  accumulator subslice function `10 passed`; exact two-CTA scaled subslice row
+  `1 passed`; 4-GPU positive MMAv5 selector passed as group1
+  `133 passed, 14 skipped`, group2 `147 passed`, group3 `147 passed`, group4
+  `147 passed`; 4-GPU combined ld/st+ld.red+copy selector passed as group1
+  `120 passed, 28 skipped`, group2 `98 passed, 50 skipped`, group3
+  `128 passed, 20 skipped`, group4 `146 passed`; targeted lit set passed
+  `6/6`; `git diff --check` passed.
 
 ### 2026-04-22 Active Subview Load/Store Query-Type Slice
 

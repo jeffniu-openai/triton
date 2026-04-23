@@ -3195,6 +3195,9 @@ LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
       return *maybeLayout;
   }
 
+  if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy))
+    return *maybeLayout;
+
   auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
   auto shape = memTy.getShape().take_back(rank);
   auto allocShape = memTy.getAllocShape().take_back(rank);
@@ -3222,11 +3225,21 @@ uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
                                            MemDescType memTy,
                                            ArrayRef<int32_t> offsets) {
   assert(offsets.size() == memTy.getRank());
-  if (hasSelfContainedTMemSubviewLayout(memTy))
-    return getTMemViewOffset(memTy, offsets);
 
   // Keep tile ordering in the same typed coordinate frame as
   // getMMAv5TMemAddressLayout for physical bitcasts.
+  if (memDescValue && isTMemPhysicalBitcast(memDescValue))
+    return getTMemViewOffset(memTy, offsets);
+  if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy)) {
+    auto layoutRank = static_cast<size_t>(maybeLayout->getNumOutDims());
+    auto prefixRank =
+        memTy.getRank() > layoutRank ? memTy.getRank() - layoutRank : 0;
+    return getTMemViewOffset(
+        *maybeLayout, offsets.take_back(layoutRank),
+        memTy.getElementTypeBitWidth(), memTy.getShape().take_front(prefixRank));
+  }
+  if (hasSelfContainedTMemSubviewLayout(memTy))
+    return getTMemViewOffset(memTy, offsets);
   if (memDescValue && !isTMemPhysicalBitcast(memDescValue))
     return getTMemViewOffsetForLowering(memDescValue, offsets);
   return getTMemViewOffset(memTy, offsets);

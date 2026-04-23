@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 01:54 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 02:19 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -44,9 +44,28 @@ self-contained descriptor is already relative to the current `taddr`. The
 current slice fixed active column subview inference for layouts whose physical
 support window is wider than the logical slice, such as MMAv5 tile-permuted
 accumulator slices, and keeps compact active subviews on the current-`taddr`
-planning path.
+planning path. MMAv5 address layout and tile-order offset lowering now derive
+the family address layout from the current `MemDescType` for narrowed
+MMAv5-family descriptors instead of needing producer-chain address recovery.
 
-Latest validation checkpoint: 2026-04-23 01:54 UTC completed the active
+Latest validation checkpoint: 2026-04-23 02:19 UTC completed the first
+type-local MMAv5 family-address slice. `getMMAv5TMemFamilyAddressLayout` now
+accepts narrowed shapes when the current descriptor type still carries an
+MMAv5-family allocation shape, and MMAv5 address/tile-order lowering consults
+that type-local family layout before falling back to legacy producer-chain
+inference. A rejected overbroad approach confirmed that direct ld/st support
+for tile-permuted narrowed descriptors must still use canonical family support
+layouts; the raw current tile-permuted layout is not a valid direct support
+query by itself. Validation: required `make -j8`; full scaled tile-permuted
+accumulator subslice function `10 passed`; exact two-CTA scaled subslice row
+`1 passed`; 4-GPU positive MMAv5 selector passed as group1 `133 passed,
+14 skipped`, group2 `147 passed`, group3 `147 passed`, group4 `147 passed`;
+4-GPU combined ld/st+ld.red+copy selector passed as group1 `120 passed,
+28 skipped`, group2 `98 passed, 50 skipped`, group3 `128 passed, 20 skipped`,
+group4 `146 passed`; targeted lit set passed `6/6`; `git diff --check`
+passed.
+
+Previous validation checkpoint: 2026-04-23 01:54 UTC completed the active
 physical-support subview slice. Pure 2D column subview inference now uses the
 compact narrowed encoding only when the selected physical window fits the
 active logical shape; otherwise it falls through to exact layout algebra or the

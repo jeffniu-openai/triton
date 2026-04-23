@@ -34340,6 +34340,34 @@ Open after this slice:
   heuristic cleanup, staged broad validation, and any still-live temporary
   probe buckets that reproduce on current head.
 
+## 2026-04-23 02:19 UTC: type-local MMAv5 family address slice
+
+- Branch/HEAD before this repair slice:
+  `ab28b4246 Fix active TMEM physical support subviews`.
+- Source change:
+  `getMMAv5TMemFamilyAddressLayout(MemDescType)` now accepts narrowed
+  `shape != allocShape` descriptors, relying on the current descriptor's
+  allocation shape to identify the MMAv5 family. `getMMAv5TMemAddressLayout`
+  and `getMMAv5TMemViewOffsetForLowering` consult that type-local family
+  address layout before legacy producer-chain inference.
+- Important boundary:
+  a rejected overbroad local experiment proved that direct ld/st support cannot
+  blindly use the raw current tile-permuted narrowed layout as a support query.
+  Direct ld/st still needs the canonical family support layout; the new slice
+  is specific to MMAv5 address layout and tile-order offsets.
+- Validation evidence:
+  required `make -j8`; full scaled tile-permuted accumulator subslice function
+  `10 passed`; exact two-CTA scaled subslice row `1 passed`; 4-GPU positive
+  MMAv5 selector passed as group1 `133 passed, 14 skipped`, group2
+  `147 passed`, group3 `147 passed`, group4 `147 passed`; 4-GPU combined
+  ld/st+ld.red+copy selector passed as group1 `120 passed, 28 skipped`, group2
+  `98 passed, 50 skipped`, group3 `128 passed, 20 skipped`, group4
+  `146 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
+- Remaining migration frontier:
+  continue replacing MMAv5/scales producer-chain dependencies and split the
+  public helper surface into semantic type-local planners versus optimizer-only
+  view-chain matchers.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 02:19 UTC completed the first type-local MMAv5
+  family-address slice. `getMMAv5TMemFamilyAddressLayout(MemDescType)` no
+  longer rejects `shape != allocShape`; the existing MMAv5 family-info helpers
+  can now derive address layout for row-preserving N-narrowed descriptors from
+  the current type's allocation shape. `getMMAv5TMemAddressLayout` and
+  `getMMAv5TMemViewOffsetForLowering` consult that type-local family layout
+  before legacy producer-chain inference. Important boundary: a rejected
+  overbroad experiment showed direct ld/st support for tile-permuted narrowed
+  descriptors cannot use the raw current tile-permuted layout as the support
+  query; direct ld/st still needs the canonical family support layout. Validation:
+  required `make -j8`; full scaled tile-permuted accumulator subslice function
+  `10 passed`; exact two-CTA scaled subslice row `1 passed`; 4-GPU positive
+  MMAv5 selector passed as group1 `133 passed, 14 skipped`, group2
+  `147 passed`, group3 `147 passed`, group4 `147 passed`; 4-GPU combined
+  ld/st+ld.red+copy selector passed as group1 `120 passed, 28 skipped`, group2
+  `98 passed, 50 skipped`, group3 `128 passed, 20 skipped`, group4
+  `146 passed`; targeted lit set passed `6/6`; `git diff --check` passed.
+
 - Latest: 2026-04-23 01:54 UTC completed the active physical-support subview
   slice. The bug was exposed by scaled MMAv5 accumulator subslices over a
   tile-permuted parent layout: the previous pure-column-subview shortcut

@@ -1249,12 +1249,6 @@ getMMAv5TMemFamilyAddressLayout(MemDescType memDescType) {
   if (!layoutTrait)
     return std::nullopt;
 
-  auto layoutRank = static_cast<size_t>(layoutTrait.getRank());
-  auto shape = memDescType.getShape().take_back(layoutRank);
-  auto allocShape = memDescType.getAllocShape().take_back(layoutRank);
-  if (shape != allocShape)
-    return std::nullopt;
-
   if (auto info = getMMAv5AccumulatorLayoutInfo(memDescType))
     return normalizeTensorMemoryLinearLayoutForAnalysis(info->familyLayout);
   if (auto info = getMMAv5ScaledAccumulatorLayoutInfo(memDescType))
