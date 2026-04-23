@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 20:54 UTC broadened `tcgen05.copy` physical-query
+  selection toward type-local lowering. For non-active-subview descriptors,
+  `selectTMemCopyPhysicalQuery` now computes the same legacy standalone/exact
+  candidate it would have used before, and chooses the current-type physical
+  query only when that type-local query matches the selected legacy physical
+  projection and composes with the shared-memory source layout. The selected
+  copy family is unchanged, but lowering records `usedTypeLocal=true`, so the
+  destination base remains the current runtime `taddr` rather than subtracting
+  a producer-chain-derived relative offset. Validation: required `make -j8`;
+  four-GPU `cp_no_scales and not reports` passed as group1 `59 passed, 4
+  skipped`, group2 `63 passed`, group3 `63 passed`, group4 `62 passed`; scales
+  copy selector `34 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff
+  --check` passed.
+
 - Latest: 2026-04-23 20:50 UTC added an ld/st physical-bitcast
   select-after-bitcast guardrail. The new test bitcasts both f32 column
   subviews to same-typed f16 views, dynamically selects between the already

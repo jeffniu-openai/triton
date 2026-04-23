@@ -7460,15 +7460,39 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
     }
   }
 
-  if (selection.standalone && selection.exact &&
+  bool wouldChooseExact =
+      selection.standalone && selection.exact &&
       shouldUseExactTMemCopyPhysicalQuery(*selection.standalone,
                                           *selection.exact) &&
-      canUseCopyQuery(*selection.exact)) {
+      canUseCopyQuery(*selection.exact);
+  bool wouldChooseStandalone =
+      !wouldChooseExact && selection.standalone &&
+      canUseCopyQuery(*selection.standalone);
+  bool wouldChooseExactOnly =
+      !wouldChooseExact && !selection.standalone && selection.exact &&
+      canUseCopyQuery(*selection.exact);
+
+  if (selection.typeLocal && canUseCopyQuery(*selection.typeLocal)) {
+    bool matchesExact = selection.exact &&
+                        haveSameTMemCopyPhysicalProjection(
+                            *selection.typeLocal, *selection.exact);
+    bool matchesStandalone = selection.standalone &&
+                             haveSameTMemCopyPhysicalProjection(
+                                 *selection.typeLocal, *selection.standalone);
+    if ((wouldChooseExact && matchesExact) ||
+        (wouldChooseStandalone && matchesStandalone) ||
+        (wouldChooseExactOnly && matchesExact)) {
+      return choose(*selection.typeLocal, /*usedTypeLocal=*/true,
+                    /*usedExact=*/false);
+    }
+  }
+
+  if (wouldChooseExact) {
     return choose(*selection.exact, /*usedTypeLocal=*/false,
                   /*usedExact=*/true);
   }
 
-  if (selection.standalone && canUseCopyQuery(*selection.standalone))
+  if (wouldChooseStandalone)
     return choose(*selection.standalone, /*usedTypeLocal=*/false,
                   /*usedExact=*/false);
 

@@ -652,9 +652,10 @@ Checklist state:
 - [ ] Migrate `ld.red` legality/layout selection to the type-local planner.
 - [ ] Migrate `tcgen05.copy` planning to destination-type-only analysis and add
   too-small-copy clean negatives. First partial slice complete: active
-  self-contained subview destinations select a type-local physical query;
-  direct roots and legacy parent-encoding views still use the old
-  standalone/exact selection. First clean-negative slice complete:
+  self-contained subview destinations select a type-local physical query.
+  Matched-projection slice complete: other descriptors now also select the
+  type-local destination query when it matches the physical projection chosen by
+  the legacy standalone/exact selector. First clean-negative slice complete:
   `128x1xf32` and `128x2xf32` current descriptors report an explicit hardware
   copy-atom boundary.
 - [ ] Migrate MMAv5/scales address planning to current type/layout plus runtime
@@ -1955,3 +1956,20 @@ High-priority hacks and debt to remove after replacement coverage exists:
   `7 passed`; runtime-matrix `mma and not reports` selector passed across four
   GPUs as group1 `135 passed, 14 skipped`, group2 `149 passed`, group3
   `149 passed`, group4 `147 passed`; lit `tmem_layouts.mlir` `1 passed`.
+
+### 2026-04-23 Matched Type-Local Copy Query Selection
+
+- Broadened `selectTMemCopyPhysicalQuery` beyond the active-subview-only case.
+  The selector still computes the legacy standalone/exact candidates, but now
+  chooses the current-type physical query when that type-local query matches the
+  physical projection the legacy algorithm would have selected and can compose
+  with the shared-memory source layout.
+- This is intentionally conservative: descriptor classes whose type-local query
+  does not match the selected legacy projection keep the old standalone/exact
+  fallback. For matched cases, lowering records `usedTypeLocal=true` and keeps
+  the current runtime `taddr` instead of applying a producer-chain-derived
+  relative destination offset.
+- Validation after this slice: required `make -j8`; no-scale copy runtime
+  matrix passed across four GPUs as group1 `59 passed, 4 skipped`, group2
+  `63 passed`, group3 `63 passed`, group4 `62 passed`; scales copy selector
+  `34 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check` passed.

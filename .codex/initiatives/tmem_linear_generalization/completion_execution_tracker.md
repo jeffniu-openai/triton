@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 20:50 UTC
+Last updated: 2026-04-23 20:54 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -25,6 +25,11 @@ Current checkpoint summary:
 - [x] Added a selected physical-bitcast ld/st sentinel where two same-typed
   bitcast views are selected before `store`, covering the no-visible-reinterpret
   producer case for normal load/store consumers.
+
+- [x] Broadened copy physical-query selection to use the type-local destination
+  query when it matches the legacy standalone/exact physical projection, so
+  copy lowering can keep the selected runtime `taddr` without changing the copy
+  family.
 
 Active implementation checklist:
 

@@ -35926,3 +35926,31 @@ Open after this slice:
 - Next concrete step:
   commit and push this guardrail. Continue auditing remaining producer-chain
   semantic helpers in ld/st support planning and copy lowering.
+
+## 2026-04-23 20:54 UTC: matched type-local copy query checkpoint
+
+- Branch/HEAD at slice start:
+  `1dee66dbf Add select-after-bitcast TMEM ld/st guardrail`.
+- Source change:
+  generalized `selectTMemCopyPhysicalQuery` so descriptors outside the original
+  active-subview-only path can still choose the type-local destination physical
+  query when it matches the physical projection selected by the legacy
+  standalone/exact algorithm and composes with the source shared layout. The
+  existing standalone/exact fallback remains for cases whose type-local query
+  does not match the selected legacy projection.
+- Invariant:
+  this does not intentionally change copy-family selection. It only changes the
+  lowering bookkeeping for matched cases to `usedTypeLocal=true`, meaning the
+  lowered copy keeps the current runtime `taddr` and does not subtract an
+  already-applied producer-chain view offset.
+- Validation evidence:
+  required `make -j8`; four-GPU `python/test/gluon/test_tmem_runtime_matrix.py
+  -k 'cp_no_scales and not reports'` passed as group1 `59 passed, 4 skipped,
+  1644 deselected`, group2 `63 passed, 1644 deselected`, group3 `63 passed,
+  1644 deselected`, group4 `62 passed, 1645 deselected`; scales copy selector
+  `34 passed, 1673 deselected`; lit `TritonNvidiaGPU/tmem_layouts.mlir`
+  `1 passed`; `git diff --check` passed.
+- Next concrete step:
+  commit and push this copy-locality checkpoint. Continue with remaining copy
+  verifier/lowering producer-chain fallbacks and ld/st support-query row-plan
+  fallbacks.

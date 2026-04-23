@@ -39,6 +39,14 @@ layout, and already-rescaled runtime `taddr`, with a new runtime test covering
 selection between two same-typed bitcast views before MMA. Broad
 `mma and not reports` runtime-matrix validation passed across four GPUs.
 
+Latest copy-planning follow-up: as of 2026-04-23 20:54 UTC,
+`selectTMemCopyPhysicalQuery` uses the type-local destination physical query
+outside the active-subview-only path when it matches the physical projection
+that the legacy standalone/exact selector would have chosen. This preserves the
+selected copy family while letting lowering rely on the current runtime `taddr`
+for the matched destination instead of subtracting a producer-chain-derived
+view offset.
+
 Active execution plan: as of 2026-04-23 08:11 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
