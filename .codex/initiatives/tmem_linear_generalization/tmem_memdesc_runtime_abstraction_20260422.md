@@ -1490,3 +1490,16 @@ High-priority hacks and debt to remove after replacement coverage exists:
 - Validation after this slice: required `make -j8`; selected active-subview
   ld.red rows `4 passed, 1646 deselected`; descriptor-chain ld.red N-sweep
   `12 passed`; targeted lit set `6/6`.
+
+### 2026-04-23 Unsupported-Direct Diagnostic Locality
+
+- Direct ld/st unsupported-descriptor-view diagnostics now use
+  `inferStandaloneTMemLdStQueryLayout`, not the raw producer-chain
+  implementation, when building row-anchor layouts. For active
+  self-contained descriptors this dispatches to the type-local query layout.
+- Variant diagnostics and row-anchor fallback no longer borrow backing row
+  plans for active self-contained descriptors. The legacy compatibility path
+  remains for older descriptor views.
+- Validation after this slice: required `make -j8`; scales ld/st
+  descriptor-view and variant-report selector `18 passed`; unsupported ld/st
+  selector `4 passed`; targeted lit set `6/6`.

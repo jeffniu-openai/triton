@@ -18151,3 +18151,10 @@ rejection, not rescue
   required `make -j8`; selected active-subview ld.red rows
   `4 passed, 1646 deselected`; descriptor-chain ld.red N-sweep `12 passed`;
   targeted lit set `6/6`.
+
+- 2026-04-23 unsupported-direct ld/st diagnostic locality cleanup completed.
+  Direct ld/st row-anchor and variant diagnostics now use the public
+  raw-query wrapper for active self-contained descriptors and skip backing-row
+  fallback for that descriptor class. Validation: required `make -j8`; scales
+  ld/st descriptor-view and variant-report selector `18 passed`; unsupported
+  ld/st selector `4 passed`; targeted lit set `6/6`.

@@ -35045,3 +35045,27 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Continue helper cleanup around diagnostics
   and unsupported-direct predicates.
+
+## 2026-04-23 05:26 UTC: unsupported-direct ld/st diagnostics kept local for active subviews
+
+- Branch/HEAD before this checkpoint:
+  `96026a41e Keep active ld.red reduction planning local`.
+- Dirty files before checkpoint commit:
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`, plus initiative
+  docs.
+- Completed source slice:
+  unsupported direct ld/st descriptor-view diagnostics now call the public
+  raw-query wrapper, which dispatches active self-contained descriptors to the
+  type-local query layout. Variant and row-anchor diagnostics also avoid
+  backing-row fallback for active self-contained descriptors.
+- Result:
+  active selected/loop-carried subviews no longer need visible producer-chain
+  raw-query inference or hidden backing row plans to decide whether a direct
+  ld/st diagnostic applies. Legacy descriptor-view diagnostics keep their
+  compatibility paths.
+- Validation evidence:
+  required `make -j8`; scales ld/st descriptor-view and variant-report selector
+  `18 passed`; unsupported ld/st selector `4 passed`; targeted lit set `6/6`.
+- Next concrete step:
+  commit and push this checkpoint. Continue auditing remaining helper uses,
+  then run a broader 4-GPU active-subview/scales sweep.

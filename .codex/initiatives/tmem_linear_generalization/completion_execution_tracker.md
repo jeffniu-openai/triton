@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 05:23 UTC
+Last updated: 2026-04-23 05:26 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -190,6 +190,13 @@ loop-carried, and the Gluon reduction support predicate no longer falls back to
 backing row plans for that descriptor class. Validation: required `make -j8`;
 selected active-subview ld.red rows `4 passed`; descriptor-chain ld.red N-sweep
 `12 passed`; targeted lit set `6/6`.
+
+Current unsupported-direct diagnostic locality checkpoint:
+unsupported ld/st descriptor-view diagnostics now use the wrapper/type-local
+raw-query path for active self-contained descriptors and avoid backing-row
+fallbacks for that descriptor class. Validation: required `make -j8`; scales
+ld/st descriptor-view and variant-report selector `18 passed`; unsupported
+ld/st selector `4 passed`; targeted lit set `6/6`.
 
 Current normal ld/st selected-subview checkpoint:
 a representative dynamic selected active column subview now has runtime
