@@ -3350,13 +3350,14 @@ def tmem_mma_scaled_dynamic_bscale_descriptor_view_format_kernel(
     B_ELEM_PER_BYTE: ttgl.constexpr,
     A_FORMAT: ttgl.constexpr,
     B_FORMAT: ttgl.constexpr,
+    PAD_B_SCALE_STORAGE: ttgl.constexpr,
 ):
     A_STORAGE_K: ttgl.constexpr = K // A_ELEM_PER_BYTE
     B_STORAGE_K: ttgl.constexpr = K // B_ELEM_PER_BYTE
     A_IS_FP4: ttgl.constexpr = A_ELEM_PER_BYTE == 2
     B_IS_FP4: ttgl.constexpr = B_ELEM_PER_BYTE == 2
     MIXED_PREC: ttgl.constexpr = A_ELEM_PER_BYTE != B_ELEM_PER_BYTE
-    B_SCALE_ROWS: ttgl.constexpr = 2 * N
+    B_SCALE_ROWS: ttgl.constexpr = 2 * N if PAD_B_SCALE_STORAGE else N
     B_SCALE_INSTR_N: ttgl.constexpr = 32
     B_SCALE_FRAGMENT_N: ttgl.constexpr = 64
 
@@ -3392,8 +3393,16 @@ def tmem_mma_scaled_dynamic_bscale_descriptor_view_format_kernel(
     a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, K // VEC_SIZE], scale_layout)
     b_scale_parent0 = allocate_tensor_memory(b_scale0.dtype.element_ty, [B_SCALE_ROWS, K // VEC_SIZE], scale_layout)
     b_scale_parent1 = allocate_tensor_memory(b_scale1.dtype.element_ty, [B_SCALE_ROWS, K // VEC_SIZE], scale_layout)
-    b_scale_tmem0 = b_scale_parent0.reshape((1, B_SCALE_ROWS, K // VEC_SIZE)).slice(0, 1, dim=0).index(0)
-    b_scale_tmem1 = b_scale_parent1.reshape((1, B_SCALE_ROWS, K // VEC_SIZE)).slice(0, 1, dim=0).index(0)
+    if PAD_B_SCALE_STORAGE:
+        b_scale_tmem0 = b_scale_parent0.reshape((1, B_SCALE_ROWS, K // VEC_SIZE)).slice(0, 1, dim=0).index(0)
+        b_scale_tmem1 = b_scale_parent1.reshape((1, B_SCALE_ROWS, K // VEC_SIZE)).slice(0, 1, dim=0).index(0)
+    else:
+        b_scale_tmem0 = b_scale_parent0.reshape((N // 2, 2, K // VEC_SIZE)).permute([1, 0, 2]).reshape(
+            (N, K // VEC_SIZE)
+        )
+        b_scale_tmem1 = b_scale_parent1.reshape((N // 2, 2, K // VEC_SIZE)).permute([1, 0, 2]).reshape(
+            (N, K // VEC_SIZE)
+        )
     scale_reg_layout_m: ttgl.constexpr = a_scale_tmem.get_reg_layout()
     scale_reg_layout_n: ttgl.constexpr = b_scale_tmem0.get_reg_layout()
 
@@ -3401,7 +3410,10 @@ def tmem_mma_scaled_dynamic_bscale_descriptor_view_format_kernel(
     scale_offs_k_n = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_n))[None, :]
     scale_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, scale_reg_layout_m))[:, None]
     scale_offs_n = ttgl.arange(0, B_SCALE_ROWS, layout=ttgl.SliceLayout(1, scale_reg_layout_n))[:, None]
-    source_scale_n = (scale_offs_n // B_SCALE_FRAGMENT_N) * B_SCALE_INSTR_N + (scale_offs_n % B_SCALE_INSTR_N)
+    if PAD_B_SCALE_STORAGE:
+        source_scale_n = (scale_offs_n // B_SCALE_FRAGMENT_N) * B_SCALE_INSTR_N + (scale_offs_n % B_SCALE_INSTR_N)
+    else:
+        source_scale_n = scale_offs_n
     a_scale_tmem.store(ttgl.load(a_scale + scale_offs_m * (K // VEC_SIZE) + scale_offs_k_m))
     b_scale_tmem0.store(ttgl.load(b_scale0 + source_scale_n * (K // VEC_SIZE) + scale_offs_k_n))
     b_scale_tmem1.store(ttgl.load(b_scale1 + source_scale_n * (K // VEC_SIZE) + scale_offs_k_n))
@@ -13562,8 +13574,9 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_view_extra_u
     assert "ttng.tc_gen5_mma_scaled" in ttgir
 
 
+@pytest.mark.parametrize("pad_b_scale_storage", [False, True])
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view():
+def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view(pad_b_scale_storage):
     m = n = k = 128
     a_format = b_format = "mxfp8"
     layout = _make_tmem_linear_layout_tile_permuted(m, n, 32)
@@ -13594,6 +13607,7 @@ def test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view():
         b_elem_per_byte,
         a_tcgen_format,
         b_tcgen_format,
+        pad_b_scale_storage,
         num_warps=4,
     )
 

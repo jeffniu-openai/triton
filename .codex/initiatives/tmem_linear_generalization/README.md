@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 02:52 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 03:05 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -51,9 +51,25 @@ The type-local MMAv5 address and tile-order computations now have explicit
 helper APIs, with the old value-taking functions acting as legacy wrappers.
 B-scale descriptor-view storage classification now has a type-local semantic
 helper so dynamically selected same-typed B-scale views do not need to expose
-their producer chain for scaled-MMAv5 legality.
+their producer chain for scaled-MMAv5 legality. The B-scale rematerialization
+pass now splits through single-use dynamic selects so unpadded selected views
+can be rematerialized into padded scales storage before scaled MMA.
 
-Latest validation checkpoint: 2026-04-23 02:52 UTC completed the first
+Latest validation checkpoint: 2026-04-23 03:05 UTC repaired unpadded dynamic
+selected B-scale descriptor-view rematerialization. When a scaled MMA consumes
+a selected unpadded B-scale descriptor view, the allocation pass now
+rematerializes each selected branch into padded `tensor_memory_scales` storage
+and builds a new selected padded descriptor for that MMA. Single-use original
+selects are erased and their obsolete unpadded store/view chains are cleaned
+up; multi-use original selects remain available to unrelated consumers.
+Validation: required
+`make -j8`; exact unpadded dynamic selected row `1 passed`; padded+unpadded
+dynamic selected rows `2 passed`; focused `bscale_descriptor_view` selector
+`6 passed, 1621 deselected`; targeted lit set `6/6`; 4-GPU positive MMAv5
+selector passed as group1 `134 passed, 14 skipped`, group2 `148 passed`,
+group3 `148 passed`, group4 `146 passed`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 02:52 UTC completed the first
 type-local B-scale descriptor-view storage slice. B-scale descriptor views are
 currently represented as `tensor_memory_linear` result types, so
 producer-chain root recovery fails after `arith.select`/control-flow

@@ -418,6 +418,11 @@ struct TMemScaleStoreInfo {
   bool hasOtherUsers = false;
 };
 
+struct DeferredScaleCleanup {
+  TMemScaleStoreInfo info;
+  Value scale;
+};
+
 static FailureOr<TMemScaleStoreInfo>
 getSingleTMemScaleStoreInfo(Value scale, Operation *consumer,
                             unsigned ignoredConsumerOperand) {
@@ -551,6 +556,156 @@ class RematerializeScaledMmaBScaleFragments
 public:
   using OpRewritePattern::OpRewritePattern;
 
+  FailureOr<Value> rematerializeDirectBScale(
+      Value bScale, ttg::MemDescType bScaleStorageType,
+      ArrayRef<int64_t> rematerializedShape, unsigned ctaColumns,
+      unsigned instrSizeN, Operation *consumer, unsigned ignoredConsumerOperand,
+      PatternRewriter &rewriter,
+      SmallVectorImpl<DeferredScaleCleanup> *deferredCleanups = nullptr) const {
+    auto bScaleType = cast<ttg::MemDescType>(bScale.getType());
+    FailureOr<TMemScaleStoreInfo> maybeInfo =
+        getSingleTMemScaleStoreInfo(bScale, consumer, ignoredConsumerOperand);
+    if (failed(maybeInfo))
+      return failure();
+    TMemScaleStoreInfo &info = *maybeInfo;
+
+    if (bScaleType.getRank() != 2)
+      return failure();
+
+    rewriter.setInsertionPoint(info.storeOp);
+    Value stored = info.storeOp.getSrc();
+    if (info.storeAlias != bScale) {
+      FailureOr<Value> logicalStored = applyAliasViewChainToTensor(
+          rewriter, info.storeOp.getLoc(), stored, info.storeAlias, bScale,
+          info.aliases);
+      if (failed(logicalStored))
+        return failure();
+      stored = *logicalStored;
+    }
+
+    auto storedType = cast<RankedTensorType>(stored.getType());
+    assert(storedType.getShape() == bScaleType.getShape() &&
+           "alias view replay should materialize the B-scale logical shape");
+
+    if (storedType.getShape()[0] != static_cast<int64_t>(ctaColumns) ||
+        instrSizeN == 0 || ctaColumns % instrSizeN != 0)
+      return failure();
+
+    int64_t paddingFactor =
+        rematerializedShape[0] / storedType.getShape()[0];
+    if (paddingFactor <= 1 ||
+        rematerializedShape[0] % storedType.getShape()[0] != 0)
+      return failure();
+
+    int64_t instructionCount = ctaColumns / instrSizeN;
+    SmallVector<int64_t> groupedShape{
+        instructionCount, 1, static_cast<int64_t>(instrSizeN),
+        storedType.getShape()[1]};
+
+    Location loc = info.storeOp.getLoc();
+    Value grouped =
+        triton::ReshapeOp::create(rewriter, loc, groupedShape, stored,
+                                  /*allowReorder=*/false);
+    auto groupedType = cast<RankedTensorType>(grouped.getType());
+    SmallVector<int64_t> broadcastShape(groupedType.getShape().begin(),
+                                        groupedType.getShape().end());
+    broadcastShape[1] = paddingFactor;
+    Value broadcasted = triton::BroadcastOp::create(
+        rewriter, loc, groupedType.clone(broadcastShape), grouped);
+    Value rematerialized =
+        triton::ReshapeOp::create(rewriter, loc, rematerializedShape,
+                                  broadcasted, /*allowReorder=*/false);
+
+    auto rematerializedType = ttg::MemDescType::get(
+        rematerializedShape, bScaleStorageType.getElementType(),
+        bScaleStorageType.getEncoding(), bScaleStorageType.getMemorySpace(),
+        bScaleStorageType.getMutableMemory());
+    auto rematerializedTensorType =
+        cast<RankedTensorType>(rematerialized.getType());
+    if (!isDistributedLayoutTMemCompatible(info.storeOp.getOperation(),
+                                           rematerializedTensorType,
+                                           rematerializedType)) {
+      SmallVector<ttg::DistributedEncodingTrait> layouts =
+          getTmemCompatibleLayouts(info.storeOp.getOperation(),
+                                   rematerializedTensorType,
+                                   rematerializedType);
+      if (layouts.empty())
+        return failure();
+      auto convertedType = rematerializedTensorType.cloneWithEncoding(layouts[0]);
+      rematerialized = ttg::ConvertLayoutOp::create(rewriter, loc,
+                                                    convertedType,
+                                                    rematerialized);
+    }
+
+    auto rematerializedAlloc =
+        TMEMAllocOp::create(rewriter, loc, rematerializedType, Value());
+    TMEMStoreOp::create(rewriter, loc, rematerializedAlloc.getResult(),
+                        rematerialized, info.storeOp.getPred());
+    if (deferredCleanups) {
+      deferredCleanups->push_back(DeferredScaleCleanup{std::move(info), bScale});
+      return rematerializedAlloc.getResult();
+    }
+    cleanupScaleAliasChain(rewriter, info, bScale);
+    return rematerializedAlloc.getResult();
+  }
+
+  FailureOr<Value> rematerializeBScale(
+      Value bScale, ttg::MemDescType bScaleStorageType,
+      ArrayRef<int64_t> rematerializedShape, unsigned ctaColumns,
+      unsigned instrSizeN, Operation *consumer, unsigned ignoredConsumerOperand,
+      PatternRewriter &rewriter,
+      SmallVectorImpl<DeferredScaleCleanup> &deferredCleanups,
+      SmallVectorImpl<Operation *> &deadOps) const {
+    if (auto selectOp = bScale.getDefiningOp<arith::SelectOp>()) {
+      // Split B-scale rematerialization through dynamic selection. Single-use
+      // selects can be erased after the MMA is rewritten, which lets us clean
+      // up the original unpadded branch stores. Multi-use selects keep the
+      // original descriptor for other consumers and materialize a new padded
+      // select for this MMA only.
+      bool canCleanupSelect = bScale.hasOneUse();
+      SmallVector<DeferredScaleCleanup> branchCleanups;
+      SmallVectorImpl<DeferredScaleCleanup> *cleanupSink =
+          canCleanupSelect ? &branchCleanups : nullptr;
+      Operation *branchConsumer =
+          canCleanupSelect ? selectOp.getOperation() : consumer;
+      unsigned trueOperand = canCleanupSelect
+                                 ? selectOp.getTrueValueMutable()
+                                       .getOperandNumber()
+                                 : ignoredConsumerOperand;
+      unsigned falseOperand = canCleanupSelect
+                                  ? selectOp.getFalseValueMutable()
+                                        .getOperandNumber()
+                                  : ignoredConsumerOperand;
+      FailureOr<Value> trueScale = rematerializeDirectBScale(
+          selectOp.getTrueValue(), bScaleStorageType, rematerializedShape,
+          ctaColumns, instrSizeN, branchConsumer, trueOperand, rewriter,
+          cleanupSink);
+      if (failed(trueScale))
+        return failure();
+      FailureOr<Value> falseScale = rematerializeDirectBScale(
+          selectOp.getFalseValue(), bScaleStorageType, rematerializedShape,
+          ctaColumns, instrSizeN, branchConsumer, falseOperand, rewriter,
+          cleanupSink);
+      if (failed(falseScale))
+        return failure();
+
+      rewriter.setInsertionPoint(selectOp);
+      Value selected = arith::SelectOp::create(
+                           rewriter, selectOp.getLoc(),
+                           selectOp.getCondition(), *trueScale, *falseScale)
+                           .getResult();
+      if (canCleanupSelect) {
+        llvm::move(branchCleanups, std::back_inserter(deferredCleanups));
+        deadOps.push_back(selectOp.getOperation());
+      }
+      return selected;
+    }
+
+    return rematerializeDirectBScale(
+        bScale, bScaleStorageType, rematerializedShape, ctaColumns, instrSizeN,
+        consumer, ignoredConsumerOperand, rewriter);
+  }
+
   LogicalResult matchAndRewrite(TCGen5MMAScaledOp mmaOp,
                                 PatternRewriter &rewriter) const override {
     auto accSupport = getMMAv5ScaledAccumulatorSupport(mmaOp.getD().getType());
@@ -559,14 +714,12 @@ public:
       return failure();
 
     Value bScale = mmaOp.getBScale();
-    auto bScaleType = cast<ttg::MemDescType>(bScale.getType());
     std::optional<ttg::MemDescType> bScaleStorageType =
         getMMAv5ScaledBScaleStorageTypeThroughViews(bScale);
     if (!bScaleStorageType)
       return failure();
 
-    std::optional<SmallVector<int64_t>> rematerializedShape =
-        std::nullopt;
+    std::optional<SmallVector<int64_t>> rematerializedShape = std::nullopt;
     unsigned ctaColumns = 0;
     unsigned instrSizeN = 0;
     if (accSupport.narrowNScaleFragmentRequirement) {
@@ -595,91 +748,25 @@ public:
     if (!rematerializedShape)
       return failure();
 
-    FailureOr<TMemScaleStoreInfo> maybeInfo =
-        getSingleTMemScaleStoreInfo(
-            bScale, mmaOp.getOperation(),
-            mmaOp.getBScaleMutable().getOperandNumber());
-    if (failed(maybeInfo))
+    SmallVector<DeferredScaleCleanup> deferredCleanups;
+    SmallVector<Operation *> deadOps;
+    FailureOr<Value> rematerializedBScale = rematerializeBScale(
+        bScale, *bScaleStorageType, *rematerializedShape, ctaColumns,
+        instrSizeN, mmaOp.getOperation(),
+        mmaOp.getBScaleMutable().getOperandNumber(), rewriter,
+        deferredCleanups, deadOps);
+    if (failed(rematerializedBScale))
       return failure();
-    TMemScaleStoreInfo &info = *maybeInfo;
-
-    if (bScaleType.getRank() != 2)
-      return failure();
-
-    rewriter.setInsertionPoint(info.storeOp);
-    Value stored = info.storeOp.getSrc();
-    if (info.storeAlias != bScale) {
-      FailureOr<Value> logicalStored = applyAliasViewChainToTensor(
-          rewriter, info.storeOp.getLoc(), stored, info.storeAlias, bScale,
-          info.aliases);
-      if (failed(logicalStored))
-        return failure();
-      stored = *logicalStored;
-    }
-
-    auto storedType = cast<RankedTensorType>(stored.getType());
-    assert(storedType.getShape() == bScaleType.getShape() &&
-           "alias view replay should materialize the B-scale logical shape");
-
-    if (storedType.getShape()[0] != static_cast<int64_t>(ctaColumns) ||
-        instrSizeN == 0 || ctaColumns % instrSizeN != 0)
-      return failure();
-
-    int64_t paddingFactor =
-        (*rematerializedShape)[0] / storedType.getShape()[0];
-    if (paddingFactor <= 1 ||
-        (*rematerializedShape)[0] % storedType.getShape()[0] != 0)
-      return failure();
-
-    int64_t instructionCount = ctaColumns / instrSizeN;
-    SmallVector<int64_t> groupedShape{
-        instructionCount, 1, static_cast<int64_t>(instrSizeN),
-        storedType.getShape()[1]};
-
-    Location loc = info.storeOp.getLoc();
-    Value grouped =
-        triton::ReshapeOp::create(rewriter, loc, groupedShape, stored,
-                                  /*allowReorder=*/false);
-    auto groupedType = cast<RankedTensorType>(grouped.getType());
-    SmallVector<int64_t> broadcastShape(groupedType.getShape().begin(),
-                                        groupedType.getShape().end());
-    broadcastShape[1] = paddingFactor;
-    Value broadcasted = triton::BroadcastOp::create(
-        rewriter, loc, groupedType.clone(broadcastShape), grouped);
-    Value rematerialized = triton::ReshapeOp::create(
-        rewriter, loc, *rematerializedShape, broadcasted,
-        /*allowReorder=*/false);
-
-    auto rematerializedType = ttg::MemDescType::get(
-        *rematerializedShape, bScaleStorageType->getElementType(),
-        bScaleStorageType->getEncoding(), bScaleStorageType->getMemorySpace(),
-        bScaleStorageType->getMutableMemory());
-    auto rematerializedTensorType =
-        cast<RankedTensorType>(rematerialized.getType());
-    if (!isDistributedLayoutTMemCompatible(info.storeOp.getOperation(),
-                                           rematerializedTensorType,
-                                           rematerializedType)) {
-      SmallVector<ttg::DistributedEncodingTrait> layouts =
-          getTmemCompatibleLayouts(info.storeOp.getOperation(),
-                                   rematerializedTensorType,
-                                   rematerializedType);
-      if (layouts.empty())
-        return failure();
-      auto convertedType = rematerializedTensorType.cloneWithEncoding(layouts[0]);
-      rematerialized = ttg::ConvertLayoutOp::create(rewriter, loc,
-                                                    convertedType,
-                                                    rematerialized);
-    }
-
-    auto rematerializedAlloc =
-        TMEMAllocOp::create(rewriter, loc, rematerializedType, Value());
-    TMEMStoreOp::create(rewriter, loc, rematerializedAlloc.getResult(),
-                        rematerialized, info.storeOp.getPred());
 
     rewriter.modifyOpInPlace(mmaOp, [&] {
-      mmaOp.getBScaleMutable().assign(rematerializedAlloc.getResult());
+      mmaOp.getBScaleMutable().assign(*rematerializedBScale);
     });
-    cleanupScaleAliasChain(rewriter, info, bScale);
+    for (Operation *deadOp : deadOps) {
+      if (deadOp->use_empty())
+        rewriter.eraseOp(deadOp);
+    }
+    for (DeferredScaleCleanup &cleanup : deferredCleanups)
+      cleanupScaleAliasChain(rewriter, cleanup.info, cleanup.scale);
     return success();
   }
 };

@@ -983,6 +983,36 @@ High-priority hacks and debt to remove after replacement coverage exists:
   as group1 `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`,
   group4 `145 passed`; `git diff --check` passed.
 
+### 2026-04-23 Selected B-Scale Rematerialization Slice
+
+- The type-local B-scale storage classifier made selected unpadded descriptor
+  views semantically classifiable, but the allocation transform still only knew
+  how to rematerialize a single direct store/view chain. A selected value had
+  multiple root allocations, so the direct rematerialization path declined and
+  LLVM conversion later rejected the unsupported unpadded storage.
+- `RematerializeScaledMmaBScaleFragments` now separates direct branch
+  rematerialization from top-level MMA operand rewriting. For an `arith.select`
+  B-scale result, it rematerializes the true and false operands independently
+  into the required padded `tensor_memory_scales` shape, creates a new selected
+  padded descriptor, and rewrites the MMA operand to that descriptor.
+- If the original select is single-use, the pass erases the obsolete select and
+  then runs the normal store/view cleanup for the original unpadded branch
+  chains. If it is multi-use, the original selected descriptor is left intact
+  for unrelated consumers and only the MMA receives the new padded selected
+  descriptor. Broader control-flow rematerialization can build on the same
+  branch-local helper once there is a concrete `scf.if`/loop-carried
+  reproducer.
+- The runtime matrix now parameterizes the dynamic B-scale descriptor-view test
+  over padded and unpadded storage. The unpadded row would previously compile
+  to an unsupported selected `tensor_memory_linear` B-scale view at LLVM
+  conversion; it now passes runtime correctness and exact opcode checks.
+- Validation after this slice: required `make -j8`; exact unpadded dynamic
+  selected row `1 passed`; padded+unpadded dynamic rows `2 passed`; focused
+  `bscale_descriptor_view` selector `6 passed, 1621 deselected`; targeted lit
+  set `6/6`; 4-GPU positive MMAv5 selector passed as group1
+  `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`, group4
+  `146 passed`; `git diff --check` passed.
+
 ### 2026-04-23 Type-Local MMAv5 Family Address Slice
 
 - `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects narrowed

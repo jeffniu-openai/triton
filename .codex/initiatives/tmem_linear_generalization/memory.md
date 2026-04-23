@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 03:05 UTC repaired unpadded dynamic selected B-scale
+  descriptor-view rematerialization. The previous type-local classifier made
+  the semantic legality local, but the allocation transform still failed to
+  rematerialize an unpadded `arith.select` result into padded storage. The
+  B-scale fragment rematerializer now handles selected descriptors by
+  rematerializing each branch to padded `tensor_memory_scales` storage and
+  creating a new selected padded descriptor for scaled MMA. Single-use original
+  selects are cleaned up; multi-use originals remain available to unrelated
+  consumers. The dynamic B-scale descriptor-view runtime test now covers both
+  padded and unpadded storage. Validation: required `make -j8`; exact unpadded
+  dynamic selected
+  row `1 passed`; padded+unpadded dynamic rows `2 passed`; focused
+  `bscale_descriptor_view` selector `6 passed, 1621 deselected`; targeted lit
+  set `6/6`; 4-GPU positive MMAv5 selector passed as group1
+  `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`, group4
+  `146 passed`; `git diff --check` passed.
+
 - Latest: 2026-04-23 02:52 UTC completed the first type-local B-scale
   descriptor-view storage slice. Generated MMAv5 B-scale descriptor views are
   currently `tensor_memory_linear` memdesc result types even when their layout

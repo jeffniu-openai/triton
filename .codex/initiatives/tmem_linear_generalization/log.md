@@ -34429,6 +34429,47 @@ Open after this slice:
   type-local semantic helpers and leave view-chain walking to optimizer-only
   rewrites.
 
+## 2026-04-23 03:05 UTC: selected B-scale rematerialization repair
+
+- Branch/HEAD before this repair slice:
+  `056a5ff61 Classify MMAv5 B-scale descriptor views type-locally`.
+- Reproducer:
+  parameterizing the dynamic B-scale descriptor-view runtime test to use
+  unpadded storage failed during LLVM conversion. The selected value had type
+  `!ttg.memdesc<128x4xi8, #tensor_memory_linear...>`, which was semantically
+  classifiable after the previous slice, but the allocation pass had not
+  rematerialized it to the required padded scales storage.
+- Root cause:
+  `RematerializeScaledMmaBScaleFragments` required a single allocation/store
+  chain for the MMA's B-scale operand. A dynamic `arith.select` result traces
+  to two root TMEM allocations, so the direct path returned failure and left
+  the unsupported unpadded selected descriptor for LLVM conversion.
+- Completed implementation:
+  factored direct branch rematerialization into a helper and added a
+  selected-descriptor path. The pass now rematerializes the true and false
+  selected branches to padded `tensor_memory_scales` storage, creates a new
+  select over those padded descriptors, and rewrites the MMA operand. If the
+  original select is single-use, it is erased and the original unpadded
+  store/view chains are cleaned up when dead; if it is multi-use, the original
+  selected descriptor remains available to unrelated consumers.
+- New coverage:
+  `test_tmem_runtime_matrix_mma_scaled_dynamic_bscale_descriptor_view` now runs
+  both padded and unpadded descriptor-view storage variants. The unpadded row
+  is the former failure and now checks runtime correctness, exact MMA opcode
+  count, dynamic forwarding, and scaled-MMA presence.
+- Validation evidence:
+  required `make -j8`; exact unpadded dynamic selected row `1 passed`;
+  padded+unpadded dynamic rows `2 passed`; focused `bscale_descriptor_view`
+  selector `6 passed, 1621 deselected`; targeted lit set `6/6`; 4-GPU
+  positive MMAv5 selector passed as group1 `134 passed, 14 skipped`, group2
+  `148 passed`, group3 `148 passed`, group4 `146 passed`; `git diff --check`
+  passed.
+- Remaining migration frontier:
+  continue replacing remaining MMAv5/scales producer-chain dependencies with
+  type-local semantic helpers. Broader control-flow rematerialization should be
+  driven by concrete `scf.if` or loop-carried repros so the transform only
+  rewrites the consumers that need padded descriptors.
+
 ## 2026-04-21 23:04 UTC: broad MMAv5 frontier validation and rank-5 marker cleanup
 
 - Branch/HEAD before this validation slice:

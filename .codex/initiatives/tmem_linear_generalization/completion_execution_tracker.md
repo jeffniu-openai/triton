@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 02:52 UTC
+Last updated: 2026-04-23 03:05 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -56,7 +56,10 @@ Active implementation checklist:
   descriptor-view storage slice: generated padded and unpadded B-scale storage
   layouts can be classified from the current `MemDescType`, so scaled-MMAv5
   legality no longer requires walking B-scale descriptor-view producers when a
-  same-typed descriptor is selected dynamically.
+  same-typed descriptor is selected dynamically. First B-scale
+  rematerialization slice: selected unpadded B-scale descriptor views are
+  rematerialized branch-wise to padded scales storage before scaled MMA, with
+  cleanup when the original select is single-use.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -105,6 +108,14 @@ keeps dynamic same-typed selected views legal without relying on producer-chain
 root recovery. Legacy value-taking chain recovery remains as fallback for
 descriptor classes not migrated yet.
 
+Current B-scale rematerialization checkpoint: the B-scale fragment
+rematerializer now splits through an `arith.select` result. Each selected
+unpadded branch is rematerialized from its store/view chain into padded
+`tensor_memory_scales` storage and a new selected padded descriptor is created
+for the MMA. When the original select is single-use, the obsolete unpadded
+select/store/view chains are cleaned up once the MMA operand is rewritten;
+multi-use originals remain available to unrelated consumers.
+
 Completed twelfth implementation slice: MMAv5 family address/tile-order
 lowering is now type-local for narrowed MMAv5-family descriptors.
 `getMMAv5TMemFamilyAddressLayout(MemDescType)` no longer rejects
@@ -148,6 +159,21 @@ group1 `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`,
 group4 `145 passed`; `git diff --check` passed. Remaining boundary:
 unpadded dynamic selected B-scale views still need an allocation/rematerialized
 storage transform repair before they are covered as runtime positives.
+
+Completed fifteenth implementation slice: unpadded dynamic selected B-scale
+descriptor views now rematerialize correctly. `RematerializeScaledMmaBScaleFragments`
+factors direct branch rematerialization from top-level MMA rewriting and handles
+an `arith.select` by rematerializing true and false branches to the required
+padded scales shape and creating a new select over the rematerialized
+descriptors for scaled MMA. Single-use originals are erased and cleaned up;
+multi-use originals remain available to unrelated consumers. The dynamic
+B-scale descriptor-view test now parameterizes both padded and unpadded
+storage. Validation: required `make -j8`; exact unpadded dynamic
+selected row `1 passed`; padded+unpadded dynamic rows `2 passed`; focused
+`bscale_descriptor_view` selector `6 passed, 1621 deselected`; targeted lit set
+`6/6`; 4-GPU positive MMAv5 selector passed as group1
+`134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`, group4
+`146 passed`; `git diff --check` passed.
 
 First migration-slice finding: a focused `cp_no_scales` subslice selector with
 `TRITON_DEBUG_TMEM_QUERY=1` passed runtime correctness (`63 passed`), but
