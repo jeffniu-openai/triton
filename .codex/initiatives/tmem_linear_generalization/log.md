@@ -35764,3 +35764,25 @@ Open after this slice:
   remaining semantic helper split, especially lowering/verifier call sites
   that still depend on value-shaped row-plan or standalone compatibility
   wrappers before optimizer-only producer-chain code is isolated.
+
+## 2026-04-23 20:07 UTC: scales row-plan locality checkpoint
+
+- Branch/HEAD at slice start:
+  `efed84056 Generalize scales ld/st type-local helpers`.
+- Completed source slice:
+  made the ld/st row-plan helpers treat scales descriptor views as
+  type-local, matching active self-contained subviews. The raw-query,
+  support-query, query-layout, and direct-query helpers now prefer the
+  current descriptor type/layout for scales views and avoid producer-chain
+  backing row-plan fallback for that class.
+- Validation evidence:
+  required `make -j8`; focused `ldst_scales and (descriptor_view or
+  reports)` selector `20 passed, 1687 deselected`; four-GPU
+  `ldst_scales and not reports` selector passed as group1 `9 passed`,
+  group2 `9 passed`, group3 `9 passed`, group4 `6 passed`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue with the remaining lowering and
+  verifier call sites that still need a type-local semantic path before
+  falling back to value-chain compatibility.

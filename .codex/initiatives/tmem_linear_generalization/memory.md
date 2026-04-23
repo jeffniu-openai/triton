@@ -18485,3 +18485,17 @@ rejection, not rescue
   passed as group1 `9 passed`, group2 `9 passed`, group3 `9 passed`,
   group4 `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
   `git diff --check` passed.
+
+- 2026-04-23 20:07 UTC scales ld/st row-plan locality slice completed.
+  `getTMemLdStRowPlanForQuery`, `getTMemLdStRowPlanForQueryLayout`,
+  `getTMemLdStRowPlanForRawQuery`, and
+  `getTMemLdStRowPlanForSupportQuery` now treat scales descriptor views
+  as type-local alongside active self-contained subviews. This keeps
+  semantic row-plan selection on the current descriptor type/layout and
+  avoids producer-chain backing row-plan fallback for that descriptor
+  class. Validation: required `make -j8`; focused `ldst_scales and
+  (descriptor_view or reports)` selector `20 passed, 1687 deselected`;
+  four-GPU `ldst_scales and not reports` selector passed as group1
+  `9 passed`, group2 `9 passed`, group3 `9 passed`, group4
+  `6 passed`; lit `tmem_layouts.mlir` `1 passed`; `git diff --check`
+  passed.

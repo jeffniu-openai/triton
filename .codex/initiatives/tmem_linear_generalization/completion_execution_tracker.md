@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 20:05 UTC
+Last updated: 2026-04-23 20:07 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -216,6 +216,10 @@ Active implementation checklist:
   descriptor views as well as active self-contained subviews, so value-shaped
   wrappers no longer own a separate semantic branch for that descriptor
   class.
+- [x] Scales row-plan locality slice: ld/st row-plan helpers now treat scales
+  descriptor views as type-local alongside active self-contained subviews,
+  so raw/support/query row-plan selection does not borrow a producer-chain
+  backing row plan for that descriptor class.
 - [ ] Packed-lane `tcgen05.copy` scheduling remains a real planner/modeling
   boundary: the current scheduler can identify the lane/dword projection, but
   still lacks a lane-aware source-storage, descriptor-synthesis, and tile
@@ -227,7 +231,9 @@ Active implementation checklist:
   coverage proves distinct selected scale roots produce distinct values,
   and the public type-local ld/st query/query-type helpers now include
   scales descriptor views instead of leaving that semantic branch in the
-  value wrapper.
+  value wrapper. Row-plan helpers now apply the same type-local split to
+  scales descriptor views, avoiding producer-chain backing row-plan
+  fallback for raw/support/query row-plan selection.
 - [ ] Run staged lit, focused pytest, 4-GPU runtime matrix, structural fuzzer,
   and example performance checks before considering the migration complete.
 

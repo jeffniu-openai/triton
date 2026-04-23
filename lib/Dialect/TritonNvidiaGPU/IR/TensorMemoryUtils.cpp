@@ -4561,7 +4561,8 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
   auto queryPlan = getTMemLdStRowPlanForType(queryTy);
   if (!memDesc)
     return queryPlan;
-  if (hasSelfContainedTMemSubviewLayout(queryTy))
+  if (hasSelfContainedTMemSubviewLayout(queryTy) ||
+      isTypeLocalTMemScalesDescriptorView(queryTy))
     return queryPlan;
   auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
   if (!queryPlan)
@@ -4667,7 +4668,8 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy || memTy != queryTy)
     return queryPlan;
-  if (hasSelfContainedTMemSubviewLayout(queryTy))
+  if (hasSelfContainedTMemSubviewLayout(queryTy) ||
+      isTypeLocalTMemScalesDescriptorView(queryTy))
     return queryPlan;
   if (auto backingPlan = getBackingTMemLdStRowPlan(memDesc)) {
     if (queryPlan && backingPlan->rowSpan > queryPlan->rowSpan &&
@@ -4723,7 +4725,8 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
 std::optional<TMemLdStRowPlan>
 getTMemLdStRowPlanForRawQuery(Value memDesc, MemDescType queryTy,
                               const TMemLdStQueryLayout &queryLayout) {
-  if (hasSelfContainedTMemSubviewLayout(queryTy)) {
+  if (hasSelfContainedTMemSubviewLayout(queryTy) ||
+      isTypeLocalTMemScalesDescriptorView(queryTy)) {
     if (auto rowPlan = getTMemLdStRowPlanForType(queryTy))
       return rowPlan;
     return getTMemLdStRowPlan(queryLayout.layout);
@@ -4744,7 +4747,8 @@ getTMemLdStRowPlanForRawQuery(Value memDesc, MemDescType queryTy,
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForSupportQuery(
     Value memDesc, MemDescType queryTy, const TMemLdStQueryLayout &supportQuery,
     std::optional<TMemLdStRowPlan> supportRowPlan) {
-  if (hasSelfContainedTMemSubviewLayout(queryTy)) {
+  if (hasSelfContainedTMemSubviewLayout(queryTy) ||
+      isTypeLocalTMemScalesDescriptorView(queryTy)) {
     if (supportRowPlan)
       return supportRowPlan;
     if (auto rowPlan = getTMemLdStRowPlanForType(queryTy))
