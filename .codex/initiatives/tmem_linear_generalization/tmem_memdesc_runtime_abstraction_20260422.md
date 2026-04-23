@@ -1617,3 +1617,27 @@ High-priority hacks and debt to remove after replacement coverage exists:
   ld/st/ld.red/copy selector `6 passed`; lit `tmem_layouts.mlir` `1 passed`;
   unsplit `test_core.py -k 'tmem and (copy or ld or load or store or mma or
   tcgen05)'` `50 passed, 5 skipped`.
+
+### 2026-04-23 Subword Active Selected-View Runtime Coverage
+
+- The active selected-subview ld/st test kernels now allocate TMEM with the
+  input element type and use typed initializer constants, so the same sentinel
+  exercises f32, f16, and i8 descriptor values without changing the user-facing
+  API.
+- Added f16/i8 dynamic-select and loop-carried active column-subview runtime
+  positives for ld/st. These rows verify both candidate views after storing
+  through the selected descriptor and assert the expected subword
+  `tcgen05.ld/st` packet shapes (`32x32b.x64.b32` for f16,
+  `32x32b.x32.b32` for i8).
+- Added f16/i8 dynamic-select and loop-carried active column-subview positives
+  for dense `tcgen05.copy`. The checked dynamic copy sentinel initializes both
+  candidate views, copies through the selected descriptor, and reads both
+  candidates back; this prevents a selected-base lowering bug from being hidden
+  by loading through the same selected SSA value.
+- Validation after this slice: required `make -j8`; an initial pytest attempt
+  without `PYTHONPATH=./python` failed during collection against the wrong
+  installed Triton package and ran no tests. Rerun with `PYTHONPATH=./python`:
+  `linear_subslice_view_subword` split passed as group1 `4 passed`, group2
+  `4 passed`, group3 `4 passed`, group4 `4 passed`; adjacent non-subword
+  active ld/st/copy selector passed as group1 `8 passed`, group2 `8 passed`,
+  group3 `8 passed`, group4 `6 passed`; `git diff --check` passed.

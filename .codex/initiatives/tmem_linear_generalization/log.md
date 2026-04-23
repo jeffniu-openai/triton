@@ -35218,3 +35218,29 @@ Open after this slice:
 - Next concrete step:
   commit and push this checkpoint. Continue splitting active semantic helper
   calls away from Value-shaped legacy compatibility where practical.
+
+## 2026-04-23 06:09 UTC: subword active selected-view runtime coverage
+
+- Branch/HEAD at slice start:
+  `b3ecc4e5f Split active TMEM scalar refinement API`.
+- Dirty files before checkpoint commit:
+  `python/test/gluon/test_tmem_runtime_matrix.py`, plus initiative docs.
+- Completed test/source slice:
+  the active selected-subview ld/st kernels now allocate TMEM with
+  `in_ptr.dtype.element_ty` and use typed initializer constants. Added f16/i8
+  dynamic-select and loop-carried runtime positives for active column subviews
+  across ld/st and dense `tcgen05.copy`; the checked dynamic copy sentinel
+  initializes both candidates and reads both back after copying through the
+  selected descriptor.
+- Validation evidence:
+  required `make -j8`; initial pytest without `PYTHONPATH=./python` failed
+  during collection against the wrong installed Triton package and ran no
+  tests. Rerun with `PYTHONPATH=./python`: `linear_subslice_view_subword`
+  split passed as group1 `4 passed`, group2 `4 passed`, group3 `4 passed`,
+  group4 `4 passed`; adjacent non-subword selector
+  `(ldst or cp_no_scales) and linear_subslice_view and not subword` passed as
+  group1 `8 passed`, group2 `8 passed`, group3 `8 passed`, group4 `6 passed`;
+  `git diff --check` passed.
+- Next concrete step:
+  commit and push this checkpoint. Continue migrating and auditing subword
+  lowering surfaces toward the physical-element-column memdesc model.

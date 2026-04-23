@@ -20,7 +20,7 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-Active execution plan: as of 2026-04-23 06:01 UTC, the newer memdesc-model
+Active execution plan: as of 2026-04-23 06:09 UTC, the newer memdesc-model
 migration is executing first vertical slices. The checklist lives in
 `completion_execution_tracker.md` and the detailed migration plan lives in
 `tmem_memdesc_runtime_abstraction_20260422.md`. Completed slices now cover
@@ -86,6 +86,12 @@ passed after that cleanup as group1 `14 passed`, group2 `14 passed`, group3
 The scalar refinement helper now also has a `MemDescType` overload, and active
 lowering calls that overload directly; the Value-taking overload remains as
 legacy descriptor-view compatibility.
+Subword active selected column subviews now have runtime coverage for f16 and
+i8 dynamic-select and loop-carried values across both ld/st and dense
+`tcgen05.copy`. The shared sentinel kernels now allocate TMEM with the input
+element type and use typed initializer constants, and the subword copy sentinel
+reads both candidate views after the selected copy so a shared-base mistake
+cannot be hidden by loading through the same selected value.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -113,7 +119,17 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 05:48 UTC ran the MMAv5/scales
+Latest validation checkpoint: 2026-04-23 06:09 UTC added f16/i8 subword active
+selected-view runtime coverage. Validation: required `make -j8`; an initial
+pytest attempt without `PYTHONPATH=./python` failed during collection against
+the wrong installed `triton` package and ran no tests. Rerunning with
+`PYTHONPATH=./python`, selector `linear_subslice_view_subword` passed across
+four GPU split groups as group1 `4 passed`, group2 `4 passed`, group3
+`4 passed`, group4 `4 passed`; adjacent non-subword selector
+`(ldst or cp_no_scales) and linear_subslice_view and not subword` passed as
+group1 `8 passed`, group2 `8 passed`, group3 `8 passed`, group4 `6 passed`.
+
+Previous validation checkpoint: 2026-04-23 05:48 UTC ran the MMAv5/scales
 runtime selector `mma and not reports and not clean and not unsupported` as a
 four-GPU split: group1 `134 passed, 14 skipped`, group2 `148 passed`, group3
 `148 passed`, group4 `148 passed`.

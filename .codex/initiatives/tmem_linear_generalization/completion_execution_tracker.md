@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 06:01 UTC
+Last updated: 2026-04-23 06:09 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -104,6 +104,10 @@ Active implementation checklist:
   First scalar refinement API-split slice: the active lowering path now calls a
   `MemDescType` overload of `refineTMemLdStQueryTypeEncodingInfo`, leaving the
   Value-taking overload as legacy view-chain compatibility.
+  First subword active-view coverage slice: f16 and i8 selected active
+  column-subviews now have dynamic-select and loop-carried runtime positives
+  for both ld/st and dense `tcgen05.copy`, with candidate readback proving the
+  selected runtime `taddr` is honored for sub-32-bit element-slot layouts.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,

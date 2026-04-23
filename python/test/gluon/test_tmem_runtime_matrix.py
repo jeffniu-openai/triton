@@ -832,7 +832,8 @@ def tmem_ldst_auto_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.const
 def tmem_ldst_dynamic_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
                                                   parent_layout: ttgl.constexpr,
                                                   M: ttgl.constexpr, N: ttgl.constexpr):
-    tmem = allocate_tensor_memory(ttgl.float32, [M, 2 * N], layout=parent_layout)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
     view0 = tmem.slice(0, N, dim=1)
     view1 = tmem.slice(N, N, dim=1)
     selected = view0
@@ -848,8 +849,8 @@ def tmem_ldst_dynamic_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
     value = ttgl.load(in_ptr + offs)
     value = ttgl.convert_layout(value, reg_layout)
 
-    view0.store(value + ttgl.full([M, N], 3.0, ttgl.float32, layout=reg_layout))
-    view1.store(value + ttgl.full([M, N], 7.0, ttgl.float32, layout=reg_layout))
+    view0.store(value + ttgl.full([M, N], 3, element_ty, layout=reg_layout))
+    view1.store(value + ttgl.full([M, N], 7, element_ty, layout=reg_layout))
     selected.store(value)
 
     out0 = view0.load(reg_layout)
@@ -862,7 +863,8 @@ def tmem_ldst_dynamic_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
 def tmem_ldst_loop_carried_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
                                                        parent_layout: ttgl.constexpr,
                                                        M: ttgl.constexpr, N: ttgl.constexpr):
-    tmem = allocate_tensor_memory(ttgl.float32, [M, 2 * N], layout=parent_layout)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
     view0 = tmem.slice(0, N, dim=1)
     view1 = tmem.slice(N, N, dim=1)
 
@@ -881,8 +883,8 @@ def tmem_ldst_loop_carried_linear_subslice_view_kernel(in_ptr, out_ptr, selector
     value = ttgl.load(in_ptr + offs)
     value = ttgl.convert_layout(value, reg_layout)
 
-    view0.store(value + ttgl.full([M, N], 3.0, ttgl.float32, layout=reg_layout))
-    view1.store(value + ttgl.full([M, N], 7.0, ttgl.float32, layout=reg_layout))
+    view0.store(value + ttgl.full([M, N], 3, element_ty, layout=reg_layout))
+    view1.store(value + ttgl.full([M, N], 7, element_ty, layout=reg_layout))
     selected_before = selected.load(reg_layout)
     selected.store(value)
 
@@ -2081,10 +2083,56 @@ def tmem_copy_no_scales_dynamic_linear_subslice_view_kernel(in_ptr, out_ptr, sel
 
 
 @gluon.jit
+def tmem_copy_no_scales_dynamic_linear_subslice_view_checked_kernel(in_ptr, out_ptr, selector_ptr,
+                                                                    parent_layout: ttgl.constexpr,
+                                                                    M: ttgl.constexpr, N: ttgl.constexpr,
+                                                                    swizzle: ttgl.constexpr):
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, 2 * N], layout=parent_layout)
+    view0 = tmem.slice(0, N, dim=1)
+    view1 = tmem.slice(N, N, dim=1)
+    selected = view0
+    if ttgl.load(selector_ptr) != 0:
+        selected = view1
+    else:
+        selected = view0
+
+    reg_layout: ttgl.constexpr = selected.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+    reg_value = ttgl.convert_layout(value, reg_layout)
+    view0.store(reg_value + ttgl.full([M, N], 3, element_ty, layout=reg_layout))
+    view1.store(reg_value + ttgl.full([M, N], 7, element_ty, layout=reg_layout))
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
+        rank=2,
+    )
+    smem = ttgl.allocate_shared_memory(element_ty, [M, N], layout=smem_layout)
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    smem.store(value)
+    fence_async_shared()
+    tcgen05_copy(smem, selected)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    out0 = view0.load(reg_layout)
+    out1 = view1.load(reg_layout)
+    ttgl.store(out_ptr + offs, out0)
+    ttgl.store(out_ptr + M * N + offs, out1)
+
+
+@gluon.jit
 def tmem_copy_no_scales_loop_carried_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
                                                                  parent_layout: ttgl.constexpr,
                                                                  M: ttgl.constexpr, N: ttgl.constexpr,
                                                                  swizzle: ttgl.constexpr):
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
     tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, 2 * N], layout=parent_layout)
     view0 = tmem.slice(0, N, dim=1)
     view1 = tmem.slice(N, N, dim=1)
@@ -2102,8 +2150,8 @@ def tmem_copy_no_scales_loop_carried_linear_subslice_view_kernel(in_ptr, out_ptr
     offs = offs_m[:, None] * N + offs_n[None, :]
     value = ttgl.load(in_ptr + offs)
     value = ttgl.convert_layout(value, reg_layout)
-    view0.store(value + ttgl.full([M, N], 3.0, ttgl.float32, layout=reg_layout))
-    view1.store(value + ttgl.full([M, N], 7.0, ttgl.float32, layout=reg_layout))
+    view0.store(value + ttgl.full([M, N], 3, element_ty, layout=reg_layout))
+    view1.store(value + ttgl.full([M, N], 7, element_ty, layout=reg_layout))
 
     smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
         swizzle_byte_width=swizzle,
@@ -5700,6 +5748,21 @@ CP_LINEAR_NO_SCALES_SUBWORD_CASES = [
     for n in (128, 256)
 ]
 
+CP_ACTIVE_SUBWORD_LINEAR_SUBSLICE_VIEW_CASES = [
+    (
+        dtype_name,
+        torch_dtype,
+        128,
+        128,
+        32,
+        128 * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256,
+    )
+    for dtype_name, torch_dtype in (
+        ("f16", torch.float16),
+        ("i8", torch.int8),
+    )
+]
+
 CP_NO_SCALES_SWIZZLE_CASES = [
     (m, n, block_n, swizzle)
     for swizzle in (32, 64, 128)
@@ -6004,6 +6067,19 @@ SUBWORD_LDST_CASES = [
         SUBWORD_LDST_SHAPE_MAP_BY_BITS[bitwidth][variant][n],
     )
     for dtype_name, torch_dtype, bitwidth, n, variant in SUBWORD_LDST_CASE_SPECS
+]
+
+ACTIVE_SUBWORD_LDST_LINEAR_SUBSLICE_VIEW_CASES = [
+    (
+        dtype_name,
+        torch_dtype,
+        bitwidth,
+        SUBWORD_LDST_SHAPE_MAP_BY_BITS[bitwidth]["auto"][128],
+    )
+    for dtype_name, torch_dtype, bitwidth in (
+        ("f16", torch.float16, 16),
+        ("i8", torch.int8, 8),
+    )
 ]
 
 SUBWORD_LDST_DESCRIPTOR_CASES = SUBWORD_LDST_CASES
@@ -7093,6 +7169,99 @@ def test_tmem_runtime_matrix_ldst_loop_carried_linear_subslice_view(selector, se
         ("tcgen05.ld.sync.aligned.32x32b.x128.b32", 0),
     ]
     assert ops == expected_ops
+    ttgir = compiled.asm["ttgir"]
+    assert "scf.for" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tmem_store" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,bitwidth,expected_shape", ACTIVE_SUBWORD_LDST_LINEAR_SUBSLICE_VIEW_CASES)
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_runtime_matrix_ldst_dynamic_linear_subslice_view_subword(
+    dtype_name, torch_dtype, bitwidth, expected_shape, selector
+):
+    m = 128
+    n = 128
+    layout = _make_tmem_linear_layout(m, 2 * n)
+    base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 16
+    inp = base.to(torch_dtype)
+    out = torch.empty((2, m, n), dtype=torch_dtype, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_ldst_dynamic_linear_subslice_view_kernel[(1, )](
+        inp, out, selector_tensor, layout, m, n, num_warps=4
+    )
+
+    plus3 = (base + 3).to(torch_dtype)
+    plus7 = (base + 7).to(torch_dtype)
+    expected0 = inp if selector == 0 else plus3
+    expected1 = inp if selector == 1 else plus7
+    torch.testing.assert_close(out[0], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[1], expected1, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    op = f"tcgen05.{{kind}}.sync.aligned.{expected_shape}"
+    assert ops == [
+        (op.format(kind="st"), 0),
+        (op.format(kind="st"), 0),
+        (op.format(kind="st"), 0),
+        (op.format(kind="ld"), 0),
+        (op.format(kind="ld"), 0),
+    ]
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tmem_store" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,bitwidth,expected_shape", ACTIVE_SUBWORD_LDST_LINEAR_SUBSLICE_VIEW_CASES)
+@pytest.mark.parametrize(
+    "selector,selects_view1",
+    [
+        pytest.param(0, True, id="select-view1"),
+        pytest.param(2, False, id="keep-view0"),
+    ],
+)
+def test_tmem_runtime_matrix_ldst_loop_carried_linear_subslice_view_subword(
+    dtype_name, torch_dtype, bitwidth, expected_shape, selector, selects_view1
+):
+    m = 128
+    n = 128
+    layout = _make_tmem_linear_layout(m, 2 * n)
+    base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 16
+    inp = base.to(torch_dtype)
+    out = torch.empty((3, m, n), dtype=torch_dtype, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    compiled = tmem_ldst_loop_carried_linear_subslice_view_kernel[(1, )](
+        inp, out, selector_tensor, layout, m, n, num_warps=4
+    )
+
+    plus3 = (base + 3).to(torch_dtype)
+    plus7 = (base + 7).to(torch_dtype)
+    expected_selected_before = plus7 if selects_view1 else plus3
+    expected0 = plus3 if selects_view1 else inp
+    expected1 = inp if selects_view1 else plus7
+    torch.testing.assert_close(out[0], expected_selected_before, atol=0, rtol=0)
+    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    op = f"tcgen05.{{kind}}.sync.aligned.{expected_shape}"
+    assert ops == [
+        (op.format(kind="st"), 0),
+        (op.format(kind="st"), 0),
+        (op.format(kind="ld"), 0),
+        (op.format(kind="st"), 0),
+        (op.format(kind="ld"), 0),
+        (op.format(kind="ld"), 0),
+    ]
     ttgir = compiled.asm["ttgir"]
     assert "scf.for" in ttgir
     assert "tensor_memory_linear" in ttgir
@@ -10364,6 +10533,90 @@ def test_tmem_runtime_matrix_cp_no_scales_loop_carried_linear_subslice_view(sele
     torch.testing.assert_close(out[1], expected1, atol=0, rtol=0)
 
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * 16)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "scf.for" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,M,N,swizzle,expected_count", CP_ACTIVE_SUBWORD_LINEAR_SUBSLICE_VIEW_CASES)
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_runtime_matrix_cp_no_scales_dynamic_linear_subslice_view_subword(
+    dtype_name, torch_dtype, M, N, swizzle, expected_count, selector
+):
+    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
+    inp = base.to(torch_dtype)
+    out = torch.empty((2, M, N), device="cuda", dtype=torch_dtype)
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    parent_layout = _make_tmem_linear_layout(M, 2 * N)
+    compiled = tmem_copy_no_scales_dynamic_linear_subslice_view_checked_kernel[(1, )](
+        inp,
+        out,
+        selector_tensor,
+        parent_layout,
+        M,
+        N,
+        swizzle,
+        num_warps=4,
+    )
+
+    plus3 = (base + 3).to(torch_dtype)
+    plus7 = (base + 7).to(torch_dtype)
+    expected0 = inp if selector == 0 else plus3
+    expected1 = inp if selector == 1 else plus7
+    torch.testing.assert_close(out[0], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[1], expected1, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,M,N,swizzle,expected_count", CP_ACTIVE_SUBWORD_LINEAR_SUBSLICE_VIEW_CASES)
+@pytest.mark.parametrize(
+    "selector,selects_view1",
+    [
+        pytest.param(0, True, id="select-view1"),
+        pytest.param(2, False, id="keep-view0"),
+    ],
+)
+def test_tmem_runtime_matrix_cp_no_scales_loop_carried_linear_subslice_view_subword(
+    dtype_name, torch_dtype, M, N, swizzle, expected_count, selector, selects_view1
+):
+    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
+    inp = base.to(torch_dtype)
+    out = torch.empty((2, M, N), device="cuda", dtype=torch_dtype)
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+
+    parent_layout = _make_tmem_linear_layout(M, 2 * N)
+    compiled = tmem_copy_no_scales_loop_carried_linear_subslice_view_kernel[(1, )](
+        inp,
+        out,
+        selector_tensor,
+        parent_layout,
+        M,
+        N,
+        swizzle,
+        num_warps=4,
+    )
+
+    plus3 = (base + 3).to(torch_dtype)
+    plus7 = (base + 7).to(torch_dtype)
+    expected0 = plus3 if selects_view1 else inp
+    expected1 = inp if selects_view1 else plus7
+    torch.testing.assert_close(out[0], expected0, atol=0, rtol=0)
+    torch.testing.assert_close(out[1], expected1, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     ttgir = compiled.asm["ttgir"]
     assert "scf.for" in ttgir

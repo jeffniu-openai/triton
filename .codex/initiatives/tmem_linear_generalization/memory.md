@@ -18229,3 +18229,17 @@ rejection, not rescue
   GPU split commands with distinct caches and passed as group1
   `134 passed, 14 skipped`, group2 `148 passed`, group3 `148 passed`, group4
   `148 passed`.
+
+- 2026-04-23 subword active selected-view coverage completed. The active
+  ld/st selected-subview kernels now allocate TMEM with the input element type,
+  and the loop-carried copy sentinel uses typed initializer constants too.
+  Added f16/i8 dynamic-select and loop-carried active column-subview runtime
+  positives for ld/st and dense `tcgen05.copy`; the copy dynamic sentinel reads
+  both candidate views after the selected copy so selected-base mistakes are
+  observable. Validation: required `make -j8`; initial pytest without
+  `PYTHONPATH=./python` failed during collection against the wrong installed
+  Triton package and ran no tests; rerun with `PYTHONPATH=./python`
+  `linear_subslice_view_subword` split passed as group1 `4 passed`, group2
+  `4 passed`, group3 `4 passed`, group4 `4 passed`; adjacent non-subword
+  active ld/st/copy selector passed as group1 `8 passed`, group2 `8 passed`,
+  group3 `8 passed`, group4 `6 passed`.
