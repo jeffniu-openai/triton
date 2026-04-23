@@ -1768,3 +1768,32 @@ High-priority hacks and debt to remove after replacement coverage exists:
   adjacent subword ld/st/copy selector `28 passed, 1650 deselected`; focused
   `cp_no_scales and subword` sweep `36 passed, 1642 deselected`; lit
   `tmem_layouts.mlir` `1 passed`.
+
+### 2026-04-23 Residue-Precise Alignment Slice
+
+- The transition phase helper now uses residue-set analysis internally. The
+  public subword query still returns `KnownZero`, `MayBeNonZero`, or `Unknown`,
+  but recognized roots, view/index offsets, selects, loops, calls, and CFG
+  joins are combined modulo the queried granularity instead of only recording
+  whether any static offset was nonzero.
+- Added `getTMemElementOffsetModuloStatus(Value, modulus)` for consumers that
+  need local alignment facts other than subword phase. This remains a value
+  classifier, not a producer-chain semantic contract: it classifies the current
+  SSA value through local CFG/call forwarding while the runtime descriptor
+  still carries the physical element-column `taddr`.
+- Copy lowering now asks two independent questions before emitting
+  `tcgen05.copy`:
+  - is the current subword phase proven zero for sub-32-bit destinations;
+  - is the current destination origin proven aligned to a 128-bit hardware copy
+    address.
+- The second gate is necessary because word alignment is not sufficient for the
+  copy ISA. A packed f16 descriptor at element column 2 projects to hardware
+  word column 1; that is a valid 32-bit word address but caused a misaligned
+  `tcgen05.copy` runtime failure. The backend now rejects it cleanly. Nested
+  packed f16/i8 slices whose static offsets cancel to a 128-bit boundary are
+  runtime positives.
+- Validation after this slice: required `make -j8`; nested copy positives and
+  the word-aligned/copy-misaligned clean negative `3 passed, 1678 deselected`;
+  adjacent subword copy/ldst selector `49 passed, 1632 deselected`; adjacent
+  non-subword active copy selector `26 passed, 1655 deselected`; lit
+  `tmem_layouts.mlir` `1 passed`.

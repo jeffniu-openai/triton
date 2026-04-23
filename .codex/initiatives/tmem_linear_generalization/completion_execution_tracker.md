@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 07:37 UTC
+Last updated: 2026-04-23 07:55 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -143,6 +143,14 @@ Active implementation checklist:
   values still fold to the original non-RMW codegen when all incoming values
   are aligned. `tcgen05.copy` now rejects any destination whose phase is not
   proven zero, including loop-carried odd-column candidates.
+  First residue-precise alignment slice: the subword phase classifier now uses
+  a residue-set engine internally, so static view offsets can cancel modulo the
+  queried hardware granularity. `getTMemElementOffsetModuloStatus` exposes the
+  same local SSA/value analysis for non-subword alignment checks. Copy lowering
+  now separately proves 128-bit destination-address alignment before emitting
+  `tcgen05.copy`; a packed f16 origin at element column 2 is word-aligned but
+  rejected as copy-address-misaligned, while nested f16/i8 slices that realign
+  to a 128-bit boundary execute as positives.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -200,6 +208,14 @@ subword ld/st layouts, `ld.red`, copy execution, MMAv5 operands, and truly
 non-local phase cases that cannot be classified through local CFG/call
 forwarding still need follow-up work before the unaligned-subword migration can
 be considered complete.
+
+Current residue/alignment checkpoint: subword phase tracking is no longer only
+a coarse may-be-nonzero bit. The helper tracks possible element-column residues
+modulo the requested granularity, which lets offset chains such as packed f16
+`slice(1).slice(7)` prove both subword phase zero and 128-bit copy-address
+alignment. Copy now has a separate 128-bit alignment gate because the hardware
+copy address can still be illegal even when the subword phase is zero; f16
+`slice(1).slice(1)` is the covered clean negative for that distinction.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

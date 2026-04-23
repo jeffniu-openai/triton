@@ -18312,3 +18312,17 @@ rejection, not rescue
   `18 passed`; broader adjacent subword ld/st/copy selector `28 passed,
   1650 deselected`; focused `cp_no_scales and subword` sweep `36 passed,
   1642 deselected`; lit `tmem_layouts.mlir` `1 passed`.
+
+- 2026-04-23 residue-precise TMEM element-column alignment completed. The
+  phase helper now tracks possible element-column residues modulo a requested
+  hardware granularity instead of only a coarse may-be-nonzero bit, and
+  `getTMemElementOffsetModuloStatus` exposes that analysis for consumers that
+  need non-subword alignment facts. Copy lowering now proves 128-bit
+  destination-address alignment separately from subword phase before emitting
+  `tcgen05.copy`: packed f16 element-column 2 is 32-bit-word aligned but still
+  cleanly rejected as copy-address-misaligned, while nested packed f16/i8
+  slices whose static offsets cancel to a 128-bit boundary execute correctly.
+  Validation: required `make -j8`; new nested-slice copy positives and
+  misaligned clean negative `3 passed, 1678 deselected`; adjacent subword
+  copy/ldst selector `49 passed, 1632 deselected`; adjacent non-subword active
+  copy selector `26 passed, 1655 deselected`; lit `tmem_layouts.mlir` `1 passed`.

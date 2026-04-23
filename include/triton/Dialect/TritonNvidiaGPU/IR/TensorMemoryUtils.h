@@ -473,6 +473,9 @@ Value getTMemForwardingSource(Value memDesc);
 
 TMemSubwordPhaseStatus getTMemSubwordPhaseStatus(Value memDesc);
 
+TMemSubwordPhaseStatus getTMemElementOffsetModuloStatus(Value memDesc,
+                                                        uint32_t modulus);
+
 bool mayHaveNonZeroTMemSubwordPhase(Value memDesc);
 
 std::optional<TensorMemoryScalesEncodingAttr>

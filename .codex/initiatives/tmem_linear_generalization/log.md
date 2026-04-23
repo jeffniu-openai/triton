@@ -35419,3 +35419,35 @@ Open after this slice:
   commit and push this checkpoint. Continue with non-contiguous/unpacked
   subword ld/st, `ld.red`, copy execution semantics, and MMAv5 operand
   behavior.
+
+## 2026-04-23 07:55 UTC: residue-precise element-column alignment
+
+- Branch/HEAD at slice start:
+  `beacf43bd Classify TMEM subword phase through control flow`.
+- Dirty files before checkpoint commit:
+  `include/triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h`,
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`,
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`,
+  `python/test/gluon/test_tmem_runtime_matrix.py`, plus initiative docs.
+- Completed source slice:
+  replaced the internal coarse phase propagation with residue-set tracking
+  modulo the queried hardware granularity. The public
+  `getTMemSubwordPhaseStatus` contract is unchanged, but static chains can now
+  prove cancellation such as packed f16 offset `1 + 7` or packed i8 offset
+  `1 + 15`. Added `getTMemElementOffsetModuloStatus` so consumers can ask the
+  same local SSA/value analysis for non-subword alignment facts.
+- Copy behavior:
+  `tcgen05.copy` now checks 128-bit destination-address alignment separately
+  from subword phase. Validation found that packed f16 element column 2 is
+  word-aligned but still illegal for copy; that case now reports a clean
+  compile-time diagnostic instead of issuing a misaligned copy. Nested f16/i8
+  slices that realign to a 128-bit boundary remain executable positives.
+- Validation evidence:
+  required `make -j8`; focused nested-slice copy selector passed `3 passed,
+  1678 deselected`; adjacent subword copy/ldst selector passed `49 passed,
+  1632 deselected`; adjacent non-subword active copy selector passed
+  `26 passed, 1655 deselected`; lit `tmem_layouts.mlir` `1 passed`.
+- Next concrete step:
+  commit and push this checkpoint. Continue with the remaining phase-aware
+  consumer surface: non-contiguous/unpacked subword ld/st, `ld.red`, copy
+  family constraints beyond the 128-bit address gate, and MMAv5 operands.

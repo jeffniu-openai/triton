@@ -90,49 +90,93 @@ Value getTMemForwardingSource(Value memDesc) {
   return getUniqueFunctionArgForwardingSource(blockArg);
 }
 
-static TMemSubwordPhaseStatus combineTMemSubwordPhaseStatus(
-    TMemSubwordPhaseStatus lhs, TMemSubwordPhaseStatus rhs) {
-  if (lhs == TMemSubwordPhaseStatus::MayBeNonZero ||
-      rhs == TMemSubwordPhaseStatus::MayBeNonZero)
+struct TMemSubwordPhaseInfo {
+  uint32_t elementsPerWord = 1;
+  uint32_t residueMask = 1;
+  bool unknown = false;
+
+  static TMemSubwordPhaseInfo getKnownZeroForModulus(uint32_t modulus) {
+    return {/*elementsPerWord=*/modulus, /*residueMask=*/1,
+            /*unknown=*/false};
+  }
+
+  static TMemSubwordPhaseInfo getUnknownForModulus(uint32_t modulus) {
+    return {/*elementsPerWord=*/modulus, /*residueMask=*/0,
+            /*unknown=*/true};
+  }
+
+  static TMemSubwordPhaseInfo getKnownZero(uint32_t elementBitWidth) {
+    return getKnownZeroForModulus(getTMemElementsPerWord(elementBitWidth));
+  }
+
+  static TMemSubwordPhaseInfo getUnknown(uint32_t elementBitWidth) {
+    return getUnknownForModulus(getTMemElementsPerWord(elementBitWidth));
+  }
+
+  TMemSubwordPhaseStatus getStatus() const {
+    if (unknown)
+      return TMemSubwordPhaseStatus::Unknown;
+    if (residueMask == 1)
+      return TMemSubwordPhaseStatus::KnownZero;
     return TMemSubwordPhaseStatus::MayBeNonZero;
-  if (lhs == TMemSubwordPhaseStatus::Unknown ||
-      rhs == TMemSubwordPhaseStatus::Unknown)
-    return TMemSubwordPhaseStatus::Unknown;
-  return TMemSubwordPhaseStatus::KnownZero;
+  }
+};
+
+static TMemSubwordPhaseInfo combineTMemSubwordPhaseInfo(
+    TMemSubwordPhaseInfo lhs, TMemSubwordPhaseInfo rhs, uint32_t modulus) {
+  if (lhs.unknown || rhs.unknown)
+    return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+  if (lhs.elementsPerWord != modulus || rhs.elementsPerWord != modulus)
+    return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+  return {/*elementsPerWord=*/modulus,
+          /*residueMask=*/lhs.residueMask | rhs.residueMask,
+          /*unknown=*/false};
 }
 
-static TMemSubwordPhaseStatus
-advanceTMemSubwordPhaseStatus(TMemSubwordPhaseStatus srcStatus,
-                              uint32_t elementColOffset,
-                              uint32_t elementBitWidth) {
-  uint32_t elementsPerWord = getTMemElementsPerWord(elementBitWidth);
-  if (elementColOffset % elementsPerWord != 0)
-    return TMemSubwordPhaseStatus::MayBeNonZero;
-  return srcStatus;
+static TMemSubwordPhaseInfo
+advanceTMemSubwordPhaseInfo(TMemSubwordPhaseInfo srcInfo,
+                            uint32_t elementColOffset, uint32_t modulus) {
+  if (srcInfo.unknown || srcInfo.elementsPerWord != modulus)
+    return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+  uint32_t shift = elementColOffset % modulus;
+  if (shift == 0)
+    return srcInfo;
+
+  uint32_t residueMask = 0;
+  for (uint32_t residue = 0; residue < modulus; ++residue) {
+    if ((srcInfo.residueMask & (1u << residue)) == 0)
+      continue;
+    residueMask |= 1u << ((residue + shift) % modulus);
+  }
+  return {/*elementsPerWord=*/modulus,
+          /*residueMask=*/residueMask,
+          /*unknown=*/false};
 }
 
-static TMemSubwordPhaseStatus getTMemSubwordPhaseStatusImpl(
-    Value memDesc, unsigned depth, SmallPtrSetImpl<Value> &seen);
+static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
+    Value memDesc, unsigned depth, SmallPtrSetImpl<Value> &seen,
+    uint32_t modulus);
 
-static TMemSubwordPhaseStatus getTMemSubwordPhaseStatusWithLoopArg(
+static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoWithLoopArg(
     Value memDesc, unsigned depth, SmallPtrSetImpl<Value> &seen,
     scf::ForOp loop, unsigned iterArgIdx,
-    TMemSubwordPhaseStatus iterInitStatus) {
+    TMemSubwordPhaseInfo iterInitInfo, uint32_t modulus) {
   if (auto blockArg = dyn_cast<BlockArgument>(memDesc)) {
     if (blockArg.getOwner() == loop.getBody() &&
         blockArg.getArgNumber() == iterArgIdx + 1) {
-      return iterInitStatus;
+      return iterInitInfo;
     }
   }
 
   if (auto select = memDesc.getDefiningOp<arith::SelectOp>()) {
-    return combineTMemSubwordPhaseStatus(
-        getTMemSubwordPhaseStatusWithLoopArg(
+    return combineTMemSubwordPhaseInfo(
+        getTMemSubwordPhaseInfoWithLoopArg(
             select.getTrueValue(), depth + 1, seen, loop, iterArgIdx,
-            iterInitStatus),
-        getTMemSubwordPhaseStatusWithLoopArg(
+            iterInitInfo, modulus),
+        getTMemSubwordPhaseInfoWithLoopArg(
             select.getFalseValue(), depth + 1, seen, loop, iterArgIdx,
-            iterInitStatus));
+            iterInitInfo, modulus),
+        modulus);
   }
 
   if (auto ifOp = memDesc.getDefiningOp<scf::IfOp>()) {
@@ -142,96 +186,105 @@ static TMemSubwordPhaseStatus getTMemSubwordPhaseStatusWithLoopArg(
     auto elseYield = ifOp.elseYield();
     if (!thenYield || !elseYield || resultIdx >= thenYield.getNumOperands() ||
         resultIdx >= elseYield.getNumOperands()) {
-      return TMemSubwordPhaseStatus::Unknown;
+      return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
     }
-    return combineTMemSubwordPhaseStatus(
-        getTMemSubwordPhaseStatusWithLoopArg(
+    return combineTMemSubwordPhaseInfo(
+        getTMemSubwordPhaseInfoWithLoopArg(
             thenYield.getOperand(resultIdx), depth + 1, seen, loop, iterArgIdx,
-            iterInitStatus),
-        getTMemSubwordPhaseStatusWithLoopArg(
+            iterInitInfo, modulus),
+        getTMemSubwordPhaseInfoWithLoopArg(
             elseYield.getOperand(resultIdx), depth + 1, seen, loop, iterArgIdx,
-            iterInitStatus));
+            iterInitInfo, modulus),
+        modulus);
   }
 
-  return getTMemSubwordPhaseStatusImpl(memDesc, depth, seen);
+  return getTMemSubwordPhaseInfoImpl(memDesc, depth, seen, modulus);
 }
 
-static TMemSubwordPhaseStatus getTMemLoopCarriedSubwordPhaseStatus(
+static TMemSubwordPhaseInfo getTMemLoopCarriedSubwordPhaseInfo(
     scf::ForOp loop, unsigned iterArgIdx, unsigned depth,
-    SmallPtrSetImpl<Value> &seen) {
+    SmallPtrSetImpl<Value> &seen, uint32_t modulus) {
   if (iterArgIdx >= loop.getInitArgs().size())
-    return TMemSubwordPhaseStatus::Unknown;
+    return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
 
-  TMemSubwordPhaseStatus initStatus = getTMemSubwordPhaseStatusImpl(
-      loop.getInitArgs()[iterArgIdx], depth + 1, seen);
+  TMemSubwordPhaseInfo initInfo = getTMemSubwordPhaseInfoImpl(
+      loop.getInitArgs()[iterArgIdx], depth + 1, seen, modulus);
   auto yield = cast<scf::YieldOp>(loop.getBody()->getTerminator());
   if (iterArgIdx >= yield.getNumOperands())
-    return TMemSubwordPhaseStatus::Unknown;
-  TMemSubwordPhaseStatus yieldStatus = getTMemSubwordPhaseStatusWithLoopArg(
+    return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+  TMemSubwordPhaseInfo yieldInfo = getTMemSubwordPhaseInfoWithLoopArg(
       yield.getOperand(iterArgIdx), depth + 1, seen, loop, iterArgIdx,
-      initStatus);
-  return combineTMemSubwordPhaseStatus(initStatus, yieldStatus);
+      initInfo, modulus);
+  return combineTMemSubwordPhaseInfo(initInfo, yieldInfo, modulus);
 }
 
-static TMemSubwordPhaseStatus getTMemSubwordPhaseStatusImpl(
-    Value memDesc, unsigned depth, SmallPtrSetImpl<Value> &seen) {
+static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
+    Value memDesc, unsigned depth, SmallPtrSetImpl<Value> &seen,
+    uint32_t modulus) {
   if (!memDesc || depth > 32)
-    return TMemSubwordPhaseStatus::Unknown;
+    return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  uint32_t bitwidth = memTy ? memTy.getElementTypeBitWidth() : 32;
   if (!seen.insert(memDesc).second)
-    return TMemSubwordPhaseStatus::KnownZero;
+    return TMemSubwordPhaseInfo::getKnownZeroForModulus(modulus);
   llvm::scope_exit eraseSeen([&]() { seen.erase(memDesc); });
 
-  auto memTy = dyn_cast<MemDescType>(memDesc.getType());
   if (!memTy || !isTensorMemoryEncoding(memTy.getEncoding()) ||
-      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()) ||
-      memTy.getElementTypeBitWidth() >= 32) {
-    return TMemSubwordPhaseStatus::KnownZero;
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    return TMemSubwordPhaseInfo::getKnownZeroForModulus(modulus);
   }
-  uint32_t bitwidth = memTy.getElementTypeBitWidth();
 
   if (auto forwarded = getTMemForwardingSource(memDesc))
-    return getTMemSubwordPhaseStatusImpl(forwarded, depth + 1, seen);
+    return getTMemSubwordPhaseInfoImpl(forwarded, depth + 1, seen, modulus);
   if (auto blockArg = dyn_cast<BlockArgument>(memDesc)) {
     Block *block = blockArg.getOwner();
     if (!block->isEntryBlock()) {
-      TMemSubwordPhaseStatus status = TMemSubwordPhaseStatus::KnownZero;
+      TMemSubwordPhaseInfo info =
+          TMemSubwordPhaseInfo::getKnownZeroForModulus(modulus);
       bool sawPredecessor = false;
       for (Block *pred : block->getPredecessors()) {
         auto branch = dyn_cast<BranchOpInterface>(pred->getTerminator());
         if (!branch)
-          return TMemSubwordPhaseStatus::Unknown;
+          return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
         auto it = llvm::find(branch->getSuccessors(), block);
         if (it == branch->getSuccessors().end())
-          return TMemSubwordPhaseStatus::Unknown;
+          return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
         unsigned succIdx = std::distance(branch->getSuccessors().begin(), it);
         SuccessorOperands operands = branch.getSuccessorOperands(succIdx);
         unsigned argNumber = blockArg.getArgNumber();
         if (argNumber >= operands.size() ||
             operands.isOperandProduced(argNumber))
-          return TMemSubwordPhaseStatus::Unknown;
+          return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
         Value incoming = operands[argNumber];
         if (!incoming)
-          return TMemSubwordPhaseStatus::Unknown;
-        status = combineTMemSubwordPhaseStatus(
-            status, getTMemSubwordPhaseStatusImpl(incoming, depth + 1, seen));
+          return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+        info = combineTMemSubwordPhaseInfo(
+            info,
+            getTMemSubwordPhaseInfoImpl(incoming, depth + 1, seen, modulus),
+            modulus);
         sawPredecessor = true;
       }
-      return sawPredecessor ? status : TMemSubwordPhaseStatus::Unknown;
+      return sawPredecessor ? info
+                            : TMemSubwordPhaseInfo::getUnknownForModulus(
+                                  modulus);
     }
     if (auto loop = dyn_cast_if_present<scf::ForOp>(
             blockArg.getOwner()->getParentOp())) {
       unsigned argNumber = blockArg.getArgNumber();
       if (argNumber > 0) {
-        return getTMemLoopCarriedSubwordPhaseStatus(
-            loop, argNumber - 1, depth + 1, seen);
+        return getTMemLoopCarriedSubwordPhaseInfo(
+            loop, argNumber - 1, depth + 1, seen, modulus);
       }
     }
   }
 
   if (auto select = memDesc.getDefiningOp<arith::SelectOp>()) {
-    return combineTMemSubwordPhaseStatus(
-        getTMemSubwordPhaseStatusImpl(select.getTrueValue(), depth + 1, seen),
-        getTMemSubwordPhaseStatusImpl(select.getFalseValue(), depth + 1, seen));
+    return combineTMemSubwordPhaseInfo(
+        getTMemSubwordPhaseInfoImpl(select.getTrueValue(), depth + 1, seen,
+                                    modulus),
+        getTMemSubwordPhaseInfoImpl(select.getFalseValue(), depth + 1, seen,
+                                    modulus),
+        modulus);
   }
 
   if (auto ifOp = memDesc.getDefiningOp<scf::IfOp>()) {
@@ -241,88 +294,115 @@ static TMemSubwordPhaseStatus getTMemSubwordPhaseStatusImpl(
     auto elseYield = ifOp.elseYield();
     if (!thenYield || !elseYield || resultIdx >= thenYield.getNumOperands() ||
         resultIdx >= elseYield.getNumOperands()) {
-      return TMemSubwordPhaseStatus::Unknown;
+      return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
     }
-    return combineTMemSubwordPhaseStatus(
-        getTMemSubwordPhaseStatusImpl(thenYield.getOperand(resultIdx),
-                                      depth + 1, seen),
-        getTMemSubwordPhaseStatusImpl(elseYield.getOperand(resultIdx),
-                                      depth + 1, seen));
+    return combineTMemSubwordPhaseInfo(
+        getTMemSubwordPhaseInfoImpl(thenYield.getOperand(resultIdx),
+                                    depth + 1, seen, modulus),
+        getTMemSubwordPhaseInfoImpl(elseYield.getOperand(resultIdx),
+                                    depth + 1, seen, modulus),
+        modulus);
   }
 
   if (auto result = dyn_cast<OpResult>(memDesc)) {
     if (auto loop = dyn_cast<scf::ForOp>(result.getOwner())) {
-      return getTMemLoopCarriedSubwordPhaseStatus(
-          loop, result.getResultNumber(), depth + 1, seen);
+      return getTMemLoopCarriedSubwordPhaseInfo(
+          loop, result.getResultNumber(), depth + 1, seen, modulus);
     }
   }
 
   if (memDesc.getDefiningOp<TMEMAllocOp>())
-    return TMemSubwordPhaseStatus::KnownZero;
+    return TMemSubwordPhaseInfo::getKnownZeroForModulus(modulus);
 
   if (auto reshape = memDesc.getDefiningOp<gpu::MemDescReshapeOp>())
-    return getTMemSubwordPhaseStatusImpl(reshape.getSrc(), depth + 1, seen);
+    return getTMemSubwordPhaseInfoImpl(reshape.getSrc(), depth + 1, seen,
+                                       modulus);
   if (auto trans = memDesc.getDefiningOp<gpu::MemDescTransOp>())
-    return getTMemSubwordPhaseStatusImpl(trans.getSrc(), depth + 1, seen);
+    return getTMemSubwordPhaseInfoImpl(trans.getSrc(), depth + 1, seen,
+                                       modulus);
   if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
     auto srcTy = cast<MemDescType>(reinterpret.getSrc().getType());
     if (srcTy.getElementTypeBitWidth() != bitwidth)
-      return TMemSubwordPhaseStatus::Unknown;
-    return getTMemSubwordPhaseStatusImpl(reinterpret.getSrc(), depth + 1, seen);
+      return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
+    return getTMemSubwordPhaseInfoImpl(reinterpret.getSrc(), depth + 1, seen,
+                                       modulus);
   }
 
   if (auto subslice = memDesc.getDefiningOp<gpu::MemDescSubsliceOp>()) {
     auto srcTy = cast<MemDescType>(subslice.getSrc().getType());
-    auto srcStatus =
-        getTMemSubwordPhaseStatusImpl(subslice.getSrc(), depth + 1, seen);
+    auto srcInfo =
+        getTMemSubwordPhaseInfoImpl(subslice.getSrc(), depth + 1, seen,
+                                    modulus);
     auto physicalOffset =
         getTMemViewPhysicalRowElementCol(srcTy, subslice.getOffsets());
-    return advanceTMemSubwordPhaseStatus(srcStatus, physicalOffset.second,
-                                         bitwidth);
+    return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset.second, modulus);
   }
 
   if (auto subslice = memDesc.getDefiningOp<TMEMSubSliceOp>()) {
     auto srcTy = cast<MemDescType>(subslice.getSrc().getType());
-    auto srcStatus =
-        getTMemSubwordPhaseStatusImpl(subslice.getSrc(), depth + 1, seen);
+    auto srcInfo =
+        getTMemSubwordPhaseInfoImpl(subslice.getSrc(), depth + 1, seen,
+                                    modulus);
     SmallVector<int32_t> offsets(srcTy.getRank(), 0);
     offsets.back() = subslice.getN();
     auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
-    return advanceTMemSubwordPhaseStatus(srcStatus, physicalOffset.second,
-                                         bitwidth);
+    return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset.second, modulus);
   }
 
   if (auto index = memDesc.getDefiningOp<gpu::MemDescIndexOp>()) {
     auto srcTy = cast<MemDescType>(index.getSrc().getType());
-    auto srcStatus =
-        getTMemSubwordPhaseStatusImpl(index.getSrc(), depth + 1, seen);
+    auto srcInfo =
+        getTMemSubwordPhaseInfoImpl(index.getSrc(), depth + 1, seen, modulus);
     APInt indexValue;
     if (matchPattern(index.getIndex(), m_ConstantInt(&indexValue))) {
       SmallVector<int32_t> offsets(srcTy.getRank(), 0);
       offsets.front() = indexValue.getSExtValue();
       auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
-      return advanceTMemSubwordPhaseStatus(srcStatus, physicalOffset.second,
-                                           bitwidth);
+      return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset.second,
+                                         modulus);
     }
 
-    uint32_t elementsPerWord = getTMemElementsPerWord(bitwidth);
+    TMemSubwordPhaseInfo info = srcInfo;
     int64_t dimSize = srcTy.getShape().front();
     for (int64_t bit = 1; bit < dimSize; bit <<= 1) {
       SmallVector<int32_t> offsets(srcTy.getRank(), 0);
       offsets.front() = bit;
       auto physicalOffset = getTMemViewPhysicalRowElementCol(srcTy, offsets);
-      if (physicalOffset.second % elementsPerWord != 0)
-        return TMemSubwordPhaseStatus::MayBeNonZero;
+      if (physicalOffset.second % modulus != 0) {
+        info = combineTMemSubwordPhaseInfo(
+            info,
+            advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset.second,
+                                        modulus),
+            modulus);
+      }
     }
-    return srcStatus;
+    return info;
   }
 
-  return TMemSubwordPhaseStatus::Unknown;
+  return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
 }
 
 TMemSubwordPhaseStatus getTMemSubwordPhaseStatus(Value memDesc) {
+  if (!memDesc)
+    return TMemSubwordPhaseStatus::Unknown;
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!memTy || memTy.getElementTypeBitWidth() >= 32)
+    return TMemSubwordPhaseStatus::KnownZero;
   SmallPtrSet<Value, 16> seen;
-  return getTMemSubwordPhaseStatusImpl(memDesc, /*depth=*/0, seen);
+  uint32_t modulus = getTMemElementsPerWord(memTy.getElementTypeBitWidth());
+  return getTMemSubwordPhaseInfoImpl(memDesc, /*depth=*/0, seen, modulus)
+      .getStatus();
+}
+
+TMemSubwordPhaseStatus getTMemElementOffsetModuloStatus(Value memDesc,
+                                                        uint32_t modulus) {
+  if (modulus <= 1)
+    return TMemSubwordPhaseStatus::KnownZero;
+  if (!memDesc)
+    return TMemSubwordPhaseStatus::Unknown;
+  SmallPtrSet<Value, 16> seen;
+  return getTMemSubwordPhaseInfoImpl(memDesc, /*depth=*/0, seen, modulus)
+      .getStatus();
 }
 
 bool mayHaveNonZeroTMemSubwordPhase(Value memDesc) {

@@ -1310,16 +1310,6 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto cvt = *maybeCvt;
 
   auto bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
-  if (bitwidth < 32 &&
-      getTMemSubwordPhaseStatus(op.getDst()) !=
-          TMemSubwordPhaseStatus::KnownZero) {
-    return op->emitOpError()
-           << "unsupported sub-32-bit tensor memory destination origin for "
-              "tcgen05.copy: the current descriptor may start inside a "
-              "32-bit hardware column";
-  }
-  Value wordBaseDst = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
-      loc, rewriter, baseDst, bitwidth);
   auto copyPlans = getTMemCopyPlans(cvt, bitwidth);
   if (copyPlans.empty()) {
     auto diag = op->emitOpError("failed to classify tcgen05.copy family from "
@@ -1329,6 +1319,24 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       diag.attachNote() << *atomFailure;
     return failure();
   }
+  if (bitwidth < 32 &&
+      getTMemSubwordPhaseStatus(op.getDst()) !=
+          TMemSubwordPhaseStatus::KnownZero) {
+    return op->emitOpError()
+           << "unsupported sub-32-bit tensor memory destination origin for "
+              "tcgen05.copy: the current descriptor may start inside a "
+              "32-bit hardware column";
+  }
+  uint32_t b128ElementAlignment = std::max(1u, 128u / bitwidth);
+  if (getTMemElementOffsetModuloStatus(op.getDst(), b128ElementAlignment) !=
+      TMemSubwordPhaseStatus::KnownZero) {
+    return op->emitOpError()
+           << "unsupported tensor memory destination origin for tcgen05.copy: "
+              "the current descriptor may not be aligned to a 128-bit "
+              "hardware copy address";
+  }
+  Value wordBaseDst = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
+      loc, rewriter, baseDst, bitwidth);
   // Get shmem ptr
   Type elemTy = typeConverter->convertType(srcTy.getElementType());
   auto smemObj =

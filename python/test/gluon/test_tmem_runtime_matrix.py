@@ -2217,6 +2217,42 @@ def tmem_copy_no_scales_unaligned_subword_loop_carried_linear_subslice_view_kern
 
 
 @gluon.jit
+def tmem_copy_no_scales_realigned_subword_nested_linear_subslice_view_kernel(
+    in_ptr, out_ptr, parent_layout: ttgl.constexpr, M: ttgl.constexpr,
+    N: ttgl.constexpr, first_start: ttgl.constexpr,
+    second_start: ttgl.constexpr, temp_n: ttgl.constexpr,
+    swizzle: ttgl.constexpr
+):
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, 4 * N], layout=parent_layout)
+    parent_view = tmem.slice(first_start, temp_n, dim=1)
+    view = parent_view.slice(second_start, N, dim=1)
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
+        rank=2,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    smem.store(value)
+    fence_async_shared()
+    tcgen05_copy(smem, view)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    output = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, output)
+
+
+@gluon.jit
 def tmem_copy_no_scales_dynamic_linear_subslice_view_kernel(in_ptr, out_ptr, selector_ptr,
                                                             parent_layout: ttgl.constexpr,
                                                             M: ttgl.constexpr, N: ttgl.constexpr,
@@ -10880,6 +10916,79 @@ def test_tmem_runtime_matrix_cp_no_scales_loop_carried_linear_subslice_view_subw
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "dtype_name,torch_dtype,first_start,second_start",
+    [
+        pytest.param("f16", torch.float16, 1, 7, id="f16_phase1_plus_phase7_b128"),
+        pytest.param("i8", torch.int8, 1, 15, id="i8_phase1_plus_phase15_b128"),
+    ],
+)
+def test_tmem_runtime_matrix_cp_no_scales_realigned_subword_nested_slices(
+    dtype_name, torch_dtype, first_start, second_start
+):
+    M = 128
+    N = 128
+    swizzle = 32
+    expected_count = N * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256
+    temp_n = 2 * N
+    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
+    inp = base.to(torch_dtype)
+    out = torch.empty_like(inp)
+    parent_layout = _make_tmem_linear_layout(M, 4 * N)
+
+    compiled = tmem_copy_no_scales_realigned_subword_nested_linear_subslice_view_kernel[(1, )](
+        inp,
+        out,
+        parent_layout,
+        M,
+        N,
+        first_start,
+        second_start,
+        temp_n,
+        swizzle,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert ttgir.count("ttg.memdesc_subslice") >= 2
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_word_aligned_subword_copy_origin_reports_error(capfd):
+    M = 128
+    N = 128
+    swizzle = 32
+    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
+    inp = base.to(torch.float16)
+    out = torch.empty_like(inp)
+    parent_layout = _make_tmem_linear_layout(M, 4 * N)
+
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
+        tmem_copy_no_scales_realigned_subword_nested_linear_subslice_view_kernel[(1, )](
+            inp,
+            out,
+            parent_layout,
+            M,
+            N,
+            1,
+            1,
+            2 * N,
+            swizzle,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "unsupported tensor memory destination origin for tcgen05.copy" in text
+    assert "current descriptor may not be aligned to a 128-bit hardware copy address" in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

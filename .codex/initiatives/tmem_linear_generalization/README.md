@@ -116,6 +116,14 @@ element-column `taddr`, loads one tail hardware word, realigns packed b32 load
 results, and stores through RMW so neighboring subword lanes are preserved.
 Known-nonzero subword `tcgen05.copy` destinations still diagnose locally until
 copy has an equivalent legal lowering or a proven ISA boundary.
+Subword-origin classification now uses residue sets internally instead of a
+coarse may-be-nonzero bit. This lets static view offsets cancel modulo the
+queried granularity and exposes a generic
+`getTMemElementOffsetModuloStatus` helper. Copy lowering uses it to enforce
+128-bit destination-address alignment separately from subword phase: a packed
+f16 origin at element column 2 is 32-bit-word aligned but still a clean
+negative for `tcgen05.copy`, while nested f16/i8 subviews that realign to a
+128-bit boundary execute as positives.
 Dynamic selected copy column subviews now have runtime coverage too for 1CTA
 dense `128x256b`, 1CTA non-dense `warpx2::{01_23,02_13}`, and 2CTA dense
 `128x256b` families: the copy atom writes through the selected runtime `taddr`,
@@ -143,7 +151,15 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 07:37 UTC widened subword phase
+Latest validation checkpoint: 2026-04-23 07:55 UTC made TMEM element-column
+residue analysis precise enough for static offset cancellation and added the
+copy-specific 128-bit destination-address alignment gate. Validation: required
+`make -j8`; new nested-slice copy positives plus the word-aligned/copy-
+misaligned clean negative `3 passed, 1678 deselected`; adjacent subword
+copy/ldst selector `49 passed, 1632 deselected`; adjacent non-subword active
+copy selector `26 passed, 1655 deselected`; lit `tmem_layouts.mlir` `1 passed`.
+
+Previous validation checkpoint: 2026-04-23 07:37 UTC widened subword phase
 classification across dynamic selects, loop-carried values, lowered CFG block
 arguments, and generic function/call forwarding. Packed contiguous `32x32b`
 ld/st now uses runtime phase whenever a subword descriptor is not proven
