@@ -2818,6 +2818,58 @@ def test_tmem_physical_bitcast_selected_subview_mapping(selector):
 
 
 @gluon.jit
+def tmem_physical_bitcast_select_after_bitcast_kernel(
+    out, selector_ptr, layout: ttgl.constexpr
+):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    HALF_N: ttgl.constexpr = N // 2
+    tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+
+    ones = ttgl.full((M, N), 1.0, dtype=ttgl.float32, layout=reg_layout)
+    tmem.store(ones)
+
+    view0 = tmem.slice(0, HALF_N, dim=1).bitcast(ttgl.float16, (M, N))
+    view1 = tmem.slice(HALF_N, HALF_N, dim=1).bitcast(ttgl.float16, (M, N))
+    selected = view0
+    if ttgl.load(selector_ptr) != 0:
+        selected = view1
+    else:
+        selected = view0
+
+    bitcast_layout: ttgl.constexpr = selected.get_reg_layout()
+    zeros = ttgl.full((M, N), 0.0, dtype=ttgl.float16, layout=bitcast_layout)
+    selected.store(zeros)
+
+    loaded = tmem.load(reg_layout)
+    ttgl.store(out + offs, loaded)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("selector", (0, 1))
+def test_tmem_physical_bitcast_select_after_bitcast_mapping(selector):
+    out = torch.empty((128, 128), dtype=torch.float32, device="cuda")
+    selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
+    compiled = tmem_physical_bitcast_select_after_bitcast_kernel[(1, )](
+        out, selector_tensor, _make_tmem_linear_layout(128, 128), num_warps=4
+    )
+
+    expected = torch.ones_like(out)
+    if selector:
+        expected[:, 64:128] = 0
+    else:
+        expected[:, 0:64] = 0
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+
+    ttgir = compiled.asm["ttgir"]
+    assert "arith.select" in ttgir or "scf.if" in ttgir
+    assert "ttg.memdesc_reinterpret" in ttgir
+    assert "tmem_physical_bitcast" in ttgir
+
+
+@gluon.jit
 def tmem_physical_bitcast_mma_lhs_kernel(out, layout: ttgl.constexpr, acc_layout: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128

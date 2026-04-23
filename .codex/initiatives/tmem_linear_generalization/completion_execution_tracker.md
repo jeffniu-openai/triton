@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 20:47 UTC
+Last updated: 2026-04-23 20:50 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -21,6 +21,10 @@ Current checkpoint summary:
   from current type/layout plus the already-rescaled runtime `taddr`.
 - [x] Added a selected physical-bitcast MMA lhs runtime sentinel where two
   same-typed bitcast views are selected before `tcgen05_mma`.
+
+- [x] Added a selected physical-bitcast ld/st sentinel where two same-typed
+  bitcast views are selected before `store`, covering the no-visible-reinterpret
+  producer case for normal load/store consumers.
 
 Active implementation checklist:
 

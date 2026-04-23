@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-23 20:50 UTC added an ld/st physical-bitcast
+  select-after-bitcast guardrail. The new test bitcasts both f32 column
+  subviews to same-typed f16 views, dynamically selects between the already
+  bitcast memdesc values, stores zeros through the selected view, and reloads
+  the f32 parent to verify the selected half was updated. This covers the
+  control-flow case where ld/st sees a selected memdesc value rather than a
+  direct `memdesc_reinterpret` producer. Validation: required `make -j8` no-op;
+  exact new rows `2 passed`; `test_core.py -k physical_bitcast` `9 passed`.
+
 - Latest: 2026-04-23 20:47 UTC removed MMAv5 lowering's semantic
   dependence on a physical-bitcast producer op. `getMMAv5TMemAddressLayout`
   and `getMMAv5TMemViewOffsetForLowering` now try the type-local

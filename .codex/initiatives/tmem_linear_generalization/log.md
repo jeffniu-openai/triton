@@ -35904,3 +35904,25 @@ Open after this slice:
 - Next concrete step:
   commit and push this MMAv5-locality checkpoint, then continue removing
   producer-chain requirements from the next still-semantic helper family.
+
+## 2026-04-23 20:50 UTC: physical-bitcast select-after-bitcast ld/st guardrail
+
+- Branch/HEAD at slice start:
+  `cded2c5aa Remove MMAv5 physical-bitcast producer dependence`.
+- Test change:
+  added `test_tmem_physical_bitcast_select_after_bitcast_mapping`. It creates
+  two f32 column subviews, bitcasts each to the same f16 TMEM view type,
+  dynamically selects between the already-bitcast memdesc values, stores zeros
+  through the selected view, and reloads the f32 parent. Selector 0 must zero
+  columns `0:64`; selector 1 must zero columns `64:128`.
+- Classification:
+  this is a positive guardrail, not a backend repair. It proves the current
+  ld/st path handles the no-visible-reinterpret producer case for same-typed
+  selected physical-bitcast values.
+- Validation evidence:
+  required `make -j8` was a no-op; exact new rows `2 passed` with
+  `TRITON_ALWAYS_COMPILE=1`; `python/test/gluon/test_core.py -k
+  physical_bitcast` passed as `9 passed, 18111 deselected`.
+- Next concrete step:
+  commit and push this guardrail. Continue auditing remaining producer-chain
+  semantic helpers in ld/st support planning and copy lowering.
