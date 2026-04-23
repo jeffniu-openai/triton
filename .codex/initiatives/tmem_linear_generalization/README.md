@@ -93,7 +93,10 @@ when the requested logical offset is representable, while optional query
 callers can conservatively treat non-representable points as unknown. Generic
 TMEM `memdesc_subslice` lowering derives its element-column offset directly
 from the current source `MemDescType` and layout; no chain-query element-offset
-workaround is needed.
+workaround is needed. The follow-up cleanup removed the remaining static
+`memdesc_subslice` phase fallback that reconstructed source/result query
+origins from the producer chain; subword phase now uses the optional
+type/layout point query and otherwise returns unknown.
 Subword active selected column subviews now have runtime coverage for f16 and
 i8 dynamic-select and loop-carried values across both ld/st and dense
 `tcgen05.copy`. The shared sentinel kernels now allocate TMEM with the input
@@ -176,7 +179,14 @@ The Gluon register-layout picker now calls the type-local M64 ordering helper
 for active self-contained descriptors before falling back to the legacy
 Value-shaped compatibility path.
 
-Latest validation checkpoint: 2026-04-23 09:28 UTC fixed pointwise TMEM view
+Latest validation checkpoint: 2026-04-23 09:35 UTC removed the chain-derived
+static `memdesc_subslice` phase fallback after the pointwise type/layout query
+covered the representable cases. Validation: required `make -j8`; focused
+subword ld/st selector `12 passed, 1677 deselected`; subword copy selector
+`39 passed, 1650 deselected`; ld.red subword/linear-subslice selector
+`8 passed, 1681 deselected`; `git diff --check` passed.
+
+Previous validation checkpoint: 2026-04-23 09:28 UTC fixed pointwise TMEM view
 offset inversion for non-surjective but representable layouts. Validation:
 required `make -j8`; saved warpx2 compiler reproducer
 `triton-opt /tmp/tmem_cp_warpx2_subslice_llir_fail.mlir --run-reproducer`

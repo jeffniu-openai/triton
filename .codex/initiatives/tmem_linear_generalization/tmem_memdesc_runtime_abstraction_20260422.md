@@ -1916,3 +1916,18 @@ High-priority hacks and debt to remove after replacement coverage exists:
   1677 deselected`; combined non-scale TMEM runtime selector passed as group1
   `145 passed, 11 skipped`, group2 `89 passed, 67 skipped`, group3
   `136 passed, 20 skipped`, group4 `156 passed`.
+
+### 2026-04-23 Static Subslice Phase Fallback Removal
+
+- With the pointwise view-offset query in place, static
+  `memdesc_subslice` phase analysis can ask the current source
+  `MemDescType`/layout directly. The old fallback reconstructed standalone
+  source/result query origins from the producer chain and used their column
+  delta when the type-local physical query failed.
+- That fallback is removed. Non-representable type/local points now become
+  unknown phase, which keeps copy and `ld.red` conservative without allowing a
+  visible producer chain to define legality.
+- Validation after this slice: required `make -j8`; focused subword ld/st
+  selector `12 passed, 1677 deselected`; subword copy selector `39 passed,
+  1650 deselected`; ld.red subword/linear-subslice selector `8 passed, 1681
+  deselected`; `git diff --check` passed.

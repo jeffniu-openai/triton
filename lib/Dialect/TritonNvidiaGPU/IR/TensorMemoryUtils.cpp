@@ -153,38 +153,6 @@ advanceTMemSubwordPhaseInfo(TMemSubwordPhaseInfo srcInfo,
           /*unknown=*/false};
 }
 
-static int32_t lookupTMemOriginForPhase(ArrayRef<StringAttr> dims,
-                                        ArrayRef<int32_t> origin,
-                                        StringAttr dim) {
-  for (auto [idx, candidate] : llvm::enumerate(dims)) {
-    if (candidate == dim && idx < origin.size())
-      return origin[idx];
-  }
-  return 0;
-}
-
-static std::optional<uint32_t> tryGetTMemSubviewElementColDeltaForPhase(
-    Value src, Value dst, MLIRContext *ctx) {
-  std::string error;
-  auto srcQuery = inferStandaloneTMemLdStQueryLayout(
-      src, /*preserveNonCanonicalView=*/true, &error);
-  auto dstQuery = inferStandaloneTMemLdStQueryLayout(
-      dst, /*preserveNonCanonicalView=*/true, &error);
-  if (failed(srcQuery) || failed(dstQuery))
-    return std::nullopt;
-
-  auto kCol = StringAttr::get(ctx, "col");
-  int32_t srcCol = lookupTMemOriginForPhase(
-      llvm::to_vector(srcQuery->layout.getInDimNames()), srcQuery->origin,
-      kCol);
-  int32_t dstCol = lookupTMemOriginForPhase(
-      llvm::to_vector(dstQuery->layout.getInDimNames()), dstQuery->origin,
-      kCol);
-  if (dstCol < srcCol)
-    return std::nullopt;
-  return static_cast<uint32_t>(dstCol - srcCol);
-}
-
 static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
     Value memDesc, unsigned depth, SmallPtrSetImpl<Value> &seen,
     uint32_t modulus);
@@ -367,12 +335,8 @@ static TMemSubwordPhaseInfo getTMemSubwordPhaseInfoImpl(
                                     modulus);
     auto physicalOffset =
         tryGetTMemViewPhysicalRowElementCol(srcTy, subslice.getOffsets());
-    if (!physicalOffset) {
-      if (auto colDelta = tryGetTMemSubviewElementColDeltaForPhase(
-              subslice.getSrc(), memDesc, memDesc.getContext()))
-        return advanceTMemSubwordPhaseInfo(srcInfo, *colDelta, modulus);
+    if (!physicalOffset)
       return TMemSubwordPhaseInfo::getUnknownForModulus(modulus);
-    }
     return advanceTMemSubwordPhaseInfo(srcInfo, physicalOffset->second, modulus);
   }
 

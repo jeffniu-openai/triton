@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 09:28 UTC
+Last updated: 2026-04-23 09:35 UTC
 
 Active phase: newer TMEM memdesc model implementation, first vertical slices.
 
@@ -179,7 +179,10 @@ Active implementation checklist:
   fixes non-surjective but point-representable layouts such as `warpx2`
   copy-subviews, keeps generic `memdesc_subslice` lowering type-local, and
   exposes an optional physical row/element-column query for conservative
-  analyses.
+  analyses. Follow-up helper separation removed the static
+  `memdesc_subslice` subword-phase fallback that reconstructed source/result
+  origins from producer-chain query layouts; non-representable points now stay
+  unknown for phase analysis.
   First copy-planning slice:
   `selectTMemCopyPhysicalQuery` now selects the
   type-local destination physical query for active self-contained subviews,
@@ -292,6 +295,16 @@ passed; exact warpx2 runtime row `2 passed`; focused subword ld/st selector
 `12 passed`; combined non-scale TMEM runtime selector passed as group1
 `145 passed, 11 skipped`, group2 `89 passed, 67 skipped`, group3
 `136 passed, 20 skipped`, group4 `156 passed`.
+
+Current phase helper-separation checkpoint: after the pointwise query landed,
+the static `memdesc_subslice` phase analysis no longer needs to reconstruct
+source/result standalone query origins from the producer chain. That fallback
+has been removed; if the current source `MemDescType`/layout cannot represent
+the requested offset, phase analysis returns unknown and consumers choose a
+conservative lowering or diagnostic. Validation: required `make -j8`; focused
+subword ld/st selector `12 passed`; subword copy selector `39 passed`;
+ld.red subword/linear-subslice selector `8 passed`; `git diff --check`
+passed.
 
 Current API-separation checkpoint: MMAv5 address and tile-order planning now
 has explicit type-local entry points:

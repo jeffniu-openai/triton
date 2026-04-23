@@ -35597,3 +35597,28 @@ Open after this slice:
   non-contiguous subword classification and helper API separation, keeping
   lowering legality derived from current memdesc type/layout and current
   `taddr`, not from producer-chain reconstruction.
+
+## 2026-04-23 09:35 UTC: remove static subslice phase fallback
+
+- Branch/HEAD at slice start:
+  `64b5eb28b Solve TMEM view offsets pointwise`.
+- Completed source slice:
+  removed the static `memdesc_subslice` subword-phase fallback that recovered
+  source/result query origins by walking the producer chain. Static subslice
+  phase now asks the optional type/layout point query directly. If the current
+  source `MemDescType` cannot represent the requested offset, phase analysis
+  returns unknown and consumers fall back conservatively or diagnose.
+- Rationale:
+  after the pointwise inverse, representable non-surjective layouts no longer
+  need the chain-derived origin-delta escape hatch. Keeping it would preserve a
+  semantic legality path that depends on visible producers instead of the
+  current memdesc type/layout.
+- Validation evidence:
+  required `make -j8`; focused subword ld/st selector passed `12 passed,
+  1677 deselected`; subword copy selector passed `39 passed, 1650 deselected`;
+  ld.red subword/linear-subslice selector passed `8 passed, 1681 deselected`;
+  `git diff --check` passed.
+- Next concrete step:
+  commit and push this helper-separation checkpoint. Continue with
+  non-contiguous subword classification and remaining lowering-facing helper
+  splits.

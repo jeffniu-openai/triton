@@ -18188,6 +18188,19 @@ rejection, not rescue
   `89 passed, 67 skipped`, group3 `136 passed, 20 skipped`, group4
   `156 passed`.
 
+- 2026-04-23 static subslice phase fallback removed.
+  After the pointwise `tryGetTMemViewPhysicalRowElementCol` query covered
+  representable non-surjective offsets, the remaining static
+  `memdesc_subslice` subword-phase fallback that reconstructed source/result
+  query origins from the producer chain was no longer needed. Phase analysis
+  now derives static subslice shifts from the current source `MemDescType` and
+  layout; if that point is not representable, it returns unknown and lets
+  consumers choose conservative lowering or diagnostics. Validation: required
+  `make -j8`; focused subword ld/st selector `12 passed, 1677 deselected`;
+  subword copy selector `39 passed, 1650 deselected`; ld.red
+  subword/linear-subslice selector `8 passed, 1681 deselected`; `git diff
+  --check` passed.
+
 - 2026-04-23 subword ld/st storage-layout coverage added. Runtime positives
   now cover tile-permuted packed f16 storage plus legacy unpacked/padded f16
   and i8 storage. The latter rows show that logical odd-column views can be
