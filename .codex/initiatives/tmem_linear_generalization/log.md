@@ -36297,3 +36297,24 @@ Open after this slice:
 - Completed raw PTX alignment probes on GB300 for plain `tcgen05.ld/st`, explicit `ld.red`, `tcgen05.cp`, plain MMAv5, and scaled MMAv5 address operands. Every passing point checked actual output values, not just lack of traps; trap cases ran in separate CUDA processes.
 - Key observed rules: plain f32 `32x32b` `ld/st` accepted offsets `0..15`; f32 `32x32b` `ld.red` accepted only even offsets, so its observed requirement is 64-bit rather than 128-bit; `tcgen05.cp.128x256b` accepted only multiples of 4, matching 128-bit destination alignment; plain and scaled MMA accumulator-D accepted even offsets; f16 MMA A-in-TMEM accepted only multiples of 4; scaled A/B scale paths accepted even offsets.
 - Detailed table and caveats recorded in `.codex/initiatives/tmem_linear_generalization/tmem_ptx_alignment_probe_20260424.md`. Raw logs remain under `/tmp/tmem_align_*logs/` and `/tmp/tmem_ldred_num_ptx_probe_logs/`.
+
+## 2026-04-24 18:15 UTC: TMEM iisan policy audit
+
+- Recorded `tmem_iisan_policy_audit_20260424.md` after the policy change to
+  separate runtime trap preconditions from true PTX/codegen impossibility.
+- Classification: final TMEM address alignment for emit-able instructions is an
+  iisan responsibility, with static type/layout proofs used only to elide
+  assertions. The compiler should not reject unknown alignment proofs when it can
+  otherwise emit PTX.
+- Current branch checks identified for iisan migration: `ld.red` address
+  alignment verifier/lowering rejection, executable `tcgen05.copy` destination
+  alignment, and missing iisan coverage for probed ld/st, MMAv5, and scaled-MMA
+  address requirements.
+- Checks classified as compiler unsupported remain structural: direct red-load
+  dtype/layout/message-shape support, ld/st type/layout planning failures,
+  too-small copy atom footprints, copy family/schedule/descriptor synthesis
+  gaps, subword copy destinations that cannot be represented by the current
+  direct copy model, MMAv5 tile/dtype/two-CTA constraints, and static module
+  CTA-group consistency.
+- No compiler behavior changed in this audit checkpoint; no validation was run
+  beyond documentation refresh.

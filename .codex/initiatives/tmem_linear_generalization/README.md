@@ -20,6 +20,12 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
+## Latest: 2026-04-24 TMEM iisan policy audit
+
+- Policy change recorded in `tmem_iisan_policy_audit_20260424.md`: final TMEM address/value preconditions that can be emitted as PTX but may trap at runtime belong in illegal-instruction sanitizer (`iisan`), not in verifier/lowering rejection. Structural cases where Triton cannot synthesize a correct PTX atom, descriptor, register layout, or schedule remain clean compiler unsupported diagnostics.
+- The current branch audit classifies `ld.red` address alignment and executable `tcgen05.copy` destination alignment as iisan candidates. The existing `ld.red` verifier/lowering alignment rejection is especially stale: probes show `.32x32b` f32 `ld.red` requires 64-bit final-address alignment, not 128-bit, and the compiler should not reject unknown alignment proofs.
+- Structural unsupported checks remain for direct reduction layout/shape support, ld/st layout planning gaps, too-small copy atoms, copy family/schedule/descriptor synthesis gaps, MMAv5 layout/dtype/two-CTA constraints, and subword copy destinations that cannot be represented by the current direct copy model.
+
 ## Latest: 2026-04-24 attention example branch-vs-main benchmark
 
 - Benchmarked `python/examples/gluon/01-attention-forward.py` on NVIDIA GB300 GPU 0, comparing branch `f9d78417f` against freshly fetched upstream `main` `a9ced8362`.

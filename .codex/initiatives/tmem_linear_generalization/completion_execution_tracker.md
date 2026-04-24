@@ -1,10 +1,18 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 05:25 UTC
+Last updated: 2026-04-24 18:15 UTC
 
-Active phase: attention example branch-vs-main benchmark shows a broad no-red regression and a branch-only red-load compile failure; next work is root-cause analysis before optimization.
+Active phase: TMEM iisan policy transition. Runtime final-address trap preconditions must move out of verifier/lowering rejection and into iisan; structural PTX/codegen impossibility remains clean unsupported.
 
-Latest follow-up: benchmarked `01-attention-forward.py` on branch `f9d78417f` versus upstream `main` `a9ced8362` on NVIDIA GB300. Common `use_tmem_red=False` subset regressed on all 56 points with geomean branch/main `0.875x`; branch `use_tmem_red=True` fails compile at `s_tmem.slice(...).load_max()` due red-load 128-bit-origin alignment rejection while main red subset completes.
+Latest follow-up: recorded `tmem_iisan_policy_audit_20260424.md`. The attention red-path compile failure is now classified as a stale compile-time runtime-address check: `.32x32b` f32 `ld.red` address alignment belongs in iisan, and the probed rule is 64-bit final-address alignment rather than the branch verifier's 128-bit rule. Next implementation slice should remove the red-load alignment verifier/lowering rejection, add iisan coverage, and update tests accordingly before returning to benchmark comparison.
+
+Current iisan policy checklist:
+
+- [ ] Move `ld.red` final-address alignment out of verifier/lowering rejection and into iisan.
+- [ ] Add iisan runtime checks for selected TMEM ld/st atoms with probed alignment requirements.
+- [ ] Split `tcgen05.copy` destination-alignment checks from structural copy-planner failures; move executable-plan destination alignment to iisan.
+- [ ] Add iisan runtime checks for MMAv5 accumulator D, TMEM A operand, and scaled-MMA scale-address alignment.
+- [ ] Preserve clean compiler diagnostics for true PTX/codegen impossibility: unsupported atoms, too-small copy shapes, descriptor synthesis gaps, non-self-contained layout gaps, subword copy destinations, and static module CTA-group constraints.
 
 Active deletion checklist for this batch:
 
