@@ -1,10 +1,10 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 03:28 UTC
+Last updated: 2026-04-24 03:50 UTC
 
-Active phase: explicit TMEM reduction API cleanup is closed; current work is checkpointing, push recovery, and future support-planner follow-up only.
+Active phase: explicit TMEM reduction API cleanup is closed; current focused follow-up is TMEM control-flow local-codegen regression coverage and checkpointing.
 
-Latest follow-up: hygiene-only cleanup after the explicit Gluon `load_min/load_max` ld.red-or-clean-fail contract. Shared clean-diagnostic helpers now live in `tmem_test_utils.py`, recent ld.red tests use them, and runtime-matrix rows no longer carry dead `expect_hardware` branches. No compiler/frontend semantics changed. Validation: required `make -j8`; edited-test `py_compile`; exact `test_core.py` clean-error rows `2 passed`; runtime-matrix ld.red contract selector `84 passed`; structural ld.red selector `12 passed`; `git diff --check` passed.
+Latest follow-up: added focused conversion lit coverage for local TMEM codegen with same-type/same-layout memdesc values selected through `scf.if` from different runtime origins. The new file checks plain load, explicit `ld.red`, and store address formation from the selected SSA memdesc value. Validation so far: required `make -j8` was a no-op; `lit -v test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir` `1 passed`.
 
 Active deletion checklist for this batch:
 
@@ -5608,3 +5608,9 @@ discovery.
   runtime-matrix ld.red contract selector `84 passed`; structural ld.red
   selector `12 passed`; `git diff --check` passed. No new semantic workstream
   opened.
+
+- 2026-04-24 03:50 UTC: focused local-codegen sentinel added for dynamic same-type TMEM
+  memdesc values. `test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir`
+  checks that plain load, explicit `ld.red`, and store lower from the selected
+  `scf.if` memdesc SSA value rather than a producer-origin chain. Validation:
+  `make -j8` no-op; targeted lit `1 passed`.

@@ -36237,3 +36237,21 @@ Open after this slice:
   edited test/helper modules; exact `test_core.py` clean-error rows `2 passed`;
   runtime-matrix ld.red contract selector `84 passed, 1627 deselected`;
   structural ld.red selector `12 passed, 24 deselected`; `git diff --check`.
+
+
+## 2026-04-24 03:50 UTC: TMEM control-flow local-codegen lit coverage
+
+- Added `test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir` as a focused
+  conversion test file instead of extending the broad Blackwell conversion file,
+  whose unrelated legacy rows currently require separate cleanup under the
+  stricter direct-lowering contract.
+- The new tests allocate two TMEM descriptors with identical type/layout and
+  different `tensor_memory_col_offset` origins, select them through `scf.if`,
+  and consume the selected value with plain `tmem_load`, explicit red
+  `tmem_load`, and `tmem_store`.
+- FileCheck asserts the selected memdesc value is cast to `!llvm.ptr<3>`,
+  converted to an integer, and used in the final address operand for
+  `tcgen05.ld`, `tcgen05.ld.red`, and `tcgen05.st`.
+- Validation: `make -j8` completed with `ninja: no work to do`;
+  `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir`
+  -> `1 passed`.

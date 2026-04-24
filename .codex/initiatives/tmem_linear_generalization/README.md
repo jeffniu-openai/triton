@@ -20,7 +20,13 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-## Latest: 2026-04-24 ld.red contract test hygiene pass
+## Latest: 2026-04-24 TMEM control-flow local-codegen lit coverage
+
+- Added focused conversion lit coverage for memdesc values with identical `MemDescType`/layout but different runtime tensor-memory origins selected through `scf.if`.
+- The checks cover plain `ttng.tmem_load`, explicit `ttng.tmem_load` with `redOp`/`tcgen05.ld.red`, and `ttng.tmem_store`. Each check verifies that LLVM local codegen converts the selected memdesc SSA value to an address and feeds that selected address to the `tcgen05` instruction.
+- This is a direct sentinel for the self-contained memdesc invariant: legal lowering may depend on the current memdesc SSA value plus current type/layout, not producer-chain origin recovery.
+
+## Previous: 2026-04-24 ld.red contract test hygiene pass
 
 - Follow-up cleanup after the explicit `load_min/load_max` contract change factored shared clean-diagnostic helpers into `tmem_test_utils.py` and removed duplicated local helpers from `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py`.
 - Runtime-matrix ld.red tests no longer carry dead `expect_hardware` branches: dynamic-index address-alignment rows are explicit hardware positives, and offset-column subslice rows are explicit clean diagnostic tests.

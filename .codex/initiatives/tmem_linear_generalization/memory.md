@@ -18715,3 +18715,14 @@ rejection, not rescue
   `py_compile`; exact `test_core.py` clean-error rows `2 passed`;
   runtime-matrix ld.red contract selector `84 passed`; structural ld.red
   selector `12 passed`; `git diff --check` passed.
+
+- 2026-04-24 03:50 UTC: control-flow same-type TMEM local-codegen lit coverage added. New
+  `test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir` weaves two
+  `ttng.tmem_alloc` descriptors with the same `MemDescType` and
+  `tensor_memory_linear` layout but different runtime origins through an
+  `scf.if`. The lit checks cover plain load, explicit `ld.red`, and store,
+  and assert that the selected memdesc SSA value is converted to the final
+  TMEM instruction address. This guards the direct-memdesc invariant against
+  regressions where lowering recovers one producer origin instead of using
+  the current value. Validation: required `make -j8` was a no-op; lit
+  `test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir` `1 passed`.
