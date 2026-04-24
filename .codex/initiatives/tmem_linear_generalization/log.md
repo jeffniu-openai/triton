@@ -36264,3 +36264,36 @@ Open after this slice:
 - Per-config geomean branch/main: `D64 noncausal fp16 0.896x`, `D64 noncausal fp8 0.870x`, `D64 causal fp16 0.834x`, `D64 causal fp8 0.874x`, `D128 noncausal fp16 0.886x`, `D128 noncausal fp8 0.860x`, `D128 causal fp16 0.897x`, `D128 causal fp8 0.886x`.
 - Red subset: `upstream/main` `use_tmem_red=True` completed and produced essentially the same throughput as main no-red. Branch `use_tmem_red=True` exited status `1` during compilation at `01-attention-forward.py:576`: `s_tmem.slice(i * SIZE, SIZE).load_max()` requests `tcgen05.ld.red` but the branch verifier reports the tensor-memory origin is not 128-bit aligned.
 - Raw artifacts: `/tmp/tmem_attention_bench/branch_f9d78417f_no_red.txt`, `/tmp/tmem_attention_bench/main_a9ced8362_no_red.txt`, `/tmp/tmem_attention_bench/main_a9ced8362_red.txt`, and `/tmp/tmem_attention_bench/branch_f9d78417f_red_verify.txt`.
+
+## 2026-04-24 06:52 UTC: raw PTX ld.red alignment probes
+
+- Environment: NVIDIA GB300, `CUDA_VISIBLE_DEVICES=0`; PTX generated from
+  upstream main `a9ced8362` to bypass the branch verifier, patched manually,
+  assembled with `/usr/local/cuda/bin/ptxas -arch=sm_103a`, and launched as a
+  cubin through PyCUDA with the kernel's required dynamic shared memory.
+- Probe shape: a Gluon kernel stores a deterministic `128x128xf32` tile in TMEM,
+  then performs one `tcgen05.ld.red.sync.aligned.32x32b.x*.max.f32` and writes
+  both the loaded values and row reduction to global memory for exact checking.
+- Immediate-offset sweep: for `.x2`, `.x4`, `.x8`, `.x16`, `.x32`, and `.x64`,
+  offsets `0,2,4,6` all assembled, executed, and returned exact load/reduction
+  values; offsets `1,3,5,7` all assembled but trapped at runtime with CUDA
+  `misaligned address`. A separate `.x64` sweep through offsets `0..15` showed
+  the same even/odd split.
+- Dynamic-base sweep: patching `.x64` to compute `base + offset` in a register
+  and emit the red-load instruction with immediate `+ 0` produced the same
+  result: even final TMEM addresses pass, odd final TMEM addresses trap.
+- Design implication: `.32x32b` f32 red-loads do have a real hardware final
+  TMEM-address alignment requirement, but the observed requirement is two f32
+  element columns / 64 bits, not the branch's current four-column / 128-bit
+  verifier rule. The attention offsets `0` and `64` satisfy this observed rule,
+  so the current branch diagnostic is a false negative for that example.
+- Raw logs and scripts: `/tmp/tmem_ldred_ptx_probe_logs/`,
+  `/tmp/tmem_ldred_num_ptx_probe_logs/`, `/tmp/tmem_ldred_dynbase_probe_logs/`,
+  `/tmp/run_modified_ptx_ldred_num_pycuda.py`, and
+  `/tmp/ldred_num_ptx/probe_x*.ptx`.
+
+## 2026-04-24 08:22 UTC: TMEM PTX alignment sweep
+
+- Completed raw PTX alignment probes on GB300 for plain `tcgen05.ld/st`, explicit `ld.red`, `tcgen05.cp`, plain MMAv5, and scaled MMAv5 address operands. Every passing point checked actual output values, not just lack of traps; trap cases ran in separate CUDA processes.
+- Key observed rules: plain f32 `32x32b` `ld/st` accepted offsets `0..15`; f32 `32x32b` `ld.red` accepted only even offsets, so its observed requirement is 64-bit rather than 128-bit; `tcgen05.cp.128x256b` accepted only multiples of 4, matching 128-bit destination alignment; plain and scaled MMA accumulator-D accepted even offsets; f16 MMA A-in-TMEM accepted only multiples of 4; scaled A/B scale paths accepted even offsets.
+- Detailed table and caveats recorded in `.codex/initiatives/tmem_linear_generalization/tmem_ptx_alignment_probe_20260424.md`. Raw logs remain under `/tmp/tmem_align_*logs/` and `/tmp/tmem_ldred_num_ptx_probe_logs/`.
