@@ -20,15 +20,22 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
+## Latest: 2026-04-24 strict legacy semantic chain cleanup closed
 
-## Latest: 2026-04-24 semantic chain-walk audit recorded
+- The user decision to delete, not maintain, legacy semantic view-chain code is implemented for the active TMEM lowering surfaces. Verifier, Gluon layout/reduction gating, NVIDIA LLVM ld/st/reduction lowering, migrated `tcgen05.copy`, and MMAv5/MMAv5-scaled semantic lowering now use the current memdesc SSA value plus current `MemDescType`/layout, or reject cleanly.
+- Removed the stale standalone/exact producer-chain recovery helpers, full-view replay legalization, relative-base-offset subtraction, value-shaped support-query semantics, and value-shaped ld/st query refinement from semantic callers. `OptimizeTMemLayouts` no longer carries the physical-support load/store replay rewrite.
+- Non-self-contained descriptor subviews are clean unsupported unless their current type/layout is self-contained. The notable remaining boundary is row-zero M64 f32-to-16-bit physical-bitcast descriptor views, which need a future type-local split-N packet mapping rather than producer-chain replay.
+- Validation evidence is in `completion_execution_tracker.md`, `memory.md`, and `log.md`: rebuilt compiler, lit `tmem_layouts.mlir`, focused M64/unsupported rows, adjacent TMEM rows, and all four `test_core.py -k tmem` split groups passed on the final source tree.
+
+
+## Previous: 2026-04-24 semantic chain-walk audit recorded
 
 - Audit agreement: remaining TMEM producer-chain inspection is now classified into high-risk semantic/codegen paths versus optimizer-only paths. High-risk paths are blockers because verifier, Gluon layout selection, or LLVM/PTX lowering can accept, reject, or emit different code based on visible producer chains instead of the current memdesc SSA value and current `MemDescType`/layout.
 - High-risk open surfaces: TMEM `ld/st` verifier and LLVM lowering query/support/raw fallback selection; subword phase and 128-bit alignment proof; `tcgen05.copy` verifier/lowering physical-query selection; Gluon `get_reg_layout` and reduction gating; relative-base-offset helpers such as `getTMemSubviewRelativeBaseOffset`; and public value-shaped compatibility helpers that remain reachable from semantic paths.
 - Optimizer-only surfaces may continue to inspect view chains when they rewrite IR before lowering, perform allocation/liveness/rematerialization analysis, or choose among lowerings already proven legal from local facts. `TensorMemoryAllocation` and `InterleaveTMem` are currently in this bucket. `OptimizeTMemLayouts` is mostly in this bucket, but its physical-support load/store rewrite needs proof or cleanup because it can look like legalization if the original access was not independently local-fact legal.
 - Next invariant closure: remove value-shaped standalone/support/exact query helpers from verifier, LLVM lowering, and Gluon semantic layout selection; make view lowering update the runtime memdesc value so use sites never subtract producer-chain offsets; and treat unknown alignment/phase as a clean rejection where the ISA requires a static guarantee.
 
-## Latest: 2026-04-24 no full-view replay legalization
+## Previous: 2026-04-24 no full-view replay legalization
 
 - User decision: full `memdesc_reshape`/`memdesc_trans` producer-chain replay must not be used as a semantic legalization rescue. If the current memdesc SSA value and current `MemDescType`/layout cannot directly justify a legal TMEM load/store/reduction lowering, the compiler should reject cleanly instead of recovering facts from the view chain.
 - Removed the full-view replay machinery from `OptimizeTMemLayouts`, removed the public `isTMemLdStReplayableFullView` helper, and stopped the TMEM load/store verifier and Gluon `get_reg_layout` helper from treating full-view replay as an optimizer-supported escape. Half-slice replay remains because it is a local split of an already-supported access, not a full-view semantic rescue.

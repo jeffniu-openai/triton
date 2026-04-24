@@ -115,27 +115,12 @@ struct TMemPhysicalQuery {
 struct TMemCopyPhysicalQuerySelection {
   std::optional<TMemPhysicalQuery> query;
   std::optional<TMemPhysicalQuery> typeLocal;
-  std::optional<TMemPhysicalQuery> standalone;
-  std::optional<TMemPhysicalQuery> exact;
   std::string typeLocalError;
-  std::string standaloneError;
-  std::string exactError;
   bool usedTypeLocal = false;
-  bool usedExact = false;
-};
-
-enum class TMemPhysicalQueryDifference {
-  Shape,
-  AllocShape,
-  ElementBitWidth,
-  Layout,
-  TwoCTAs,
-  Origin,
 };
 
 enum class TMemSubwordPhaseStatus {
   KnownZero,
-  MayBeNonZero,
   Unknown,
 };
 
@@ -476,21 +461,6 @@ TMemSubwordPhaseStatus getTMemElementOffsetModuloStatus(Value memDesc,
 
 bool mayHaveNonZeroTMemSubwordPhase(Value memDesc);
 
-std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc);
-
-std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
-                                                          gpu::MemDescType queryTy);
-std::optional<TMemLdStRowPlan>
-getTMemLdStRowPlanForQueryLayout(Value memDesc, gpu::MemDescType queryTy,
-                                 const TMemLdStQueryLayout &queryLayout);
-std::optional<TMemLdStRowPlan>
-getTMemLdStRowPlanForRawQuery(Value memDesc, gpu::MemDescType queryTy,
-                              const TMemLdStQueryLayout &queryLayout);
-std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForSupportQuery(
-    Value memDesc, gpu::MemDescType queryTy,
-    const TMemLdStQueryLayout &supportQuery,
-    std::optional<TMemLdStRowPlan> supportRowPlan);
-
 bool hasCanonicalM64SplitNRows(const LinearLayout &layout);
 
 std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
@@ -503,32 +473,15 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQueryRequest(
     std::optional<TMemAccessAtom> desiredAtom, bool allow16Bit = false);
 
 bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
-    Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom);
-
-bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
     gpu::MemDescType memTy, unsigned numWarps,
     std::optional<TMemAccessAtom> desiredAtom);
 
 bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
     gpu::MemDescType memTy, RankedTensorType regTy);
 
-bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
-    Value memDesc, gpu::MemDescType memTy, RankedTensorType regTy);
-
-bool shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(
-    Value memDesc, gpu::MemDescType queryTy, StringRef atomName);
-
-bool shouldUseExactTMemLdStViewLayoutForM64DirectView(
-    Value memDesc, gpu::MemDescType queryTy, StringRef atomName);
-
-bool disallowTMemLdStRawQueryRowPlanOverride(Value memDesc);
-
 std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(gpu::MemDescType memTy,
                                      unsigned numWarps);
-
-std::optional<gpu::DistributedEncodingTrait>
-getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps);
 
 bool isTMemLoadReductionAddressAligned(Value memDesc);
 
@@ -536,13 +489,9 @@ RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
                                                    gpu::MemDescType memTy,
                                                    unsigned numWarps);
 
-RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
-                                                   Value memDesc,
-                                                   unsigned numWarps);
-
 FailureOr<TMemLdStEncodingInfo> computeTMemLoadReductionEncodingInfo(
-    RankedTensorType regTy, gpu::MemDescType memTy, Value memDescValue,
-    int maxnreg, std::function<InFlightDiagnostic()> emitError = {});
+    RankedTensorType regTy, gpu::MemDescType memTy, int maxnreg,
+    std::function<InFlightDiagnostic()> emitError = {});
 
 FailureOr<std::optional<TMemAccessAtom>>
 parseTMemAccessAtomName(StringRef atomName, bool allowAuto = false,
@@ -574,28 +523,17 @@ std::optional<RankedTensorType> getTMemLdStFirstLegalRegisterType(
     std::optional<TMemLdStRowPlan> rowPlanOverride = std::nullopt);
 
 llvm::SmallVector<TMemLdStCandidateLayout>
-getTMemLdStCandidateLayoutsForQuery(Value memDesc, gpu::MemDescType queryTy,
-                                    unsigned numWarps, StringRef atomName);
+getTMemLdStCandidateLayoutsForQuery(gpu::MemDescType queryTy, unsigned numWarps,
+                                    StringRef atomName);
 
 llvm::SmallVector<gpu::DistributedEncodingTrait>
-getTMemLdStGenericCompatibleLayouts(Value memDesc, gpu::MemDescType queryTy,
-                                    unsigned numWarps, StringRef atomName);
+getTMemLdStGenericCompatibleLayouts(gpu::MemDescType queryTy, unsigned numWarps,
+                                    StringRef atomName);
 
 llvm::SmallVector<gpu::DistributedEncodingTrait>
 getTMemLdStBlockedFallbackLayouts(gpu::MemDescType queryTy,
                                   ArrayRef<int64_t> tensorShape,
                                   unsigned numWarps);
-
-std::optional<RankedTensorType>
-getTMemLdStDirectSupportTensorType(Value memDesc, unsigned numWarps);
-
-bool shouldPreserveDirectTMemLdStLeadingSliceView(Value memDesc);
-
-std::optional<unsigned>
-getTMemLdStReplayableHalfSliceDim(gpu::MemDescSubsliceOp subslice);
-
-bool isTMemLdStReplayableHalfSliceView(Value memDesc);
-
 
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
     gpu::MemDescType memTy, unsigned numWarps, TMemAccessAtom atom);
@@ -603,10 +541,10 @@ bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
 bool shouldPreferCanonicalTMemLdStI32x32bForAuto(gpu::MemDescType memTy,
                                                  StringRef atomName);
 
-llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
-
 llvm::SmallVector<gpu::MemDescType>
 getTypeLocalTMemLdStQueryTypes(gpu::MemDescType memTy);
+
+bool isTMemDescriptorSubviewType(gpu::MemDescType memTy);
 
 bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy);
 
@@ -614,67 +552,20 @@ bool hasTypeLocalTMemLdStLayout(gpu::MemDescType memTy);
 
 gpu::MemDescType getSelfContainedTMemSubviewPlanningType(gpu::MemDescType memTy);
 
-bool isTMemLdStHalfRowsDescriptorView(Value memDesc);
-
-bool isTMemPhysicalBitcast(Value value);
-
-bool isExplicitTMemLdStViewProducer(Value memDesc);
-
-bool disallowTMemLdStTypeOnlyFallback(Value memDesc,
-                                      std::string *reason = nullptr);
-
 bool disallowTMemLdStQueryTypeRescue(gpu::MemDescType memTy);
-
-bool disallowTMemLdStQueryTypeRescue(Value memDesc);
-
-uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);
 
 LinearLayout getMMAv5TMemAddressLayout(gpu::MemDescType memTy);
 
 uint32_t getMMAv5TMemViewOffsetForLowering(gpu::MemDescType memTy,
                                            ArrayRef<int32_t> offsets);
 
-uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op);
-
-uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue);
-
-uint32_t getTMemSubviewRelativeBaseOffset(Value memDescValue,
-                                          uint32_t baseOffset);
-
-// Type-local helpers are the semantic API for migrated descriptor classes.
-// Value-taking standalone/exact helpers are compatibility APIs for legacy view
-// recovery, optimizer rewrites, and support-query planning that intentionally
-// inspect a visible descriptor chain.
-FailureOr<gpu::MemDescType>
-inferStandaloneTMemRegLayoutQueryType(Value memDesc,
-                                      std::string *error = nullptr);
-
 FailureOr<TMemLdStQueryLayout>
 inferTypeLocalTMemLdStQueryLayout(gpu::MemDescType memTy,
                                   std::string *error = nullptr);
 
-FailureOr<TMemLdStQueryLayout>
-inferStandaloneTMemLdStQueryLayout(Value memDesc,
-                                   bool preserveNonCanonicalView = true,
-                                   std::string *error = nullptr);
-
-std::optional<TMemLdStSupportQueryPlan>
-getTMemLdStSupportQueryPlan(Value memDesc, std::string *error = nullptr);
-
 std::optional<TMemLdStSupportQueryPlan>
 getTypeLocalTMemLdStSupportQueryPlan(gpu::MemDescType memTy,
                                      std::string *error = nullptr);
-
-std::optional<gpu::MemDescSubsliceOp>
-getTMemLdStPure2DColumnSubview(Value memDesc);
-
-std::optional<TMemLdStSupportQueryPlan>
-getTMemLdStSourceColumnSubviewSupportQueryPlan(Value memDesc,
-                                               std::string *error = nullptr);
-
-std::optional<TMemLdStRowPlan>
-getTMemLdStSourceColumnSubviewRawQueryRowPlan(
-    Value memDesc, const TMemLdStQueryLayout &sourceRawQuery);
 
 bool isTwoCTAScalesDescriptorViewTMemLdStQuery(gpu::MemDescType memTy,
                                                const LinearLayout &queryLayout);
@@ -685,58 +576,19 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(gpu::MemDescType memTy,
                                             unsigned numWarps,
                                             const LinearLayout &queryLayout);
 
-bool isUnsupportedDirectTMemLdStDescriptorView(
-    Value memDesc, std::string *error = nullptr);
-
-std::optional<std::string> getUnsupportedDirectTMemLdStAtomFootprintReason(
-    Value memDesc, TMemAccessAtom atom, unsigned numWarps);
-
-std::optional<std::string>
-getUnsupportedDirectTMemLdStVariantReason(Value memDesc, TMemAccessAtom atom,
-                                          unsigned numWarps);
-
-FailureOr<gpu::MemDescType>
-inferStandaloneTMemViewType(Value memDesc, std::string *error = nullptr);
-
-FailureOr<TMemPhysicalQuery>
-inferStandaloneTMemPhysicalQuery(Value memDesc, std::string *error = nullptr);
-
-FailureOr<TMemPhysicalQuery>
-inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
-                                 std::string *error);
-
 FailureOr<TMemPhysicalQuery>
 inferTypeLocalTMemPhysicalQuery(gpu::MemDescType memTy,
                                 std::string *error = nullptr);
 
-FailureOr<TMemPhysicalQuery>
-inferExactTMemPhysicalQuery(Value memDesc, std::string *error = nullptr);
-
-FailureOr<TMemPhysicalQuery>
-inferExactTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
-                            std::string *error);
-
-std::optional<TMemPhysicalQueryDifference>
-getFirstTMemPhysicalQueryDifference(const TMemPhysicalQuery &lhs,
-                                    const TMemPhysicalQuery &rhs);
-
-bool haveSameTMemPhysicalQueryProjection(const TMemPhysicalQuery &lhs,
-                                         const TMemPhysicalQuery &rhs);
 // Copy planning consumes the active physical layout, element width, and CTA
 // ownership. View origins and backing allocation shapes are represented by the
 // lowered TMEM descriptor base, so they are intentionally not part of this
 // comparator.
-bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
-                                        const TMemPhysicalQuery &rhs);
-
-bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
-                                         const TMemPhysicalQuery &exact);
-
 bool canInvertAndComposeLayouts(const LinearLayout &inner,
                                 const LinearLayout &outer);
 
 FailureOr<TMemCopyPhysicalQuerySelection>
-selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
+selectTMemCopyPhysicalQuery(gpu::MemDescType memTy, const LinearLayout &shmemLl,
                             std::string *error = nullptr);
 
 FailureOr<LinearLayout>
@@ -744,22 +596,10 @@ getTMemCopySourceConversion(const TMemPhysicalQuery &query,
                             const LinearLayout &shmemLl,
                             std::string *error = nullptr);
 
-std::optional<std::string>
-getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
-                                 const TMemPhysicalQuery &exact);
-
-StringRef stringifyTMemPhysicalQueryDifference(
-    TMemPhysicalQueryDifference difference);
-
 uint32_t getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query);
 
 bool preserveTMemLdStSupportQueryBaseOffset(
     gpu::MemDescType memTy, const TMemLdStQueryLayout &supportQuery);
-
-std::optional<TMemLdStRowPlan> preferBackingTMemLdStRowPlanForDirectRoot(
-    Value memDesc, gpu::MemDescType rootMemTy, gpu::MemDescType queryTy,
-    std::optional<TMemLdStRowPlan> rowPlan,
-    const TMemLdStQueryLayout *queryLayout = nullptr);
 
 FailureOr<gpu::MemDescType>
 inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,
@@ -787,11 +627,6 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                                 std::nullopt);
 
 TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
-    Value memDesc, RankedTensorType regTy, gpu::MemDescType queryTy,
-    int maxnreg, std::optional<TMemLdStRowPlan> rowPlanOverride,
-    TMemLdStEncodingInfo info);
-
-TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
     gpu::MemDescType memTy, RankedTensorType regTy, gpu::MemDescType queryTy,
     int maxnreg, std::optional<TMemLdStRowPlan> rowPlanOverride,
     TMemLdStEncodingInfo info);
@@ -803,9 +638,6 @@ bool isTMemLdStReductionCompatible(const TMemLdStEncodingInfo &info);
 std::optional<TMemLdStPhysicalSupportPlan>
 getTMemLdStPhysicalSupportPlan(gpu::MemDescType memTy, unsigned numWarps,
                                int maxnreg);
-std::optional<TMemLdStPhysicalSupportPlan>
-getTMemLdStPhysicalSupportPlan(Value memDesc, unsigned numWarps, int maxnreg);
-
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                                 unsigned numWarps,
@@ -904,9 +736,6 @@ bool isTMemCopy4x256RefreshLayout(gpu::MemDescType memTy);
 std::string getTMemCopy4x256RefreshLdStUnsupportedMessage(
     const TMemCopy4x256RefreshImageRequirement &requirement =
         TMemCopy4x256RefreshImageRequirement{});
-
-std::optional<std::string>
-getUnsupportedDirectTMemLdStReason(gpu::MemDescType memTy);
 
 TMemCopySupportResult
 getTMemCopySharedLayoutRuntimeSupport(gpu::MemDescType srcTy,

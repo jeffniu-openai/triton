@@ -409,7 +409,7 @@ getMMAv5ScaleStorageTypeThroughViews(Value scale) {
   return std::nullopt;
 }
 
-// This pass may inspect a scale view chain because it rewrites the IR before
+// This pass may inspect scale view producers because it rewrites the IR before
 // lowering. Verifier and LLVM lowering must use the current MemDescType only.
 static std::optional<ttg::MemDescType>
 getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale) {
@@ -619,7 +619,7 @@ public:
 
     auto storedType = cast<RankedTensorType>(stored.getType());
     assert(storedType.getShape() == bScaleType.getShape() &&
-           "alias view replay should materialize the B-scale logical shape");
+           "alias view rematerialization should materialize the B-scale logical shape");
 
     if (storedType.getShape()[0] != static_cast<int64_t>(ctaColumns) ||
         instrSizeN == 0 || ctaColumns % instrSizeN != 0)
@@ -837,7 +837,7 @@ public:
 
     auto storedType = cast<RankedTensorType>(stored.getType());
     assert(storedType.getShape() == storageType.getShape() &&
-           "alias view replay should materialize the scale logical shape");
+           "alias view rematerialization should materialize the scale logical shape");
     Value materialized = stored;
     if (!isDistributedLayoutTMemCompatible(info.storeOp.getOperation(),
                                            storedType, storageType)) {

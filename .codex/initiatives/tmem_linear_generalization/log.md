@@ -36184,3 +36184,10 @@ Open after this slice:
 - High-risk inventory recorded in the runtime-abstraction design note: ld/st verifier and LLVM lowering value-shaped query selection; subword phase/alignment proof; `tcgen05.copy` physical-query selection; Gluon register-layout/reduction gating; relative-base-offset subtraction; and public value-shaped compatibility helpers reachable from semantic paths.
 - Optimizer-only inventory recorded: tensor-memory allocation/rematerialization and interleave alias analysis are allowed; `OptimizeTMemLayouts` peepholes are allowed only when the output is independently legal, with physical-support load/store rewrite marked as a follow-up audit item.
 - Validation: documentation-only checkpoint; no source behavior changed and no runtime/compiler tests were run.
+
+## 2026-04-24 02:04 UTC: strict legacy semantic chain cleanup closed
+
+- Removed the compatibility code the user explicitly did not want preserved: stale standalone/exact producer-chain query helpers, full-view replay legalization, relative-base-offset subtraction, value-shaped support-query semantics, and value-shaped query-type refinement from semantic callers.
+- Hardened direct semantics: descriptor subviews whose current `MemDescType` is not self-contained now produce clean unsupported diagnostics in verifier/lowering/front-end paths. `OptimizeTMemLayouts` no longer contains the physical-support load/store replay rewrite that could act as hidden legalization.
+- Updated tests and expectations: lit `leading_slice_view_load/store` now checks direct descriptor-view load/store operations; Gluon M64 subslice bitcast rows now assert clean unsupported for the row-zero M64 f32-to-16-bit split-N mapping; M64 fallback opcode expectations were refreshed after runtime correctness stayed green.
+- Validation: `make -j8`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; focused unsupported/M64 rows `5 passed`; adjacent TMEM rows `22 passed`; exact M64 fallback row `3 passed`; four-GPU `test_core.py -k tmem` split passed as group1 `69 passed, 5 skipped`, group2 `74 passed`, group3 `74 passed`, group4 `71 passed`; `git diff --check` passed after documentation edits.

@@ -1,24 +1,31 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 01:05 UTC
+Last updated: 2026-04-24 02:04 UTC
 
-Active phase: semantic chain-walk audit recorded; staged validation remains green from the previous code checkpoint.
+Active phase: strict legacy semantic view-chain deletion is closed; current work is checkpointing, push recovery, and future support-planner follow-up only.
 
+Active deletion checklist for this batch:
+
+- [x] Delete shared legacy producer-chain recovery APIs and implementations: standalone/exact physical query recovery, standalone ld/st query recovery, source-column support recovery, relative-base-offset subtraction, value-shaped support-query access, and value-shaped query-type refinement from semantic callers.
+- [x] Convert ld/st verifier and lowering to use current `MemDescType` layout/query/row-plan facts only, with clean unsupported diagnostics for descriptors whose current type does not provide a legal lowering.
+- [x] Convert ld.red reduction planning and Gluon reduction gating to type/local facts. Unknown or unmodeled phase/alignment remains on software fallback or a clean diagnostic; hardware reduction legality does not recover origins from producer chains.
+- [x] Convert `tcgen05.copy` verifier and lowering to type-local physical query selection for self-contained descriptor classes; too-small and non-representable copy families are clean unsupported and recorded.
+- [x] Remove `OptimizeTMemLayouts` physical-support load/store replay/legalization code that depended on standalone view-type recovery. Remaining optimizer patterns either choose layouts for tensor values or rewrite to IR that is independently legal from current memdesc facts.
+- [x] Rebuild, run focused clean-negative/positive tests, broaden to staged TMEM validation, and record newly unsupported rows as direct memdesc-type lowering gaps rather than restoring legacy chain recovery.
 
 Current audit checkpoint summary:
 
 - [x] Classified remaining producer-chain inspection into high-risk semantic/codegen paths versus optimizer-only paths. The user agreed with this split.
-- [ ] High-risk semantic paths still to close: TMEM load/store verifier and LLVM lowering value-shaped query/support/raw fallback selection; Gluon register-layout/reduction gating; subword phase and 128-bit alignment proof; `tcgen05.copy` physical-query selection; relative-base-offset subtraction; and semantic callers of value-shaped standalone/support/exact helper APIs.
-- [ ] Optimizer-only chain walking remains allowed but must stay quarantined: tensor-memory allocation/rematerialization, interleave alias analysis, and peephole rewrites that produce independently legal IR. `OptimizeTMemLayouts` physical-support load/store rewrite needs proof or conversion because it still calls standalone view inference.
-- [ ] Next implementation slice should disconnect one semantic surface at a time from value-shaped helpers, preferring clean unsupported diagnostics until the current memdesc type/layout/runtime value can prove legality.
+- [x] High-risk semantic paths from the audit are closed for this batch: TMEM load/store verifier and LLVM lowering value-shaped query/support/raw fallback selection, Gluon register-layout/reduction gating, `tcgen05.copy` physical-query selection for migrated classes, MMAv5/MMAv5-scaled semantic lowering, relative-base-offset subtraction, and public value-shaped standalone/support/exact helper APIs are no longer the semantic legality path.
+- [x] Optimizer-only chain walking remains quarantined: tensor-memory allocation/rematerialization, interleave alias analysis, and peephole rewrites that run before lowering or choose among already-legal lowerings may inspect producers. These paths must not be used to define verifier or codegen legality.
+- [x] The explicit remaining clean unsupported boundary from this deletion is direct non-self-contained descriptor subviews, including the row-zero M64 `64x64xf32` to `64x128xf16/i16` physical-bitcast split-N packet mapping. Future support must extend type/layout/runtime-SSA lowering facts directly rather than replaying a producer chain.
 
 Current checkpoint summary:
 
-- [x] Removed full-view replay as a semantic legalization rescue. TMEM load/store/reduction legality now must come from the current memdesc SSA value and current `MemDescType`/layout, or reject cleanly.
-- [x] Deleted full-view replay matching/lowering/patterns from `OptimizeTMemLayouts`, removed `isTMemLdStReplayableFullView`, and removed the verifier/Gluon frontend fallback that treated full-view replay as a supported escape.
-- [x] Kept half-slice replay only as a local optimizer split of already-supported accesses.
-- [x] Reclassified replay-dependent rows as clean negatives: M64 two-CTA tensor-memory-scales `32x32b` descriptor-view `ld/st`, plus structural fuzzer full-view-dependent `ld/st` and `ld.red` descriptor-view rows.
-- [x] Staged validation green with normal cache behavior and no `TRITON_ALWAYS_COMPILE`: `make -j8`; focused scales descriptor-view selector `13 passed`; structural fuzzer split-4 `36 passed`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; full runtime matrix split-4 `346 passed, 82 skipped` / `408 passed, 20 skipped` / `428 passed` / `427 passed`; `test_core.py -k tmem` split-4 `69 passed, 5 skipped` / `74 passed` / `74 passed` / `71 passed`; `git diff --check`.
+- [x] Removed the legacy semantic chain surface from the touched code: stale `standalone`/`exact` producer-chain query helpers, full-view replay helpers, relative-base-offset subtraction, value-shaped support-query callers, and value-shaped query-type refinement from semantic callers are deleted rather than kept as compatibility code.
+- [x] Non-self-contained descriptor subviews now reject with clean diagnostics for ld/st and `tcgen05.copy`; the Gluon frontend returns unsupported instead of inventing fallback register layouts. Lit checks now expect direct descriptor-view operations instead of full-view replay rewrites.
+- [x] Code search over touched compiler/frontend/test paths has no remaining hits for the deleted semantic chain/replay identifiers: `standalone`, `ReplayableHalfSlice`, `TMemReplayHalfSlice`, `TMemLeadingSlice`, `matchLeadingSliceView`, `inferStandalone`, `inferExact`, `getBackingTMemLdStRowPlan`, `getTMemSubviewRelativeBaseOffset`, `isUnsupportedDirectTMemLdStDescriptorView`, `disallowTMemLdStTypeOnlyFallback`, `full-view replay`, `legacy view`, or `view-chain`.
+- [x] Final-tree validation with normal cache behavior and no `TRITON_ALWAYS_COMPILE`: `make -j8`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; focused unsupported/M64 rows `5 passed`; adjacent TMEM rows `22 passed`; exact M64 fallback row `3 passed`; four-GPU `test_core.py -k tmem` split groups passed as group1 `69 passed, 5 skipped`, group2 `74 passed`, group3 `74 passed`, group4 `71 passed`; `git diff --check` passed after documentation refresh.
 
 Active implementation checklist:
 
@@ -27,23 +34,24 @@ Completed closeout slice: ld/st type-local planning and ld.red/reduction plannin
 Closeout checklist for this slice:
 
 - [x] Audit remaining ld/st and ld.red call sites that still ask value-shaped helpers for semantic planning facts when the current `MemDescType` is self-contained.
-- [x] Add or complete `MemDescType`-local reduction helpers for layout selection and canonicalization, leaving value-shaped reduction/alignment wrappers only where current-value phase or legacy producer compatibility is required.
+- [x] Add or complete `MemDescType`-local reduction helpers for layout selection and canonicalization; remaining phase/alignment helpers use the current SSA value residue, not producer-chain origin recovery.
 - [x] Switch NVIDIA LLVM ld/st lowering so active self-contained/scales descriptors use type-local query, support-query, row-plan, and reduction planning without source-column or backing-parent rescue paths.
 - [x] Switch TMEM load/store verifier and Gluon register/reduction layout helpers to the same type-local planning path for `hasTypeLocalTMemLdStLayout` descriptors.
-- [x] Keep producer-chain walkers as compatibility/optimizer-only adapters for legacy descriptor views and replay transforms, not as required semantic lowering facts for self-contained memdesc classes.
+- [x] Quarantine producer-chain walkers to optimizer/allocation rewrites, not semantic lowering facts for verifier, Gluon layout selection, or LLVM codegen.
 - [x] Rebuild and run focused plus broad `ldst`/`ld.red`/scales validation before checking this slice complete.
 
 Completed closeout slice: `tcgen05.copy` physical-query selection is closed for
-active type-local copy descriptor classes. The remaining producer-chain copy
-paths are compatibility/support-query paths for direct roots or descriptor
-classes whose current type is not yet self-contained for copy planning.
+active type-local copy descriptor classes. Direct roots retain the support-query
+planner required by current layout coverage; descriptor classes whose current type
+is not self-contained now reject cleanly instead of recovering hidden producer
+origins.
 
 Closeout checklist for the copy slice:
 
 - [x] Audit copy verifier/lowering selection and keep active self-contained
   subviews on a type-local destination physical query.
 - [x] Extend type-local copy selection to scales descriptor views so clean
-  negative diagnostics for scales copy views no longer depend on exact/standalone
+  negative diagnostics for scales copy views no longer depend on recovered
   producer-chain divergence notes.
 - [x] Preserve the existing support-query path for direct roots after a broad
   probe showed raw type-local direct-root planning regresses 256-row dense roots

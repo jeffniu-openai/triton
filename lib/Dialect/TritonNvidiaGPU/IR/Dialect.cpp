@@ -472,7 +472,7 @@ getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
   if (!tensorMemoryLinearLayoutMatchesShape(linear.getLinearLayout(), shape)) {
     if (error)
       *error =
-          "tensor memory view is not representable as a standalone TMEM "
+          "tensor memory view is not representable as a self-contained TMEM "
           "linear layout";
     return std::nullopt;
   }

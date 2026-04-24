@@ -1372,23 +1372,9 @@ void TCGen5MMAScaledOp::build(OpBuilder &builder, OperationState &state,
 
 bool TCGen5MMAScaledOp::isAsync() { return getIsAsync(); }
 
-static bool isOptimizerReplayableTMemLdSt(Operation *op, Value memdescValue) {
-  if (auto load = dyn_cast<TMEMLoadOp>(op)) {
-    if (load.getRedOp())
-      return false;
-  } else if (!isa<TMEMStoreOp>(op)) {
-    return false;
-  }
-  // Half-slice replay is a local optimizer split of a supported access.
-  // Full reshape/transpose replay would recover semantic legality from the
-  // producer chain, which is disallowed for TMEM descriptor views.
-  return isTMemLdStReplayableHalfSliceView(memdescValue);
-}
-
 static LogicalResult
 verifyTMEMOperandPreconditions(Operation *op, RankedTensorType type,
-                               MemDescType memdesc, Value memdescValue,
-                               StringRef regName) {
+                               MemDescType, Value, StringRef regName) {
   if (type.getRank() != 2)
     return op->emitOpError(regName) << " must be a 2D tensor";
   if (!type.getEncoding())
@@ -1399,18 +1385,6 @@ verifyTMEMOperandPreconditions(Operation *op, RankedTensorType type,
            << type.getEncoding()
            << ". Insert set_auto_layout or convert_layout before using a "
               "TMEM load/store.";
-  }
-
-  std::string unsupportedDescriptorViewError;
-  if (isUnsupportedDirectTMemLdStDescriptorView(memdescValue,
-                                                &unsupportedDescriptorViewError)) {
-    if (isOptimizerReplayableTMemLdSt(op, memdescValue))
-      return success();
-    InFlightDiagnostic diag =
-        op->emitOpError(regName) << " has no supported register layout";
-    if (!unsupportedDescriptorViewError.empty())
-      diag.attachNote() << unsupportedDescriptorViewError;
-    return diag;
   }
   return success();
 }
@@ -1427,78 +1401,44 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   // tensor is encoded.
   if (!type.getEncoding())
     return success();
-  if (isOptimizerReplayableTMemLdSt(op, memdescValue) ||
-      isDistributedLayoutTMemCompatible(op, type, memdesc))
+  if (isDistributedLayoutTMemCompatible(op, type, memdesc))
     return success();
 
-  bool disallowQueryTypeRescue = disallowTMemLdStQueryTypeRescue(memdesc);
-  bool hasTypeLocalLdStLayout = hasTypeLocalTMemLdStLayout(memdesc);
-
-  auto getQueryRowPlan = [&](MemDescType queryTy) {
-    return hasTypeLocalLdStLayout ? getTMemLdStRowPlanForType(queryTy)
-                                  : getTMemLdStRowPlanForQuery(memdescValue,
-                                                               queryTy);
-  };
+  if (triton::nvidia_gpu::isTMemDescriptorSubviewType(memdesc) &&
+      !triton::nvidia_gpu::hasTypeLocalTMemLdStLayout(memdesc)) {
+    return op->emitOpError(regName)
+           << " is incompatible with tensor memory descriptor view: current "
+              "memdesc type does not encode a self-contained ld/st layout";
+  }
 
   auto maxnreg = getContextualMaxNReg(op);
-  if (!disallowQueryTypeRescue) {
-    auto directRowPlan = getQueryRowPlan(memdesc);
-    if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, maxnreg,
-                                              /*emitError=*/{},
-                                              directRowPlan))) {
-      return success();
-    }
-  }
-
-  auto queryTypes = hasTypeLocalLdStLayout
-                        ? triton::nvidia_gpu::getTypeLocalTMemLdStQueryTypes(memdesc)
-                        : triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
-  if (!disallowQueryTypeRescue) {
-    for (MemDescType queryTy : queryTypes) {
-      auto rowPlan = getQueryRowPlan(queryTy);
-      if (succeeded(computeTMemLdStEncodingInfo(type, queryTy, maxnreg,
-                                                /*emitError=*/{}, rowPlan))) {
-        return success();
-      }
-    }
-  }
-  std::string rawQueryError;
-  if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
-          memdescValue, /*preserveNonCanonicalView=*/true, &rawQueryError);
-      succeeded(rawQuery)) {
-    auto rowPlan =
-        getTMemLdStRowPlanForRawQuery(memdescValue, memdesc, *rawQuery);
-    if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, *rawQuery, maxnreg,
-                                              /*emitError=*/{}, rowPlan))) {
-      return success();
-    }
-  }
-  std::string supportQueryError;
-  auto trySupportQuery = [&](const TMemLdStQueryLayout &supportQuery,
-                             std::optional<TMemLdStRowPlan> rowPlan) {
-    rowPlan = getTMemLdStRowPlanForSupportQuery(memdescValue, memdesc,
-                                                supportQuery, rowPlan);
-    return succeeded(computeTMemLdStEncodingInfo(type, memdesc, supportQuery,
-                                                 maxnreg, /*emitError=*/{},
-                                                 rowPlan));
+  auto tryType = [&](MemDescType queryTy) {
+    auto rowPlan = getTMemLdStRowPlanForType(queryTy);
+    return succeeded(computeTMemLdStEncodingInfo(type, queryTy, maxnreg,
+                                                /*emitError=*/{}, rowPlan));
   };
-  if (auto supportPlan =
-          getTMemLdStSupportQueryPlan(memdescValue, &supportQueryError)) {
-    if (trySupportQuery(supportPlan->query, supportPlan->rowPlan))
+
+  if (tryType(memdesc))
+    return success();
+
+  auto queryTypes = triton::nvidia_gpu::getTypeLocalTMemLdStQueryTypes(memdesc);
+  for (MemDescType queryTy : queryTypes) {
+    if (tryType(queryTy))
       return success();
   }
 
-  std::string standaloneError;
-  if (!hasTypeLocalLdStLayout) {
-    if (auto standaloneTy =
-            inferStandaloneTMemViewType(memdescValue, &standaloneError);
-        succeeded(standaloneTy)) {
-      if (auto maybePlan = getTMemLdStPhysicalSupportPlan(
-              *standaloneTy, lookupNumWarps(op), maxnreg);
-          maybePlan && maybePlan->regTy == type) {
-        return success();
-      }
-    }
+  std::string supportError;
+  if (auto supportPlan = getTypeLocalTMemLdStSupportQueryPlan(memdesc,
+                                                              &supportError)) {
+    auto rowPlan = supportPlan->rowPlan;
+    if (!rowPlan)
+      rowPlan = getTMemLdStRowPlanForType(memdesc);
+    if (!rowPlan)
+      rowPlan = getTMemLdStRowPlan(supportPlan->query.layout);
+    if (succeeded(computeTMemLdStEncodingInfo(type, memdesc,
+                                              supportPlan->query, maxnreg,
+                                              /*emitError=*/{}, rowPlan)))
+      return success();
   }
 
   std::string requestedLayoutDetails;
@@ -1506,37 +1446,20 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     llvm::raw_string_ostream os(requestedLayoutDetails);
     ScopedDiagnosticHandler handler(op->getContext(),
                                     [&](Diagnostic &diag) { diag.print(os); });
-    std::string supportError;
-    if (auto supportPlan =
-            getTMemLdStSupportQueryPlan(memdescValue, &supportError)) {
+    if (auto supportPlan = getTypeLocalTMemLdStSupportQueryPlan(memdesc,
+                                                                &supportError)) {
       auto rowPlan = supportPlan->rowPlan;
-      rowPlan = getTMemLdStRowPlanForSupportQuery(
-          memdescValue, memdesc, supportPlan->query, rowPlan);
-      (void)computeTMemLdStEncodingInfo(type, memdesc, supportPlan->query,
-                                        maxnreg,
-                                        [&]() {
-                                          return mlir::emitError(op->getLoc());
-                                        },
-                                        rowPlan);
+      if (!rowPlan)
+        rowPlan = getTMemLdStRowPlanForType(memdesc);
+      if (!rowPlan)
+        rowPlan = getTMemLdStRowPlan(supportPlan->query.layout);
+      (void)computeTMemLdStEncodingInfo(
+          type, memdesc, supportPlan->query, maxnreg,
+          [&]() { return mlir::emitError(op->getLoc()); }, rowPlan);
     }
-    std::string rawError;
     if (requestedLayoutDetails.empty()) {
-      if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
-              memdescValue, /*preserveNonCanonicalView=*/true, &rawError);
-          succeeded(rawQuery)) {
-        auto rowPlan =
-            getTMemLdStRowPlanForRawQuery(memdescValue, memdesc, *rawQuery);
-        (void)computeTMemLdStEncodingInfo(type, memdesc, *rawQuery, maxnreg,
-                                          [&]() {
-                                            return mlir::emitError(op->getLoc());
-                                          },
-                                          rowPlan);
-      }
-    }
-    if (requestedLayoutDetails.empty() &&
-        !disallowQueryTypeRescue) {
       for (MemDescType queryTy : queryTypes) {
-        auto rowPlan = getQueryRowPlan(queryTy);
+        auto rowPlan = getTMemLdStRowPlanForType(queryTy);
         (void)computeTMemLdStEncodingInfo(
             type, queryTy, maxnreg,
             [&]() { return mlir::emitError(op->getLoc()); }, rowPlan);
@@ -1561,8 +1484,9 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   }
   if (layouts.empty()) {
     diag.attachNote()
-        << "No TMEM-compatible register layout exists for this operand. "
-           "reshape or permute so TMEM columns stay contiguous.";
+        << "No TMEM-compatible register layout exists for this operand from "
+           "the current memdesc type/layout. Rewrite the descriptor to a "
+           "directly supported layout or use a software fallback.";
   } else {
     diag.attachNote()
         << "Use one of the potential TMEM layouts above, or insert "
@@ -1681,7 +1605,7 @@ LogicalResult TMEMLoadOp::verify() {
       ScopedDiagnosticHandler handler(getContext(),
                                       [&](Diagnostic &diag) { diag.print(os); });
       return computeTMemLoadReductionEncodingInfo(
-          regTy, srcMemTy, getSrc(), maxnreg,
+          regTy, srcMemTy, maxnreg,
           [&]() { return mlir::emitError(getOperation()->getLoc()); });
     }();
     if (failed(encodingInfoOr)) {
@@ -1815,7 +1739,7 @@ LogicalResult TMEMCopyOp::verify() {
   auto shmemLl = toLinearLayout(srcTy);
   std::string tmemError;
   auto maybeQuerySelection =
-      selectTMemCopyPhysicalQuery(getDst(), shmemLl, &tmemError);
+      selectTMemCopyPhysicalQuery(dstTy, shmemLl, &tmemError);
   if (failed(maybeQuerySelection)) {
     return emitOpError(tmemError.empty()
                            ? "unsupported tensor memory descriptor view for "
@@ -1832,44 +1756,8 @@ LogicalResult TMEMCopyOp::verify() {
       llvm::errs() << "[tmem-copy] type-local destination query failed: "
                    << querySelection.typeLocalError << "\n";
     }
-    if (!querySelection.standalone) {
-      llvm::errs() << "[tmem-copy] standalone destination query failed: "
-                   << querySelection.standaloneError << "\n";
-    }
-    if (!querySelection.exact) {
-      llvm::errs() << "[tmem-copy] exact destination query failed: "
-                   << querySelection.exactError << "\n";
-    } else if (querySelection.standalone) {
-      if (auto difference = getFirstTMemPhysicalQueryDifference(
-              *querySelection.standalone, *querySelection.exact)) {
-        auto printOrigin = [](StringRef label, ArrayRef<int32_t> origin) {
-          llvm::errs() << label;
-          for (int32_t value : origin)
-            llvm::errs() << " " << value;
-          llvm::errs() << "\n";
-        };
-
-        llvm::errs() << "[tmem-copy] destination standalone/exact query "
-                        "divergence: "
-                     << stringifyTMemPhysicalQueryDifference(*difference)
-                     << "\n";
-        llvm::errs() << "[tmem-copy] standalone layout:\n"
-                     << querySelection.standalone->layout.toString() << "\n";
-        printOrigin("[tmem-copy] standalone origin:",
-                    querySelection.standalone->origin);
-        llvm::errs() << "[tmem-copy] exact layout:\n"
-                     << querySelection.exact->layout.toString() << "\n";
-        printOrigin("[tmem-copy] exact origin:",
-                    querySelection.exact->origin);
-      }
-    }
-    if (querySelection.usedTypeLocal) {
+    if (querySelection.usedTypeLocal)
       llvm::errs() << "[tmem-copy] using type-local destination query\n";
-    } else if (querySelection.usedExact) {
-      llvm::errs() << "[tmem-copy] using exact destination query\n";
-    } else {
-      llvm::errs() << "[tmem-copy] using standalone destination query\n";
-    }
   }
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
@@ -1929,11 +1817,6 @@ LogicalResult TMEMCopyOp::verify() {
                 << ", but Triton could not synthesize a compatible "
                    "shared-memory descriptor plan for it.";
     attachTMemCopyPlanFailureNotes(diag, planSelection);
-    if (querySelection.standalone && querySelection.exact) {
-      if (auto note = getTMemCopyExactViewScheduleNote(
-              *querySelection.standalone, *querySelection.exact))
-        diag.attachNote() << *note;
-    }
     diag.attachNote()
         << "Use the canonical shared layout for tcgen05.copy." << family
         << ", or reshape / permute the shared tile until it lowers to the "

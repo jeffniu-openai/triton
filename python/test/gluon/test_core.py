@@ -270,7 +270,7 @@ TMEM_RUNTIME_VIEW_UNSUPPORTED_BITCAST_CASES = [
         _make_tmem_linear_layout(128, 64),
         "32x32b",
         4,
-        "unsupported tensor memory memdesc_subslice view",
+        "unsupported tensor memory descriptor view: current memdesc type does not encode a self-contained ld/st layout",
     ),
 ]
 
@@ -2273,50 +2273,19 @@ def test_tmem_subslice_block_m_64(layout_kind):
     s = torch.randn((64, 128), dtype=torch.float32, device="cuda")
 
     out_tri = torch.empty_like(s)
-    compiled = kernel[(1, )](s, out_tri, full_layout)
-
-    ttgir = compiled.asm["ttgir"]
-    assert "tmem_physical_bitcast" in ttgir
-    # Check that we have two 64x128xf32 allocations.
-    assert ttgir.count("ttng.tmem_alloc") == 2
-    alloc_lines = [
-        line for line in ttgir.splitlines()
-        if "ttng.tmem_alloc" in line and "-> !ttg.memdesc<64x128xf32" in line
-    ]
-    assert len(alloc_lines) == 2
-
-    # Check that we allocated only 128 columns of TMEM.
-    llir = compiled.asm["llir"]
-    assert llir.count("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [$1], 128")
-
-    # Given TMEM[0:32] is the slice of TMEM for warpgroup 0, the expected layout
-    # of S is
-    #
-    #   TMEM[0:16]  = S[0:16, 0:64]
-    #   TMEM[16:32] = S[0:16, 64:128]
-    #
-    # When slicing S to obtain P, we expect it to overlap with the left half,
-    # i.e. S[0:16, 0:32] and S[0:16, 64:96].
-    out_ref = s
-    out_ref[:, 0:32] = 0.0
-    out_ref[:, 64:96] = 0.0
-
-    # Given S = [s0, s1, s2, s3], they are arranged like
-    #
-    #   TMEM[0:16]  = [s0, s1]
-    #   TMEM[16:32] = [s2, s3]
-    #
-    # Thus slicing S at  N//4 will obtain an offset to the beginning of s1.
-    out_ref[:, 32:34] = 2.0
-    out_ref[:, 34:36] = 3.0
-    out_ref[:, 36:38] = 4.0
-
-    torch.testing.assert_close(out_ref, out_tri, atol=0, rtol=0)
+    expected_error = (
+        "unsupported tensor memory descriptor view: current memdesc type does not encode a self-contained ld/st layout"
+        if layout_kind == "legacy"
+        else "unsupported tensor memory physical bitcast: row-zero M64 f32-to-16-bit descriptor views"
+    )
+    with pytest.raises(Exception) as excinfo:
+        kernel[(1, )](s, out_tri, full_layout)
+    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
-def test_tmem_subslice_block_m_64_parent_layout(layout_kind, fresh_triton_cache):
+def test_tmem_subslice_block_m_64_parent_layout(layout_kind):
 
     full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
 
@@ -2338,16 +2307,14 @@ def test_tmem_subslice_block_m_64_parent_layout(layout_kind, fresh_triton_cache)
     torch.manual_seed(0)
     s = torch.randn((64, 128), dtype=torch.float32, device="cuda")
     out_tri = torch.empty_like(s)
-
-    compiled = kernel[(1, )](s, out_tri, full_layout)
-
-    out_ref = s.clone()
-    out_ref[:, 0:32] = 0.0
-    out_ref[:, 64:96] = 0.0
-
-    torch.testing.assert_close(out_ref, out_tri, atol=0, rtol=0)
-    assert "tmem_physical_bitcast" in compiled.asm["ttgir"]
-    assert "ttg.convert_layout" not in compiled.asm["ttgir"]
+    expected_error = (
+        "unsupported tensor memory descriptor view: current memdesc type does not encode a self-contained ld/st layout"
+        if layout_kind == "legacy"
+        else "unsupported tensor memory physical bitcast: row-zero M64 f32-to-16-bit descriptor views"
+    )
+    with pytest.raises(Exception) as excinfo:
+        kernel[(1, )](s, out_tri, full_layout)
+    assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -3531,8 +3498,8 @@ TMEM_LINEAR_M64_FALLBACK_CASES = [
         64,
         2,
         (
-            ("tcgen05.st.sync.aligned.16x32bx2.x1.b32", 0, 1),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x1.b32", 0, 1),
+            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 0, 0),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 0, 0),
         ),
     ),
     (
@@ -3541,8 +3508,10 @@ TMEM_LINEAR_M64_FALLBACK_CASES = [
         64,
         64,
         (
-            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 0, 16),
+            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 32, 16),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 0, 16),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 32, 16),
         ),
     ),
     (
@@ -3551,8 +3520,10 @@ TMEM_LINEAR_M64_FALLBACK_CASES = [
         64,
         128,
         (
-            ("tcgen05.st.sync.aligned.16x32bx2.x64.b32", 0, 64),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x64.b32", 0, 64),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 64, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 64, 32),
         ),
     ),
 ]
