@@ -18703,3 +18703,15 @@ rejection, not rescue
   `make -j8`; `test_core.py -k tmem_reduction` `84 passed`; runtime-matrix fallback
   selector `84 passed`; structural ld.red selector `12 passed`; lit
   `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+- 2026-04-24 03:28 UTC: ld.red contract test hygiene pass completed. Factored shared clean
+  diagnostic helpers into `python/test/gluon/tmem_test_utils.py`, removed local
+  duplicates from `test_core.py`, `test_tmem_runtime_matrix.py`, and
+  `test_tmem_structural_fuzzer.py`, and simplified runtime-matrix rows that had
+  dead `expect_hardware` branches after the explicit-red contract cleanup.
+  Dynamic-index address-alignment rows are now direct hardware positives;
+  offset-column subslice rows are direct clean-diagnostic tests. No compiler or
+  frontend semantics changed. Validation: required `make -j8`; edited-test
+  `py_compile`; exact `test_core.py` clean-error rows `2 passed`;
+  runtime-matrix ld.red contract selector `84 passed`; structural ld.red
+  selector `12 passed`; `git diff --check` passed.

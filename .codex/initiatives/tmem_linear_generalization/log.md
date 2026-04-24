@@ -36220,3 +36220,20 @@ Open after this slice:
   runtime-matrix former-fallback selector `84 passed, 1627 deselected`;
   structural ld.red selector `12 passed, 24 deselected`; lit
   `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+
+## 2026-04-24 03:28 UTC: ld.red contract test hygiene pass
+
+- Refactored duplicated clean-diagnostic assertion logic into
+  `tmem_test_utils.assert_clean_tmem_diagnostic` and
+  `tmem_test_utils.collect_compile_error_text`.
+- Updated recent explicit-red tests to use the shared helpers instead of local
+  copies in `test_core.py`, `test_tmem_runtime_matrix.py`, and
+  `test_tmem_structural_fuzzer.py`.
+- Simplified runtime-matrix coverage by removing dead `expect_hardware` paths:
+  dynamic-index address-alignment rows compile and assert hardware `ld.red`,
+  while offset-column subslice rows are named and structured as clean diagnostic
+  tests.
+- Validation: `make -j8`; `PYTHONPATH=./python python3 -m py_compile` for the
+  edited test/helper modules; exact `test_core.py` clean-error rows `2 passed`;
+  runtime-matrix ld.red contract selector `84 passed, 1627 deselected`;
+  structural ld.red selector `12 passed, 24 deselected`; `git diff --check`.

@@ -22,7 +22,7 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
     tcgen05_mma_scaled,
 )
 from triton.experimental.gluon.language.nvidia.hopper import mbarrier
-from tmem_test_utils import random_quantized_tensor
+from tmem_test_utils import assert_clean_tmem_diagnostic, collect_compile_error_text, random_quantized_tensor
 
 
 def _permute_bits(bits, kind):
@@ -129,11 +129,6 @@ def _assert_clean_tmem_ldst_descriptor_view_unsupported(text):
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
-
-def _assert_clean_tmem_ldred_unsupported(text, *expected_fragments):
-    assert any(fragment in text for fragment in expected_fragments), text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
 
 
 @dataclass(frozen=True)
@@ -978,8 +973,7 @@ def test_tmem_structural_fuzzer_ldst_descriptor_view_reports_clean_unsupported(c
             inp, out, parent_layout, case.m, case.n, case.instr_variant, case.chain_id, num_warps=4
         )
 
-    captured = capfd.readouterr()
-    _assert_clean_tmem_ldst_descriptor_view_unsupported(str(excinfo.value) + captured.err + captured.out)
+    _assert_clean_tmem_ldst_descriptor_view_unsupported(collect_compile_error_text(excinfo, capfd))
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1032,9 +1026,8 @@ def test_tmem_structural_fuzzer_ldred(case, capfd):
                         num_warps=8,
                         num_ctas=2,
                     )
-                captured = capfd.readouterr()
-                _assert_clean_tmem_ldred_unsupported(
-                    str(excinfo.value) + captured.err + captured.out,
+                assert_clean_tmem_diagnostic(
+                    collect_compile_error_text(excinfo, capfd),
                     "tmem_load reduction register layout is not directly supported",
                     "failed to compute TMEM encoding info for reduction",
                     "tmem_load reduction selected a scalar tcgen05.ld.red message",
@@ -1120,9 +1113,8 @@ def test_tmem_structural_fuzzer_ldred_reports_clean_unsupported(case, capfd):
             num_warps=4,
         )
 
-    captured = capfd.readouterr()
-    _assert_clean_tmem_ldred_unsupported(
-        str(excinfo.value) + captured.err + captured.out,
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "unsupported for descriptor view",
         "unsupported tensor memory descriptor view for direct tcgen05.ld/st",
         "tmem_load reduction register layout is not directly supported",
@@ -1177,9 +1169,8 @@ def _run_ldred_1cta_direct_index_allocator_crash_case():
 def test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash(capfd):
     with pytest.raises(Exception) as excinfo:
         _run_ldred_twocta_rowcol_optimizer_crash_case()
-    captured = capfd.readouterr()
-    _assert_clean_tmem_ldred_unsupported(
-        str(excinfo.value) + captured.err + captured.out,
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
         "tmem_load reduction selected a scalar tcgen05.ld.red message",
         "tcgen05.ld.red requires at least an .x2 message shape",
@@ -1192,9 +1183,8 @@ def test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash(capfd):
 def test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash(capfd):
     with pytest.raises(Exception) as excinfo:
         _run_ldred_1cta_direct_index_allocator_crash_case()
-    captured = capfd.readouterr()
-    _assert_clean_tmem_ldred_unsupported(
-        str(excinfo.value) + captured.err + captured.out,
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
         "tmem_load reduction register layout is not directly supported",
     )

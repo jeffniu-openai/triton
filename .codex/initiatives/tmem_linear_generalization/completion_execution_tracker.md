@@ -1,10 +1,10 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 03:21 UTC
+Last updated: 2026-04-24 03:28 UTC
 
 Active phase: explicit TMEM reduction API cleanup is closed; current work is checkpointing, push recovery, and future support-planner follow-up only.
 
-Latest follow-up: explicit Gluon `load_min/load_max` now has an ld.red-or-clean-fail contract. The frontend no longer emits hidden software reduction for non-f32, unsupported-layout, unaligned-origin, or descriptor-view clean-negative cases; it creates a red `ttng.tmem_load` or the compiler reports a clean verifier/parsing/lowering diagnostic. Ordinary software reductions remain available only when user code writes `tmem.load(...)+tt.reduce(...)`, and optimize-tmem-layouts still does not auto-fuse that pattern. Validation: required `make -j8`; `test_core.py -k tmem_reduction` `84 passed`; runtime-matrix former-fallback selector `84 passed`; structural ld.red selector `12 passed`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
+Latest follow-up: hygiene-only cleanup after the explicit Gluon `load_min/load_max` ld.red-or-clean-fail contract. Shared clean-diagnostic helpers now live in `tmem_test_utils.py`, recent ld.red tests use them, and runtime-matrix rows no longer carry dead `expect_hardware` branches. No compiler/frontend semantics changed. Validation: required `make -j8`; edited-test `py_compile`; exact `test_core.py` clean-error rows `2 passed`; runtime-matrix ld.red contract selector `84 passed`; structural ld.red selector `12 passed`; `git diff --check` passed.
 
 Active deletion checklist for this batch:
 
@@ -5598,3 +5598,13 @@ discovery.
   `tmem_layouts.mlir` `1 passed`; `git diff --check` passed. Next slice:
   checkpoint commit and push; future ld.red support must be direct verifier /
   lowering support, not hidden software fallback.
+
+- 2026-04-24 03:28 UTC: hygiene-only ld.red contract cleanup completed. Completed items:
+  factored shared compile-diagnostic helpers into `tmem_test_utils.py`, deleted
+  duplicate helpers from recent red-load tests, and simplified runtime-matrix
+  branch structure so hardware positives and clean-error negatives are encoded
+  as separate direct tests. Validation evidence: `make -j8`; edited-test
+  `py_compile`; exact `test_core.py` clean-error rows `2 passed`;
+  runtime-matrix ld.red contract selector `84 passed`; structural ld.red
+  selector `12 passed`; `git diff --check` passed. No new semantic workstream
+  opened.

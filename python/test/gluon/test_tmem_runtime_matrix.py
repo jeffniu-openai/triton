@@ -27,6 +27,8 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
 from triton.experimental.gluon.language.nvidia.hopper import mbarrier, tma
 from triton._C.libtriton.gluon_ir import make_cga_layout
 from tmem_test_utils import (
+    assert_clean_tmem_diagnostic,
+    collect_compile_error_text,
     _expected_scaled_cp_opcode,
     _expected_scaled_mma_opcode,
     make_operand_descriptor,
@@ -7167,17 +7169,6 @@ def _extract_ld_red_pairs(compiled):
     return ptx_red_pairs
 
 
-def _assert_tmem_ld_red_compile_error(text, *expected_fragments):
-    assert any(fragment in text for fragment in expected_fragments), text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
-
-
-def _ld_red_error_text(excinfo, capfd):
-    captured = capfd.readouterr()
-    return str(excinfo.value) + captured.err + captured.out
-
-
 def _assert_ld_red_uses_hardware(compiled, expected_shape):
     red_pairs = _extract_ld_red_pairs(compiled)
     assert len(red_pairs) == 1
@@ -10223,8 +10214,8 @@ def test_tmem_runtime_matrix_ld_red_unaligned_subword_linear_subslice_view_repor
             inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
         )
 
-    _assert_tmem_ld_red_compile_error(
-        _ld_red_error_text(excinfo, capfd),
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction currently requires f32 element type",
     )
 
@@ -10249,23 +10240,23 @@ def test_tmem_runtime_matrix_ld_red_unaligned_subword_dynamic_index_view_reports
             inp, out, red, selector_tensor, layout, m, num_warps=4
         )
 
-    _assert_tmem_ld_red_compile_error(
-        _ld_red_error_text(excinfo, capfd),
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction currently requires f32 element type",
     )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize(
-    "n,index_col_bit,expect_hardware,expected_shape",
+    "n,index_col_bit,expected_shape",
     [
-        pytest.param(2, 1, True, "32x32b.x2", id="n2-hardware"),
-        pytest.param(32, 5, True, "32x32b.x32", id="aligned-hardware"),
+        pytest.param(2, 1, "32x32b.x2", id="n2-hardware"),
+        pytest.param(32, 5, "32x32b.x32", id="aligned-hardware"),
     ],
 )
 @pytest.mark.parametrize("selector", (0, 1))
 def test_tmem_runtime_matrix_ld_red_dynamic_index_view_address_alignment(
-    selector, n, index_col_bit, expect_hardware, expected_shape, capfd
+    selector, n, index_col_bit, expected_shape
 ):
     m = 128
     layout = _make_tmem_linear_layout_dynamic_index_col_bit(m, n, index_col_bit)
@@ -10273,19 +10264,6 @@ def test_tmem_runtime_matrix_ld_red_dynamic_index_view_address_alignment(
     out = torch.empty_like(inp)
     red = torch.empty((m,), dtype=torch.float32, device="cuda")
     selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
-
-    if not expect_hardware:
-        with pytest.raises(Exception) as excinfo:
-            tmem_ld_red_dynamic_index_view_kernel[(1, )](
-                inp, out, red, selector_tensor, layout, m, n, num_warps=4
-            )
-        _assert_tmem_ld_red_compile_error(
-            _ld_red_error_text(excinfo, capfd),
-            "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
-            "tmem_load reduction selected a scalar tcgen05.ld.red message",
-            "tcgen05.ld.red requires at least an .x2 message shape",
-        )
-        return
 
     compiled = tmem_ld_red_dynamic_index_view_kernel[(1, )](
         inp, out, red, selector_tensor, layout, m, n, num_warps=4
@@ -10302,13 +10280,13 @@ def test_tmem_runtime_matrix_ld_red_dynamic_index_view_address_alignment(
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize(
-    "offset,expect_hardware",
+    "offset",
     [
-        pytest.param(1, False, id="misaligned-reject"),
-        pytest.param(4, False, id="aligned-static-reject"),
+        pytest.param(1, id="misaligned-origin"),
+        pytest.param(4, id="static-origin"),
     ],
 )
-def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view(offset, expect_hardware, capfd):
+def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view_reports_clean_error(offset, capfd):
     M = 128
     N = 32
     layout = _make_tmem_linear_layout(M, 2 * N)
@@ -10316,41 +10294,15 @@ def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view(offset, e
     out = torch.empty((3, M, N), dtype=torch.float32, device="cuda")
     red = torch.empty((M,), dtype=torch.float32, device="cuda")
 
-    if not expect_hardware:
-        with pytest.raises(Exception) as excinfo:
-            tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
-                inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
-            )
-        _assert_tmem_ld_red_compile_error(
-            _ld_red_error_text(excinfo, capfd),
-            "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
+    with pytest.raises(Exception) as excinfo:
+        tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
+            inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
         )
-        return
 
-    compiled = tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
-        inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
+        "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
     )
-
-    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
-    expected0, expected1 = _expected_offset_column_views(inp, offset, 11, 17)
-    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
-    torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
-    torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
-
-    red_pairs = [
-        pair
-        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
-        if ".ld.red." in pair[0]
-    ]
-    assert len(red_pairs) == 1
-    red_op, red_offset = red_pairs[0]
-    assert red_offset == 0
-    assert red_op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x32.max")
-    assert red_op.endswith(".f32")
-    ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "ttng.tmem_load" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -10538,8 +10490,8 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_erro
             inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
         )
 
-    _assert_tmem_ld_red_compile_error(
-        _ld_red_error_text(excinfo, capfd),
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction register layout is not directly supported",
     )
 
@@ -10562,8 +10514,8 @@ def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_error(
             inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
         )
 
-    _assert_tmem_ld_red_compile_error(
-        _ld_red_error_text(excinfo, capfd),
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction currently requires f32 element type",
         "'abs' requires floating-point element type (f32)",
         "'NaN' requires floating-point element type (f32)",
@@ -10589,8 +10541,8 @@ def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_reports_clean_error
             inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
         )
 
-    _assert_tmem_ld_red_compile_error(
-        _ld_red_error_text(excinfo, capfd),
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction currently requires f32 element type",
         "'abs' requires floating-point element type (f32)",
         "'NaN' requires floating-point element type (f32)",
@@ -10613,8 +10565,8 @@ def test_tmem_runtime_matrix_ld_red_scales_reports_clean_error(red_op, use_abs, 
             inp, out, red, layout, N, "32x32b", red_op, use_abs, tl.PropagateNan.NONE, num_warps=4
         )
 
-    _assert_tmem_ld_red_compile_error(
-        _ld_red_error_text(excinfo, capfd),
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction currently requires f32 element type",
         "'abs' requires floating-point element type (f32)",
         "tmem_load reduction is not supported for tensor memory scales",
@@ -10815,8 +10767,8 @@ def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_error(
             num_warps=num_warps,
         )
 
-    _assert_tmem_ld_red_compile_error(
-        _ld_red_error_text(excinfo, capfd),
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction register layout is not directly supported",
         "failed to compute TMEM encoding info for reduction",
     )

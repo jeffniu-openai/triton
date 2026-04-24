@@ -31,6 +31,18 @@ from triton.experimental.gluon.language.nvidia.hopper import fence_async_shared,
 from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
 from triton._C.libtriton.gluon_ir import make_cga_layout
 
+
+def collect_compile_error_text(excinfo, capfd):
+    captured = capfd.readouterr()
+    return str(excinfo.value) + captured.err + captured.out
+
+
+def assert_clean_tmem_diagnostic(text, *expected_fragments):
+    assert any(fragment in text for fragment in expected_fragments), text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
 def _make_tmem_linear_layout(m, n):
     return TensorMemoryLinearLayout(
         rows=[[1 << i, 0] for i in range(int(math.log2(m)))],

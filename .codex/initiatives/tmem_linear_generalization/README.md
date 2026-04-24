@@ -20,7 +20,13 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-## Latest: 2026-04-24 explicit Gluon load_min/load_max ld.red contract
+## Latest: 2026-04-24 ld.red contract test hygiene pass
+
+- Follow-up cleanup after the explicit `load_min/load_max` contract change factored shared clean-diagnostic helpers into `tmem_test_utils.py` and removed duplicated local helpers from `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py`.
+- Runtime-matrix ld.red tests no longer carry dead `expect_hardware` branches: dynamic-index address-alignment rows are explicit hardware positives, and offset-column subslice rows are explicit clean diagnostic tests.
+- This was a behavior-preserving test hygiene pass; no compiler/frontend semantics changed.
+
+## Previous: 2026-04-24 explicit Gluon load_min/load_max ld.red contract
 
 - Explicit Gluon `tensor_memory_descriptor.load_min/load_max` no longer synthesizes `tmem.load(...)+tt.reduce(...)` as a frontend fallback. These APIs now always request a red `ttng.tmem_load`/`tcgen05.ld.red` operation after choosing a register layout, and unsupported cases must fail verifier/parsing/lowering cleanly.
 - Removed the stale Python software-reduction combine helpers and the frontend support predicates that skipped red-load creation for non-f32, unsupported layouts, or alignment-clean-negative descriptors. Ordinary software reductions remain available only when user code writes `tmem.load(...)` followed by `tt.reduce(...)` explicitly; optimize-tmem-layouts still does not auto-fuse that pattern.

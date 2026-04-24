@@ -46,6 +46,7 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
 )
 from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
 from triton._C.libtriton.gluon_ir import make_cga_layout
+from tmem_test_utils import assert_clean_tmem_diagnostic, collect_compile_error_text
 
 
 THREADS_PER_WARP = triton.runtime.driver.active.get_current_target().warp_size
@@ -5430,11 +5431,6 @@ def _run_tmem_reduction_case(
     return compiled
 
 
-def _assert_tmem_ld_red_compile_error(text, *expected_fragments):
-    assert any(fragment in text for fragment in expected_fragments), text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
-
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
@@ -5528,9 +5524,8 @@ def test_tmem_reduction_linear_mixed_layout_reports_clean_error(capfd):
             num_warps=4,
         )
 
-    captured = capfd.readouterr()
-    _assert_tmem_ld_red_compile_error(
-        str(excinfo.value) + captured.err + captured.out,
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction register layout is not directly supported",
         "failed to compute TMEM encoding info for reduction",
     )
@@ -5546,9 +5541,8 @@ def test_tmem_reduction_non_f32_reports_clean_error(capfd):
     with pytest.raises(Exception) as excinfo:
         tmem_reduction_i32_kernel[(1, )](inp, out, red, layout, num_warps=4)
 
-    captured = capfd.readouterr()
-    _assert_tmem_ld_red_compile_error(
-        str(excinfo.value) + captured.err + captured.out,
+    assert_clean_tmem_diagnostic(
+        collect_compile_error_text(excinfo, capfd),
         "tmem_load reduction currently requires f32 element type",
     )
 
