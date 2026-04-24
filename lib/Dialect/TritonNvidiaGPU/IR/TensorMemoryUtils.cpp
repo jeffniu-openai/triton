@@ -9,7 +9,7 @@
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
-#include "triton/Tools/Sys/GetEnv.hpp"
+#include "triton/Tools/Sys/GetEnv.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "third_party/f2reduce/f2reduce.h"
 #include "llvm/ADT/ScopeExit.h"

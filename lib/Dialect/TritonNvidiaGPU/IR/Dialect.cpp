@@ -24,7 +24,7 @@
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
-#include "triton/Tools/Sys/GetEnv.hpp"
+#include "triton/Tools/Sys/GetEnv.h"
 
 #include <algorithm>
 #include <array>
@@ -4413,7 +4413,7 @@ getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
   auto kReg = StringAttr::get(tensorType.getContext(), "register");
   auto kLane = StringAttr::get(tensorType.getContext(), "lane");
   auto regLayout = toLinearLayout(regTy);
-  auto regDims = toLinearEncoding(regTy).basesPerDim(kReg);
+  auto regDims = toLinearEncoding(regTy).basesPerDim(kReg, /*skipBroadcast=*/true);
   auto outDims = llvm::to_vector(regLayout.getOutDimSizes());
   if (outDims.size() < 2)
     return unsupported(

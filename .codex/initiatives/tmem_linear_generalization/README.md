@@ -7,7 +7,15 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-## Latest: 2026-04-24 Gluon frontend TMEM iisan migration
+## Latest: 2026-04-24 merge latest upstream main
+
+- Fetched `upstream/main` at `27c402843` and merged it into `codex/tmem` from pre-merge `29a061b53` before resuming performance/codegen work.
+- Resolved conflicts across TritonGPU linear encoding inference, TMEM `ld.red` verifier support, Gluon attention example harness/API coverage, Gluon IR bindings, fpsan imports, and invalid linear/CGA/TMEM tests.
+- Follow-up merge fallout fixed: branch-only `GetEnv.hpp` includes now use upstream `GetEnv.h`, old `basesPerDim` calls use explicit `skipBroadcast`, and the generic-linear parser now passes `StringRef` input-dim names.
+- Validation: `git diff --check`; no conflict markers; required `make`; lit `TritonGPU/invalid.mlir` `1 passed`; lit `TritonNvidiaGPU/invalid.mlir` + `TritonGPU/fpsan.mlir` `2 passed`; Python syntax compile for edited Gluon Python files passed.
+- Next after merge commit/push: resume example performance recovery by porting/restoring upstream main example source where branch drift caused regressions, then fix the 01 attention packed-fp8 TMEM scalar RMW backend issue.
+
+## Previous: 2026-04-24 Gluon frontend TMEM iisan migration
 
 - Moved the TMEM iisan alignment instrumentation out of NVIDIA GPU-to-LLVM and into the Gluon Blackwell frontend, matching the existing TMA iisan model. The CUDA backend no longer passes an `enable-illegal-instruction-sanitizer` flag to `convert-triton-gpu-to-llvm`, and LLVM lowering no longer emits TMEM-specific iisan assertions.
 - Added `ttng.tmem_address` as a small TTNG helper op for frontend instrumentation. Gluon emits it only when `enable_iisan` is set; NVIDIA GPU-to-LLVM lowers it to the current packed runtime TMEM address from the memdesc SSA value. This keeps the user-facing checks in Gluon while avoiding producer-chain inspection.

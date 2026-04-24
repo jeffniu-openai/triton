@@ -586,7 +586,7 @@ tt.func public @padded_subview_unsupported_size(%arg0: !ttg.memdesc<2x32x32xf32,
 
 // -----
 
-// expected-error @+1 {{After removing the zero bases the CGA encoding must be a permutation matrix}}
+// expected-error @+1 {{After removing broadcast bases the CGA encoding must be a permutation matrix}}
 #blocked_bad_cga = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [1, 1], order = [0, 1], CGALayout = [[1, 0], [1, 0]]}>
 module {
   tt.func public @invalid_cga_layout(%arg0: tensor<1x1xf32, #blocked_bad_cga>) {
@@ -596,7 +596,7 @@ module {
 
 // -----
 
-// expected-error @+1 {{After removing the zero bases the layout must be a permutation matrix}}
+// expected-error @+1 {{LinearEncodingAttr requires a permutation matrix layout after removing broadcast bases}}
 #linear_bad_perm = #ttg.linear<{register = [[1], [3]], lane = [], warp = [], block = []}>
 module {
   tt.func public @invalid_linear_layout(%arg0: tensor<4xi32, #linear_bad_perm>) {
@@ -606,7 +606,7 @@ module {
 
 // -----
 
-// expected-error @+1 {{After removing the zero bases the layout must be a permutation matrix}}
+// expected-error @+1 {{LinearEncodingAttr requires a permutation matrix layout after removing broadcast bases}}
 #linear_bad_after_flatten = #ttg.linear<{register = [[1, 1], [1, 0]], lane = [], warp = [], block = []}>
 module {
   tt.func public @invalid_linear_layout_after_flatten(%arg0: tensor<2x2xi32, #linear_bad_after_flatten>) {

@@ -5648,3 +5648,13 @@ discovery.
   implementation, while upstream main source compiled with the branch compiler
   matches main SASS shape. Next concrete workstream: restore/port main example
   code, then fix the 01 packed-fp8 TMEM RMW codegen issue.
+
+
+## 2026-04-24 20:40 UTC: merge latest upstream main
+
+- Fetched `upstream/main` at `27c402843` and merged it into `codex/tmem` from pre-merge `29a061b53` before continuing performance/codegen work.
+- Resolved conflicts in `lib/Dialect/TritonGPU/IR/Dialect.cpp`, `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`, `python/examples/gluon/01-attention-forward.py`, `python/src/gluon_ir.cc`, `python/test/gluon/test_fpsan.py`, and `test/TritonGPU/invalid.mlir`.
+- Merge resolution kept the branch TMEM semantics: direct `MemDescType`/layout-based memdesc inference hooks, generalized `ld.red` register-layout support, Gluon TMEM API/fp8 attention coverage, and frontend iisan support. It also kept upstream main additions: generic linear encoding plumbing, updated Gluon attention `KernelConfig`/preallocated CUDAGraph harness, Hopper fpsan imports, and restored invalid linear/CGA tests.
+- Build fallout fixed after the textual merge: updated branch-only includes from `triton/Tools/Sys/GetEnv.hpp` to `GetEnv.h`, converted old one-argument `basesPerDim` call sites to the new explicit `skipBroadcast` API, and matched `GenericLinearEncodingAttr::parse` to the current `parseLinearLayout` `StringRef` interface.
+- Validation: `git diff --check`; conflict marker scan `rg -n "^(<<<<<<<|=======$|>>>>>>>)"`; required `make`; lit `test/TritonGPU/invalid.mlir` `1 passed`; lit `test/TritonNvidiaGPU/invalid.mlir test/TritonGPU/fpsan.mlir` `2 passed`; Python syntax compile for `python/examples/gluon/01-attention-forward.py` and `python/test/gluon/test_fpsan.py` passed.
+- Next work after the merge checkpoint remains the performance/codegen workstream: restore/port main example source where branch drift caused regressions, then fix the 01 attention packed-fp8 TMEM scalar RMW backend issue.

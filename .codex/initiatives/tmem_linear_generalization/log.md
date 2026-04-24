@@ -36347,3 +36347,13 @@ Open after this slice:
 - Wrote `.codex/initiatives/tmem_linear_generalization/example_codegen_diagnosis_20260424.md` after capturing TTGIR/PTX/SASS for current branch source, upstream main source on main compiler, and upstream main source on branch compiler.
 - 01 attention: full-benchmark small-N loss is partly harness/source drift (`do_bench` + output allocation on branch versus preallocated CUDAGraph on main), but same-source upstream-main attention still regresses under the branch compiler (`431.44` vs `502.00` TFLOPS direct CUDAGraph). SASS cause is extra packed-fp8 TMEM RMW around `_compute_and_store_exp2`: many more scalar `tcgen05.ld/st.x1`, `LDTM/STTM`, shifts, `LOP3`, and `SEL`.
 - 05 fused gather: no same-source backend regression was found. The branch example is a different 1-CTA `BLOCK_N=256` helper-store implementation; upstream main's 2-CTA `BLOCK_N=512` multicast source compiles on the branch with matching SASS and focused timing around the main row.
+
+
+## 2026-04-24 20:40 UTC: merge latest upstream main
+
+- Fetched `upstream/main` at `27c402843` and merged it into `codex/tmem` from pre-merge `29a061b53` before continuing performance/codegen work.
+- Resolved conflicts in `lib/Dialect/TritonGPU/IR/Dialect.cpp`, `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`, `python/examples/gluon/01-attention-forward.py`, `python/src/gluon_ir.cc`, `python/test/gluon/test_fpsan.py`, and `test/TritonGPU/invalid.mlir`.
+- Merge resolution kept the branch TMEM semantics: direct `MemDescType`/layout-based memdesc inference hooks, generalized `ld.red` register-layout support, Gluon TMEM API/fp8 attention coverage, and frontend iisan support. It also kept upstream main additions: generic linear encoding plumbing, updated Gluon attention `KernelConfig`/preallocated CUDAGraph harness, Hopper fpsan imports, and restored invalid linear/CGA tests.
+- Build fallout fixed after the textual merge: updated branch-only includes from `triton/Tools/Sys/GetEnv.hpp` to `GetEnv.h`, converted old one-argument `basesPerDim` call sites to the new explicit `skipBroadcast` API, and matched `GenericLinearEncodingAttr::parse` to the current `parseLinearLayout` `StringRef` interface.
+- Validation: `git diff --check`; conflict marker scan `rg -n "^(<<<<<<<|=======$|>>>>>>>)"`; required `make`; lit `test/TritonGPU/invalid.mlir` `1 passed`; lit `test/TritonNvidiaGPU/invalid.mlir test/TritonGPU/fpsan.mlir` `2 passed`; Python syntax compile for `python/examples/gluon/01-attention-forward.py` and `python/test/gluon/test_fpsan.py` passed.
+- Next work after the merge checkpoint remains the performance/codegen workstream: restore/port main example source where branch drift caused regressions, then fix the 01 attention packed-fp8 TMEM scalar RMW backend issue.
