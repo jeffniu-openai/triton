@@ -20,7 +20,13 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-## Latest: 2026-04-24 strict legacy semantic chain cleanup closed
+## Latest: 2026-04-24 optimize-tmem-layouts ld.red fusion removed
+
+- `OptimizeTMemLayouts` is restored to mainline reduction behavior modulo branch API/model guards. The branch-only automatic fusion from ordinary `ttng.tmem_load` plus min/max `tt.reduce` into `TMEMLoadOp redOp`/`tcgen05.ld.red` has been deleted.
+- The Gluon pipeline no longer runs `add_optimize_tmem_layouts`; `third_party/nvidia/backend/compiler.py` and `python/triton/compiler/compiler.py` both compare identical to fetched `main`. Explicit Gluon `load_min/load_max` still uses the frontend red-load op when requested and legal.
+- A lit regression row now checks that optimize-tmem-layouts preserves a max reduction after `ttng.tmem_load` as an explicit `tt.reduce` with no `redOp`.
+
+## Previous: 2026-04-24 strict legacy semantic chain cleanup closed
 
 - The user decision to delete, not maintain, legacy semantic view-chain code is implemented for the active TMEM lowering surfaces. Verifier, Gluon layout/reduction gating, NVIDIA LLVM ld/st/reduction lowering, migrated `tcgen05.copy`, and MMAv5/MMAv5-scaled semantic lowering now use the current memdesc SSA value plus current `MemDescType`/layout, or reject cleanly.
 - Removed the stale standalone/exact producer-chain recovery helpers, full-view replay legalization, relative-base-offset subtraction, value-shaped support-query semantics, and value-shaped ld/st query refinement from semantic callers. `OptimizeTMemLayouts` no longer carries the physical-support load/store replay rewrite.

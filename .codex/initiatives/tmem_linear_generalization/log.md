@@ -36191,3 +36191,10 @@ Open after this slice:
 - Hardened direct semantics: descriptor subviews whose current `MemDescType` is not self-contained now produce clean unsupported diagnostics in verifier/lowering/front-end paths. `OptimizeTMemLayouts` no longer contains the physical-support load/store replay rewrite that could act as hidden legalization.
 - Updated tests and expectations: lit `leading_slice_view_load/store` now checks direct descriptor-view load/store operations; Gluon M64 subslice bitcast rows now assert clean unsupported for the row-zero M64 f32-to-16-bit split-N mapping; M64 fallback opcode expectations were refreshed after runtime correctness stayed green.
 - Validation: `make -j8`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; focused unsupported/M64 rows `5 passed`; adjacent TMEM rows `22 passed`; exact M64 fallback row `3 passed`; four-GPU `test_core.py -k tmem` split passed as group1 `69 passed, 5 skipped`, group2 `74 passed`, group3 `74 passed`, group4 `71 passed`; `git diff --check` passed after documentation edits.
+
+## 2026-04-24 02:57 UTC: optimize-tmem-layouts ld.red fusion removed
+
+- Deleted the automatic `tmem_load` + min/max `tt.reduce` to `TMEMLoadOp redOp` fusion from `OptimizeTMemLayouts`, including its view-transform matching helpers and math/functional includes. The pass registration now matches mainline pattern classes again: split load, store join, load-reduction layout selection, shared->TMEM, and TMEM->shared.
+- Restored `third_party/nvidia/backend/compiler.py` exactly to fetched `main`, removing the branch-only `add_optimize_tmem_layouts` call from the Gluon pipeline. Verified both NVIDIA backend `compiler.py` and `python/triton/compiler/compiler.py` have zero diff versus fetched `main`.
+- Added `tmem_load_max_no_ld_red_fusion` to `test/TritonNvidiaGPU/tmem_layouts.mlir` to check that optimize-tmem-layouts preserves the load plus `tt.reduce` max form and does not add `redOp`.
+- Validation: `make -j8`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; focused Gluon reduction rows `4 passed`; `git diff --check` passed.

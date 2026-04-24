@@ -1,8 +1,10 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 02:04 UTC
+Last updated: 2026-04-24 02:57 UTC
 
 Active phase: strict legacy semantic view-chain deletion is closed; current work is checkpointing, push recovery, and future support-planner follow-up only.
+
+Latest follow-up: `OptimizeTMemLayouts` has been restored to mainline reduction behavior modulo branch API/model guards. The branch-only automatic `tmem_load` + `tt.reduce` min/max fusion into `TMEMLoadOp redOp`/`tcgen05.ld.red` was deleted; explicit Gluon `load_min/load_max` still emits hardware `ld.red` through the frontend op when legal. `third_party/nvidia/backend/compiler.py` and `python/triton/compiler/compiler.py` compare identical to fetched `main`, so the Gluon pipeline no longer runs `add_optimize_tmem_layouts`. Validation: required `make -j8`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; focused explicit/software Gluon reduction rows `4 passed`; `git diff --check` passed after documentation refresh.
 
 Active deletion checklist for this batch:
 

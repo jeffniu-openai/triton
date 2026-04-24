@@ -233,6 +233,21 @@ tt.func public @tmem_load_reduce(%arg0: !ttg.memdesc<128x64xf32, #tmem, #ttng.te
   tt.return %1 : tensor<128xf32, #ttg.slice<{dim = 1, parent = #linear}>>
 }
 
+tt.func public @tmem_load_max_no_ld_red_fusion(%arg0: !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory>) -> tensor<128xf32, #ttg.slice<{dim = 1, parent = #linear}>> {
+  // CHECK-LABEL: tmem_load_max_no_ld_red_fusion
+  // CHECK: ttng.tmem_load
+  // CHECK-NOT: redOp
+  // CHECK: "tt.reduce"
+  // CHECK: arith.maxnumf
+  %0 = ttng.tmem_load %arg0 : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory> -> tensor<128x64xf32, #linear>
+  %1 = "tt.reduce"(%0) <{axis = 1 : i32}> ({
+  ^bb0(%arg2: f32, %arg3: f32):
+    %2 = arith.maxnumf %arg2, %arg3 : f32
+    tt.reduce.return %2 : f32
+  }) : (tensor<128x64xf32, #linear>) -> tensor<128xf32, #ttg.slice<{dim = 1, parent = #linear}>>
+  tt.return %1 : tensor<128xf32, #ttg.slice<{dim = 1, parent = #linear}>>
+}
+
 }
 
 // -----

@@ -1,8 +1,6 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -14,7 +12,6 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
-#include <functional>
 #include <numeric>
 
 namespace ttg = mlir::triton::gpu;
@@ -89,15 +86,6 @@ static ttg::MemDescType getSplitLoadRootMemDescType(Value memDesc) {
   return srcTy;
 }
 
-enum class TMemTensorViewTransformKind { Reshape, Trans };
-
-struct TMemTensorViewTransform {
-  TMemTensorViewTransformKind kind;
-  SmallVector<int64_t> srcShape;
-  SmallVector<int64_t> dstShape;
-  SmallVector<int32_t> order;
-};
-
 static bool isPlainSingleResultTMemLoad(TMEMLoadOp loadOp) {
   return loadOp && loadOp->getNumResults() == 1 && !loadOp.getRedOp() &&
          !loadOp.getToken();
@@ -125,81 +113,6 @@ getReplaySliceRegLayout(gpu::MemDescType layoutQueryTy, int numWarps) {
   if (layouts.empty())
     return std::nullopt;
   return layouts.front();
-}
-
-static Value applyTensorViewTransforms(PatternRewriter &rewriter, Location loc,
-                                       Value tensor,
-                                       ArrayRef<TMemTensorViewTransform> transforms) {
-  Value current = tensor;
-  for (const TMemTensorViewTransform &transform : transforms) {
-    if (transform.kind == TMemTensorViewTransformKind::Reshape) {
-      current = ReshapeOp::create(rewriter, loc, transform.dstShape, current);
-      continue;
-    }
-    current = TransOp::create(rewriter, loc, current, transform.order);
-  }
-  return current;
-}
-
-static bool isIdentityPermutation(ArrayRef<int32_t> order) {
-  for (auto [idx, dim] : llvm::enumerate(order))
-    if (dim != static_cast<int32_t>(idx))
-      return false;
-  return true;
-}
-
-static std::optional<SmallVector<TMemTensorViewTransform>>
-deriveReductionViewTransforms(ArrayRef<TMemTensorViewTransform> transforms) {
-  SmallVector<TMemTensorViewTransform> redTransforms;
-  for (const TMemTensorViewTransform &transform : transforms) {
-    if (transform.srcShape.empty() || transform.dstShape.empty())
-      return std::nullopt;
-    if (transform.srcShape.back() != transform.dstShape.back())
-      return std::nullopt;
-
-    ArrayRef<int64_t> srcReducedShape =
-        ArrayRef<int64_t>(transform.srcShape).drop_back();
-    ArrayRef<int64_t> dstReducedShape =
-        ArrayRef<int64_t>(transform.dstShape).drop_back();
-    if (transform.kind == TMemTensorViewTransformKind::Reshape) {
-      if (!llvm::equal(srcReducedShape, dstReducedShape)) {
-        redTransforms.push_back(TMemTensorViewTransform{
-            TMemTensorViewTransformKind::Reshape,
-            llvm::to_vector(srcReducedShape),
-            llvm::to_vector(dstReducedShape),
-            {}});
-      }
-      continue;
-    }
-
-    if (transform.order.empty() ||
-        transform.order.back() !=
-            static_cast<int32_t>(transform.srcShape.size() - 1))
-      return std::nullopt;
-    ArrayRef<int32_t> reducedOrder =
-        ArrayRef<int32_t>(transform.order).drop_back();
-    if (!isIdentityPermutation(reducedOrder)) {
-      redTransforms.push_back(TMemTensorViewTransform{
-          TMemTensorViewTransformKind::Trans,
-          llvm::to_vector(srcReducedShape),
-          llvm::to_vector(dstReducedShape),
-          llvm::to_vector(reducedOrder)});
-    }
-  }
-  return redTransforms;
-}
-
-static Value reshapeAndConvertToType(PatternRewriter &rewriter, Location loc,
-                                     Value value, RankedTensorType targetTy) {
-  Value current = value;
-  auto currentTy = cast<RankedTensorType>(current.getType());
-  if (!llvm::equal(currentTy.getShape(), targetTy.getShape())) {
-    current = ReshapeOp::create(rewriter, loc, targetTy.getShape(), current);
-    currentTy = cast<RankedTensorType>(current.getType());
-  }
-  if (currentTy != targetTy)
-    current = ttg::ConvertLayoutOp::create(rewriter, loc, targetTy, current);
-  return current;
 }
 
 class TMemSplitLoadPattern : public OpRewritePattern<SplitOp> {
@@ -423,169 +336,6 @@ public:
   }
 };
 
-class TMemFuseLoadReducePattern : public OpRewritePattern<TMEMLoadOp> {
-public:
-  TMemFuseLoadReducePattern(MLIRContext *context)
-      : OpRewritePattern<TMEMLoadOp>(context, /*benefit=*/1) {}
-
-  LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
-                                PatternRewriter &rewriter) const override {
-    if (!isPlainSingleResultTMemLoad(loadOp))
-      return failure();
-
-    auto loadTy = dyn_cast<RankedTensorType>(loadOp.getType());
-    auto srcTy = dyn_cast<ttg::MemDescType>(loadOp.getSrc().getType());
-    if (!loadTy || !srcTy || loadTy.getElementType().isF32() == false ||
-        srcTy.getElementType().isF32() == false ||
-        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding()))
-      return failure();
-
-    struct ReduceMatch {
-      triton::ReduceOp reduceOp;
-      math::AbsFOp absOp;
-      TMEMLoadReduceModifier modifier;
-      SmallVector<TMemTensorViewTransform> redTransforms;
-    };
-
-    auto tryMatchReduce = [&](Value reduceInput, math::AbsFOp absOp,
-                              ArrayRef<TMemTensorViewTransform> transforms)
-        -> std::optional<ReduceMatch> {
-      auto redTransforms = deriveReductionViewTransforms(transforms);
-      if (!redTransforms)
-        return std::nullopt;
-
-      for (Operation *user : reduceInput.getUsers()) {
-        auto reduceOp = dyn_cast<triton::ReduceOp>(user);
-        if (!reduceOp || reduceOp.getAxis() != 1 ||
-            reduceOp.getNumOperands() != 1 || reduceOp.getNumResults() != 1 ||
-            reduceOp.getOperand(0) != reduceInput) {
-          continue;
-        }
-
-        Operation *combiner = reduceOp.getSingleCombiner();
-        if (!combiner)
-          continue;
-
-        std::optional<TMEMLoadReduceModifier> modifier;
-        if (isa<arith::MinNumFOp>(combiner))
-          modifier = TMEMLoadReduceModifier::MIN;
-        else if (isa<arith::MaxNumFOp>(combiner))
-          modifier = TMEMLoadReduceModifier::MAX;
-        else
-          continue;
-        return ReduceMatch{reduceOp, absOp, *modifier,
-                           std::move(*redTransforms)};
-      }
-      return std::nullopt;
-    };
-
-    std::function<std::optional<ReduceMatch>(
-        Value, SmallVector<TMemTensorViewTransform>)>
-        matchReduce = [&](Value value, SmallVector<TMemTensorViewTransform>
-                                     transforms)
-        -> std::optional<ReduceMatch> {
-      if (auto match = tryMatchReduce(value, math::AbsFOp(), transforms))
-        return match;
-
-      for (Operation *user : value.getUsers()) {
-        if (auto absOp = dyn_cast<math::AbsFOp>(user)) {
-          if (auto match = tryMatchReduce(absOp.getResult(), absOp, transforms))
-            return match;
-          continue;
-        }
-        if (auto cvt = dyn_cast<ttg::ConvertLayoutOp>(user)) {
-          if (auto match = matchReduce(cvt.getResult(), transforms))
-            return match;
-          continue;
-        }
-        if (auto reshape = dyn_cast<ReshapeOp>(user)) {
-          SmallVector<TMemTensorViewTransform> nextTransforms(transforms);
-          nextTransforms.push_back(TMemTensorViewTransform{
-              TMemTensorViewTransformKind::Reshape,
-              llvm::to_vector(cast<RankedTensorType>(reshape.getSrc().getType())
-                                  .getShape()),
-              llvm::to_vector(reshape.getType().getShape()),
-              {}});
-          if (auto match = matchReduce(reshape.getResult(), nextTransforms))
-            return match;
-          continue;
-        }
-        if (auto trans = dyn_cast<TransOp>(user)) {
-          SmallVector<TMemTensorViewTransform> nextTransforms(transforms);
-          nextTransforms.push_back(TMemTensorViewTransform{
-              TMemTensorViewTransformKind::Trans,
-              llvm::to_vector(cast<RankedTensorType>(trans.getSrc().getType())
-                                  .getShape()),
-              llvm::to_vector(trans.getType().getShape()),
-              llvm::to_vector(trans.getOrder())});
-          if (auto match = matchReduce(trans.getResult(), nextTransforms))
-            return match;
-          continue;
-        }
-      }
-      return std::nullopt;
-    };
-
-    std::optional<ReduceMatch> match =
-        matchReduce(loadOp.getResult(), /*transforms=*/{});
-    if (!match)
-      return failure();
-    if (!isTMemLoadReductionAddressAligned(loadOp.getSrc()))
-      return failure();
-
-    int maxnreg = getContextualMaxNReg(loadOp);
-    auto canLowerType = [&](RankedTensorType candidateTy) {
-      auto support = getTmemLoadReductionLayoutSupport(
-          candidateTy, ttg::toLinearLayout(candidateTy));
-      if (!support)
-        return false;
-      return succeeded(computeTMemLoadReductionEncodingInfo(
-          candidateTy, srcTy, maxnreg, /*emitError=*/{}));
-    };
-
-    RankedTensorType fusedTy = loadTy;
-    if (auto plannedLayout = getTMemLoadReductionLayoutForMemDesc(
-            srcTy, ttg::lookupNumWarps(loadOp))) {
-      auto plannedTy = loadTy.cloneWithEncoding(*plannedLayout);
-      if (canLowerType(plannedTy))
-        fusedTy = plannedTy;
-    }
-    if (!canLowerType(fusedTy))
-      return failure();
-
-    auto redOpAttr = TMEMLoadReduceModifierAttr::get(rewriter.getContext(),
-                                                     match->modifier);
-    BoolAttr absAttr =
-        match->absOp ? rewriter.getBoolAttr(true) : BoolAttr(nullptr);
-    auto fusedLoad = TMEMLoadOp::create(
-        rewriter, loadOp.getLoc(), fusedTy, /*token=*/Type(), loadOp.getSrc(),
-        /*dep=*/Value(), redOpAttr, absAttr, /*NaN=*/nullptr);
-
-    Value red = fusedLoad.getRed();
-    if (!match->redTransforms.empty()) {
-      red = applyTensorViewTransforms(rewriter, match->reduceOp.getLoc(), red,
-                                      match->redTransforms);
-    }
-    auto reduceTy =
-        cast<RankedTensorType>(match->reduceOp.getResult().front().getType());
-    if (red.getType() != reduceTy)
-      red = reshapeAndConvertToType(rewriter, match->reduceOp.getLoc(), red,
-                                    reduceTy);
-
-    Value loaded = fusedLoad.getResult();
-    if (loaded.getType() != loadTy)
-      loaded = reshapeAndConvertToType(rewriter, loadOp.getLoc(), loaded,
-                                       loadTy);
-
-    rewriter.replaceOp(match->reduceOp, red);
-    loadOp.getResult().replaceAllUsesWith(loaded);
-    if (match->absOp && match->absOp->use_empty())
-      rewriter.eraseOp(match->absOp);
-    rewriter.eraseOp(loadOp);
-    return success();
-  }
-};
-
 // Optimize local_load -> tmem_store when the layout 16x256b allows better
 // code generation for local_load lowering.
 class TMemFromSharedMemPattern : public OpRewritePattern<TMEMStoreOp> {
@@ -783,8 +533,7 @@ public:
     mlir::RewritePatternSet patterns(context);
     patterns
         .add<TMemSplitLoadPattern, TMemStoreJoinPattern, TMemLoadReducePattern,
-             TMemFuseLoadReducePattern, TMemFromSharedMemPattern,
-             TMemToSharedMemPattern>(context);
+             TMemFromSharedMemPattern, TMemToSharedMemPattern>(context);
     if (failed(applyPatternsGreedily(m, std::move(patterns))))
       signalPassFailure();
   }
