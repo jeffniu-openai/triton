@@ -1,10 +1,10 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 03:50 UTC
+Last updated: 2026-04-24 05:25 UTC
 
-Active phase: explicit TMEM reduction API cleanup is closed; current focused follow-up is TMEM control-flow local-codegen regression coverage and checkpointing.
+Active phase: attention example branch-vs-main benchmark shows a broad no-red regression and a branch-only red-load compile failure; next work is root-cause analysis before optimization.
 
-Latest follow-up: added focused conversion lit coverage for local TMEM codegen with same-type/same-layout memdesc values selected through `scf.if` from different runtime origins. The new file checks plain load, explicit `ld.red`, and store address formation from the selected SSA memdesc value. Validation so far: required `make -j8` was a no-op; `lit -v test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir` `1 passed`.
+Latest follow-up: benchmarked `01-attention-forward.py` on branch `f9d78417f` versus upstream `main` `a9ced8362` on NVIDIA GB300. Common `use_tmem_red=False` subset regressed on all 56 points with geomean branch/main `0.875x`; branch `use_tmem_red=True` fails compile at `s_tmem.slice(...).load_max()` due red-load 128-bit-origin alignment rejection while main red subset completes.
 
 Active deletion checklist for this batch:
 
@@ -5614,3 +5614,8 @@ discovery.
   checks that plain load, explicit `ld.red`, and store lower from the selected
   `scf.if` memdesc SSA value rather than a producer-origin chain. Validation:
   `make -j8` no-op; targeted lit `1 passed`.
+
+- 2026-04-24 05:25 UTC: attention example benchmark completed. Common no-red subset branch/main
+  geomean `0.875x`, all 56 points slower on branch; red subset is not
+  comparable because branch compile rejects `load_max()` on sliced TMEM origin
+  while upstream main completes. Raw results saved under `/tmp/tmem_attention_bench/`.

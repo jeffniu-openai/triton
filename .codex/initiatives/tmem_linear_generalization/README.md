@@ -20,7 +20,13 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-## Latest: 2026-04-24 TMEM control-flow local-codegen lit coverage
+## Latest: 2026-04-24 attention example branch-vs-main benchmark
+
+- Benchmarked `python/examples/gluon/01-attention-forward.py` on NVIDIA GB300 GPU 0, comparing branch `f9d78417f` against freshly fetched upstream `main` `a9ced8362`.
+- On the common runnable `use_tmem_red=False` subset, the branch lost all 56 measured points with geometric mean `0.875x` of main (`-12.5%`). Worst point: `D=64 causal=True fp16 N_CTX=1024` at `0.563x`; best point: `D=128 causal=True fp8 N_CTX=8192` at `0.963x`.
+- Main's `use_tmem_red=True` subset completed, while the branch fails compilation immediately because explicit `load_max()` now requests `tcgen05.ld.red` for a sliced TMEM descriptor whose origin is rejected as not 128-bit aligned. This is a correctness/coverage blocker before red-path performance can be compared.
+
+## Previous: 2026-04-24 TMEM control-flow local-codegen lit coverage
 
 - Added focused conversion lit coverage for memdesc values with identical `MemDescType`/layout but different runtime tensor-memory origins selected through `scf.if`.
 - The checks cover plain `ttng.tmem_load`, explicit `ttng.tmem_load` with `redOp`/`tcgen05.ld.red`, and `ttng.tmem_store`. Each check verifies that LLVM local codegen converts the selected memdesc SSA value to an address and feeds that selected address to the `tcgen05` instruction.

@@ -36255,3 +36255,12 @@ Open after this slice:
 - Validation: `make -j8` completed with `ninja: no work to do`;
   `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir`
   -> `1 passed`.
+
+## 2026-04-24 05:25 UTC: 01-attention-forward branch-vs-main benchmark
+
+- Environment: NVIDIA GB300, `CUDA_VISIBLE_DEVICES=0`; branch `f9d78417f`; upstream main `a9ced8362`; separate `TRITON_CACHE_DIR`s for branch and main.
+- Build: branch `make -j8` was a no-op; `/tmp/triton-main-bench` rebuilt `upstream/main` successfully before benchmarking.
+- Common runnable subset `use_tmem_red=False`: branch/main geometric mean `0.875x` across 56 points; wins `0`, losses `56`; worst `0.563x` at `D=64 causal=True fp16 N_CTX=1024`; best `0.963x` at `D=128 causal=True fp8 N_CTX=8192`.
+- Per-config geomean branch/main: `D64 noncausal fp16 0.896x`, `D64 noncausal fp8 0.870x`, `D64 causal fp16 0.834x`, `D64 causal fp8 0.874x`, `D128 noncausal fp16 0.886x`, `D128 noncausal fp8 0.860x`, `D128 causal fp16 0.897x`, `D128 causal fp8 0.886x`.
+- Red subset: `upstream/main` `use_tmem_red=True` completed and produced essentially the same throughput as main no-red. Branch `use_tmem_red=True` exited status `1` during compilation at `01-attention-forward.py:576`: `s_tmem.slice(i * SIZE, SIZE).load_max()` requests `tcgen05.ld.red` but the branch verifier reports the tensor-memory origin is not 128-bit aligned.
+- Raw artifacts: `/tmp/tmem_attention_bench/branch_f9d78417f_no_red.txt`, `/tmp/tmem_attention_bench/main_a9ced8362_no_red.txt`, `/tmp/tmem_attention_bench/main_a9ced8362_red.txt`, and `/tmp/tmem_attention_bench/branch_f9d78417f_red_verify.txt`.
