@@ -5378,7 +5378,6 @@ def _run_tmem_reduction_case(
     use_abs,
     propagate_nan,
     num_warps,
-    expect_hw_reduce=True,
     expected_red_opcode_prefix="tcgen05.ld.red.sync.aligned.32x32b.x",
 ):
     input_tensor = torch.randn(M, N, dtype=torch.float32, device="cuda")
@@ -5418,25 +5417,23 @@ def _run_tmem_reduction_case(
         op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
     ]
     assert ptx_red_ops == llir_red_ops
-    if expect_hw_reduce:
-        assert ptx_red_ops
-        expected_modifier = f".{red_op}"
-        if use_abs:
-            expected_modifier += ".abs"
-        if propagate_nan == tl.PropagateNan.ALL:
-            expected_modifier += ".NaN"
-        expected_modifier += ".f32"
-        if expected_red_opcode_prefix is not None:
-            assert all(op.startswith(expected_red_opcode_prefix) for op in ptx_red_ops)
-        assert all(expected_modifier in op for op in ptx_red_ops)
-    else:
-        assert not ptx_red_ops
-        ptx_ld_ops = [
-            op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
-            if op.startswith("tcgen05.ld.sync.aligned.")
-        ]
-        assert ptx_ld_ops
+    assert ptx_red_ops
+    expected_modifier = f".{red_op}"
+    if use_abs:
+        expected_modifier += ".abs"
+    if propagate_nan == tl.PropagateNan.ALL:
+        expected_modifier += ".NaN"
+    expected_modifier += ".f32"
+    if expected_red_opcode_prefix is not None:
+        assert all(op.startswith(expected_red_opcode_prefix) for op in ptx_red_ops)
+    assert all(expected_modifier in op for op in ptx_red_ops)
     return compiled
+
+
+def _assert_tmem_ld_red_compile_error(text, *expected_fragments):
+    assert any(fragment in text for fragment in expected_fragments), text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -5519,41 +5516,41 @@ def test_tmem_reduction_linear_former_clean_errors_are_supported(layout, M, N, e
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-def test_tmem_reduction_linear_mixed_layout_uses_software_reduce():
-    _run_tmem_reduction_case(
-        _make_tmem_linear_layout_mixed(128, 64),
-        128,
-        64,
-        "min",
-        False,
-        tl.PropagateNan.NONE,
-        num_warps=4,
-        expect_hw_reduce=False,
+def test_tmem_reduction_linear_mixed_layout_reports_clean_error(capfd):
+    with pytest.raises(Exception) as excinfo:
+        _run_tmem_reduction_case(
+            _make_tmem_linear_layout_mixed(128, 64),
+            128,
+            64,
+            "min",
+            False,
+            tl.PropagateNan.NONE,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    _assert_tmem_ld_red_compile_error(
+        str(excinfo.value) + captured.err + captured.out,
+        "tmem_load reduction register layout is not directly supported",
+        "failed to compute TMEM encoding info for reduction",
     )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-def test_tmem_reduction_non_f32_uses_software_reduce():
+def test_tmem_reduction_non_f32_reports_clean_error(capfd):
     layout = TensorMemoryLayout(block=(128, 128), col_stride=1)
     inp = torch.randint(-50, 50, (128, 128), dtype=torch.int32, device="cuda")
     out = torch.empty_like(inp)
     red = torch.empty(128, dtype=torch.int32, device="cuda")
 
-    compiled = tmem_reduction_i32_kernel[(1, )](inp, out, red, layout, num_warps=4)
+    with pytest.raises(Exception) as excinfo:
+        tmem_reduction_i32_kernel[(1, )](inp, out, red, layout, num_warps=4)
 
-    torch.testing.assert_close(inp, out, atol=0, rtol=0)
-    torch.testing.assert_close(torch.min(inp, dim=1).values, red, atol=0, rtol=0)
-    ptx_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    llir_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    assert ptx_red_ops == llir_red_ops == []
-    assert [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
-        if op.startswith("tcgen05.ld.sync.aligned.")
-    ]
+    captured = capfd.readouterr()
+    _assert_tmem_ld_red_compile_error(
+        str(excinfo.value) + captured.err + captured.out,
+        "tmem_load reduction currently requires f32 element type",
+    )
 
 
 @pytest.mark.parametrize("num_ctas", [1, 2])

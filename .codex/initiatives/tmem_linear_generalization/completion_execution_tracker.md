@@ -1,10 +1,10 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 02:57 UTC
+Last updated: 2026-04-24 03:21 UTC
 
-Active phase: strict legacy semantic view-chain deletion is closed; current work is checkpointing, push recovery, and future support-planner follow-up only.
+Active phase: explicit TMEM reduction API cleanup is closed; current work is checkpointing, push recovery, and future support-planner follow-up only.
 
-Latest follow-up: `OptimizeTMemLayouts` has been restored to mainline reduction behavior modulo branch API/model guards. The branch-only automatic `tmem_load` + `tt.reduce` min/max fusion into `TMEMLoadOp redOp`/`tcgen05.ld.red` was deleted; explicit Gluon `load_min/load_max` still emits hardware `ld.red` through the frontend op when legal. `third_party/nvidia/backend/compiler.py` and `python/triton/compiler/compiler.py` compare identical to fetched `main`, so the Gluon pipeline no longer runs `add_optimize_tmem_layouts`. Validation: required `make -j8`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; focused explicit/software Gluon reduction rows `4 passed`; `git diff --check` passed after documentation refresh.
+Latest follow-up: explicit Gluon `load_min/load_max` now has an ld.red-or-clean-fail contract. The frontend no longer emits hidden software reduction for non-f32, unsupported-layout, unaligned-origin, or descriptor-view clean-negative cases; it creates a red `ttng.tmem_load` or the compiler reports a clean verifier/parsing/lowering diagnostic. Ordinary software reductions remain available only when user code writes `tmem.load(...)+tt.reduce(...)`, and optimize-tmem-layouts still does not auto-fuse that pattern. Validation: required `make -j8`; `test_core.py -k tmem_reduction` `84 passed`; runtime-matrix former-fallback selector `84 passed`; structural ld.red selector `12 passed`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.
 
 Active deletion checklist for this batch:
 
@@ -5583,3 +5583,18 @@ discovery.
   Remaining clean-negative/bug inventory: branch-subslice copy belongs with
   descriptor-view/copy-planning, not late dynamic-index lowering; the next core
   repair target is `FZ-20260421-0003` descriptor-view packet/layout mapping.
+
+- 2026-04-24 03:21 UTC: explicit `load_min/load_max` ld.red contract closed. Active phase:
+  final API cleanup/contract alignment after optimize-tmem-layouts fusion
+  removal. Completed items: removed frontend software fallback and unused
+  support probes; updated core/runtime/structural tests so explicit TMEM
+  min/max reductions either emit `tcgen05.ld.red` or report clean verifier /
+  parsing diagnostics. Clean-negative inventory refreshed for non-f32,
+  explicit N-sharded layouts, mixed layouts, unaligned origins, scales/layout
+  unsupported rows, and structural descriptor-view rows that cannot be lowered
+  directly as red loads. Validation evidence: `make -j8`; edited-test
+  `py_compile`; ``test_core.py -k tmem_reduction` `84 passed`; runtime-matrix
+  fallback selector `84 passed`; structural ld.red selector `12 passed`; lit
+  `tmem_layouts.mlir` `1 passed`; `git diff --check` passed. Next slice:
+  checkpoint commit and push; future ld.red support must be direct verifier /
+  lowering support, not hidden software fallback.

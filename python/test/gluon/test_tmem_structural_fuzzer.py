@@ -130,6 +130,12 @@ def _assert_clean_tmem_ldst_descriptor_view_unsupported(text):
     assert "Assertion" not in text
 
 
+def _assert_clean_tmem_ldred_unsupported(text, *expected_fragments):
+    assert any(fragment in text for fragment in expected_fragments), text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
 @dataclass(frozen=True)
 class LdStCase:
     case_id: str
@@ -271,10 +277,10 @@ LDRED_CASES = [
     LdRedCase("ldred-direct-128x64", 0x201, 128, 64, False, 0),
     LdRedCase("ldred-view-128x64", 0x202, 128, 64, False, 1),
     LdRedCase("ldred-twocta-lifted-256x64", 0x203, 256, 64, True, 0),
-    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min", 0xA014, 256, 32, True, 1),
-    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max", 0xA024, 256, 32, True, 1, op="max"),
-    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs", 0xA025, 256, 32, True, 1, op="min_abs"),
-    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan", 0xA026, 256, 32, True, 1, op="min_nan"),
+    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min", 0xA014, 256, 32, True, 1, expect_hardware_red=False),
+    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max", 0xA024, 256, 32, True, 1, op="max", expect_hardware_red=False),
+    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs", 0xA025, 256, 32, True, 1, op="min_abs", expect_hardware_red=False),
+    LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan", 0xA026, 256, 32, True, 1, op="min_nan", expect_hardware_red=False),
 ]
 
 LDRED_CLEAN_UNSUPPORTED_CASES = [
@@ -983,7 +989,7 @@ def test_tmem_structural_fuzzer_ldst_256row_lifted_parent_allocator_crash():
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("case", LDRED_CASES, ids=lambda case: case.case_id)
-def test_tmem_structural_fuzzer_ldred(case):
+def test_tmem_structural_fuzzer_ldred(case, capfd):
     torch.manual_seed(case.seed)
     red_op = "max" if case.op == "max" else "min"
     use_abs = case.op.endswith("_abs")
@@ -1009,6 +1015,32 @@ def test_tmem_structural_fuzzer_ldred(case):
             out = torch.empty_like(inp)
             red = torch.empty((case.m, ), dtype=torch.float32, device="cuda")
             indexed_red_layout = ttgl.BlockedLayout([1], [32], [8], [0], cga_layout=[[1]])
+            if not case.expect_hardware_red:
+                with pytest.raises(Exception) as excinfo:
+                    _fuzz_ldred_twocta_indexed_kernel[(1, )](
+                        inp,
+                        out,
+                        red,
+                        parent_layout,
+                        indexed_red_layout,
+                        case.m,
+                        case.n,
+                        case.chain_id - 1,
+                        red_op,
+                        use_abs,
+                        propagate_nan,
+                        num_warps=8,
+                        num_ctas=2,
+                    )
+                captured = capfd.readouterr()
+                _assert_clean_tmem_ldred_unsupported(
+                    str(excinfo.value) + captured.err + captured.out,
+                    "tmem_load reduction register layout is not directly supported",
+                    "failed to compute TMEM encoding info for reduction",
+                    "tmem_load reduction selected a scalar tcgen05.ld.red message",
+                )
+                return
+
             compiled = _fuzz_ldred_twocta_indexed_kernel[(1, )](
                 inp,
                 out,
@@ -1057,12 +1089,8 @@ def test_tmem_structural_fuzzer_ldred(case):
     ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
     llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
     assert ptx_ops == llir_ops
-    if case.expect_hardware_red:
-        assert any(".ld.red." in op for op in ptx_ops)
-    else:
-        assert any(".ld." in op for op in ptx_ops)
-        assert not any(".ld.red." in op for op in ptx_ops)
-        assert "tt.reduce" in compiled.asm["ttgir"]
+    assert case.expect_hardware_red
+    assert any(".ld.red." in op for op in ptx_ops)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1093,7 +1121,14 @@ def test_tmem_structural_fuzzer_ldred_reports_clean_unsupported(case, capfd):
         )
 
     captured = capfd.readouterr()
-    _assert_clean_tmem_ldst_descriptor_view_unsupported(str(excinfo.value) + captured.err + captured.out)
+    _assert_clean_tmem_ldred_unsupported(
+        str(excinfo.value) + captured.err + captured.out,
+        "unsupported for descriptor view",
+        "unsupported tensor memory descriptor view for direct tcgen05.ld/st",
+        "tmem_load reduction register layout is not directly supported",
+        "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
+        "failed to compute TMEM encoding info for reduction",
+    )
 
 
 def _run_ldred_twocta_rowcol_optimizer_crash_case():
@@ -1106,17 +1141,10 @@ def _run_ldred_twocta_rowcol_optimizer_crash_case():
     inp = torch.randn((m, n), dtype=torch.float32, device="cuda")
     out = torch.empty_like(inp)
     red = torch.empty((m, ), dtype=torch.float32, device="cuda")
-    compiled = _fuzz_ldred_twocta_indexed_row_chain_kernel[(1, )](
+
+    _fuzz_ldred_twocta_indexed_row_chain_kernel[(1, )](
         inp, out, red, parent_layout, red_layout, m, n, num_warps=8, num_ctas=2
     )
-    torch.testing.assert_close(out, inp, atol=0, rtol=0)
-    torch.testing.assert_close(red, torch.min(inp, dim=1).values, atol=1e-5, rtol=1e-5)
-    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
-    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
-    assert ptx_ops == llir_ops
-    assert any(".ld." in op for op in ptx_ops)
-    assert not any(".ld.red." in op for op in ptx_ops)
-    assert "tt.reduce" in compiled.asm["ttgir"]
 
 
 def _run_ldred_1cta_direct_index_allocator_crash_case():
@@ -1129,7 +1157,8 @@ def _run_ldred_1cta_direct_index_allocator_crash_case():
     inp = torch.randn((m, n), dtype=torch.float32, device="cuda")
     out = torch.empty_like(inp)
     red = torch.empty((m, ), dtype=torch.float32, device="cuda")
-    compiled = _fuzz_ldred_kernel[(1, )](
+
+    _fuzz_ldred_kernel[(1, )](
         inp,
         out,
         red,
@@ -1142,24 +1171,33 @@ def _run_ldred_1cta_direct_index_allocator_crash_case():
         False,
         num_warps=4,
     )
-    torch.testing.assert_close(out, inp, atol=0, rtol=0)
-    torch.testing.assert_close(red, torch.min(inp, dim=1).values, atol=0, rtol=0)
-    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", ))
-    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", ))
-    assert ptx_ops == llir_ops
-    assert any(".ld." in op for op in ptx_ops)
-    assert not any(".ld.red." in op for op in ptx_ops)
-    assert "tt.reduce" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash():
-    _run_structural_child("ldred_twocta_rowcol_optimizer_crash")
+def test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash(capfd):
+    with pytest.raises(Exception) as excinfo:
+        _run_ldred_twocta_rowcol_optimizer_crash_case()
+    captured = capfd.readouterr()
+    _assert_clean_tmem_ldred_unsupported(
+        str(excinfo.value) + captured.err + captured.out,
+        "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
+        "tmem_load reduction selected a scalar tcgen05.ld.red message",
+        "tcgen05.ld.red requires at least an .x2 message shape",
+        "tmem_load reduction register layout is not directly supported",
+        "failed to compute TMEM encoding info for reduction",
+    )
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash():
-    _run_structural_child("ldred_1cta_direct_index_allocator_crash")
+def test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash(capfd):
+    with pytest.raises(Exception) as excinfo:
+        _run_ldred_1cta_direct_index_allocator_crash_case()
+    captured = capfd.readouterr()
+    _assert_clean_tmem_ldred_unsupported(
+        str(excinfo.value) + captured.err + captured.out,
+        "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
+        "tmem_load reduction register layout is not directly supported",
+    )
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

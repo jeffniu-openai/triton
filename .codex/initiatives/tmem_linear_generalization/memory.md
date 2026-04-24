@@ -18688,3 +18688,18 @@ rejection, not rescue
 - `third_party/nvidia/backend/compiler.py` was restored to fetched `main`, which removes `add_optimize_tmem_layouts` from `gluon_to_ttgir`; `python/triton/compiler/compiler.py` also has zero diff versus fetched `main`. The only remaining `add_optimize_tmem_layouts` call in compiler wiring is the mainline `make_ttgir` call.
 - Added a lit regression row proving a max reduction after `ttng.tmem_load` remains a `tt.reduce` under `--triton-nvidia-optimize-tmem-layouts` and is not rewritten with a `redOp`. Explicit Gluon `tmem.load_min/load_max` rows still lower and execute correctly through their direct frontend `TMEMLoadOp redOp` path.
 - Validation: required `make -j8`; `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; focused Gluon reduction rows `4 passed`; `git diff --check` passed after docs were refreshed.
+
+- 2026-04-24 03:21 UTC: explicit Gluon `load_min/load_max` contract tightened. The frontend no
+  longer has a software-reduction fallback for explicit TMEM min/max loads:
+  `_load_red` always creates a red `ttng.tmem_load` after layout selection, and
+  unsupported cases fail through verifier/parsing/lowering diagnostics. Removed
+  the Python combine helpers and the Python bindings for frontend reduction
+  support probes. Tests that used to expect hidden fallback now assert clean
+  errors for non-f32, N-sharded explicit layouts, mixed layouts, unaligned
+  origins, scales/layout unsupported rows, and structural descriptor-view
+  clean negatives; successful explicit rows still assert real `tcgen05.ld.red`.
+  Ordinary software reduction remains user-authored `tmem.load(...)+tt.reduce(...)`
+  only, with no optimize-tmem-layouts auto-fusion. Validation: required
+  `make -j8`; `test_core.py -k tmem_reduction` `84 passed`; runtime-matrix fallback
+  selector `84 passed`; structural ld.red selector `12 passed`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.

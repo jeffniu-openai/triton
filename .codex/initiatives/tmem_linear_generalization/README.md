@@ -20,7 +20,13 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-## Latest: 2026-04-24 optimize-tmem-layouts ld.red fusion removed
+## Latest: 2026-04-24 explicit Gluon load_min/load_max ld.red contract
+
+- Explicit Gluon `tensor_memory_descriptor.load_min/load_max` no longer synthesizes `tmem.load(...)+tt.reduce(...)` as a frontend fallback. These APIs now always request a red `ttng.tmem_load`/`tcgen05.ld.red` operation after choosing a register layout, and unsupported cases must fail verifier/parsing/lowering cleanly.
+- Removed the stale Python software-reduction combine helpers and the frontend support predicates that skipped red-load creation for non-f32, unsupported layouts, or alignment-clean-negative descriptors. Ordinary software reductions remain available only when user code writes `tmem.load(...)` followed by `tt.reduce(...)` explicitly; optimize-tmem-layouts still does not auto-fuse that pattern.
+- Test expectations were refreshed across `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py`: successful explicit reductions assert `ld.red`; non-f32, N-sharded, mixed-layout, unaligned-origin, scales/layout, and unsupported descriptor-view rows assert clean diagnostics instead of hidden software fallback.
+
+## Previous: 2026-04-24 optimize-tmem-layouts ld.red fusion removed
 
 - `OptimizeTMemLayouts` is restored to mainline reduction behavior modulo branch API/model guards. The branch-only automatic fusion from ordinary `ttng.tmem_load` plus min/max `tt.reduce` into `TMEMLoadOp redOp`/`tcgen05.ld.red` has been deleted.
 - The Gluon pipeline no longer runs `add_optimize_tmem_layouts`; `third_party/nvidia/backend/compiler.py` and `python/triton/compiler/compiler.py` both compare identical to fetched `main`. Explicit Gluon `load_min/load_max` still uses the frontend red-load op when requested and legal.

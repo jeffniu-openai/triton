@@ -210,7 +210,6 @@ def _run_tmem_reduction_case(
     use_abs,
     propagate_nan,
     num_warps,
-    expect_hw_reduce=True,
     expected_red_opcode_prefix="tcgen05.ld.red.sync.aligned.32x32b.x",
 ):
     input_tensor = torch.randn(M, N, dtype=torch.float32, device="cuda")
@@ -250,24 +249,16 @@ def _run_tmem_reduction_case(
         op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
     ]
     assert ptx_red_ops == llir_red_ops
-    if expect_hw_reduce:
-        assert ptx_red_ops
-        expected_modifier = f".{red_op}"
-        if use_abs:
-            expected_modifier += ".abs"
-        if propagate_nan == tl.PropagateNan.ALL:
-            expected_modifier += ".NaN"
-        expected_modifier += ".f32"
-        if expected_red_opcode_prefix is not None:
-            assert all(op.startswith(expected_red_opcode_prefix) for op in ptx_red_ops)
-        assert all(expected_modifier in op for op in ptx_red_ops)
-    else:
-        assert not ptx_red_ops
-        ptx_ld_ops = [
-            op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
-            if op.startswith("tcgen05.ld.sync.aligned.")
-        ]
-        assert ptx_ld_ops
+    assert ptx_red_ops
+    expected_modifier = f".{red_op}"
+    if use_abs:
+        expected_modifier += ".abs"
+    if propagate_nan == tl.PropagateNan.ALL:
+        expected_modifier += ".NaN"
+    expected_modifier += ".f32"
+    if expected_red_opcode_prefix is not None:
+        assert all(op.startswith(expected_red_opcode_prefix) for op in ptx_red_ops)
+    assert all(expected_modifier in op for op in ptx_red_ops)
     return compiled
 
 

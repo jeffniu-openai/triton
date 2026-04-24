@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from triton.experimental import gluon
 from triton.runtime.jit import constexpr_function
 from triton.experimental.gluon.language import _core as ttgl
-from triton.experimental.gluon.language import _math as ttgl_math
 from triton.experimental.gluon.language._core import builtin, base_type, base_value, _unwrap_if_constexpr
 from triton.experimental.gluon.language._layouts import BlockedLayout, DistributedLinearLayout, SharedLinearLayout
 from triton.experimental.gluon.language._semantic import _compute_tmem_reg_layout, _finalize_splitn_tmem_reg_layout
@@ -171,67 +170,6 @@ def _fold_canonical_single_cta_block_rows(rows, block_bases, shape, two_ctas):
         if list(basis) != expected:
             return rows, block_bases
     return folded_rows, []
-
-
-@gluon.jit
-def _reduce_min_direct(a, b):
-    return ttgl.minimum(a, b)
-
-
-@gluon.jit
-def _reduce_max_direct(a, b):
-    return ttgl.maximum(a, b)
-
-
-@gluon.jit
-def _reduce_min_propagate_nan(a, b):
-    return ttgl.where(a != a, a, ttgl.where(b != b, b, ttgl.minimum(a, b)))
-
-
-@gluon.jit
-def _reduce_max_propagate_nan(a, b):
-    return ttgl.where(a != a, a, ttgl.where(b != b, b, ttgl.maximum(a, b)))
-
-
-@gluon.jit
-def _reduce_min_bf16(a, b):
-    return ttgl.minimum(a, b).to(ttgl.bfloat16)
-
-
-@gluon.jit
-def _reduce_max_bf16(a, b):
-    return ttgl.maximum(a, b).to(ttgl.bfloat16)
-
-
-@gluon.jit
-def _reduce_min_bf16_propagate_nan(a, b):
-    selected = ttgl.minimum(a, b).to(ttgl.bfloat16)
-    return ttgl.where(a != a, a, ttgl.where(b != b, b, selected))
-
-
-@gluon.jit
-def _reduce_max_bf16_propagate_nan(a, b):
-    selected = ttgl.maximum(a, b).to(ttgl.bfloat16)
-    return ttgl.where(a != a, a, ttgl.where(b != b, b, selected))
-
-
-def _get_tmem_software_reduce_combine(red_op, propagate_nan, dtype=None):
-    propagate_nan = _unwrap_if_constexpr(propagate_nan)
-    if dtype == ttgl.bfloat16:
-        if red_op == gluon_ir.TMEM_LOAD_REDUCE_MODIFIER.MIN:
-            if propagate_nan == ir.PROPAGATE_NAN.ALL:
-                return _reduce_min_bf16_propagate_nan
-            return _reduce_min_bf16
-        if propagate_nan == ir.PROPAGATE_NAN.ALL:
-            return _reduce_max_bf16_propagate_nan
-        return _reduce_max_bf16
-    if red_op == gluon_ir.TMEM_LOAD_REDUCE_MODIFIER.MIN:
-        if propagate_nan == ir.PROPAGATE_NAN.ALL:
-            return _reduce_min_propagate_nan
-        return _reduce_min_direct
-    if propagate_nan == ir.PROPAGATE_NAN.ALL:
-        return _reduce_max_propagate_nan
-    return _reduce_max_direct
 
 
 @dataclass(frozen=True, eq=True)
@@ -670,7 +608,6 @@ class tensor_memory_descriptor(base_value):
         self._require_rank2_tmem_ldst("reduction load")
         abs_flag = _unwrap_if_constexpr(abs)
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
-        explicit_layout = layout is not None
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
             raw_layout = _unwrap_if_constexpr(self.layout)
@@ -692,42 +629,6 @@ class tensor_memory_descriptor(base_value):
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)
         builder = _semantic.builder
         num_warps = builder.options.num_warps
-
-        if self.dtype != ttgl.float32:
-            software_propagate_nan = propagate_nan if self.dtype.is_floating() else ir.PROPAGATE_NAN.NONE
-            result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
-            reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
-            reduced = ttgl.reduce(
-                reduce_input,
-                axis=1,
-                combine_fn=_get_tmem_software_reduce_combine(red_op, software_propagate_nan, self.dtype),
-                _semantic=_semantic,
-                _generator=_generator,
-            )
-            return result, reduced
-
-        if not isinstance(self.layout, TensorMemoryScalesLayout):
-            if not gluon_ir.is_tmem_load_reduction_memdesc_supported(self.handle, ret_ty.to_ir(builder)):
-                software_layout = layout
-                if not explicit_layout:
-                    try:
-                        software_layout = self.get_reg_layout(
-                            num_warps=num_warps,
-                            _semantic=_semantic,
-                            _generator=_generator,
-                        )
-                    except Exception as e:
-                        raise ValueError(str(e)) from e
-                result = self.load(layout=software_layout, _semantic=_semantic, _generator=_generator)
-                reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
-                reduced = ttgl.reduce(
-                    reduce_input,
-                    axis=1,
-                    combine_fn=_get_tmem_software_reduce_combine(red_op, propagate_nan, self.dtype),
-                    _semantic=_semantic,
-                    _generator=_generator,
-                )
-                return result, reduced
 
         result, reduced, red_layout = builder.create_tmem_load(ret_ty.to_ir(builder), self.handle, red_op, abs_flag,
                                                                propagate_nan, num_warps)

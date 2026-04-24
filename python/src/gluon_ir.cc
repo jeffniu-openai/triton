@@ -1659,35 +1659,6 @@ void init_gluon_ir(py::module &&m) {
         return py::none();
       });
 
-  m.def("is_tmem_load_reduction_reg_layout_supported", [](Type resultTy) {
-    auto rankedTy = dyn_cast<RankedTensorType>(resultTy);
-    if (!rankedTy)
-      throw std::invalid_argument("expected a ranked tensor result type");
-    return static_cast<bool>(ttng::getTmemLoadReductionLayoutSupport(
-        rankedTy, ttg::toLinearLayout(rankedTy)));
-  });
-
-  m.def("is_tmem_load_reduction_memdesc_supported",
-        [](Value memDesc, Type resultTy) {
-          auto rankedTy = dyn_cast<RankedTensorType>(resultTy);
-          if (!rankedTy)
-            throw std::invalid_argument("expected a ranked tensor result type");
-          auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
-          if (!memDescTy)
-            throw std::invalid_argument("expected a memdesc value");
-          if (!ttng::getTmemLoadReductionLayoutSupport(
-                  rankedTy, ttg::toLinearLayout(rankedTy))) {
-            return false;
-          }
-          if (!ttng::isTMemLoadReductionAddressAligned(memDesc)) {
-            return false;
-          }
-
-          constexpr int maxnreg = 256;
-          return succeeded(ttng::computeTMemLoadReductionEncodingInfo(
-              rankedTy, memDescTy, maxnreg, /*emitError=*/{}));
-        });
-
   m.def(
       "make_cga_layout",
       [](std::vector<unsigned> ctasPerCga, std::vector<unsigned> ctaSplitNum,

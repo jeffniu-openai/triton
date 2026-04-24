@@ -36198,3 +36198,25 @@ Open after this slice:
 - Restored `third_party/nvidia/backend/compiler.py` exactly to fetched `main`, removing the branch-only `add_optimize_tmem_layouts` call from the Gluon pipeline. Verified both NVIDIA backend `compiler.py` and `python/triton/compiler/compiler.py` have zero diff versus fetched `main`.
 - Added `tmem_load_max_no_ld_red_fusion` to `test/TritonNvidiaGPU/tmem_layouts.mlir` to check that optimize-tmem-layouts preserves the load plus `tt.reduce` max form and does not add `redOp`.
 - Validation: `make -j8`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; focused Gluon reduction rows `4 passed`; `git diff --check` passed.
+
+## 2026-04-24 03:21 UTC: explicit `load_min/load_max` ld.red-or-clean-fail contract
+
+- User decision implemented: Gluon `tensor_memory_descriptor.load_min/load_max`
+  is an explicit hardware-reduction request. It must create a red
+  `ttng.tmem_load`/`tcgen05.ld.red` path, or the compiler must reject the case
+  cleanly. It must not silently lower to normal TMEM load plus software reduce.
+- Source changes: removed the `_load_red` software fallback for non-f32 and
+  unsupported memdesc/layout cases, deleted the Python combine helpers and the
+  `_math` import used only by that fallback, and removed the now-unused
+  `is_tmem_load_reduction_*_supported` Python bindings.
+- Test changes: updated `test_core.py`, `tmem_test_utils.py`, the runtime
+  matrix, and the structural fuzzer so successful explicit min/max loads assert
+  `ld.red` while former fallback rows assert verifier/parsing diagnostics. The
+  dynamic-index `N=2` row is now classified as a valid `.x2` hardware reduction;
+  offset-column descriptor views that cannot prove direct alignment are clean
+  verifier rejects under this contract.
+- Validation: `make -j8`; `PYTHONPATH=./python python3 -m py_compile` for the
+  edited Gluon test modules; `test_core.py -k tmem_reduction` `84 passed`;
+  runtime-matrix former-fallback selector `84 passed, 1627 deselected`;
+  structural ld.red selector `12 passed, 24 deselected`; lit
+  `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git diff --check` passed.

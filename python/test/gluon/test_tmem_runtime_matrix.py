@@ -7167,14 +7167,15 @@ def _extract_ld_red_pairs(compiled):
     return ptx_red_pairs
 
 
-def _assert_ld_red_uses_software_reduce(compiled):
-    assert _extract_ld_red_pairs(compiled) == []
-    ptx_ld_ops = [
-        op
-        for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
-        if op.startswith("tcgen05.ld.sync.aligned.")
-    ]
-    assert ptx_ld_ops
+def _assert_tmem_ld_red_compile_error(text, *expected_fragments):
+    assert any(fragment in text for fragment in expected_fragments), text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+def _ld_red_error_text(excinfo, capfd):
+    captured = capfd.readouterr()
+    return str(excinfo.value) + captured.err + captured.out
 
 
 def _assert_ld_red_uses_hardware(compiled, expected_shape):
@@ -7200,7 +7201,7 @@ def _expected_dynamic_subword_index_views(inp, selector, left_fill, right_fill):
     return expected0, expected1
 
 
-LD_RED_NON_F32_SOFTWARE_CASES = [
+LD_RED_NON_F32_UNSUPPORTED_CASES = [
     pytest.param(
         "i32_plain",
         torch.int32,
@@ -7311,7 +7312,7 @@ LD_RED_NON_F32_SOFTWARE_CASES = [
     ),
 ]
 
-LD_RED_NON_F32_DESCRIPTOR_CHAIN_SOFTWARE_CASES = [
+LD_RED_NON_F32_DESCRIPTOR_CHAIN_UNSUPPORTED_CASES = [
     pytest.param(
         "i32_plain_descriptor",
         torch.int32,
@@ -10206,8 +10207,8 @@ def test_tmem_runtime_matrix_ld_red_loop_carried_linear_subslice_view(selector, 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("dtype_name,torch_dtype", (("f16", torch.float16), ("i8", torch.int8)))
-def test_tmem_runtime_matrix_ld_red_unaligned_subword_linear_subslice_view_uses_software_reduce(
-    dtype_name, torch_dtype
+def test_tmem_runtime_matrix_ld_red_unaligned_subword_linear_subslice_view_reports_clean_error(
+    dtype_name, torch_dtype, capfd
 ):
     M = N = 128
     offset = 1
@@ -10217,31 +10218,22 @@ def test_tmem_runtime_matrix_ld_red_unaligned_subword_linear_subslice_view_uses_
     out = torch.empty((3, M, N), dtype=torch_dtype, device="cuda")
     red = torch.empty((M,), dtype=torch_dtype, device="cuda")
 
-    compiled = tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
-        inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
+    with pytest.raises(Exception) as excinfo:
+        tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
+            inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
+        )
+
+    _assert_tmem_ld_red_compile_error(
+        _ld_red_error_text(excinfo, capfd),
+        "tmem_load reduction currently requires f32 element type",
     )
-
-    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
-    expected0, expected1 = _expected_offset_column_views(inp, offset, 11, 17)
-    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
-    torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
-    torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
-
-    _assert_ld_red_uses_software_reduce(compiled)
-    observed_opcodes = [op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"])]
-    assert "tcgen05.ld.sync.aligned.32x32b.x1.b32" in observed_opcodes
-    assert "tcgen05.st.sync.aligned.32x32b.x1.b32" in observed_opcodes
-    ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "ttng.tmem_load" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("dtype_name,torch_dtype", (("f16", torch.float16), ("i8", torch.int8)))
 @pytest.mark.parametrize("selector", (0, 1))
-def test_tmem_runtime_matrix_ld_red_unaligned_subword_dynamic_index_view_uses_software_reduce(
-    dtype_name, torch_dtype, selector
+def test_tmem_runtime_matrix_ld_red_unaligned_subword_dynamic_index_view_reports_clean_error(
+    dtype_name, torch_dtype, selector, capfd
 ):
     m = 128
     n = 128
@@ -10252,34 +10244,28 @@ def test_tmem_runtime_matrix_ld_red_unaligned_subword_dynamic_index_view_uses_so
     red = torch.empty((m,), dtype=torch_dtype, device="cuda")
     selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
 
-    compiled = tmem_ld_red_unaligned_subword_dynamic_index_view_kernel[(1, )](
-        inp, out, red, selector_tensor, layout, m, num_warps=4
+    with pytest.raises(Exception) as excinfo:
+        tmem_ld_red_unaligned_subword_dynamic_index_view_kernel[(1, )](
+            inp, out, red, selector_tensor, layout, m, num_warps=4
+        )
+
+    _assert_tmem_ld_red_compile_error(
+        _ld_red_error_text(excinfo, capfd),
+        "tmem_load reduction currently requires f32 element type",
     )
-
-    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
-    expected0, expected1 = _expected_dynamic_subword_index_views(inp, selector, 11, 17)
-    torch.testing.assert_close(out[1], expected0, atol=0, rtol=0)
-    torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
-    torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
-
-    _assert_ld_red_uses_software_reduce(compiled)
-    ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "ttng.tmem_load" in ttgir
-    assert "ttg.memdesc_index" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize(
     "n,index_col_bit,expect_hardware,expected_shape",
     [
-        pytest.param(2, 1, False, "32x32b.x2", id="misaligned-software"),
+        pytest.param(2, 1, True, "32x32b.x2", id="n2-hardware"),
         pytest.param(32, 5, True, "32x32b.x32", id="aligned-hardware"),
     ],
 )
 @pytest.mark.parametrize("selector", (0, 1))
 def test_tmem_runtime_matrix_ld_red_dynamic_index_view_address_alignment(
-    selector, n, index_col_bit, expect_hardware, expected_shape
+    selector, n, index_col_bit, expect_hardware, expected_shape, capfd
 ):
     m = 128
     layout = _make_tmem_linear_layout_dynamic_index_col_bit(m, n, index_col_bit)
@@ -10288,16 +10274,26 @@ def test_tmem_runtime_matrix_ld_red_dynamic_index_view_address_alignment(
     red = torch.empty((m,), dtype=torch.float32, device="cuda")
     selector_tensor = torch.tensor(selector, dtype=torch.int32, device="cuda")
 
+    if not expect_hardware:
+        with pytest.raises(Exception) as excinfo:
+            tmem_ld_red_dynamic_index_view_kernel[(1, )](
+                inp, out, red, selector_tensor, layout, m, n, num_warps=4
+            )
+        _assert_tmem_ld_red_compile_error(
+            _ld_red_error_text(excinfo, capfd),
+            "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
+            "tmem_load reduction selected a scalar tcgen05.ld.red message",
+            "tcgen05.ld.red requires at least an .x2 message shape",
+        )
+        return
+
     compiled = tmem_ld_red_dynamic_index_view_kernel[(1, )](
         inp, out, red, selector_tensor, layout, m, n, num_warps=4
     )
 
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
     torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
-    if expect_hardware:
-        _assert_ld_red_uses_hardware(compiled, expected_shape)
-    else:
-        _assert_ld_red_uses_software_reduce(compiled)
+    _assert_ld_red_uses_hardware(compiled, expected_shape)
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_load" in ttgir
@@ -10308,17 +10304,28 @@ def test_tmem_runtime_matrix_ld_red_dynamic_index_view_address_alignment(
 @pytest.mark.parametrize(
     "offset,expect_hardware",
     [
-        pytest.param(1, False, id="misaligned-software"),
-        pytest.param(4, True, id="aligned-hardware"),
+        pytest.param(1, False, id="misaligned-reject"),
+        pytest.param(4, False, id="aligned-static-reject"),
     ],
 )
-def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view(offset, expect_hardware):
+def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view(offset, expect_hardware, capfd):
     M = 128
     N = 32
     layout = _make_tmem_linear_layout(M, 2 * N)
     inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N) % 16
     out = torch.empty((3, M, N), dtype=torch.float32, device="cuda")
     red = torch.empty((M,), dtype=torch.float32, device="cuda")
+
+    if not expect_hardware:
+        with pytest.raises(Exception) as excinfo:
+            tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
+                inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
+            )
+        _assert_tmem_ld_red_compile_error(
+            _ld_red_error_text(excinfo, capfd),
+            "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
+        )
+        return
 
     compiled = tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
         inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
@@ -10335,14 +10342,11 @@ def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view(offset, e
         for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
         if ".ld.red." in pair[0]
     ]
-    if expect_hardware:
-        assert len(red_pairs) == 1
-        red_op, red_offset = red_pairs[0]
-        assert red_offset == 0
-        assert red_op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x32.max")
-        assert red_op.endswith(".f32")
-    else:
-        assert red_pairs == []
+    assert len(red_pairs) == 1
+    red_op, red_offset = red_pairs[0]
+    assert red_offset == 0
+    assert red_op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x32.max")
+    assert red_op.endswith(".f32")
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_load" in ttgir
@@ -10519,8 +10523,8 @@ def test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_can
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("load_variant", ["16x64b", "16x128b", "16x256b"])
-def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_uses_software_reduce(
-    load_variant, use_abs, propagate_nan, red_op
+def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_error(
+    load_variant, use_abs, propagate_nan, red_op, capfd
 ):
     M = N = 128
     layout = _make_tmem_linear_layout(M, N)
@@ -10529,58 +10533,50 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_uses_software_redu
     out = torch.empty_like(inp)
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
-    compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
-        inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
-    )
+    with pytest.raises(Exception) as excinfo:
+        tmem_ld_red_explicit_layout_kernel[(1, )](
+            inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+        )
 
-    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
-    ptx_red_pairs = [
-        pair
-        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
-        if ".ld.red." in pair[0]
-    ]
-    llir_red_pairs = [
-        pair
-        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", ))
-        if ".ld.red." in pair[0]
-    ]
-    assert ptx_red_pairs == llir_red_pairs == []
-    ptx_ld_ops = [
-        op
-        for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
-        if op.startswith("tcgen05.ld.sync.aligned.")
-    ]
-    assert ptx_ld_ops
+    _assert_tmem_ld_red_compile_error(
+        _ld_red_error_text(excinfo, capfd),
+        "tmem_load reduction register layout is not directly supported",
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize(
-    "name,dtype,layout,load_variant,use_abs,propagate_nan", LD_RED_NON_F32_SOFTWARE_CASES
+    "name,dtype,layout,load_variant,use_abs,propagate_nan", LD_RED_NON_F32_UNSUPPORTED_CASES
 )
-def test_tmem_runtime_matrix_ld_red_non_f32_contract_uses_software_reduce(
-    name, dtype, layout, load_variant, use_abs, propagate_nan, red_op
+def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_error(
+    name, dtype, layout, load_variant, use_abs, propagate_nan, red_op, capfd
 ):
     inp = _make_ld_red_non_f32_input((128, 128), dtype)
     _seed_ld_red_nan_rows(inp, propagate_nan)
     out = torch.empty_like(inp)
     red = torch.empty((128,), dtype=dtype, device="cuda")
 
-    compiled = tmem_ld_red_non_f32_contract_kernel[(1, )](
-        inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
-    )
+    with pytest.raises(Exception) as excinfo:
+        tmem_ld_red_non_f32_contract_kernel[(1, )](
+            inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+        )
 
-    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
-    _assert_ld_red_uses_software_reduce(compiled)
+    _assert_tmem_ld_red_compile_error(
+        _ld_red_error_text(excinfo, capfd),
+        "tmem_load reduction currently requires f32 element type",
+        "'abs' requires floating-point element type (f32)",
+        "'NaN' requires floating-point element type (f32)",
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize(
-    "name,dtype,load_variant,use_abs,propagate_nan", LD_RED_NON_F32_DESCRIPTOR_CHAIN_SOFTWARE_CASES
+    "name,dtype,load_variant,use_abs,propagate_nan", LD_RED_NON_F32_DESCRIPTOR_CHAIN_UNSUPPORTED_CASES
 )
-def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_uses_software_reduce(
-    name, dtype, load_variant, use_abs, propagate_nan, red_op
+def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_reports_clean_error(
+    name, dtype, load_variant, use_abs, propagate_nan, red_op, capfd
 ):
     layout = _make_tmem_linear_layout(128, 128)
     inp = _make_ld_red_non_f32_input((128, 128), dtype)
@@ -10588,21 +10584,23 @@ def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_uses_software_reduc
     out = torch.empty_like(inp)
     red = torch.empty((128,), dtype=dtype, device="cuda")
 
-    compiled = tmem_ld_red_descriptor_chain_kernel[(1, )](
-        inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
-    )
+    with pytest.raises(Exception) as excinfo:
+        tmem_ld_red_descriptor_chain_kernel[(1, )](
+            inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+        )
 
-    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
-    _assert_ld_red_uses_software_reduce(compiled)
-    ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "ttg.memdesc_index" in ttgir
+    _assert_tmem_ld_red_compile_error(
+        _ld_red_error_text(excinfo, capfd),
+        "tmem_load reduction currently requires f32 element type",
+        "'abs' requires floating-point element type (f32)",
+        "'NaN' requires floating-point element type (f32)",
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs", [False, True])
-def test_tmem_runtime_matrix_ld_red_scales_uses_software_reduce(red_op, use_abs):
+def test_tmem_runtime_matrix_ld_red_scales_reports_clean_error(red_op, use_abs, capfd):
     M = 128
     N = 32
     layout = TensorMemoryScalesLayout()
@@ -10610,13 +10608,18 @@ def test_tmem_runtime_matrix_ld_red_scales_uses_software_reduce(red_op, use_abs)
     out = torch.empty_like(inp)
     red = torch.empty((M,), dtype=torch.int8, device="cuda")
 
-    compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
-        inp, out, red, layout, N, "32x32b", red_op, use_abs, tl.PropagateNan.NONE, num_warps=4
-    )
+    with pytest.raises(Exception) as excinfo:
+        tmem_ld_red_explicit_layout_kernel[(1, )](
+            inp, out, red, layout, N, "32x32b", red_op, use_abs, tl.PropagateNan.NONE, num_warps=4
+        )
 
-    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, tl.PropagateNan.NONE)
-    _assert_ld_red_uses_software_reduce(compiled)
-    assert "tensor_memory_scales_encoding" in compiled.asm["ttgir"]
+    _assert_tmem_ld_red_compile_error(
+        _ld_red_error_text(excinfo, capfd),
+        "tmem_load reduction currently requires f32 element type",
+        "'abs' requires floating-point element type (f32)",
+        "tmem_load reduction is not supported for tensor memory scales",
+        "unsupported for descriptor view tensor_memory_descriptor",
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -10797,21 +10800,26 @@ def test_tmem_runtime_matrix_ld_red_rowcol_permuted_n_sweep(
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("M,N,num_warps", LD_RED_MIXED_CASES)
-def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_uses_software_reduce(
-    red_op, use_abs, propagate_nan, M, N, num_warps
+def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_error(
+    red_op, use_abs, propagate_nan, M, N, num_warps, capfd
 ):
     layout = _make_tmem_linear_layout_mixed(M, N)
-    compiled = _run_tmem_reduction_case(
-        layout,
-        M,
-        N,
-        red_op,
-        use_abs,
-        propagate_nan,
-        num_warps=num_warps,
-        expect_hw_reduce=False,
+    with pytest.raises(Exception) as excinfo:
+        _run_tmem_reduction_case(
+            layout,
+            M,
+            N,
+            red_op,
+            use_abs,
+            propagate_nan,
+            num_warps=num_warps,
+        )
+
+    _assert_tmem_ld_red_compile_error(
+        _ld_red_error_text(excinfo, capfd),
+        "tmem_load reduction register layout is not directly supported",
+        "failed to compute TMEM encoding info for reduction",
     )
-    assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
