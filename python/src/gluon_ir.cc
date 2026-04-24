@@ -935,6 +935,11 @@ void init_gluon_ir(py::module &&m) {
            [](GluonOpBuilder &self, Value memDesc, Value value, Value pred) {
              self.create<ttng::TMEMStoreOp>(memDesc, value, pred);
            })
+      .def("create_tmem_address", [](GluonOpBuilder &self, Value memDesc) -> Value {
+        auto i32Ty = IntegerType::get(self.getContext(), 32);
+        auto op = self.create<ttng::TMEMAddressOp>(i32Ty, memDesc);
+        return op.getResult();
+      })
       .def(
           "create_tmem_load",
           [](GluonOpBuilder &self, Type resultTy, Value memDesc,

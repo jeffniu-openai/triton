@@ -4,7 +4,6 @@
 #include "Utility.h"
 #include "mlir/Support/LLVM.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 
@@ -16,30 +15,6 @@ namespace ttng = mlir::triton::nvidia_gpu;
 
 using ::mlir::triton::gpu::NVMMASharedEncodingAttr;
 using ::mlir::triton::gpu::SharedLinearEncodingAttr;
-
-namespace {
-
-static void createTMemIISanAddressAlignmentAssert(
-    Location loc, ConversionPatternRewriter &rewriter, Value wordAddress,
-    std::optional<int> offset, uint32_t wordColumnAlignment, Value pred,
-    StringRef message) {
-  assert(wordColumnAlignment != 0 &&
-         (wordColumnAlignment & (wordColumnAlignment - 1)) == 0 &&
-         "TMEM address alignment must be a power of two word-column modulus");
-  auto b = TritonLLVMOpBuilder(loc, rewriter);
-  Value address = wordAddress;
-  if (offset && *offset != 0)
-    address = b.add(address, b.i32_val(*offset));
-  Value col = b.and_(address, b.i32_val(ttng::kTMemPackedOffsetColMask));
-  Value aligned = b.icmp_eq(
-      b.and_(col, b.i32_val(static_cast<int32_t>(wordColumnAlignment - 1))),
-      b.i32_val(0));
-  if (pred)
-    aligned = b.or_(b.xor_(pred, b.true_val()), aligned);
-  mlir::triton::AssertOp::create(rewriter, loc, aligned, message);
-}
-
-} // namespace
 
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
@@ -277,8 +252,7 @@ static Value createScaleInstDescriptor(ConversionPatternRewriter &rewriter,
 void createGen5MMA(ConversionPatternRewriter &rewriter, Location loc,
                    ttng::TCGen5MMAOp op, MemDescOperand a, Value b,
                    MemDescOperand d, Value pred, Value instDescriptor,
-                   Value useInitAcc, bool aInTMem, bool twoCTAs,
-                   bool enableIISan) {
+                   Value useInitAcc, bool aInTMem, bool twoCTAs) {
   PTXBuilder ptxBuilder;
   std::string opcode =
       "tcgen05.mma.cta_group::" + std::to_string(twoCTAs ? 2 : 1) + ".kind::";
@@ -295,15 +269,6 @@ void createGen5MMA(ConversionPatternRewriter &rewriter, Location loc,
     opcode += "i8";
   } else {
     assert(0 && "Unsupported type.");
-  }
-  if (enableIISan) {
-    createTMemIISanAddressAlignmentAssert(
-        loc, rewriter, d.base, d.offset, /*wordColumnAlignment=*/2, pred,
-        "tcgen05.mma accumulator tensor memory address must be 64-bit aligned");
-    if (aInTMem)
-      createTMemIISanAddressAlignmentAssert(
-          loc, rewriter, a.base, a.offset, /*wordColumnAlignment=*/4, pred,
-          "tcgen05.mma A tensor memory address must be 128-bit aligned");
   }
   auto *accOp = ptxBuilder.newAddrOperand(d.base, "r", *d.offset);
   assert(a.offset.has_value() == aInTMem);
@@ -324,7 +289,7 @@ static void createScaledGen5MMA(ConversionPatternRewriter &rewriter,
                                 Value instDescriptor, Value useInitAcc,
                                 bool aInTmem,
                                 ttng::MMAv5ScaledMxfpKind mxfpInstKind,
-                                bool twoCTAs, bool enableIISan) {
+                                bool twoCTAs) {
   PTXBuilder ptxBuilder;
   std::string opcode =
       "tcgen05.mma.cta_group::" + std::to_string(twoCTAs ? 2 : 1) + ".kind::";
@@ -336,21 +301,6 @@ static void createScaledGen5MMA(ConversionPatternRewriter &rewriter,
     opcode += "mxf4nvf4.block_scale.scale_vec::4X";
   } else {
     assert(0 && "Unsupported mxfp kind.");
-  }
-  if (enableIISan) {
-    createTMemIISanAddressAlignmentAssert(
-        loc, rewriter, d.base, d.offset, /*wordColumnAlignment=*/2, pred,
-        "tcgen05.mma accumulator tensor memory address must be 64-bit aligned");
-    if (aInTmem)
-      createTMemIISanAddressAlignmentAssert(
-          loc, rewriter, a.base, a.offset, /*wordColumnAlignment=*/4, pred,
-          "tcgen05.mma A tensor memory address must be 128-bit aligned");
-    createTMemIISanAddressAlignmentAssert(
-        loc, rewriter, scaleA, std::nullopt, /*wordColumnAlignment=*/2, pred,
-        "tcgen05.mma scaled A scale tensor memory address must be 64-bit aligned");
-    createTMemIISanAddressAlignmentAssert(
-        loc, rewriter, scaleB, std::nullopt, /*wordColumnAlignment=*/2, pred,
-        "tcgen05.mma scaled B scale tensor memory address must be 64-bit aligned");
   }
   auto *accOp = ptxBuilder.newAddrOperand(d.base, "r", *d.offset);
   assert(aInTmem == a.offset.has_value());
@@ -628,8 +578,7 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
 LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
                          ConversionPatternRewriter &rewriter, Location loc,
                          ttng::TCGen5MMAOp op,
-                         ttng::TCGen5MMAOpAdaptor &adaptor,
-                         bool enableIISan) {
+                         ttng::TCGen5MMAOpAdaptor &adaptor) {
   MemDescType aTensorTy = op.getA().getType();
   MemDescType bTensorTy = op.getB().getType();
   MemDescType dTensorTy = op.getD().getType();
@@ -672,7 +621,7 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
     Value instDescriptor = createInstDescriptor(
         rewriter, op, mmaSizeM, mmaSizeN, desc.transA, desc.transB);
     createGen5MMA(rewriter, loc, op, a, b, accAddress, pred, instDescriptor,
-                  useInitAcc, desc.aInTmem, twoCTAs, enableIISan);
+                  useInitAcc, desc.aInTmem, twoCTAs);
   };
 
   return convertDotImpl(
@@ -686,8 +635,7 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
 LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                                ConversionPatternRewriter &rewriter,
                                Location loc, ttng::TCGen5MMAScaledOp op,
-                               ttng::TCGen5MMAScaledOpAdaptor &adaptor,
-                               bool enableIISan) {
+                               ttng::TCGen5MMAScaledOpAdaptor &adaptor) {
   MemDescType aTensorTy = op.getA().getType();
   MemDescType bTensorTy = op.getB().getType();
   MemDescType dTensorTy = op.getD().getType();
@@ -793,7 +741,7 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
         scaleBFragment.subColumnId, mxfpInstKind);
     createScaledGen5MMA(rewriter, loc, op, a, b, accAddress, scaleA, scaleB,
                         pred, instDescriptor, useInitAcc, desc.aInTmem,
-                        mxfpInstKind, twoCTAs, enableIISan);
+                        mxfpInstKind, twoCTAs);
   };
 
   return convertDotImpl(typeConverter, rewriter, loc, op.getA(), op.getB(),
@@ -809,44 +757,32 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
 
 struct TCGen5MMAOpConversion
     : public ConvertOpToLLVMPattern<ttng::TCGen5MMAOp> {
-  TCGen5MMAOpConversion(LLVMTypeConverter &typeConverter, PatternBenefit benefit,
-                        bool enableIISan)
-      : ConvertOpToLLVMPattern(typeConverter, benefit),
-        enableIISan(enableIISan) {}
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(ttng::TCGen5MMAOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     if (failed(convertDot(*getTypeConverter(), rewriter, op.getLoc(), op,
-                          adaptor, enableIISan)))
+                          adaptor)))
       return failure();
     rewriter.eraseOp(op);
     return success();
   }
-
-private:
-  bool enableIISan;
 };
 
 struct TCGen5MMAScaledOpConversion
     : public ConvertOpToLLVMPattern<ttng::TCGen5MMAScaledOp> {
-  TCGen5MMAScaledOpConversion(LLVMTypeConverter &typeConverter,
-                              PatternBenefit benefit, bool enableIISan)
-      : ConvertOpToLLVMPattern(typeConverter, benefit),
-        enableIISan(enableIISan) {}
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(ttng::TCGen5MMAScaledOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     if (failed(convertScaledDot(*getTypeConverter(), rewriter, op.getLoc(), op,
-                                adaptor, enableIISan)))
+                                adaptor)))
       return failure();
     rewriter.eraseOp(op);
     return success();
   }
-
-private:
-  bool enableIISan;
 };
 
 struct TCGen5CommitOpConversion
@@ -891,10 +827,9 @@ namespace NVIDIA {
 
 void populateTCGen5MMAOpToLLVMPattern(LLVMTypeConverter &typeConverter,
                                       RewritePatternSet &patterns,
-                                      PatternBenefit benefit, bool enableIISan) {
-  patterns.add<TCGen5MMAOpConversion, TCGen5MMAScaledOpConversion>(
-      typeConverter, benefit, enableIISan);
-  patterns.add<TCGen5CommitOpConversion>(typeConverter, benefit);
+                                      PatternBenefit benefit) {
+  patterns.add<TCGen5MMAOpConversion, TCGen5MMAScaledOpConversion,
+               TCGen5CommitOpConversion>(typeConverter, benefit);
 }
 
 } // namespace NVIDIA

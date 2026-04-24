@@ -89,11 +89,9 @@ struct ConvertTritonGPUToLLVM
   ConvertTritonGPUToLLVM(int32_t computeCapability, int32_t ptxVersion)
       : ConvertTritonGPUToLLVMBase({computeCapability, ptxVersion}) {}
   ConvertTritonGPUToLLVM(int32_t computeCapability, int32_t ptxVersion,
-                         bool enableConcurrencySanitizer,
-                         bool enableIllegalInstructionSanitizer)
+                         bool enableConcurrencySanitizer)
       : ConvertTritonGPUToLLVMBase(
-            {computeCapability, ptxVersion, enableConcurrencySanitizer,
-             enableIllegalInstructionSanitizer}) {}
+            {computeCapability, ptxVersion, enableConcurrencySanitizer}) {}
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();
@@ -200,11 +198,11 @@ struct ConvertTritonGPUToLLVM
     mlir::triton::NVIDIA::populateMemoryOpToLLVMPatterns(
         typeConverter, targetInfo, patterns, benefit);
     mlir::triton::NVIDIA::populateTensorMemoryOpToLLVMPattern(
-        typeConverter, patterns, benefit, enableIllegalInstructionSanitizer);
+        typeConverter, patterns, benefit);
     mlir::triton::populateMakeRangeOpToLLVMPattern(typeConverter, targetInfo,
                                                    patterns, benefit);
-    mlir::triton::NVIDIA::populateTCGen5MMAOpToLLVMPattern(
-        typeConverter, patterns, benefit, enableIllegalInstructionSanitizer);
+    mlir::triton::NVIDIA::populateTCGen5MMAOpToLLVMPattern(typeConverter,
+                                                           patterns, benefit);
     mlir::triton::NVIDIA::populateFp4ToFpToLLVMPatterns(typeConverter, patterns,
                                                         benefit);
     mlir::triton::populateInstrumentationToLLVMPatterns(typeConverter, patterns,
@@ -284,11 +282,9 @@ createConvertTritonGPUToLLVMPass(int32_t computeCapability,
 
 std::unique_ptr<OperationPass<ModuleOp>>
 createConvertTritonGPUToLLVMPass(int32_t computeCapability, int32_t ptxVersion,
-                                 bool enableConcurrencySanitizer,
-                                 bool enableIllegalInstructionSanitizer) {
-  return std::make_unique<ConvertTritonGPUToLLVM>(
-      computeCapability, ptxVersion, enableConcurrencySanitizer,
-      enableIllegalInstructionSanitizer);
+                                 bool enableConcurrencySanitizer) {
+  return std::make_unique<ConvertTritonGPUToLLVM>(computeCapability, ptxVersion,
+                                                  enableConcurrencySanitizer);
 }
 
 bool NVIDIA::canSkipBarSync(Operation *before, Operation *after,

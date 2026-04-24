@@ -74,6 +74,32 @@ def _format_sm_name(capability):
     return f"sm_{capability}{suffix}"
 
 
+_TMEM_ADDRESS_COLUMN_MASK = 0xFFFF
+
+
+def _tmem_elements_per_word(dtype):
+    bitwidth = dtype.primitive_bitwidth
+    return 1 if bitwidth >= 32 else 32 // bitwidth
+
+
+def _emit_tmem_address_alignment_check(desc, word_column_alignment: int, message: str, _semantic=None):
+    if not _semantic.builder.options.enable_iisan:
+        return
+    assert word_column_alignment > 0 and (word_column_alignment & (word_column_alignment - 1)) == 0
+
+    builder = _semantic.builder
+    element_column_alignment = word_column_alignment * _tmem_elements_per_word(desc.dtype)
+    address = builder.create_tmem_address(desc.handle)
+    address = ttgl.tensor(address, ttgl.int32)
+    col_mask = ttgl.to_tensor(_TMEM_ADDRESS_COLUMN_MASK, _semantic=_semantic)
+    align = ttgl.to_tensor(element_column_alignment, _semantic=_semantic)
+    zero = ttgl.to_tensor(0, _semantic=_semantic)
+    col = address.__and__(col_mask, _semantic=_semantic)
+    rem = col.__mod__(align, _semantic=_semantic)
+    is_aligned = rem.__eq__(zero, _semantic=_semantic)
+    ttgl.device_assert(is_aligned, message, _semantic=_semantic)
+
+
 def _strip_zero_reg_bases_from_layout(layout):
     if not hasattr(layout, "reg_bases") or not hasattr(layout, "lane_bases") or not hasattr(layout, "warp_bases"):
         return layout
@@ -629,6 +655,12 @@ class tensor_memory_descriptor(base_value):
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)
         builder = _semantic.builder
         num_warps = builder.options.num_warps
+        _emit_tmem_address_alignment_check(
+            self,
+            2,
+            "tcgen05.ld.red tensor memory address must be 64-bit aligned",
+            _semantic=_semantic,
+        )
 
         result, reduced, red_layout = builder.create_tmem_load(ret_ty.to_ir(builder), self.handle, red_op, abs_flag,
                                                                propagate_nan, num_warps)
@@ -947,6 +979,12 @@ def tcgen05_copy(src, dst, _semantic=None):
     assert isinstance(dst, tensor_memory_descriptor), "destination must be a tensor memory descriptor"
     src = _maybe_rematerialize_scales_copy_source(src, dst, _semantic)
     src = _maybe_rematerialize_warpx2_copy_source(src, dst, _semantic)
+    _emit_tmem_address_alignment_check(
+        dst,
+        4,
+        "tcgen05.copy tensor memory destination address must be 128-bit aligned",
+        _semantic=_semantic,
+    )
     _semantic.builder.create_tmem_copy(src.handle, dst.handle)
 
 
@@ -991,6 +1029,19 @@ def tcgen05_mma(a, b, acc, *, use_acc=True, pred=True, multicast=False, mbarrier
             mbarrier_preds = _semantic._convert_to_ir_values(mbarrier_preds, require_i64=False)
 
     multicast = _unwrap_if_constexpr(multicast)
+    _emit_tmem_address_alignment_check(
+        acc,
+        2,
+        "tcgen05.mma accumulator tensor memory address must be 64-bit aligned",
+        _semantic=_semantic,
+    )
+    if isinstance(a, tensor_memory_descriptor):
+        _emit_tmem_address_alignment_check(
+            a,
+            4,
+            "tcgen05.mma A tensor memory address must be 128-bit aligned",
+            _semantic=_semantic,
+        )
     _semantic.builder.create_tcgen05_mma(a.handle, b.handle, acc.handle, use_acc.handle, pred.handle, mbarriers,
                                          mbarrier_preds, acc.layout.two_ctas, multicast)
 
@@ -1037,6 +1088,33 @@ def tcgen05_mma_scaled(a, b, acc, a_scale, b_scale, a_type, b_type, *, use_acc=T
     a_type = _semantic._str_to_fp_type(a_type.value)
     b_type = _semantic._str_to_fp_type(b_type.value)
     multicast = _unwrap_if_constexpr(multicast)
+    _emit_tmem_address_alignment_check(
+        acc,
+        2,
+        "tcgen05.mma scaled accumulator tensor memory address must be 64-bit aligned",
+        _semantic=_semantic,
+    )
+    if isinstance(a, tensor_memory_descriptor):
+        _emit_tmem_address_alignment_check(
+            a,
+            4,
+            "tcgen05.mma scaled A tensor memory address must be 128-bit aligned",
+            _semantic=_semantic,
+        )
+    if isinstance(a_scale, tensor_memory_descriptor):
+        _emit_tmem_address_alignment_check(
+            a_scale,
+            2,
+            "tcgen05.mma scaled A scale tensor memory address must be 64-bit aligned",
+            _semantic=_semantic,
+        )
+    if isinstance(b_scale, tensor_memory_descriptor):
+        _emit_tmem_address_alignment_check(
+            b_scale,
+            2,
+            "tcgen05.mma scaled B scale tensor memory address must be 64-bit aligned",
+            _semantic=_semantic,
+        )
     _semantic.builder.create_tcgen05_mma_scaled(a.handle, b.handle, acc.handle, a_scale.handle, b_scale.handle, a_type,
                                                 b_type, use_acc.handle, pred.handle, mbarriers, mbarrier_preds,
                                                 acc.layout.two_ctas, multicast)

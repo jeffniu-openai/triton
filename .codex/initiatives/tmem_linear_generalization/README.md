@@ -7,13 +7,13 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-## Latest: 2026-04-24 TMEM iisan implementation and attention red-path recovery
+## Latest: 2026-04-24 Gluon frontend TMEM iisan migration
 
-- Implemented the iisan policy transition for TMEM runtime final-address alignment. The NVIDIA GPU-to-LLVM pass now receives `enable-illegal-instruction-sanitizer` from `instrumentation_mode="iisan"`, and TMEM lowering emits predicated `tt.assert` checks from the current lowered TMEM SSA address plus operation-local packet/tile offsets.
-- Removed the stale compile-time `tcgen05.ld.red` origin-alignment rejection from the verifier and LLVM lowering. Explicit `tmem.load_min/load_max` still requires f32, non-scales storage, packed direct lowering, and `.x2` or wider red messages; those remain structural compiler diagnostics.
-- Removed the executable-plan `tcgen05.copy` 128-bit destination-alignment compiler rejection. The sub-32-bit destination subword-phase rejection remains a clean compiler unsupported case because direct copy lowering cannot represent a destination that starts inside a 32-bit hardware word.
-- Added iisan address assertions for `ld.red`, executable `tcgen05.copy`, selected direct ld/st atoms with probed alignment requirements, MMAv5 accumulator/TMEM-A addresses, and scaled-MMAv5 scale addresses. Added child-process iisan runtime tests for misaligned `ld.red` and copy destinations, plus normal aligned `ld.red` execution coverage.
-- Representative `python/examples/gluon/01-attention-forward.py` red-path cases now compile and pass again on Blackwell Ultra: fp16 noncausal D64/D128, fp16 causal D64, and fp8 noncausal D64 at `N_CTX=1024` with `use_tmem_red=True`.
+- Moved the TMEM iisan alignment instrumentation out of NVIDIA GPU-to-LLVM and into the Gluon Blackwell frontend, matching the existing TMA iisan model. The CUDA backend no longer passes an `enable-illegal-instruction-sanitizer` flag to `convert-triton-gpu-to-llvm`, and LLVM lowering no longer emits TMEM-specific iisan assertions.
+- Added `ttng.tmem_address` as a small TTNG helper op for frontend instrumentation. Gluon emits it only when `enable_iisan` is set; NVIDIA GPU-to-LLVM lowers it to the current packed runtime TMEM address from the memdesc SSA value. This keeps the user-facing checks in Gluon while avoiding producer-chain inspection.
+- Gluon now emits device assertions for explicit `tmem.load_min/load_max` red-load addresses, `tcgen05_copy` destination addresses, MMAv5 accumulator/TMEM-A addresses, and scaled-MMAv5 accumulator/scale addresses. The checks interpret linear-layout columns as element columns and scale the modulus by elements per 32-bit hardware word for sub-32-bit dtypes.
+- `ld.red` verifier/lowering alignment rejection and executable-plan `tcgen05.copy` destination alignment rejection remain removed. Structural unsupported cases still reject cleanly when Triton cannot synthesize a PTX atom/layout/schedule.
+- Validation: `make`; exact iisan red/copy runtime rows `2 passed`; aligned red subslice row `1 passed`; structural-fuzzer ld.red clean-negative rows `2 passed`; iisan MMAv5/scaled positive rows `2 passed`; lit `invalid.mlir` + `tmem_layouts.mlir` `2 passed`; representative `01-attention-forward.py` `use_tmem_red=True` rows `4 passed`.
 
 Current design note: `tmem_memdesc_runtime_abstraction_20260422.md` records the
 2026-04-22 audit of branch-local TMEM producer-chain dependence and the proposed

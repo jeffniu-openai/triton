@@ -8,7 +8,6 @@
 #include "mlir/Support/LogicalResult.h"
 #include "triton/Analysis/Utility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Types.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
@@ -96,40 +95,6 @@ SmallVector<Value> unpack(ArrayRef<Value> packedValues, Type outType,
     }
   }
   return unpackedValues;
-}
-
-static void createTMemIISanAddressAlignmentAssert(
-    Location loc, ConversionPatternRewriter &rewriter, Value wordAddress,
-    int colOffset, uint32_t wordColumnAlignment, Value pred, StringRef message) {
-  assert(wordColumnAlignment != 0 &&
-         (wordColumnAlignment & (wordColumnAlignment - 1)) == 0 &&
-         "TMEM address alignment must be a power of two word-column modulus");
-  auto b = TritonLLVMOpBuilder(loc, rewriter);
-  Value address = wordAddress;
-  if (colOffset != 0)
-    address = b.add(address, b.i32_val(colOffset));
-  Value col = b.and_(address, b.i32_val(kTMemPackedOffsetColMask));
-  Value aligned = b.icmp_eq(
-      b.and_(col, b.i32_val(static_cast<int32_t>(wordColumnAlignment - 1))),
-      b.i32_val(0));
-  if (pred)
-    aligned = b.or_(b.xor_(pred, b.true_val()), aligned);
-  mlir::triton::AssertOp::create(rewriter, loc, aligned, message);
-}
-
-static std::optional<std::pair<uint32_t, StringRef>>
-getTMemLdStIISanAddressAlignment(TMemAccessAtom atom, bool unpacked,
-                                 std::optional<TMEMLoadReduceModifier> redOp) {
-  if (redOp)
-    return std::make_pair(
-        2u, StringRef("tcgen05.ld.red tensor memory address must be 64-bit aligned"));
-  if (atom == TMemAccessAtom::I16x64b || atom == TMemAccessAtom::I16x128b)
-    return std::make_pair(
-        2u, StringRef("tcgen05.ld/st tensor memory address must be 64-bit aligned"));
-  if (atom == TMemAccessAtom::I16x32bx2 && unpacked)
-    return std::make_pair(
-        2u, StringRef("tcgen05.ld/st pack/unpack tensor memory address must be 64-bit aligned"));
-  return std::nullopt;
 }
 
 void createTensorMemoryStore(Location loc, Value address, int colOffset,
@@ -691,8 +656,7 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
     std::optional<uint32_t> secondHalfOffset, uint32_t baseOffset,
     uint32_t warpBaseOffset0, uint32_t warpBaseOffset1,
     ArrayRef<int32_t> packetOffsets,
-    std::optional<TMEMLoadReduceModifier> redOp, bool useAbs, bool useNaN,
-    bool enableIISan) {
+    std::optional<TMEMLoadReduceModifier> redOp, bool useAbs, bool useNaN) {
   auto *ctx = rewriter.getContext();
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   auto kReg = str_attr("register");
@@ -834,13 +798,6 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
     if (rowBaseOffset != 0)
       packetBase = b.add(packetBase, b.i32_val(rowBaseOffset));
 
-    if (enableIISan) {
-      if (auto alignment = getTMemLdStIISanAddressAlignment(atom, unpacked, redOp))
-        createTMemIISanAddressAlignmentAssert(
-            loc, rewriter, packetBase, /*colOffset=*/colImmediate,
-            alignment->first, pred, alignment->second);
-    }
-
     if (isStore) {
       auto chunk = to_vector(vals.slice(i, valsPerMessage));
       createTensorMemoryStore(loc, packetBase, /*colOffset=*/colImmediate, chunk,
@@ -869,7 +826,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
                       uint32_t tmemElementBitwidth, ArrayRef<Value> vals,
                       Value tmemBase,
                       std::optional<TMEMLoadReduceModifier> redOp, bool useAbs,
-                      bool useNaN, bool useSubwordPhasePath, bool enableIISan) {
+                      bool useNaN, bool useSubwordPhasePath) {
   bool isStore = !vals.empty();
   if (info.broadcast) {
     auto removeBroadcast = std::move(info.broadcast.value());
@@ -881,7 +838,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
     }
     auto outOr = lowerTMemLdStFromInfo(
         loc, rewriter, info, pred, llvmElemTy, tmemElementBitwidth, inVals,
-        tmemBase, redOp, useAbs, useNaN, useSubwordPhasePath, enableIISan);
+        tmemBase, redOp, useAbs, useNaN, useSubwordPhasePath);
     if (failed(outOr))
       return failure();
     auto [outVals, redvalVals] = *outOr;
@@ -910,7 +867,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
     }
     auto outOr = lowerTMemLdStFromInfo(
         loc, rewriter, info, pred, packedElemTy, tmemElementBitwidth, inVals,
-        tmemBase, redOp, useAbs, useNaN, useSubwordPhasePath, enableIISan);
+        tmemBase, redOp, useAbs, useNaN, useSubwordPhasePath);
     if (failed(outOr))
       return failure();
     auto [outVals, redvalVals] = *outOr;
@@ -942,7 +899,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
                     info.numRegsPerMessage, info.unpacked,
                     info.secondHalfOffset, info.baseOffset,
                     info.warpBaseOffset0, info.warpBaseOffset1,
-                    info.packetOffsets, redOp, useAbs, useNaN, enableIISan);
+                    info.packetOffsets, redOp, useAbs, useNaN);
   if (!isStore) {
     outVals = info.perm.inverse().apply(outVals);
   }
@@ -956,7 +913,7 @@ lowerTMemLdStFromTypes(
     MemDescType memTy, Value memDescValue, Value tmemBase, int maxnreg,
     Value pred, Type llvmElemTy, ArrayRef<Value> vals,
     std::optional<TMEMLoadReduceModifier> redOp = std::nullopt,
-    bool useAbs = false, bool useNaN = false, bool enableIISan = false) {
+    bool useAbs = false, bool useNaN = false) {
   auto diag = [loc]() { return emitError(loc); };
   bool debugQuerySelection = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
   if (debugQuerySelection)
@@ -1004,7 +961,7 @@ lowerTMemLdStFromTypes(
     auto lowered = lowerTMemLdStFromInfo(
         loc, rewriter, *encodingInfoOr, pred, llvmElemTy,
         memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs, useNaN,
-        useSubwordPhasePath, enableIISan);
+        useSubwordPhasePath);
     if (failed(lowered))
       return failure();
     return *lowered;
@@ -1030,7 +987,7 @@ lowerTMemLdStFromTypes(
       return lowerTMemLdStFromInfo(
           loc, rewriter, encodingInfo, pred, llvmElemTy,
           memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs, useNaN,
-          useSubwordPhasePath, enableIISan);
+          useSubwordPhasePath);
     }
 
     auto sparseLowered = lowerElementwisePackedSubwordLdSt(
@@ -1069,7 +1026,7 @@ lowerTMemLdStFromTypes(
       return lowerTMemLdStFromInfo(
           loc, rewriter, *encodingInfoOr, pred, llvmElemTy,
           memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs, useNaN,
-          useSubwordPhasePath, enableIISan);
+          useSubwordPhasePath);
     }
   }
 
@@ -1139,10 +1096,7 @@ static void combineLaneSplitReduction(Location loc,
 
 struct TensorMemoryLoadOpConversion
     : public ConvertOpToLLVMPattern<triton::nvidia_gpu::TMEMLoadOp> {
-  TensorMemoryLoadOpConversion(LLVMTypeConverter &typeConverter,
-                               PatternBenefit benefit, bool enableIISan)
-      : ConvertOpToLLVMPattern(typeConverter, benefit),
-        enableIISan(enableIISan) {}
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(triton::nvidia_gpu::TMEMLoadOp op, OpAdaptor adaptor,
@@ -1169,7 +1123,7 @@ struct TensorMemoryLoadOpConversion
     auto lowered = lowerTMemLdStFromTypes(
         loc, rewriter, regTy, memTy, op.getSrc(), tmemBase, maxnreg,
         b.i1_val(true),
-        llvmElemTy, {}, redOp, useAbs, useNaN, enableIISan);
+        llvmElemTy, {}, redOp, useAbs, useNaN);
     if (failed(lowered))
       return failure();
     auto [resultVals, redvalVals] = *lowered;
@@ -1200,17 +1154,25 @@ struct TensorMemoryLoadOpConversion
     rewriter.replaceOp(op, results);
     return success();
   }
+};
 
-private:
-  bool enableIISan;
+struct TensorMemoryAddressOpConversion
+    : public ConvertOpToLLVMPattern<triton::nvidia_gpu::TMEMAddressOp> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(triton::nvidia_gpu::TMEMAddressOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op->getLoc();
+    auto b = TritonLLVMOpBuilder(loc, rewriter);
+    rewriter.replaceOp(op, b.ptrtoint(i32_ty, adaptor.getSrc()));
+    return success();
+  }
 };
 
 struct TensorMemoryStoreOpConversion
     : public ConvertOpToLLVMPattern<triton::nvidia_gpu::TMEMStoreOp> {
-  TensorMemoryStoreOpConversion(LLVMTypeConverter &typeConverter,
-                                PatternBenefit benefit, bool enableIISan)
-      : ConvertOpToLLVMPattern(typeConverter, benefit),
-        enableIISan(enableIISan) {}
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(triton::nvidia_gpu::TMEMStoreOp op, OpAdaptor adaptor,
@@ -1230,8 +1192,7 @@ struct TensorMemoryStoreOpConversion
     auto maxnreg = getContextualMaxNReg(op);
     if (failed(lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy, op.getDst(),
                                       tmemBase, maxnreg, pred, llvmElemTy,
-                                      srcValues, std::nullopt, false, false,
-                                      enableIISan)))
+                                      srcValues)))
       return failure();
     NVVM::Tcgen05WaitOp::create(rewriter, loc, NVVM::Tcgen05WaitKind::STORE);
 
@@ -1244,17 +1205,11 @@ struct TensorMemoryStoreOpConversion
     rewriter.eraseOp(op);
     return success();
   }
-
-private:
-  bool enableIISan;
 };
 
 struct TensorMemoryAllocOpConversion
     : public ConvertOpToLLVMPattern<triton::nvidia_gpu::TMEMAllocOp> {
-  TensorMemoryAllocOpConversion(LLVMTypeConverter &typeConverter,
-                                PatternBenefit benefit, bool enableIISan)
-      : ConvertOpToLLVMPattern(typeConverter, benefit),
-        enableIISan(enableIISan) {}
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(triton::nvidia_gpu::TMEMAllocOp op, OpAdaptor adaptor,
@@ -1295,8 +1250,7 @@ struct TensorMemoryAllocOpConversion
       if (failed(lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy,
                                         /*memDescValue=*/op.getResult(),
                                         ptr, maxnreg, b.i1_val(true),
-                                        llvmElemTy, srcValues, std::nullopt,
-                                        false, false, enableIISan)))
+                                        llvmElemTy, srcValues)))
         return failure();
       NVVM::Tcgen05WaitOp::create(rewriter, loc, NVVM::Tcgen05WaitKind::STORE);
       // Emit a barrier to ensure all threads have finished writing to tensor
@@ -1312,9 +1266,6 @@ struct TensorMemoryAllocOpConversion
     rewriter.replaceOp(op, ptr);
     return success();
   }
-
-private:
-  bool enableIISan;
 };
 
 static void createTcgen05Cp(ConversionPatternRewriter &rewriter, Location loc,
@@ -1364,8 +1315,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
                                       Location loc,
                                       const TypeConverter *typeConverter,
                                       triton::nvidia_gpu::TMEMCopyOp op,
-                                      Value src, Value baseDst, Value pred,
-                                      bool enableIISan) {
+                                      Value src, Value baseDst, Value pred) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
 
   MemDescType srcTy = op.getSrc().getType();
@@ -1499,11 +1449,6 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     uint32_t messageDestinationOffset =
         destinationBaseOffset + instruction.destination.offset;
     auto tmemAddr = b.add(wordBaseDst, b.i32_val(messageDestinationOffset));
-    if (enableIISan)
-      createTMemIISanAddressAlignmentAssert(
-          loc, rewriter, tmemAddr, /*colOffset=*/0,
-          /*wordColumnAlignment=*/4, pred,
-          "tcgen05.copy tensor memory destination address must be 128-bit aligned");
     createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, messagePlan.atom,
                     messagePlan.sourceFormat, twoCTAs);
   }
@@ -1512,10 +1457,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
 
 struct TensorMemoryCopyOpConversion
     : public ConvertOpToLLVMPattern<triton::nvidia_gpu::TMEMCopyOp> {
-  TensorMemoryCopyOpConversion(LLVMTypeConverter &typeConverter,
-                               PatternBenefit benefit, bool enableIISan)
-      : ConvertOpToLLVMPattern(typeConverter, benefit),
-        enableIISan(enableIISan) {}
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(triton::nvidia_gpu::TMEMCopyOp op, OpAdaptor adaptor,
@@ -1531,8 +1473,7 @@ struct TensorMemoryCopyOpConversion
     }
 
     if (failed(copySharedToTmem(rewriter, loc, typeConverter, op,
-                                adaptor.getSrc(), adaptor.getDst(), pred,
-                                enableIISan)))
+                                adaptor.getSrc(), adaptor.getDst(), pred)))
       return failure();
     if (op.getBarrier()) {
       auto smemObj = LLVM::getSharedMemoryObjectFromStruct(
@@ -1543,9 +1484,6 @@ struct TensorMemoryCopyOpConversion
     rewriter.eraseOp(op);
     return success();
   }
-
-private:
-  bool enableIISan;
 };
 
 struct MemDescIndexOpConversion
@@ -1657,10 +1595,10 @@ struct TMEMSubSliceOpConversion
 
 void mlir::triton::NVIDIA::populateTensorMemoryOpToLLVMPattern(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
-    PatternBenefit benefit, bool enableIISan) {
+    PatternBenefit benefit) {
   patterns.add<TensorMemoryCopyOpConversion, TensorMemoryLoadOpConversion,
-               TensorMemoryStoreOpConversion, TensorMemoryAllocOpConversion>(
-      typeConverter, benefit, enableIISan);
+               TensorMemoryStoreOpConversion, TensorMemoryAddressOpConversion,
+               TensorMemoryAllocOpConversion>(typeConverter, benefit);
 }
 
 void mlir::triton::NVIDIA::populateTensorMemorySubviewOpToLLVMPattern(

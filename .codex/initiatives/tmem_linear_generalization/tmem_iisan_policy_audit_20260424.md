@@ -199,3 +199,24 @@ Validation for this implementation slice:
 - `TRITON_INSTRUMENTATION_MODE=iisan pytest -s --tb=short` selected direct ld/st rows in `test_tmem_runtime_matrix.py`: `2 passed`
 - `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/tmem_layouts.mlir`: `2 passed`
 - `python/examples/gluon/01-attention-forward.py` representative `use_tmem_red=True` rows: `4 passed`
+
+## Implementation Update - 2026-04-24 19:01 UTC
+
+Follow-up policy adjustment after user review: TMEM iisan checks that are useful for Gluon should be emitted by the Gluon frontend, matching the existing TMA iisan implementation. Triton/non-Gluon paths are expected to have middle-end legality and should not rely on NVIDIA GPU-to-LLVM sanitizer insertion.
+
+Changes from the previous 18:39 backend implementation:
+
+- Removed the `convert-triton-gpu-to-llvm` `enable-illegal-instruction-sanitizer` pass option and the TMEM iisan assertion helpers from NVIDIA GPU-to-LLVM.
+- Added `ttng.tmem_address` so Gluon frontend checks can inspect the current memdesc SSA value's packed runtime taddr without walking producer/view chains. NVIDIA GPU-to-LLVM only lowers this helper op to the already-lowered memdesc address.
+- Moved Gluon-visible TMEM runtime address checks to `python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py` for explicit reduction loads, `tcgen05_copy`, plain MMAv5, and scaled MMAv5. The checks use the memdesc dtype to convert hardware word-column alignment requirements into element-column moduli.
+- Direct ld/st selected-atom iisan checks from the backend implementation were removed rather than preserved in LLVM lowering. If needed later, they should be implemented through a frontend query that exposes the exact chosen atom and packet offsets to Gluon; otherwise the middle-end must avoid generating illegal selected ld/st instructions.
+
+Validation for the frontend migration:
+
+- `make`
+- exact red/copy iisan runtime rows: `2 passed`
+- aligned red subslice runtime row: `1 passed`
+- structural-fuzzer ld.red clean-negative rows: `2 passed`
+- `TRITON_INSTRUMENTATION_MODE=iisan` MMAv5/scaled positive rows: `2 passed`
+- lit `invalid.mlir` + `tmem_layouts.mlir`: `2 passed`
+- representative attention red-path rows: `4 passed`

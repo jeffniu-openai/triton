@@ -777,6 +777,24 @@ def TTNG_TCGen5CommitOp : TTNG_Op<"tc_gen5_commit", [AttrSizedOperandSegments,
   let hasVerifier = 1;
 }
 
+def TTNG_TMEMAddressOp : TTNG_Op<"tmem_address", [Pure]> {
+  let summary = "Expose a tensor memory descriptor's packed runtime address";
+
+  let description = [{
+    Returns the current tensor-memory descriptor address as the packed runtime
+    taddr used by TMEM lowering. The low column bits are element-column units;
+    clients that need hardware word-column alignment must account for the
+    descriptor element type's elements-per-32-bit word.
+  }];
+
+  let arguments = (ins TTG_MemDescType:$src);
+  let results = (outs I32:$result);
+
+  let assemblyFormat = [{
+    $src attr-dict `:` qualified(type($src))
+  }];
+}
+
 def TTNG_TMEMLoadOp : TTNG_Op<"tmem_load", [AttrSizedResultSegments]> {
   let summary = "Load a buffer from tensor memory into a distributed tensor";
 

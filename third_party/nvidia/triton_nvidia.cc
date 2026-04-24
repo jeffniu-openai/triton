@@ -136,11 +136,9 @@ void init_triton_nvidia_passes_ttgpuir(py::module &&m) {
         });
   m.def("add_to_llvmir",
         [](mlir::PassManager &pm, int32_t capability, int32_t ptxVersion,
-           bool enableConcurrencySanitizer,
-           bool enableIllegalInstructionSanitizer) {
+           bool enableConcurrencySanitizer) {
           pm.addPass(mlir::triton::createConvertTritonGPUToLLVMPass(
-              capability, ptxVersion, enableConcurrencySanitizer,
-              enableIllegalInstructionSanitizer));
+              capability, ptxVersion, enableConcurrencySanitizer));
         });
 }
 
