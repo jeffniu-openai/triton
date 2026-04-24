@@ -1,17 +1,16 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 00:21 UTC
+Last updated: 2026-04-24 00:53 UTC
 
-Active phase: runtime correctness closure complete; staged validation is green.
+Active phase: no full-view replay legalization; staged validation is green.
 
 Current checkpoint summary:
 
-- [x] Fixed stale full-view replay over supported type-local `tensor_memory_linear` descriptor chains. `OptimizeTMemLayouts` now uses full-view replay only as a legacy rescue when direct type-local lowering explicitly rejects the descriptor view; supported linear/type-local views lower from the current memdesc SSA value and current `MemDescType`/layout.
-- [x] Preserved the M64 two-CTA scales compatibility rescue as an explicit remaining boundary: direct lowering still rejects that broadcast-row-anchor shape, so replay remains a compatibility optimization there until row-anchor rematerialization is implemented.
-- [x] Generalized hardware load+reduce fusion through legal result view chains (`convert_layout`, `reshape`, `trans`, `abs`) and applies reduced-result transforms only when the trailing reduction dimension is preserved.
-- [x] Fixed software reduction fallback planning so no-explicit-layout fallback uses the descriptor's ordinary register layout, and split-long-M reduction layouts are not offered for rank-2 `N < 4`.
-- [x] Refreshed runtime tests that encoded stale replay behavior: scale descriptor-view ptx expectations now match direct type-local packet choices, and structural generic-pass chain0 expected values assert logical reshape/permute view semantics.
-- [x] Staged validation green: `make -j8`; `git diff --check`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; structural fuzzer split-4 `36 passed`; full runtime matrix split-4 `1609 passed, 102 skipped`; `test_core.py -k tmem` split-4 `288 passed, 5 skipped`; example smokes `01-attention-forward.py` `2 passed`, `05-moe-bmm1-fused-gather.py` `2 passed`.
+- [x] Removed full-view replay as a semantic legalization rescue. TMEM load/store/reduction legality now must come from the current memdesc SSA value and current `MemDescType`/layout, or reject cleanly.
+- [x] Deleted full-view replay matching/lowering/patterns from `OptimizeTMemLayouts`, removed `isTMemLdStReplayableFullView`, and removed the verifier/Gluon frontend fallback that treated full-view replay as a supported escape.
+- [x] Kept half-slice replay only as a local optimizer split of already-supported accesses.
+- [x] Reclassified replay-dependent rows as clean negatives: M64 two-CTA tensor-memory-scales `32x32b` descriptor-view `ld/st`, plus structural fuzzer full-view-dependent `ld/st` and `ld.red` descriptor-view rows.
+- [x] Staged validation green with normal cache behavior and no `TRITON_ALWAYS_COMPILE`: `make -j8`; focused scales descriptor-view selector `13 passed`; structural fuzzer split-4 `36 passed`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; full runtime matrix split-4 `346 passed, 82 skipped` / `408 passed, 20 skipped` / `428 passed` / `427 passed`; `test_core.py -k tmem` split-4 `69 passed, 5 skipped` / `74 passed` / `74 passed` / `71 passed`; `git diff --check`.
 
 Active implementation checklist:
 

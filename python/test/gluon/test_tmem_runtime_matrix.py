@@ -6793,17 +6793,6 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_REPRESENTATIVE_KEYS = {
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
     [
         (
-            64,
-            64,
-            4,
-            2,
-            ((1, 0),),
-            "32x32b",
-            _expected_scales_ldst_descriptor_view_ops(
-                "16x32bx2.x1.b32", "16x32bx2.x1.b32", tuple(range(0, 32, 2))
-            ),
-        ),
-        (
             128,
             64,
             4,
@@ -6824,6 +6813,22 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
         if case[:6] in SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_REPRESENTATIVE_KEYS
     ]
 )
+
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
+    (
+        64,
+        64,
+        4,
+        2,
+        ((1, 0),),
+        "32x32b",
+        (
+            "TMEM layout 'constexpr[32x32b]' unsupported for descriptor view",
+            "M=64 two-CTA tensor-memory-scales view",
+            "row-anchor rematerialization or packet-footprint model",
+        ),
+    ),
+]
 
 LD_RED_LINEAR_CASES = [
     ("identity", 128, 32, 4, "32x32b.x32"),
@@ -9622,6 +9627,30 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "M,N,num_warps,num_ctas,cga_layout,instr_variant,expected_texts",
+    SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES,
+)
+def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_reports_clean_unsupported(
+    M, N, num_warps, num_ctas, cga_layout, instr_variant, expected_texts, capfd
+):
+    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_scales_ldst_descriptor_view_kernel[(1, )](
+            inp, out, M, N, instr_variant, cga_layout, num_warps=num_warps, num_ctas=num_ctas
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    for expected_text in expected_texts:
+        assert expected_text in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("selector_value", (0, 1))
 @pytest.mark.parametrize(
     "num_ctas,cga_layout,expected_ops",
@@ -9796,9 +9825,9 @@ def test_tmem_runtime_matrix_ldst_descriptor_rank5_small_roundtrip(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    # Full-view replay may canonicalize a leading unit subslice plus index into
-    # the equivalent parent index before direct tcgen05 ld/st. Runtime
-    # correctness and exact opcode counts above are the semantic checks.
+    # Optimizer rewrites may canonicalize leading unit subslice/index chains,
+    # but runtime correctness and exact opcode counts above are the semantic
+    # checks. Full-view producer-chain replay is not a legalization path.
     if num_ctas == 2:
         assert "twoCTAs = true" in ttgir
 

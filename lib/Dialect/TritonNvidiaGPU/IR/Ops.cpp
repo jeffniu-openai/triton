@@ -1379,8 +1379,10 @@ static bool isOptimizerReplayableTMemLdSt(Operation *op, Value memdescValue) {
   } else if (!isa<TMEMStoreOp>(op)) {
     return false;
   }
-  return isTMemLdStReplayableHalfSliceView(memdescValue) ||
-         isTMemLdStReplayableFullView(memdescValue);
+  // Half-slice replay is a local optimizer split of a supported access.
+  // Full reshape/transpose replay would recover semantic legality from the
+  // producer chain, which is disallowed for TMEM descriptor views.
+  return isTMemLdStReplayableHalfSliceView(memdescValue);
 }
 
 static LogicalResult

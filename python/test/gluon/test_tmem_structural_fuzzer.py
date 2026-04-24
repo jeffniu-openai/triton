@@ -121,6 +121,15 @@ def _run_structural_child(case_id):
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
 
 
+def _assert_clean_tmem_ldst_descriptor_view_unsupported(text):
+    assert "unsupported for descriptor view" in text
+    assert "unsupported tensor memory descriptor view for direct tcgen05.ld/st" in text
+    assert "required row anchors" in text
+    assert "Access the full backing tile or reshape/copy" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
 @dataclass(frozen=True)
 class LdStCase:
     case_id: str
@@ -224,7 +233,7 @@ LDST_CASES = [
     LdStCase("ldst-view-col-rotate-16x128b", 0x104, 128, 128, "identity", "rotate1", "16x128b", 1),
 ]
 
-LDST_DESCRIPTOR_VIEW_CASES = [
+LDST_DESCRIPTOR_VIEW_CLEAN_UNSUPPORTED_CASES = [
     LdStCase(
         "ldst-fz20260421-0003-chain1-64x32-32x32b",
         0xA003,
@@ -266,6 +275,9 @@ LDRED_CASES = [
     LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-max", 0xA024, 256, 32, True, 1, op="max"),
     LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-abs", 0xA025, 256, 32, True, 1, op="min_abs"),
     LdRedCase("ldred-fz20260421-0004-twocta-indexed-256x32-chain0-min-nan", 0xA026, 256, 32, True, 1, op="min_nan"),
+]
+
+LDRED_CLEAN_UNSUPPORTED_CASES = [
     LdRedCase("ldred-fz20260421-0004-chain1-64x32-min", 0xA004, 64, 32, False, 2),
     LdRedCase(
         "ldred-fz20260421-0006-rotate1-transpose-slice-max",
@@ -946,23 +958,22 @@ def test_tmem_structural_fuzzer_ldst_view_roundtrip(case):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("case", LDST_DESCRIPTOR_VIEW_CASES, ids=lambda case: case.case_id)
-def test_tmem_structural_fuzzer_ldst_descriptor_view_read(case):
+@pytest.mark.parametrize("case", LDST_DESCRIPTOR_VIEW_CLEAN_UNSUPPORTED_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_ldst_descriptor_view_reports_clean_unsupported(case, capfd):
     torch.manual_seed(case.seed)
     layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
     parent_layout = _lift_layout(layout, [2])
     torch_dtype = {"f32": torch.float32, "f16": torch.float16}[case.dtype_name]
     inp = torch.randn((case.m, case.n), dtype=torch_dtype, device="cuda")
     out = torch.empty_like(inp)
-    compiled = _fuzz_ldst_descriptor_view_read_kernel[(1, )](
-        inp, out, parent_layout, case.m, case.n, case.instr_variant, case.chain_id, num_warps=4
-    )
-    torch.testing.assert_close(out, inp, atol=0, rtol=0)
-    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
-    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
-    assert ptx_ops == llir_ops
-    assert any(".ld." in op for op in ptx_ops)
-    assert any(".st." in op for op in ptx_ops)
+
+    with pytest.raises(Exception) as excinfo:
+        _fuzz_ldst_descriptor_view_read_kernel[(1, )](
+            inp, out, parent_layout, case.m, case.n, case.instr_variant, case.chain_id, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    _assert_clean_tmem_ldst_descriptor_view_unsupported(str(excinfo.value) + captured.err + captured.out)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1052,6 +1063,37 @@ def test_tmem_structural_fuzzer_ldred(case):
         assert any(".ld." in op for op in ptx_ops)
         assert not any(".ld.red." in op for op in ptx_ops)
         assert "tt.reduce" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("case", LDRED_CLEAN_UNSUPPORTED_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_ldred_reports_clean_unsupported(case, capfd):
+    torch.manual_seed(case.seed)
+    assert not case.two_ctas
+    layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
+    parent_layout = _lift_layout(layout, [2])
+    red_layout = ttgl.BlockedLayout([1], [32], [4], [0])
+    inp = torch.randn((case.m, case.n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty((case.m, ), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception) as excinfo:
+        _fuzz_ldred_kernel[(1, )](
+            inp,
+            out,
+            red,
+            layout,
+            parent_layout,
+            red_layout,
+            case.m,
+            case.n,
+            case.chain_id,
+            case.op == "max",
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    _assert_clean_tmem_ldst_descriptor_view_unsupported(str(excinfo.value) + captured.err + captured.out)
 
 
 def _run_ldred_twocta_rowcol_optimizer_crash_case():

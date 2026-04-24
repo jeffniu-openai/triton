@@ -36168,3 +36168,11 @@ Open after this slice:
 
 
 - 2026-04-24 00:21 UTC: runtime correctness closure completed. Fixed stale full-view replay over supported type-local `tensor_memory_linear` descriptor chains, generalized `ld.red` fusion through legal result view chains, corrected no-explicit-layout reduction fallback planning, and guarded split-long-M reduction layouts for rank-2 `N < 4`. Refreshed runtime-matrix ptx expectations for scale descriptor-view direct type-local packets and structural generic-pass expectations for logical reshape/permute view semantics. Validation: `make -j8`; `git diff --check`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; structural fuzzer split-4 `36 passed`; runtime matrix split-4 `1609 passed, 102 skipped`; `test_core.py -k tmem` split-4 `288 passed, 5 skipped`; examples `01-attention-forward.py` `2 passed`, `05-moe-bmm1-fused-gather.py` `2 passed`.
+
+
+## 2026-04-24 00:53 UTC: full-view replay legalization removed
+
+- User correction: full-view replay goes against the memdesc-model goal when used to make unsupported descriptor views legal. Codegen legality must be derived from the current memdesc SSA value and current `MemDescType`/layout; producer-chain inspection may not rescue invalid direct lowering.
+- Implementation: removed full-view replay support from `OptimizeTMemLayouts`, removed the public `isTMemLdStReplayableFullView` API, removed the verifier/front-end full-view fallback, and kept only half-slice replay as the local optimizer split.
+- Tests: M64 two-CTA scales descriptor-view `32x32b` is now a clean unsupported runtime-matrix row. Structural fuzzer full-view-dependent `ld/st` and `ld.red` rows are now clean unsupported diagnostics instead of execution positives.
+- Validation: `make -j8`; focused scales descriptor-view selector `13 passed`; structural fuzzer split-4 `36 passed`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; runtime matrix split-4 group1 `346 passed, 82 skipped`, group2 `408 passed, 20 skipped`, group3 `428 passed`, group4 `427 passed`; `test_core.py -k tmem` split-4 group1 `69 passed, 5 skipped`, group2 `74 passed`, group3 `74 passed`, group4 `71 passed`; `git diff --check`. Validation used normal per-GPU cache directories, not `TRITON_ALWAYS_COMPILE`.

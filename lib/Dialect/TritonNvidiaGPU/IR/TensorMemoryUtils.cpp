@@ -1031,61 +1031,6 @@ bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
   return true;
 }
 
-bool isTMemLdStReplayableFullView(Value memDesc) {
-  auto queryTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
-  if (!queryTy || queryTy.getRank() != 2 ||
-      !isTensorMemoryEncoding(queryTy.getEncoding()))
-    return false;
-
-  int64_t queryElements = product<int64_t>(queryTy.getShape());
-  bool sawTransform = false;
-  SmallPtrSet<Value, 8> seen;
-  Value cur = memDesc;
-  auto isPermutation = [](ArrayRef<int32_t> order, int64_t rank) {
-    if (order.size() != static_cast<size_t>(rank))
-      return false;
-    SmallVector<bool> seen(order.size(), false);
-    for (int32_t dim : order) {
-      if (dim < 0 || dim >= rank || seen[dim])
-        return false;
-      seen[dim] = true;
-    }
-    return true;
-  };
-  while (cur && seen.insert(cur).second) {
-    if (auto reshape = cur.getDefiningOp<gpu::MemDescReshapeOp>()) {
-      auto srcTy = dyn_cast<MemDescType>(reshape.getSrc().getType());
-      auto dstTy = dyn_cast<MemDescType>(reshape.getType());
-      if (!srcTy || !dstTy ||
-          product<int64_t>(srcTy.getShape()) !=
-              product<int64_t>(dstTy.getShape()))
-        return false;
-      sawTransform = true;
-      cur = reshape.getSrc();
-      continue;
-    }
-    if (auto trans = cur.getDefiningOp<gpu::MemDescTransOp>()) {
-      auto srcTy = dyn_cast<MemDescType>(trans.getSrc().getType());
-      auto dstTy = dyn_cast<MemDescType>(trans.getType());
-      if (!srcTy || !dstTy || srcTy.getRank() != dstTy.getRank() ||
-          !isPermutation(trans.getOrder(), srcTy.getRank()) ||
-          product<int64_t>(srcTy.getShape()) !=
-              product<int64_t>(dstTy.getShape()))
-        return false;
-      sawTransform = true;
-      cur = trans.getSrc();
-      continue;
-    }
-    break;
-  }
-
-  auto baseTy = dyn_cast_if_present<MemDescType>(cur.getType());
-  return sawTransform && baseTy && baseTy.getRank() == 2 &&
-         isa<TensorMemorySpaceAttr>(baseTy.getMemorySpace()) &&
-         isTensorMemoryEncoding(baseTy.getEncoding()) &&
-         product<int64_t>(baseTy.getShape()) == queryElements;
-}
-
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,
                                                       unsigned numWarps,
                                                       TMemAccessAtom atom) {
