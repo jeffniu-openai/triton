@@ -5627,3 +5627,14 @@ discovery.
   geomean `0.875x`, all 56 points slower on branch; red subset is not
   comparable because branch compile rejects `load_max()` on sliced TMEM origin
   while upstream main completes. Raw results saved under `/tmp/tmem_attention_bench/`.
+
+- 2026-04-24 19:51 UTC: example 01/05 branch-vs-main performance checkpoint completed.
+  Branch `codex/tmem` at `9bee5eb94` and upstream main at `27c402843` were
+  rebuilt and benchmarked on GPU 0. Durable report:
+  `example_benchmark_20260424.md`. Raw logs/CSVs are under
+  `/tmp/tmem_bench_20260424/`. Results: 01 attention 112-row geomean
+  `0.906x` branch/main (`use_tmem_red=False` `0.879x`, `use_tmem_red=True`
+  `0.934x`); 05 fused gather 48-row example geomean `0.885x` with no wins.
+  Next performance workstream: inspect generated code for the worst small-N
+  attention rows and mid-batch fused-gather rows against main; do not treat this
+  benchmark as a green performance gate.
