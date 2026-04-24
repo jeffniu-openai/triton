@@ -1,10 +1,10 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 19:01 UTC
+Last updated: 2026-04-24 21:50 UTC
 
-Active phase: TMEM iisan policy transition relocated to Gluon frontend instrumentation for exposed Gluon TMEM APIs. Runtime final-address trap preconditions for explicit red-load, copy, MMAv5, and scaled-MMAv5 calls are now Gluon-emitted `tt.assert` checks; NVIDIA GPU-to-LLVM no longer owns TMEM iisan assertion insertion. Structural PTX/codegen impossibility remains clean unsupported.
+Active phase: Post-merge validation is red. The latest upstream-main merge builds and passes focused compiler/fpsan checks, but the broad TMEM runtime matrix has correctness, compiler-crash, unsupported-diagnostic, and expectation-drift buckets that must be triaged before performance recovery continues.
 
-Latest follow-up: moved the previous backend iisan implementation into Gluon. The branch now has a `ttng.tmem_address` helper op so frontend code can form dtype-aware address checks from the current memdesc SSA value without view-chain inspection. The stale `ld.red` verifier/lowering alignment rejection and executable-plan `tcgen05.copy` destination-alignment rejection remain removed, and representative attention `use_tmem_red=True` rows still compile and run. Direct ld/st selected-atom sanitizer coverage was removed with the backend checks; adding a frontend equivalent would require a Gluon-level exact atom/packet-offset query rather than backend legality instrumentation.
+Latest follow-up: ran required `make`, focused lit checks, Python syntax compile, `test_fpsan.py`, and a four-GPU `-k tmem` runtime selection across `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py`. Focused checks are green; the broad selection selected `2040` cases and ended `286 failed`, `1647 passed`, `107 skipped`. A representative dynamic subword ld/st failure reproduced with a fresh cache. Main red buckets are subword ld/st view planning/opcode/miscompare cases, descriptor-view ld/st gaps, copy planner/warpx2/tile-permuted gaps, ld.red permuted/tile-permuted gaps, MMAv5/scaled-MMAv5 tile-permuted miscompares and `getSharedMemoryBase` crashes, and structural-fuzzer clean-negative expectations that now compile.
 
 Current iisan policy checklist:
 

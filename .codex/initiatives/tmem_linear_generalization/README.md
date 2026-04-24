@@ -7,7 +7,16 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
-## Latest: 2026-04-24 merge latest upstream main
+## Latest: 2026-04-24 post-merge validation check
+
+- Required build/checks after merge commit `79d67152c`: `make` completed with `ninja: no work to do`; lit `test/TritonGPU/invalid.mlir`, `test/TritonGPU/fpsan.mlir`, `test/TritonNvidiaGPU/invalid.mlir`, `test/TritonNvidiaGPU/tmem_layouts.mlir`, and `test/Conversion/tritongpu_to_llvm_tmem_control_flow.mlir` passed `5/5`; Python syntax compile for the touched Gluon example/tests passed; `python/test/gluon/test_fpsan.py` passed `85`, skipped `22`.
+- Broad four-GPU TMEM runtime selection is red: `pytest -s --tb=short --splits 4 --group <1..4> python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py python/test/gluon/test_tmem_structural_fuzzer.py -k 'tmem'` selected `2040` cases and ended with `286 failed`, `1647 passed`, `107 skipped`.
+- Shard summaries: group1 `11 failed, 432 passed, 67 skipped`; group2 `88 failed, 386 passed, 36 skipped`; group3 `61 failed, 445 passed, 4 skipped`; group4 rerun `126 failed, 384 passed`.
+- Main failing buckets: subword ld/st view opcode expectations plus a few dynamic-view miscompares; descriptor-view ld/st multidim/half-row failures and diagnostic drift; copy planner/warpx2/tile-permuted failures including 256-row copy unsupported and miscompares; ld.red permuted/tile-permuted compile failures, opcount drift, and miscompares; MMAv5 and scaled-MMAv5 tile-permuted miscompares plus `ConvertTritonGPUToLLVM` crashes around `getSharedMemoryBase` missing `allocation.offset`; structural fuzzer rows that used to expect clean unsupported now compile.
+- A representative dynamic subword ld/st failure reproduces with a fresh `TRITON_CACHE_DIR`, so at least that bucket is not stale-cache-only.
+- Current status: compiler-only and fpsan checks survived the merge, but the broad TMEM runtime matrix is not green. Treat these as correctness/coverage buckets to triage before resuming benchmark/performance recovery.
+
+## Previous: 2026-04-24 merge latest upstream main
 
 - Fetched `upstream/main` at `27c402843` and merged it into `codex/tmem` from pre-merge `29a061b53` before resuming performance/codegen work.
 - Resolved conflicts across TritonGPU linear encoding inference, TMEM `ld.red` verifier support, Gluon attention example harness/API coverage, Gluon IR bindings, fpsan imports, and invalid linear/CGA/TMEM tests.
