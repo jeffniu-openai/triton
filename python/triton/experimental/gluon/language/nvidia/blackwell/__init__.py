@@ -670,6 +670,7 @@ class tensor_memory_descriptor(base_value):
         self._require_rank2_tmem_ldst("reduction load")
         abs_flag = _unwrap_if_constexpr(abs)
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
+        explicit_layout = layout is not None
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
             raw_layout = _unwrap_if_constexpr(self.layout)
@@ -707,7 +708,17 @@ class tensor_memory_descriptor(base_value):
 
         if not isinstance(self.layout, TensorMemoryScalesLayout):
             if not gluon_ir.is_tmem_load_reduction_memdesc_supported(self.handle, ret_ty.to_ir(builder)):
-                result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
+                software_layout = layout
+                if not explicit_layout:
+                    try:
+                        software_layout = self.get_reg_layout(
+                            num_warps=num_warps,
+                            _semantic=_semantic,
+                            _generator=_generator,
+                        )
+                    except Exception as e:
+                        raise ValueError(str(e)) from e
+                result = self.load(layout=software_layout, _semantic=_semantic, _generator=_generator)
                 reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
                 reduced = ttgl.reduce(
                     reduce_input,

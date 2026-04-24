@@ -1,58 +1,17 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-23 22:56 UTC
+Last updated: 2026-04-24 00:21 UTC
 
-Active phase: final helper API cleanup complete; staged validation is blocked on one deterministic structural-fuzzer `ld.red` correctness failure.
+Active phase: runtime correctness closure complete; staged validation is green.
 
 Current checkpoint summary:
 
-- [x] Fixed physical-bitcast TMEM reinterpret lowering so `tmem_physical_bitcast`
-  changes the runtime `taddr` element-column coordinate when element bitwidth
-  changes, preserving row bits and keeping dynamic selected memdesc values
-  self-contained after lowering.
-- [x] Fixed narrowing physical-bitcast subword phase analysis so known source
-  residues are scaled into the result element coordinate instead of degrading
-  to an unsupported unknown-origin path.
-- [x] Revalidated the full `test_core.py -k tmem` split and the runtime-matrix
-  bitcast/reinterpret slice after the fix.
-
-- [x] Removed the MMAv5 physical-bitcast defining-op check from address-layout
-  and tile-order offset lowering; MMAv5 physical-bitcast semantics now come
-  from current type/layout plus the already-rescaled runtime `taddr`.
-- [x] Added a selected physical-bitcast MMA lhs runtime sentinel where two
-  same-typed bitcast views are selected before `tcgen05_mma`.
-
-- [x] Added a selected physical-bitcast ld/st sentinel where two same-typed
-  bitcast views are selected before `store`, covering the no-visible-reinterpret
-  producer case for normal load/store consumers.
-
-- [x] Broadened copy physical-query selection to use the type-local destination
-  query when it matches the legacy standalone/exact physical projection, so
-  copy lowering can keep the selected runtime `taddr` without changing the copy
-  family.
-- [x] Closed the origin-changing view/taddr workstream: the shared TMEM
-  LLVM lowering helpers now live in common conversion utility code, NVIDIA
-  high-benefit `memdesc_index` handles dynamic encoded index views directly,
-  `ttng.tmem_subslice` uses the same source-type view-offset helper as public
-  subslice, and public TMEM index/subslice type helpers delegate to op encoding
-  inference.
-- [x] Closed the ld/st type-local and ld.red/reduction planning workstream:
-  normal load/store query and row-plan selection, direct support layout
-  helpers, reduction canonicalization/layout selection, TMEM verifier checks,
-  load+reduce fusion, NVIDIA LLVM lowering, and Gluon frontend helpers now use
-  type-local planning for descriptors covered by `hasTypeLocalTMemLdStLayout`.
-  Value-shaped producer-chain helpers remain for legacy descriptor-view
-  compatibility, optimizer replay, and current-value phase/alignment analysis.
-- [x] Closed the `tcgen05.copy` type-local physical-query selection workstream
-  for active copy descriptor classes: active self-contained subviews and scales
-  descriptor views now select the current `MemDescType` physical query before
-  legacy standalone/exact producer-chain comparison. Direct roots and
-  non-self-contained descriptor classes keep the existing support-query legacy
-  path; a broad no-scale probe showed raw direct-root type-local selection would
-  regress 256-row dense roots and tile-selector-permuted layouts.
-
-- [x] Final helper API cleanup: internal-only `TensorMemoryUtils` helpers for forwarding-source recovery, scales-root recovery, and type-local MMAv5 address/offset planning were removed from the public header or made file-local. The public boundary now keeps type-local semantic helpers separate from value-taking compatibility/optimizer/support-query APIs.
-- [ ] Staged validation is not yet green. Build, lit, `test_core.py -k tmem`, full TMEM runtime matrix, and example smoke checks passed, but the checked-in structural fuzzer fails deterministically at `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-chain1-64x32-min]`. Bucket: `ld.red` descriptor-view-chain runtime miscompile; symptom: passthrough result from `view.load_min()` mismatches the initialized TMEM tile for a `parent.index(1).reshape(...).permute(...).reshape(...)` active view; next step is user-reviewed fix planning before continuing broad validation.
+- [x] Fixed stale full-view replay over supported type-local `tensor_memory_linear` descriptor chains. `OptimizeTMemLayouts` now uses full-view replay only as a legacy rescue when direct type-local lowering explicitly rejects the descriptor view; supported linear/type-local views lower from the current memdesc SSA value and current `MemDescType`/layout.
+- [x] Preserved the M64 two-CTA scales compatibility rescue as an explicit remaining boundary: direct lowering still rejects that broadcast-row-anchor shape, so replay remains a compatibility optimization there until row-anchor rematerialization is implemented.
+- [x] Generalized hardware load+reduce fusion through legal result view chains (`convert_layout`, `reshape`, `trans`, `abs`) and applies reduced-result transforms only when the trailing reduction dimension is preserved.
+- [x] Fixed software reduction fallback planning so no-explicit-layout fallback uses the descriptor's ordinary register layout, and split-long-M reduction layouts are not offered for rank-2 `N < 4`.
+- [x] Refreshed runtime tests that encoded stale replay behavior: scale descriptor-view ptx expectations now match direct type-local packet choices, and structural generic-pass chain0 expected values assert logical reshape/permute view semantics.
+- [x] Staged validation green: `make -j8`; `git diff --check`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; structural fuzzer split-4 `36 passed`; full runtime matrix split-4 `1609 passed, 102 skipped`; `test_core.py -k tmem` split-4 `288 passed, 5 skipped`; example smokes `01-attention-forward.py` `2 passed`, `05-moe-bmm1-fused-gather.py` `2 passed`.
 
 Active implementation checklist:
 

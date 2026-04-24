@@ -4353,6 +4353,8 @@ getTmemLoadLayoutSplitLongM(RankedTensorType tensorType, MemDescType memType,
                             int numWarps) {
   if (numWarps != 8)
     return std::nullopt;
+  if (memType.getRank() == 2 && memType.getShape()[1] < 4)
+    return std::nullopt;
   if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
     return std::nullopt;
 

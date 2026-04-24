@@ -36165,3 +36165,6 @@ Open after this slice:
 - Next concrete step:
   do not call staged validation green. Plan and fix the `ld.red` chain bucket
   with the user, then rerun the structural fuzzer and the staged validation set.
+
+
+- 2026-04-24 00:21 UTC: runtime correctness closure completed. Fixed stale full-view replay over supported type-local `tensor_memory_linear` descriptor chains, generalized `ld.red` fusion through legal result view chains, corrected no-explicit-layout reduction fallback planning, and guarded split-long-M reduction layouts for rank-2 `N < 4`. Refreshed runtime-matrix ptx expectations for scale descriptor-view direct type-local packets and structural generic-pass expectations for logical reshape/permute view semantics. Validation: `make -j8`; `git diff --check`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; structural fuzzer split-4 `36 passed`; runtime matrix split-4 `1609 passed, 102 skipped`; `test_core.py -k tmem` split-4 `288 passed, 5 skipped`; examples `01-attention-forward.py` `2 passed`, `05-moe-bmm1-fused-gather.py` `2 passed`.

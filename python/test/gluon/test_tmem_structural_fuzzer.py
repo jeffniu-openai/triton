@@ -346,6 +346,20 @@ def _generic_pass_view(desc, M: ttgl.constexpr, N: ttgl.constexpr, chain_id: ttg
         return desc.slice(0, M, dim=0).slice(0, N, dim=1)
 
 
+def _generic_pass_expected_view(value, chain_id):
+    m, n = value.shape
+    if chain_id == 0:
+        return value.reshape(m // 2, 2, n).permute(1, 0, 2).reshape(m, n)
+    if chain_id == 1:
+        return (
+            value.reshape(m // 2, 2, n // 2, 2)
+            .permute(1, 0, 3, 2)
+            .permute(1, 0, 3, 2)
+            .reshape(m, n)
+        )
+    return value
+
+
 @gluon.jit
 def _fuzz_generic_pass_dynamic_index_kernel(
     in_ptr,
@@ -1186,17 +1200,21 @@ def test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow(case):
         compiled = _fuzz_generic_pass_dynamic_index_kernel[(1, )](
             inp, out, selector, parent_layout, m, n, case.chain_id, num_warps=4
         )
-        expected = inp + (20.0 if case.selector else 10.0)
+        expected = _generic_pass_expected_view(
+            inp + (20.0 if case.selector else 10.0), case.chain_id
+        )
     elif case.kind == "dynamic_if":
         compiled = _fuzz_generic_pass_dynamic_if_kernel[(1, )](
             inp, out, selector, parent_layout, m, n, case.chain_id, case.instr_variant, num_warps=4
         )
-        expected = inp + (30.0 if case.selector else 40.0)
+        expected = _generic_pass_expected_view(
+            inp + (30.0 if case.selector else 40.0), case.chain_id
+        )
     elif case.kind == "dynamic_if_inline":
         compiled = _fuzz_generic_pass_dynamic_if_inline_chain0_kernel[(1, )](
             inp, out, selector, parent_layout, m, n, case.instr_variant, num_warps=4
         )
-        expected = inp + (30.0 if case.selector else 40.0)
+        expected = _generic_pass_expected_view(inp + (30.0 if case.selector else 40.0), 0)
     elif case.kind == "mixed_captures":
         compiled = _fuzz_generic_pass_mixed_captures_kernel[(1, )](
             inp,
@@ -1210,7 +1228,9 @@ def test_tmem_structural_fuzzer_generic_pass_memdesc_control_flow(case):
             case.tuple_capture,
             num_warps=4,
         )
-        expected = inp + inp + 3.0 if case.selector else inp * 2.0 + inp + 5.0
+        selected = inp if case.selector else inp * 2.0
+        bias = inp + (3.0 if case.selector else 5.0)
+        expected = _generic_pass_expected_view(selected, case.chain_id) + bias
     else:
         raise AssertionError(f"unknown generic-pass memdesc case kind: {case.kind}")
 
@@ -1252,7 +1272,8 @@ def test_tmem_structural_fuzzer_generic_pass_layout_conversion_pressure(case):
     compiled = _fuzz_generic_pass_layout_pressure_kernel[(1, )](
         inp, out, parent_layout, m, n, case.chain_id, case.instr_variant, num_warps=4
     )
-    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    expected = _generic_pass_expected_view(inp, case.chain_id)
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
     ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
     llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
     assert ptx_ops == llir_ops
@@ -1285,7 +1306,9 @@ def test_tmem_structural_fuzzer_generic_pass_loop_carried(case):
         case.instr_variant,
         num_warps=4,
     )
-    expected = inp + (20.0 if case.selector < case.loops else 10.0)
+    expected = _generic_pass_expected_view(
+        inp + (20.0 if case.selector < case.loops else 10.0), case.chain_id
+    )
     torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
     ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
     llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))

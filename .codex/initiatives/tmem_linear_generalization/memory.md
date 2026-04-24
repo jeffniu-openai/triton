@@ -18653,3 +18653,13 @@ rejection, not rescue
   group3 `149 passed`, group4 `147 passed`; focused `test_core.py` MMA selector
   `17 passed, 3 skipped`; lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`; `git
   diff --check` passed.
+
+
+## 2026-04-24 00:21 UTC: Runtime Correctness Closure
+
+- Closed the deterministic staged-validation blocker from `test_tmem_structural_fuzzer_ldred[ldred-fz20260421-0004-chain1-64x32-min]`. Root cause: full-view replay in `OptimizeTMemLayouts` was still allowed to define semantics for supported `tensor_memory_linear` descriptor-view chains. For current type-local memdescs, reshape/transpose semantics are already represented in the result type/layout; replaying the producer chain and then applying tensor transforms can double-apply the view, which showed up as permuted passthrough loads and subword x1 two-CTA descriptor-chain roundtrip mismatches.
+- New rule recorded for future work: direct-supported linear/type-local descriptor views must lower from the current memdesc SSA value and current `MemDescType`/layout. Full-view replay remains only a legacy rescue for descriptor views that direct lowering explicitly rejects, currently including the M64 two-CTA scales broadcast-row-anchor boundary.
+- Load+reduce fusion was generalized through layout/shape/result view chains, with reduced-result transforms derived only when the final reduction dimension is preserved. This keeps hardware `tcgen05.ld.red` for legal view-chain reductions without relying on full-view replay for semantic facts.
+- Software reduction fallback now uses ordinary descriptor register-layout planning when hardware reduction is unavailable and no explicit layout was requested. Split-long-M reduction layouts are no longer offered for rank-2 `N < 4` descriptors, avoiding a hardware-reduction schedule in too-narrow software fallback rows.
+- Test semantics note: structural generic-pass chain0 rows now expect the logical reshape/permute view result. The prior replay-as-identity expectation was a legacy optimizer artifact, not the type-local memdesc model. Scale descriptor-view ptx expectations were also refreshed to the direct type-local packet choices; execution semantics remain checked with runtime equality.
+- Validation evidence: `make -j8`, `git diff --check`, lit `TritonNvidiaGPU/tmem_layouts.mlir` `1 passed`, structural fuzzer split-4 `36 passed`, full runtime matrix split-4 `1609 passed / 102 skipped`, `test_core.py -k tmem` split-4 `288 passed / 5 skipped`, attention example smoke `2 passed`, fused-gather example smoke `2 passed`.

@@ -14,6 +14,7 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
+#include <functional>
 #include <numeric>
 
 namespace ttg = mlir::triton::gpu;
@@ -386,6 +387,19 @@ matchReplayableHalfSliceView(Value memDesc) {
 
 static std::optional<TMemReplayFullViewMatch>
 matchReplayableFullView(Value memDesc) {
+  if (auto memTy = dyn_cast_if_present<ttg::MemDescType>(memDesc.getType())) {
+    // Full-view replay is a legacy compatibility path.  For type-local TMEM
+    // descriptor values, the current MemDescType/layout already defines the
+    // logical coordinate mapping, so replaying the producer chain would apply
+    // reshape/transpose semantics a second time.  Keep replay only as a rescue
+    // for views that direct type-local lowering has explicitly rejected.
+    bool directUnsupported =
+        isUnsupportedDirectTMemLdStDescriptorView(memDesc, /*error=*/nullptr);
+    if (!directUnsupported &&
+        (hasTypeLocalTMemLdStLayout(memTy) ||
+         isa<TensorMemoryLinearEncodingAttr>(memTy.getEncoding())))
+      return std::nullopt;
+  }
   if (!isTMemLdStReplayableFullView(memDesc))
     return std::nullopt;
 
@@ -495,6 +509,54 @@ static Value applyInverseTensorViewTransforms(
         TransOp::create(rewriter, loc, current, invertPermutation(transform.order));
   }
   return current;
+}
+
+static bool isIdentityPermutation(ArrayRef<int32_t> order) {
+  for (auto [idx, dim] : llvm::enumerate(order))
+    if (dim != static_cast<int32_t>(idx))
+      return false;
+  return true;
+}
+
+static std::optional<SmallVector<TMemTensorViewTransform>>
+deriveReductionViewTransforms(ArrayRef<TMemTensorViewTransform> transforms) {
+  SmallVector<TMemTensorViewTransform> redTransforms;
+  for (const TMemTensorViewTransform &transform : transforms) {
+    if (transform.srcShape.empty() || transform.dstShape.empty())
+      return std::nullopt;
+    if (transform.srcShape.back() != transform.dstShape.back())
+      return std::nullopt;
+
+    ArrayRef<int64_t> srcReducedShape =
+        ArrayRef<int64_t>(transform.srcShape).drop_back();
+    ArrayRef<int64_t> dstReducedShape =
+        ArrayRef<int64_t>(transform.dstShape).drop_back();
+    if (transform.kind == TMemTensorViewTransformKind::Reshape) {
+      if (!llvm::equal(srcReducedShape, dstReducedShape)) {
+        redTransforms.push_back(TMemTensorViewTransform{
+            TMemTensorViewTransformKind::Reshape,
+            llvm::to_vector(srcReducedShape),
+            llvm::to_vector(dstReducedShape),
+            {}});
+      }
+      continue;
+    }
+
+    if (transform.order.empty() ||
+        transform.order.back() !=
+            static_cast<int32_t>(transform.srcShape.size() - 1))
+      return std::nullopt;
+    ArrayRef<int32_t> reducedOrder =
+        ArrayRef<int32_t>(transform.order).drop_back();
+    if (!isIdentityPermutation(reducedOrder)) {
+      redTransforms.push_back(TMemTensorViewTransform{
+          TMemTensorViewTransformKind::Trans,
+          llvm::to_vector(srcReducedShape),
+          llvm::to_vector(dstReducedShape),
+          llvm::to_vector(reducedOrder)});
+    }
+  }
+  return redTransforms;
 }
 
 static bool hasReductionAlongNUse(Value value) {
@@ -1274,10 +1336,8 @@ lowerReplayFullViewValueLoad(PatternRewriter &rewriter, Location loc,
 static FailureOr<Value>
 lowerReplayFullViewLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp,
                         const TMemReplayFullViewMatch &match) {
-  bool applyViewTransforms =
-      isDirectLeadingSubsliceIndexBase(match.base)
-          ? shouldApplyReplayFullViewTransforms(loadOp, match)
-          : hasReductionAlongNUse(loadOp.getResult());
+  bool applyViewTransforms = isDirectLeadingSubsliceIndexBase(match.base) &&
+                             shouldApplyReplayFullViewTransforms(loadOp, match);
   return lowerReplayFullViewValueLoad(
       rewriter, loadOp.getLoc(), loadOp.getSrc(),
       cast<RankedTensorType>(loadOp.getType()), match,
@@ -1389,14 +1449,8 @@ lowerReplayFullViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
     return failure();
 
   RankedTensorType supportTy = *maybeSupportTy;
-  Value supportReplacement = storeOp.getSrc();
-  bool sourceAlreadyInReplayOrder =
-      isDerivedFromTMemLoadOfBase(supportReplacement, replayBase);
-  if (!sourceAlreadyInReplayOrder && supportReplacement.getType() != supportTy)
-    supportReplacement = applyInverseTensorViewTransforms(
-        rewriter, storeOp.getLoc(), supportReplacement, match.transforms);
-  supportReplacement = reshapeAndConvertToType(
-      rewriter, storeOp.getLoc(), supportReplacement, supportTy);
+  Value supportReplacement = reshapeAndConvertToType(
+      rewriter, storeOp.getLoc(), storeOp.getSrc(), supportTy);
   TMEMStoreOp::create(rewriter, storeOp.getLoc(), replayBase,
                       supportReplacement, storeOp.getPred());
   rewriter.eraseOp(storeOp);
@@ -1680,10 +1734,8 @@ public:
                             const TMemReplayFullViewMatch &match) {
       Value view = yieldOp.getOperand(resultIndex);
       rewriter.setInsertionPoint(yieldOp);
-      bool applyViewTransforms =
-          isDirectLeadingSubsliceIndexBase(match.base)
-              ? shouldApplyReplayFullViewTransforms(loadOp, match)
-              : hasReductionAlongNUse(loadOp.getResult());
+      bool applyViewTransforms = isDirectLeadingSubsliceIndexBase(match.base) &&
+                                 shouldApplyReplayFullViewTransforms(loadOp, match);
       FailureOr<Value> replacement = lowerReplayFullViewValueLoad(
           rewriter, loadOp.getLoc(), view, resultTy, match,
           ttg::lookupNumWarps(loadOp), getContextualMaxNReg(loadOp),
@@ -1754,7 +1806,13 @@ public:
                                            maxnreg))
       return failure();
 
-    bool applyViewTransforms = hasReductionAlongNUse(loadOp.getResult());
+    std::optional<TMemReplayFullViewMatch> applyMatch =
+        matchReplayableFullView(forOp.getInitArgs()[resultIndex]);
+    if (!applyMatch)
+      applyMatch = matchReplayableFullView(yieldOp.getOperand(resultIndex));
+    bool applyViewTransforms =
+        applyMatch && isDirectLeadingSubsliceIndexBase(applyMatch->base) &&
+        shouldApplyReplayFullViewTransforms(loadOp, *applyMatch);
     DenseMap<Value, Value> noCarriedValues;
     rewriter.setInsertionPoint(forOp);
     FailureOr<Value> initReplacement = materializeReplayFullViewValue(
@@ -1968,6 +2026,9 @@ public:
     if (!isPlainSingleResultTMemLoad(tmemLoadOp))
       return failure();
 
+    if (matchReplayableFullView(tmemLoadOp.getSrc()))
+      return failure();
+
     int numWarps = ttg::lookupNumWarps(tmemLoadOp);
     // If there is only 1 warpgroup there is nothing to optimize as the layout
     // is already reduction friendly.
@@ -2041,17 +2102,15 @@ public:
       triton::ReduceOp reduceOp;
       math::AbsFOp absOp;
       TMEMLoadReduceModifier modifier;
+      SmallVector<TMemTensorViewTransform> redTransforms;
     };
-    auto matchReduce = [&](Value value) -> std::optional<ReduceMatch> {
-      bool useAbs = false;
-      math::AbsFOp absOp;
-      Value reduceInput = value;
-      if (absOp = value.getDefiningOp<math::AbsFOp>()) {
-        if (absOp.getOperand() != loadOp.getResult())
-          return std::nullopt;
-        useAbs = true;
-        reduceInput = absOp.getResult();
-      }
+
+    auto tryMatchReduce = [&](Value reduceInput, math::AbsFOp absOp,
+                              ArrayRef<TMemTensorViewTransform> transforms)
+        -> std::optional<ReduceMatch> {
+      auto redTransforms = deriveReductionViewTransforms(transforms);
+      if (!redTransforms)
+        return std::nullopt;
 
       for (Operation *user : reduceInput.getUsers()) {
         auto reduceOp = dyn_cast<triton::ReduceOp>(user);
@@ -2072,23 +2131,61 @@ public:
           modifier = TMEMLoadReduceModifier::MAX;
         else
           continue;
-        return ReduceMatch{reduceOp, useAbs ? absOp : math::AbsFOp(),
-                           *modifier};
+        return ReduceMatch{reduceOp, absOp, *modifier,
+                           std::move(*redTransforms)};
       }
       return std::nullopt;
     };
 
-    std::optional<ReduceMatch> match = matchReduce(loadOp.getResult());
-    if (!match) {
-      for (Operation *user : loadOp.getResult().getUsers()) {
-        auto cvt = dyn_cast<ttg::ConvertLayoutOp>(user);
-        if (!cvt)
+    std::function<std::optional<ReduceMatch>(
+        Value, SmallVector<TMemTensorViewTransform>)>
+        matchReduce = [&](Value value, SmallVector<TMemTensorViewTransform>
+                                     transforms)
+        -> std::optional<ReduceMatch> {
+      if (auto match = tryMatchReduce(value, math::AbsFOp(), transforms))
+        return match;
+
+      for (Operation *user : value.getUsers()) {
+        if (auto absOp = dyn_cast<math::AbsFOp>(user)) {
+          if (auto match = tryMatchReduce(absOp.getResult(), absOp, transforms))
+            return match;
           continue;
-        match = matchReduce(cvt.getResult());
-        if (match)
-          break;
+        }
+        if (auto cvt = dyn_cast<ttg::ConvertLayoutOp>(user)) {
+          if (auto match = matchReduce(cvt.getResult(), transforms))
+            return match;
+          continue;
+        }
+        if (auto reshape = dyn_cast<ReshapeOp>(user)) {
+          SmallVector<TMemTensorViewTransform> nextTransforms(transforms);
+          nextTransforms.push_back(TMemTensorViewTransform{
+              TMemTensorViewTransformKind::Reshape,
+              llvm::to_vector(cast<RankedTensorType>(reshape.getSrc().getType())
+                                  .getShape()),
+              llvm::to_vector(reshape.getType().getShape()),
+              {}});
+          if (auto match = matchReduce(reshape.getResult(), nextTransforms))
+            return match;
+          continue;
+        }
+        if (auto trans = dyn_cast<TransOp>(user)) {
+          SmallVector<TMemTensorViewTransform> nextTransforms(transforms);
+          nextTransforms.push_back(TMemTensorViewTransform{
+              TMemTensorViewTransformKind::Trans,
+              llvm::to_vector(cast<RankedTensorType>(trans.getSrc().getType())
+                                  .getShape()),
+              llvm::to_vector(trans.getType().getShape()),
+              llvm::to_vector(trans.getOrder())});
+          if (auto match = matchReduce(trans.getResult(), nextTransforms))
+            return match;
+          continue;
+        }
       }
-    }
+      return std::nullopt;
+    };
+
+    std::optional<ReduceMatch> match =
+        matchReduce(loadOp.getResult(), /*transforms=*/{});
     if (!match)
       return failure();
     if (!isTMemLoadReductionAddressAligned(loadOp.getSrc()))
@@ -2123,6 +2220,10 @@ public:
         /*dep=*/Value(), redOpAttr, absAttr, /*NaN=*/nullptr);
 
     Value red = fusedLoad.getRed();
+    if (!match->redTransforms.empty()) {
+      red = applyTensorViewTransforms(rewriter, match->reduceOp.getLoc(), red,
+                                      match->redTransforms);
+    }
     auto reduceTy =
         cast<RankedTensorType>(match->reduceOp.getResult().front().getType());
     if (red.getType() != reduceTy)

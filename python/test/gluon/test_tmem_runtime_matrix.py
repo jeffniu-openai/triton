@@ -6712,7 +6712,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x32.b32", "16x64b.x16.b32", view_offsets=(0, 0)
+            "16x32bx2.x32.b32", "16x32bx2.x32.b32", view_offsets=(0, )
         ),
     ),
     (
@@ -6722,7 +6722,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x64.b32", "16x64b.x32.b32", view_offsets=(0, 0)
+            "16x32bx2.x64.b32", "16x32bx2.x64.b32", view_offsets=(0, )
         ),
     ),
     (
@@ -6732,7 +6732,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x128.b32", "16x64b.x64.b32", view_offsets=(0, 0)
+            "16x32bx2.x128.b32", "16x32bx2.x128.b32", view_offsets=(0, )
         ),
     ),
 ]
@@ -6747,8 +6747,8 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES = [
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
             f"16x32bx2.x{M * N // 256}.b32",
-            f"16x64b.x{M * N // 512}.b32",
-            view_offsets=(0, 0),
+            f"32x32b.x{M * N // 256}.b32",
+            view_offsets=(0,),
         ),
     )
     for M, N in product((128, 256), (4, 8, 16, 32, 64, 128))
@@ -6811,7 +6811,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
             ((1, 0),),
             "16x32bx2",
             _expected_scales_ldst_descriptor_view_ops(
-                "16x32bx2.x32.b32", "16x64b.x16.b32", (0,), view_offsets=(0, 0)
+                "16x32bx2.x32.b32", "16x32bx2.x32.b32", (0,), view_offsets=(0,)
             ),
         )
     ] + [
