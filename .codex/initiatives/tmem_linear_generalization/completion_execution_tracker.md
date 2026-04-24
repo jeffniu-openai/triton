@@ -5638,3 +5638,13 @@ discovery.
   Next performance workstream: inspect generated code for the worst small-N
   attention rows and mid-batch fused-gather rows against main; do not treat this
   benchmark as a green performance gate.
+
+- 2026-04-24 20:34 UTC: example 01/05 SASS diagnosis completed. Report:
+  `example_codegen_diagnosis_20260424.md`; artifacts:
+  `/tmp/tmem_codegen_diag_20260424/`. 01 attention has both source/harness
+  drift and a real same-source branch-compiler regression from unnecessary
+  packed-fp8 TMEM scalar RMW around aligned stores. 05 fused gather is source
+  drift: branch lacks upstream main's 2-CTA `BLOCK_N=512` multicast/direct-store
+  implementation, while upstream main source compiled with the branch compiler
+  matches main SASS shape. Next concrete workstream: restore/port main example
+  code, then fix the 01 packed-fp8 TMEM RMW codegen issue.

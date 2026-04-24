@@ -36341,3 +36341,9 @@ Open after this slice:
 - `01-attention-forward.py`: 112 common rows, branch/main geomean `0.906x`, wins `7`, losses `105`; no-red subset `0.879x` with no wins; red subset `0.934x` with 7 wins. Worst `0.563x` at D64 causal no-red fp8 `N_CTX=1024`; best `1.052x` at D128 causal red fp8 `N_CTX=32768`.
 - `05-moe-bmm1-fused-gather.py`: 48 common batch rows, example branch/main geomean `0.885x`, wins `0`, losses `48`; worst `0.775x` at batch `4096`; best `0.998x` at batch `31744`. Reference kernel branch/main geomean was `0.960x`.
 - Classification: performance regression investigation remains open. Correctness was not revalidated by this benchmark beyond successful benchmark execution.
+
+## 2026-04-24 20:34 UTC: example 01/05 SASS regression diagnosis
+
+- Wrote `.codex/initiatives/tmem_linear_generalization/example_codegen_diagnosis_20260424.md` after capturing TTGIR/PTX/SASS for current branch source, upstream main source on main compiler, and upstream main source on branch compiler.
+- 01 attention: full-benchmark small-N loss is partly harness/source drift (`do_bench` + output allocation on branch versus preallocated CUDAGraph on main), but same-source upstream-main attention still regresses under the branch compiler (`431.44` vs `502.00` TFLOPS direct CUDAGraph). SASS cause is extra packed-fp8 TMEM RMW around `_compute_and_store_exp2`: many more scalar `tcgen05.ld/st.x1`, `LDTM/STTM`, shifts, `LOP3`, and `SEL`.
+- 05 fused gather: no same-source backend regression was found. The branch example is a different 1-CTA `BLOCK_N=256` helper-store implementation; upstream main's 2-CTA `BLOCK_N=512` multicast source compiles on the branch with matching SASS and focused timing around the main row.
