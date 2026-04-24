@@ -1,8 +1,16 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 00:53 UTC
+Last updated: 2026-04-24 01:05 UTC
 
-Active phase: no full-view replay legalization; staged validation is green.
+Active phase: semantic chain-walk audit recorded; staged validation remains green from the previous code checkpoint.
+
+
+Current audit checkpoint summary:
+
+- [x] Classified remaining producer-chain inspection into high-risk semantic/codegen paths versus optimizer-only paths. The user agreed with this split.
+- [ ] High-risk semantic paths still to close: TMEM load/store verifier and LLVM lowering value-shaped query/support/raw fallback selection; Gluon register-layout/reduction gating; subword phase and 128-bit alignment proof; `tcgen05.copy` physical-query selection; relative-base-offset subtraction; and semantic callers of value-shaped standalone/support/exact helper APIs.
+- [ ] Optimizer-only chain walking remains allowed but must stay quarantined: tensor-memory allocation/rematerialization, interleave alias analysis, and peephole rewrites that produce independently legal IR. `OptimizeTMemLayouts` physical-support load/store rewrite needs proof or conversion because it still calls standalone view inference.
+- [ ] Next implementation slice should disconnect one semantic surface at a time from value-shaped helpers, preferring clean unsupported diagnostics until the current memdesc type/layout/runtime value can prove legality.
 
 Current checkpoint summary:
 

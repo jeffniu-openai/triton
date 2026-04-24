@@ -20,6 +20,14 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
+
+## Latest: 2026-04-24 semantic chain-walk audit recorded
+
+- Audit agreement: remaining TMEM producer-chain inspection is now classified into high-risk semantic/codegen paths versus optimizer-only paths. High-risk paths are blockers because verifier, Gluon layout selection, or LLVM/PTX lowering can accept, reject, or emit different code based on visible producer chains instead of the current memdesc SSA value and current `MemDescType`/layout.
+- High-risk open surfaces: TMEM `ld/st` verifier and LLVM lowering query/support/raw fallback selection; subword phase and 128-bit alignment proof; `tcgen05.copy` verifier/lowering physical-query selection; Gluon `get_reg_layout` and reduction gating; relative-base-offset helpers such as `getTMemSubviewRelativeBaseOffset`; and public value-shaped compatibility helpers that remain reachable from semantic paths.
+- Optimizer-only surfaces may continue to inspect view chains when they rewrite IR before lowering, perform allocation/liveness/rematerialization analysis, or choose among lowerings already proven legal from local facts. `TensorMemoryAllocation` and `InterleaveTMem` are currently in this bucket. `OptimizeTMemLayouts` is mostly in this bucket, but its physical-support load/store rewrite needs proof or cleanup because it can look like legalization if the original access was not independently local-fact legal.
+- Next invariant closure: remove value-shaped standalone/support/exact query helpers from verifier, LLVM lowering, and Gluon semantic layout selection; make view lowering update the runtime memdesc value so use sites never subtract producer-chain offsets; and treat unknown alignment/phase as a clean rejection where the ISA requires a static guarantee.
+
 ## Latest: 2026-04-24 no full-view replay legalization
 
 - User decision: full `memdesc_reshape`/`memdesc_trans` producer-chain replay must not be used as a semantic legalization rescue. If the current memdesc SSA value and current `MemDescType`/layout cannot directly justify a legal TMEM load/store/reduction lowering, the compiler should reject cleanly instead of recovering facts from the view chain.

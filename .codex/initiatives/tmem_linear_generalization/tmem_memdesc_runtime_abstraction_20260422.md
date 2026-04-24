@@ -352,6 +352,32 @@ from the compatibility path.
 
 ## Current Disallowed Chain-Walking Sites
 
+
+### 2026-04-24 Audit Classification: Semantic vs Optimizer Chain Walking
+
+Audit point: branch `codex/tmem` at `bd3ebcbb1f1942058d1c79eac67c61427f216e17`, compared against upstream merge-base `37c9a4b569a0f1719bdd77ca5f666096e10b7227`. The agreed separation is:
+
+- High-risk semantic/codegen uses are disallowed. These are any verifier, frontend layout-selection, or LLVM/PTX lowering paths where legality, query family, row plan, instruction atom, base offset, subword phase path, reduction eligibility, or copy schedule changes because a producer chain is visible.
+- Optimizer-only uses are allowed when they run before lowering and rewrite IR, compute allocation/liveness/rematerialization facts, or choose among lowerings already proven legal from the current memdesc type/layout and immediate SSA value. They must not expand the semantic legal set.
+
+High-risk open surfaces found in the audit:
+
+1. `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` TMEM load/store verification still calls `isUnsupportedDirectTMemLdStDescriptorView(Value)`, `getTMemLdStQueryTypes(Value)`, `inferStandaloneTMemLdStQueryLayout(Value)`, `getTMemLdStSupportQueryPlan(Value)`, and `inferStandaloneTMemViewType(Value)` to accept or reject register layouts. This is semantic legality.
+2. `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp` TMEM load/store lowering still selects raw/support/query lowering, row plans, phase-aware codegen, and adjusted base offsets from value-shaped producer-chain helpers. This directly changes emitted PTX/LLVM behavior.
+3. `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` subword phase and alignment helpers still inspect forwarding, CFG predecessors, `arith.select`, `scf.if`, `scf.for`, and view producers. These helpers feed `ld/st`, `ld.red`, `tcgen05.copy`, verifier, and Gluon gating. In the target model, phase/alignment facts must come from current memdesc SSA contents or be unknown and rejected where required.
+4. `tcgen05.copy` verification/lowering still goes through `selectTMemCopyPhysicalQuery(Value, ...)`, which can choose type-local, standalone, or exact physical queries by reconstructing visible view history. Copy legality, family selection, and destination base offset must be type-local or rejected.
+5. `python/src/gluon_ir.cc` still chooses frontend-visible TMEM register layouts and reduction eligibility with value-shaped standalone/support/raw query helpers. This is codegen behavior because it changes inserted register layouts before verifier/lowering.
+6. Relative-base-offset helpers such as `getTMemViewOffsetForLowering(Value, ...)`, `getTMemSubviewOffsetForLowering(...)`, `getAlreadyAdjustedTMemSubviewBaseOffset(Value)`, and `getTMemSubviewRelativeBaseOffset(Value, ...)` are symptoms of split state. View ops must update the runtime memdesc value; use-site lowering must not subtract producer-chain-derived offsets.
+7. Public value-shaped compatibility helpers are still reachable from semantic paths. They should be renamed/quarantined into optimizer/debug namespaces or removed from verifier/lowering/frontend call graphs once type-local replacements exist.
+
+Optimizer-only or allowed-with-quarantine surfaces:
+
+- `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp` may inspect view chains for allocation aliasing, B-scale/A-scale rematerialization, branch splitting through `arith.select`, and cleanup of pre-lowering IR. This is allowed because it rewrites IR before lowering rather than defining final ISA legality.
+- `lib/Dialect/TritonNvidiaGPU/Transforms/InterleaveTMem.cpp` may inspect view chains for local access-range/alias analysis. This is allocation/scheduling analysis, not TMEM instruction legality.
+- `lib/Dialect/TritonNvidiaGPU/Transforms/OptimizeTMemLayouts.cpp` may use producer-chain peepholes for split/join/half-slice rewrites when the resulting IR is independently legal. Its physical-support load/store rewrite that calls `inferStandaloneTMemViewType(Value)` remains suspicious and should either be proved to rewrite only already-local-fact-legal accesses or be removed/converted to a type-local rewrite.
+
+Closure rule from this audit: future fixes should first disconnect semantic paths from value-shaped helpers, then leave producer-chain inspection only in clearly named optimizer/rematerialization/debug helpers. Clean negatives are preferred over recovering hidden facts from a producer chain.
+
 These sites currently use parent operations to decide semantic verifier,
 lowering, or codegen behavior. They should be migrated to type-local analysis or
 to pre-lowering canonicalization.
