@@ -9,7 +9,7 @@ import triton
 import triton.language as tl
 from triton.compiler.errors import CompilationError
 
-from triton._internal_testing import is_blackwell, is_blackwell_ultra
+from triton._internal_testing import is_blackwell, is_blackwell_ultra, run_in_process
 from triton.experimental import gluon
 from triton.experimental.gluon import language as ttgl
 from triton.experimental.gluon.language.nvidia.blackwell import (
@@ -10279,30 +10279,47 @@ def test_tmem_runtime_matrix_ld_red_dynamic_index_view_address_alignment(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize(
-    "offset",
-    [
-        pytest.param(1, id="misaligned-origin"),
-        pytest.param(4, id="static-origin"),
-    ],
-)
-def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view_reports_clean_error(offset, capfd):
+def test_tmem_runtime_matrix_ld_red_offset_column_linear_subslice_view_aligned_origin_executes():
     M = 128
     N = 32
+    offset = 4
     layout = _make_tmem_linear_layout(M, 2 * N)
     inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N) % 16
     out = torch.empty((3, M, N), dtype=torch.float32, device="cuda")
     red = torch.empty((M,), dtype=torch.float32, device="cuda")
 
-    with pytest.raises(Exception) as excinfo:
-        tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
-            inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
-        )
-
-    assert_clean_tmem_diagnostic(
-        collect_compile_error_text(excinfo, capfd),
-        "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
+    compiled = tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
+        inp, out, red, layout, M, N, offset, tl.PropagateNan.NONE, num_warps=4
     )
+
+    torch.testing.assert_close(out[0], inp, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.max(inp, dim=1).values, atol=0, rtol=0)
+    _assert_ld_red_uses_hardware(compiled, "32x32b.x32")
+
+
+def _run_tmem_iisan_ld_red_unaligned_address_case():
+    old_mode = triton.knobs.compilation.instrumentation_mode
+    triton.knobs.compilation.instrumentation_mode = "iisan"
+    try:
+        M = 128
+        N = 32
+        layout = _make_tmem_linear_layout(M, 2 * N)
+        inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N) % 16
+        out = torch.empty((3, M, N), dtype=torch.float32, device="cuda")
+        red = torch.empty((M,), dtype=torch.float32, device="cuda")
+        tmem_ld_red_offset_column_linear_subslice_view_kernel[(1, )](
+            inp, out, red, layout, M, N, 1, tl.PropagateNan.NONE, num_warps=4
+        )
+    finally:
+        triton.knobs.compilation.instrumentation_mode = old_mode
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+def test_tmem_runtime_matrix_iisan_ld_red_unaligned_address_reports_assert():
+    result = run_in_process(_run_tmem_iisan_ld_red_unaligned_address_case)
+    text = str(result.exc) + result.driver_stderr_output
+    assert result.exc is not None, text
+    assert "tcgen05.ld.red tensor memory address must be 64-bit aligned" in text
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -11484,34 +11501,35 @@ def test_tmem_runtime_matrix_cp_no_scales_realigned_subword_nested_slices(
     assert "ttng.tmem_copy" in ttgir
 
 
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_word_aligned_subword_copy_origin_reports_error(capfd):
-    M = 128
-    N = 128
-    swizzle = 32
-    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
-    inp = base.to(torch.float16)
-    out = torch.empty_like(inp)
-    parent_layout = _make_tmem_linear_layout(M, 4 * N)
-
-    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
-        tmem_copy_no_scales_realigned_subword_nested_linear_subslice_view_kernel[(1, )](
+def _run_tmem_iisan_copy_unaligned_destination_case():
+    old_mode = triton.knobs.compilation.instrumentation_mode
+    triton.knobs.compilation.instrumentation_mode = "iisan"
+    try:
+        M = 128
+        N = 128
+        swizzle = 32
+        inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N) % 16
+        out = torch.empty_like(inp)
+        parent_layout = _make_tmem_linear_layout(M, 2 * N)
+        tmem_copy_no_scales_unaligned_subword_linear_subslice_view_kernel[(1, )](
             inp,
             out,
             parent_layout,
             M,
             N,
-            1,
-            1,
-            2 * N,
             swizzle,
             num_warps=4,
         )
+    finally:
+        triton.knobs.compilation.instrumentation_mode = old_mode
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "unsupported tensor memory destination origin for tcgen05.copy" in text
-    assert "current descriptor may not be aligned to a 128-bit hardware copy address" in text
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_iisan_cp_unaligned_destination_reports_assert():
+    result = run_in_process(_run_tmem_iisan_copy_unaligned_destination_case)
+    text = str(result.exc) + result.driver_stderr_output
+    assert result.exc is not None, text
+    assert "tcgen05.copy tensor memory destination address must be 128-bit aligned" in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

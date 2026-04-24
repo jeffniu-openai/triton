@@ -1,18 +1,18 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 18:15 UTC
+Last updated: 2026-04-24 18:39 UTC
 
-Active phase: TMEM iisan policy transition. Runtime final-address trap preconditions must move out of verifier/lowering rejection and into iisan; structural PTX/codegen impossibility remains clean unsupported.
+Active phase: TMEM iisan policy transition implemented for first TMEM alignment slice. Runtime final-address trap preconditions now have iisan coverage for red/copy plus selected ld/st and MMAv5 surfaces; structural PTX/codegen impossibility remains clean unsupported.
 
-Latest follow-up: recorded `tmem_iisan_policy_audit_20260424.md`. The attention red-path compile failure is now classified as a stale compile-time runtime-address check: `.32x32b` f32 `ld.red` address alignment belongs in iisan, and the probed rule is 64-bit final-address alignment rather than the branch verifier's 128-bit rule. Next implementation slice should remove the red-load alignment verifier/lowering rejection, add iisan coverage, and update tests accordingly before returning to benchmark comparison.
+Latest follow-up: implemented the first `tmem_iisan_policy_audit_20260424.md` slice. The stale `ld.red` verifier/lowering alignment rejection and executable-plan `tcgen05.copy` destination-alignment rejection are removed; iisan now emits runtime assertions from the current lowered TMEM address. Representative attention `use_tmem_red=True` rows compile and run again. Next slice is to decide whether to add negative iisan coverage for MMAv5/ldst misalignment or proceed back to branch-vs-main performance comparison now that the red path is runnable.
 
 Current iisan policy checklist:
 
-- [ ] Move `ld.red` final-address alignment out of verifier/lowering rejection and into iisan.
-- [ ] Add iisan runtime checks for selected TMEM ld/st atoms with probed alignment requirements.
-- [ ] Split `tcgen05.copy` destination-alignment checks from structural copy-planner failures; move executable-plan destination alignment to iisan.
-- [ ] Add iisan runtime checks for MMAv5 accumulator D, TMEM A operand, and scaled-MMA scale-address alignment.
-- [ ] Preserve clean compiler diagnostics for true PTX/codegen impossibility: unsupported atoms, too-small copy shapes, descriptor synthesis gaps, non-self-contained layout gaps, subword copy destinations, and static module CTA-group constraints.
+- [x] Move `ld.red` final-address alignment out of verifier/lowering rejection and into iisan.
+- [x] Add iisan runtime checks for selected TMEM ld/st atoms with probed alignment requirements.
+- [x] Split `tcgen05.copy` destination-alignment checks from structural copy-planner failures; move executable-plan destination alignment to iisan.
+- [x] Add iisan runtime checks for MMAv5 accumulator D, TMEM A operand, and scaled-MMA scale-address alignment.
+- [x] Preserve clean compiler diagnostics for true PTX/codegen impossibility: unsupported atoms, too-small copy shapes, descriptor synthesis gaps, non-self-contained layout gaps, subword copy destinations, and static module CTA-group constraints.
 
 Active deletion checklist for this batch:
 

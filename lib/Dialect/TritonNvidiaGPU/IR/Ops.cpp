@@ -1583,16 +1583,6 @@ LogicalResult TMEMLoadOp::verify() {
     if (isa<TensorMemoryScalesEncodingAttr>(getSrc().getType().getEncoding()))
       return emitOpError(
           "tmem_load reduction is not supported for tensor memory scales.");
-    if (!isTMemLoadReductionAddressAligned(getSrc())) {
-      InFlightDiagnostic diag = emitOpError(
-          "tmem_load reduction requires a 128-bit-aligned tensor memory "
-          "origin for tcgen05.ld.red");
-      diag.attachNote()
-          << "Use tmem.load(...)+tt.reduce(...) for software reduction, or "
-             "align the descriptor origin before requesting hardware "
-             "tcgen05.ld.red.";
-      return diag;
-    }
     auto regTy = getType();
     if (!regTy.getEncoding())
       return triton::gpu::verifyMemoryOpTypes(*this, getSrc().getType(),

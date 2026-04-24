@@ -24,7 +24,8 @@ std::unique_ptr<OperationPass<ModuleOp>>
 createConvertTritonGPUToLLVMPass(int32_t computeCapability, int32_t ptxVersion);
 std::unique_ptr<OperationPass<ModuleOp>>
 createConvertTritonGPUToLLVMPass(int32_t computeCapability, int32_t ptxVersion,
-                                 bool enableConcurrencySanitizer);
+                                 bool enableConcurrencySanitizer,
+                                 bool enableIllegalInstructionSanitizer);
 std::unique_ptr<OperationPass<ModuleOp>>
 createAllocateSharedMemoryNvPass(int32_t computeCapability, int32_t ptxVersion);
 

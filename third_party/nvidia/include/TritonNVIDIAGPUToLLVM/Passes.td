@@ -31,6 +31,9 @@ def ConvertTritonGPUToLLVM : Pass<"convert-triton-gpu-to-llvm", "mlir::ModuleOp"
         Option<"enableConcurrencySanitizer", "enable-concurrency-sanitizer",
                "bool", /*default*/"false",
                "run ConSan after fence and membar preparation">,
+        Option<"enableIllegalInstructionSanitizer", "enable-illegal-instruction-sanitizer",
+               "bool", /*default*/"false",
+               "emit runtime illegal-instruction sanitizer checks">,
     ];
 }
 def AllocateSharedMemoryNv : Pass<"allocate-shared-memory-nv", "mlir::ModuleOp"> {

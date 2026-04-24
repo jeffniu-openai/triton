@@ -36318,3 +36318,12 @@ Open after this slice:
   CTA-group consistency.
 - No compiler behavior changed in this audit checkpoint; no validation was run
   beyond documentation refresh.
+
+
+## 2026-04-24 18:40 UTC: TMEM iisan alignment implementation and attention red-path recovery
+
+- Implemented the policy split from `tmem_iisan_policy_audit_20260424.md`: final-address runtime alignment preconditions for executable TMEM instructions move to iisan, while true PTX/codegen impossibility remains a compiler unsupported diagnostic.
+- Source changes: `convert-triton-gpu-to-llvm` now has an `enable-illegal-instruction-sanitizer` option wired from CUDA backend `instrumentation_mode`; TMEM lowering emits predicated `tt.assert` checks from the current lowered TMEM address plus local packet/tile offsets; `ld.red` no longer rejects unproven address alignment in verifier/lowering; executable `tcgen05.copy` plans no longer reject unproven 128-bit destination alignment; subword copy destination phase remains compile-time unsupported.
+- Additional iisan coverage was added for selected direct ld/st atoms, MMAv5 D/TMEM-A addresses, and scaled-MMAv5 scale addresses. These checks do not inspect producer/view chains.
+- Tests updated: `test_tmem_runtime_matrix.py` adds child-process iisan runtime assertions for misaligned `ld.red` and `tcgen05.copy`; stale structural-fuzzer alignment diagnostic fragments were removed; `test/TritonNvidiaGPU/invalid.mlir` diagnostic text was refreshed for existing clean-negative layout notes.
+- Validation: `make`; exact runtime-matrix iisan/aligned rows `3 passed`; structural-fuzzer ld.red clean-negative rows `4 passed`; iisan MMAv5 positive rows `2 passed`; iisan selected ld/st rows `2 passed`; lit `invalid.mlir` + `tmem_layouts.mlir` `2 passed`; attention representative `use_tmem_red=True` rows `4 passed` (`fp16` D64/D128 noncausal, `fp16` D64 causal, `fp8` D64 noncausal at `N_CTX=1024`).

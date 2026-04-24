@@ -178,3 +178,24 @@ by iisan rather than the verifier.
   process and check for the new device-assert message instead of a raw CUDA
   illegal-instruction error. Keep non-iisan runtime trap tests process-isolated
   if they are needed as raw hardware sentinels.
+
+
+## Implementation Update - 2026-04-24 18:39 UTC
+
+Implemented the first policy slice in the branch:
+
+- Plumbed `instrumentation_mode="iisan"` into `convert-triton-gpu-to-llvm` as `enable-illegal-instruction-sanitizer`, so TMEM instruction lowering can emit sanitizer checks at the point where final instruction addresses are known.
+- Removed `ld.red` final-address alignment as a verifier/lowering legality condition. Structural `ld.red` support checks remain unchanged: f32 element type, non-scales storage, packed direct lowering, directly supported register layout, and `.x2` or wider message shape.
+- Removed executable-plan `tcgen05.copy` destination 128-bit alignment as a compiler rejection and replaced it with an iisan address assertion. True copy impossibility still rejects at compile time, including too-small atom shapes, unsupported copy-family schedules, descriptor synthesis failures, and sub-32-bit destination subword phase.
+- Added iisan assertions derived only from the current lowered TMEM address plus operation-local offsets for `ld.red`, selected direct ld/st atoms (`16x64b`, `16x128b`, unpacked `16x32bx2`), `tcgen05.copy`, MMAv5 accumulator/TMEM-A operands, and scaled-MMAv5 scale addresses. No producer/view-chain recovery was added.
+- Added runtime iisan tests in `python/test/gluon/test_tmem_runtime_matrix.py` that run in fresh child processes and check the device-assert messages for misaligned `ld.red` and `tcgen05.copy` addresses. Refreshed stale clean-diagnostic expectations in the structural fuzzer and lit verifier file.
+
+Validation for this implementation slice:
+
+- `make`
+- `pytest -s --tb=short` exact iisan/aligned runtime rows in `test_tmem_runtime_matrix.py`: `3 passed`
+- `pytest -s --tb=short` structural-fuzzer ld.red clean-negative rows: `4 passed`
+- `TRITON_INSTRUMENTATION_MODE=iisan pytest -s --tb=short` MMAv5 positive rows in `test_core.py`: `2 passed`
+- `TRITON_INSTRUMENTATION_MODE=iisan pytest -s --tb=short` selected direct ld/st rows in `test_tmem_runtime_matrix.py`: `2 passed`
+- `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/tmem_layouts.mlir`: `2 passed`
+- `python/examples/gluon/01-attention-forward.py` representative `use_tmem_red=True` rows: `4 passed`

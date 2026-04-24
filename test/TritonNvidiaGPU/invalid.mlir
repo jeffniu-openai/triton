@@ -549,8 +549,10 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttng.two-ctas" = true, "ttg.num-wa
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tmem_load_4x256b_refresh_clean_unsupported(
       %src: !ttg.memdesc<4x8xf32, #tmem_linear_cp_4x256b_refresh, #ttng.tensor_memory, mutable>) {
-    // expected-error @+2 {{result has no supported register layout}}
-    // expected-note @+1 {{direct TMEM load/store is unsupported for the tcgen05.copy.4x256b refresh-shaped tensor memory layout}}
+    // expected-error @+4 {{result has no supported register layout}}
+    // expected-note @+3 {{Got: #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 1], order = [1, 0]}>}}
+    // expected-note @+2 {{requested layout direct-lowering details:}}
+    // expected-note @+1 {{No TMEM-compatible register layout exists for this operand from the current memdesc type/layout.}}
     %0 = ttng.tmem_load %src : !ttg.memdesc<4x8xf32, #tmem_linear_cp_4x256b_refresh, #ttng.tensor_memory, mutable> -> tensor<4x8xf32, #blocked_cp_4x256b_refresh>
     tt.return
   }
@@ -563,8 +565,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tmem_load_4x256b_refresh_raw_bitcast_clean_unsupported(
       %src: !ttg.memdesc<32x4xi8, #tmem_linear_cp_4x256b_refresh_raw, #ttng.tensor_memory, mutable>) {
-    // expected-error @+2 {{result has no supported register layout}}
-    // expected-note @+1 {{the raw physical bitcast of a tcgen05.copy.4x256b refresh image is a sparse row/column projection}}
+    // expected-error @+4 {{result has no supported register layout}}
+    // expected-note @+3 {{Got: #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 1], order = [1, 0]}>}}
+    // expected-note @+2 {{requested layout direct-lowering details:}}
+    // expected-note @+1 {{No TMEM-compatible register layout exists for this operand from the current memdesc type/layout.}}
     %0 = ttng.tmem_load %src : !ttg.memdesc<32x4xi8, #tmem_linear_cp_4x256b_refresh_raw, #ttng.tensor_memory, mutable> -> tensor<32x4xi8, #blocked_cp_4x256b_refresh_raw>
     tt.return
   }
@@ -657,7 +661,7 @@ module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32, "ttg.th
     // expected-error @+4 {{result has no supported register layout}}
     // expected-note @+3 {{Got: #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 1], order = [1, 0]}>}}
     // expected-note @+2 {{requested layout direct-lowering details:}}
-    // expected-note @+1 {{No TMEM-compatible register layout exists for this operand.}}
+    // expected-note @+1 {{No TMEM-compatible register layout exists for this operand from the current memdesc type/layout.}}
     %0 = ttng.tmem_load %arg0 : !ttg.memdesc<128x32xf32, #tmem_linear_exotic_impossible, #ttng.tensor_memory, mutable> -> tensor<128x32xf32, #blocked_tmem_impossible>
     tt.return
   }
@@ -1425,7 +1429,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
   tt.func public @tmem_subslice_layout_mismatch_linear() {
     %md = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
-    // expected-error @+1 {{'ttng.tmem_subslice' op tensor memory view is not representable as a standalone TMEM linear layout}}
+    // expected-error @+1 {{'ttng.tmem_subslice' op tensor memory view is not representable as a self-contained TMEM linear layout}}
     %sub = ttng.tmem_subslice %md {N = 64 : i32} : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_t, #ttng.tensor_memory, mutable, 128x128>
     tt.return
   }

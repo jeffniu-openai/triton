@@ -7,6 +7,14 @@ Keep this README up to date when the role of any document changes, when a new
 current-state handoff supersedes an older one, or when the source-of-truth
 entry points change.
 
+## Latest: 2026-04-24 TMEM iisan implementation and attention red-path recovery
+
+- Implemented the iisan policy transition for TMEM runtime final-address alignment. The NVIDIA GPU-to-LLVM pass now receives `enable-illegal-instruction-sanitizer` from `instrumentation_mode="iisan"`, and TMEM lowering emits predicated `tt.assert` checks from the current lowered TMEM SSA address plus operation-local packet/tile offsets.
+- Removed the stale compile-time `tcgen05.ld.red` origin-alignment rejection from the verifier and LLVM lowering. Explicit `tmem.load_min/load_max` still requires f32, non-scales storage, packed direct lowering, and `.x2` or wider red messages; those remain structural compiler diagnostics.
+- Removed the executable-plan `tcgen05.copy` 128-bit destination-alignment compiler rejection. The sub-32-bit destination subword-phase rejection remains a clean compiler unsupported case because direct copy lowering cannot represent a destination that starts inside a 32-bit hardware word.
+- Added iisan address assertions for `ld.red`, executable `tcgen05.copy`, selected direct ld/st atoms with probed alignment requirements, MMAv5 accumulator/TMEM-A addresses, and scaled-MMAv5 scale addresses. Added child-process iisan runtime tests for misaligned `ld.red` and copy destinations, plus normal aligned `ld.red` execution coverage.
+- Representative `python/examples/gluon/01-attention-forward.py` red-path cases now compile and pass again on Blackwell Ultra: fp16 noncausal D64/D128, fp16 causal D64, and fp8 noncausal D64 at `N_CTX=1024` with `use_tmem_red=True`.
+
 Current design note: `tmem_memdesc_runtime_abstraction_20260422.md` records the
 2026-04-22 audit of branch-local TMEM producer-chain dependence and the proposed
 self-contained memdesc runtime abstraction. The intended invariant is that
@@ -20,13 +28,13 @@ but it must not define the set of legal lowerings. Too-small `tcgen05.copy`
 destinations are clean negatives unless the current descriptor layout itself
 represents a legal copy family.
 
-## Latest: 2026-04-24 TMEM iisan policy audit
+## Previous: 2026-04-24 TMEM iisan policy audit
 
 - Policy change recorded in `tmem_iisan_policy_audit_20260424.md`: final TMEM address/value preconditions that can be emitted as PTX but may trap at runtime belong in illegal-instruction sanitizer (`iisan`), not in verifier/lowering rejection. Structural cases where Triton cannot synthesize a correct PTX atom, descriptor, register layout, or schedule remain clean compiler unsupported diagnostics.
 - The current branch audit classifies `ld.red` address alignment and executable `tcgen05.copy` destination alignment as iisan candidates. The existing `ld.red` verifier/lowering alignment rejection is especially stale: probes show `.32x32b` f32 `ld.red` requires 64-bit final-address alignment, not 128-bit, and the compiler should not reject unknown alignment proofs.
 - Structural unsupported checks remain for direct reduction layout/shape support, ld/st layout planning gaps, too-small copy atoms, copy family/schedule/descriptor synthesis gaps, MMAv5 layout/dtype/two-CTA constraints, and subword copy destinations that cannot be represented by the current direct copy model.
 
-## Latest: 2026-04-24 attention example branch-vs-main benchmark
+## Previous: 2026-04-24 attention example branch-vs-main benchmark
 
 - Benchmarked `python/examples/gluon/01-attention-forward.py` on NVIDIA GB300 GPU 0, comparing branch `f9d78417f` against freshly fetched upstream `main` `a9ced8362`.
 - On the common runnable `use_tmem_red=False` subset, the branch lost all 56 measured points with geometric mean `0.875x` of main (`-12.5%`). Worst point: `D=64 causal=True fp16 N_CTX=1024` at `0.563x`; best point: `D=128 causal=True fp8 N_CTX=8192` at `0.963x`.

@@ -1118,7 +1118,6 @@ def test_tmem_structural_fuzzer_ldred_reports_clean_unsupported(case, capfd):
         "unsupported for descriptor view",
         "unsupported tensor memory descriptor view for direct tcgen05.ld/st",
         "tmem_load reduction register layout is not directly supported",
-        "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
         "failed to compute TMEM encoding info for reduction",
     )
 
@@ -1171,7 +1170,6 @@ def test_tmem_structural_fuzzer_ldred_twocta_rowcol_optimizer_crash(capfd):
         _run_ldred_twocta_rowcol_optimizer_crash_case()
     assert_clean_tmem_diagnostic(
         collect_compile_error_text(excinfo, capfd),
-        "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
         "tmem_load reduction selected a scalar tcgen05.ld.red message",
         "tcgen05.ld.red requires at least an .x2 message shape",
         "tmem_load reduction register layout is not directly supported",
@@ -1185,7 +1183,6 @@ def test_tmem_structural_fuzzer_ldred_1cta_direct_index_allocator_crash(capfd):
         _run_ldred_1cta_direct_index_allocator_crash_case()
     assert_clean_tmem_diagnostic(
         collect_compile_error_text(excinfo, capfd),
-        "tmem_load reduction requires a 128-bit-aligned tensor memory origin",
         "tmem_load reduction register layout is not directly supported",
     )
 
