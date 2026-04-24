@@ -2417,26 +2417,17 @@ getExactTypeTMemAddressLayout(MemDescType memTy, std::string *layoutError) {
 static std::optional<LinearLayout>
 getTypeLocalMMAv5TMemAddressLayout(MemDescType memTy) {
   std::string layoutError;
-  if (hasSelfContainedTMemSubviewLayout(memTy)) {
-    // The lowered base for active subviews is already relative to the current
-    // descriptor taddr. Use the current type's normalized address image rather
-    // than reconstructing a producer-chain query and origin.
-    if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
-      return *maybeLayout;
-  }
-
-  if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy))
+  // The MMAv5 family layout is only an instruction-shape planning layout. The
+  // actual TMEM address for a tile must come from the current descriptor type so
+  // tile-selector permutations and descriptor-view origins are preserved.
+  if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
     return *maybeLayout;
 
-  auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
-  auto shape = memTy.getShape().take_back(rank);
-  auto allocShape = memTy.getAllocShape().take_back(rank);
-  if (shape == allocShape) {
-    if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy))
-      return *maybeLayout;
-    if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError))
-      return *maybeLayout;
-  }
+  // Keep the family layout as a conservative fallback for descriptor types that
+  // still verify as MMAv5-compatible but are not yet representable as an exact
+  // type-local view layout.
+  if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy))
+    return *maybeLayout;
 
   return std::nullopt;
 }
@@ -2455,6 +2446,16 @@ getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType memTy,
                                            ArrayRef<int32_t> offsets) {
   assert(offsets.size() == memTy.getRank());
 
+  std::string layoutError;
+  if (auto maybeLayout = getExactTypeTMemAddressLayout(memTy, &layoutError)) {
+    auto layoutRank = static_cast<size_t>(maybeLayout->getNumOutDims());
+    auto prefixRank =
+        memTy.getRank() > layoutRank ? memTy.getRank() - layoutRank : 0;
+    return getTMemViewOffset(
+        *maybeLayout, offsets.take_back(layoutRank),
+        memTy.getElementTypeBitWidth(), memTy.getShape().take_front(prefixRank));
+  }
+
   if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy)) {
     auto layoutRank = static_cast<size_t>(maybeLayout->getNumOutDims());
     auto prefixRank =
@@ -2463,8 +2464,6 @@ getTypeLocalMMAv5TMemViewOffsetForLowering(MemDescType memTy,
         *maybeLayout, offsets.take_back(layoutRank),
         memTy.getElementTypeBitWidth(), memTy.getShape().take_front(prefixRank));
   }
-  if (hasSelfContainedTMemSubviewLayout(memTy))
-    return getTMemViewOffset(memTy, offsets);
   return std::nullopt;
 }
 
