@@ -17,6 +17,8 @@ The MMAv5 accumulator bug fixed in `6a50032c3` was one instance of this. The rem
 
 ### 1. Frontend/type-local ld/st layout selection
 
+Status: tensor-memory-scales sub-bucket closed on 2026-04-25; remaining non-scales descriptor-view frontend failures are tracked in buckets 2, 3, and 6 according to their owning backend surface.
+
 Symptoms:
 - descriptor multidim replay rows fail in `get_reg_layout(auto)` for rank-2 views.
 - tensor-memory scales descriptor-view rows fail in `get_reg_layout(32x32b)`.
@@ -25,9 +27,13 @@ Symptoms:
 Likely root cause:
 - `compute_tmem_reg_layout_from_memdesc` does not provide enough type-local candidate layouts for scales and descriptor views, and the unsupported-reason hooks are placeholders returning `None`.
 
-Fix plan:
-- Teach the frontend bridge to report real unsupported reasons from type-local ld/st query/planning failures.
-- Ensure scales descriptor roots/views route through the scales-specific query/layout path before generic fallback.
+Fix executed for scales:
+- `32x32b` requests now accept the packed `16x32bx2` realization for scales roots and type-local scales descriptor views when the current type/layout plans that atom.
+- Frontend unsupported reasons now report variant-specific scales packet-footprint requirements and the current M=64 two-CTA clean boundary.
+- Tests document the verified current-layout lowering where roots use packed stores/loads and descriptor views may use direct `32x32b`; runtime correctness is checked before opcode assertions.
+
+Remaining plan:
+- Address non-scales descriptor-view `get_reg_layout` failures in the owning ld/st and MMAv5 buckets.
 - Keep frontend selection type/local; no producer-chain walking.
 
 ### 2. Subword ld/st dynamic and loop-carried views
@@ -125,7 +131,7 @@ Fix plan:
 ## Execution Order
 
 1. [done] Restore direct-root copy support-query fallback and validate dense direct-root copy rows.
-2. Fix/frontend type-local layout selection for scales and descriptor views.
+2. [done for scales] Fix/frontend type-local layout selection for tensor-memory-scales roots/views; continue non-scales descriptor-view failures in their owning buckets.
 3. Fix ld/st exact row/address planning: half-row row-origin closed; subword dynamic views remain open under bucket 2.
 4. Fix ld.red exact-layout reduction planning.
 5. [done] Fix copy tile-permuted/warpx2 exact destination offsets.

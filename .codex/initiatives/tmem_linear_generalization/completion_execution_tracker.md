@@ -1,15 +1,15 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-25 00:53 UTC
+Last updated: 2026-04-25 01:16 UTC
 
 Active phase: Post-merge validation is red. The latest upstream-main merge builds and passes focused compiler/fpsan checks, but the broad TMEM runtime matrix has correctness, compiler-crash, unsupported-diagnostic, and expectation-drift buckets that must be triaged before performance recovery continues.
 
-Latest follow-up: closed the current `tcgen05.copy` recovery bucket. Direct roots now use type-derived folded physical queries for expanded-row support, direct roots can use a column-canonical source-support query without changing exact destination addressing, dense/tile-permuted destination offsets are computed from the exact current layout, the single-CTA `warpx2::02_13` direct-seed offset is fixed, and stale compile-time subword destination-origin rejects were replaced with iisan/runtime-alignment coverage. The full `cp_no_scales` runtime-matrix selector is green as `301 passed, 4 skipped, 1407 deselected` after `make -j8` and focused copy checks. Broad validation remains red until the remaining non-copy buckets are rerun and closed.
+Latest follow-up: closed the current tensor-memory-scales ld/st frontend/type-local bucket. Explicit `32x32b` now aliases the packed `16x32bx2` realization for scales roots and type-local scales descriptor views when the current layout requires that packed form, and scales clean-negative rows now report structural variant-specific reasons. The full `ldst_scales` runtime-matrix selector is green as `37 passed, 1675 deselected` after `make -j8`. Broad validation remains red until the remaining non-scales buckets are rerun and closed.
 
 Current broad-recovery checklist:
 
 - [x] Restore direct-root `tcgen05.copy` support-query fallback and validate dense 256-row copy rows.
-- [ ] Fix frontend/type-local layout selection for scales and remaining descriptor-view `get_reg_layout` failures.
+- [x] Fix frontend/type-local layout selection for tensor-memory-scales roots/views; remaining non-scales descriptor-view `get_reg_layout` failures stay tracked under ld/st and MMAv5 buckets.
 - [x] Close ld/st half-row row-origin miscompiles by preserving narrowed leading allocation shape through `memdesc_index` and rejecting unsupported direct row-slice packets cleanly.
 - [ ] Fix subword ld/st dynamic and loop-carried view miscompiles/opcode expectation drift.
 - [ ] Fix `ld.red` exact-layout reduction planning for permuted/tile-permuted layouts.

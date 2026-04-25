@@ -245,14 +245,24 @@ bool isTMemAccessAtomCompatibleWithRequest(
     TMemAccessAtom actualAtom) {
   if (!desiredAtom || actualAtom == *desiredAtom)
     return true;
+  if (*desiredAtom != TMemAccessAtom::I32x32b ||
+      actualAtom != TMemAccessAtom::I16x32bx2)
+    return false;
+
   // On rank-2 M64 f32 TMEM descriptor views, the user-facing `32x32b` request
   // names the logical direct family, not a promise that the final direct
   // realization must stay on the scalar I32x32b atom. The packed 16x32bx2
   // family is the direct realizable form for these layouts and should satisfy
   // the same request when the planner finds it.
-  return isM64SplitNDescriptorType(queryTy, /*numWarps=*/4) &&
-         *desiredAtom == TMemAccessAtom::I32x32b &&
-         actualAtom == TMemAccessAtom::I16x32bx2;
+  if (isM64SplitNDescriptorType(queryTy, /*numWarps=*/4))
+    return true;
+
+  // Tensor-memory-scales uses i8 logical elements packed into 32-bit TMEM
+  // words. For scales roots and type-local scales descriptor views, explicit
+  // `32x32b` names the 32-bit hardware packet family; the realizable direct
+  // atom is the packed 16x32bx2 form when the layout carries the scale packing.
+  return isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding()) ||
+         isTypeLocalTMemScalesDescriptorView(queryTy);
 }
 
 SmallVector<TMemAccessAtom>

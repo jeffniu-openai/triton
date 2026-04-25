@@ -74,6 +74,75 @@ std::optional<std::string> getTMemLdStUnsupportedReason(ttg::MemDescType memDesc
       "extent matches its allocation row extent.");
 }
 
+bool isTypeLocalTMemScalesRootOrView(ttg::MemDescType memDescTy) {
+  if (!memDescTy)
+    return false;
+  if (isa<ttng::TensorMemoryScalesEncodingAttr>(memDescTy.getEncoding()))
+    return true;
+  auto storageType = ttng::getMMAv5ScaleStorageType(memDescTy);
+  return storageType &&
+         isa<ttng::TensorMemoryScalesEncodingAttr>((*storageType).getEncoding());
+}
+
+std::optional<unsigned>
+getTMemScalesMinElementsForAtom(ttng::TMemAccessAtom atom) {
+  switch (atom) {
+  case ttng::TMemAccessAtom::I16x64b:
+    return 256;
+  case ttng::TMemAccessAtom::I16x128b:
+    return 512;
+  case ttng::TMemAccessAtom::I16x256b:
+    return 1024;
+  default:
+    return std::nullopt;
+  }
+}
+
+std::optional<std::string> getTMemLdStUnsupportedReasonForVariant(
+    ttg::MemDescType memDescTy, unsigned numWarps, llvm::StringRef atomName) {
+  bool scalesRootOrView = isTypeLocalTMemScalesRootOrView(memDescTy);
+  bool twoCTAs =
+      ttng::getTensorMemoryTwoCTAs(memDescTy.getEncoding()).value_or(false);
+  bool m64TwoCTAInt8DescriptorView =
+      memDescTy.getRank() == 2 && memDescTy.getElementTypeBitWidth() == 8 &&
+      memDescTy.getShape()[0] == 64 &&
+      isa<ttng::TensorMemoryLinearEncodingAttr>(memDescTy.getEncoding());
+  if (!scalesRootOrView && !m64TwoCTAInt8DescriptorView)
+    return getTMemLdStUnsupportedReason(memDescTy);
+
+  auto maybeAtom = ttng::getTMemLdStRequestedAtomForMemDesc(memDescTy, atomName,
+                                                            numWarps);
+  if (failed(maybeAtom))
+    return std::nullopt;
+
+  int64_t exposedElements = 1;
+  for (int64_t dim : memDescTy.getShape())
+    exposedElements *= dim;
+
+  if (scalesRootOrView && *maybeAtom) {
+    if (auto required = getTMemScalesMinElementsForAtom(**maybeAtom);
+        required && exposedElements < static_cast<int64_t>(*required)) {
+      return (llvm::Twine("n-sharded scales footprint requirement: requested ") +
+              "tensor-memory-scales atom '" + atomName + "' requires a " +
+              llvm::Twine(*required) +
+              "-element tensor-memory-scales footprint, but the descriptor view "
+              "exposes only " + llvm::Twine(exposedElements) +
+              " scale elements")
+          .str();
+    }
+  }
+
+  if (twoCTAs && memDescTy.getRank() == 2 && memDescTy.getShape()[0] == 64 &&
+      atomName == "32x32b") {
+    return std::string(
+        "unsupported M=64 two-CTA tensor-memory-scales view: the current "
+        "type-local layout has no direct row-anchor rematerialization or "
+        "packet-footprint model for this 32x32b descriptor view");
+  }
+
+  return getTMemLdStUnsupportedReason(memDescTy);
+}
+
 // Helper to check if an MLIR type or attribute has a verifier method.
 template <typename AttrOrType>
 constexpr auto hasVerifier(AttrOrType t) -> decltype(t.verifyInvariants, true) {
@@ -1678,11 +1747,13 @@ void init_gluon_ir(py::module &&m) {
 
   m.def(
       "get_tmem_ldst_unsupported_reason_from_memdesc_for_variant",
-      [](Value memDesc, unsigned, const std::string &) -> py::object {
+      [](Value memDesc, unsigned numWarps,
+         const std::string &atomName) -> py::object {
         auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
         if (!memDescTy)
           throw std::invalid_argument("expected a memdesc value");
-        if (auto reason = getTMemLdStUnsupportedReason(memDescTy))
+        if (auto reason = getTMemLdStUnsupportedReasonForVariant(
+                memDescTy, numWarps, atomName))
           return py::str(*reason);
         return py::none();
       });

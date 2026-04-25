@@ -6725,7 +6725,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x32.b32", "16x32bx2.x32.b32", view_offsets=(0, )
+            "16x32bx2.x32.b32", "32x32b.x32.b32", view_offsets=(0, )
         ),
     ),
     (
@@ -6735,7 +6735,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x64.b32", "16x32bx2.x64.b32", view_offsets=(0, )
+            "16x32bx2.x64.b32", "32x32b.x64.b32", view_offsets=(0, )
         ),
     ),
     (
@@ -6745,7 +6745,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops(
-            "16x32bx2.x128.b32", "16x32bx2.x128.b32", view_offsets=(0, )
+            "16x32bx2.x128.b32", "32x32b.x128.b32", view_offsets=(0, )
         ),
     ),
 ]
@@ -9622,8 +9622,8 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_reports_clean_unsup
             [
                 ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0),
                 ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0),
-                ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0),
-                ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0),
+                ("tcgen05.ld.sync.aligned.32x32b.x32.b32", 0),
+                ("tcgen05.st.sync.aligned.32x32b.x32.b32", 0),
                 ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0),
             ],
         ),

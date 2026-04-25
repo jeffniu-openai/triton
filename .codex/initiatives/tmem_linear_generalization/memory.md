@@ -18795,3 +18795,9 @@ rejection, not rescue
 The half-row runtime-matrix failures exposed a concrete view-type bug: `memdesc_index` erased allocation context when indexing through a leading dimension that had already been narrowed by a TMEM subview. The visible bad IR was `memdesc_subslice` with an allocation shape such as `2x64x64`, followed by `memdesc_index` producing a plain `64x64` descriptor. Because legality is allowed to use only the current memdesc type plus SSA value, this type was insufficient and direct load/store planning miscompiled by targeting the origin-zero row footprint.
 
 The current policy is now explicit in code and tests: indexing such a narrowed leading TMEM dimension folds the dropped allocation extent into the result row allocation; if the final rank-2 descriptor has fewer logical rows than allocation rows and no layout-encoded zero row basis, direct `tcgen05.ld/st` is a clean unsupported case. Future support must encode the row selection in the layout/address model directly; it must not recover the origin by replaying producer chains.
+
+## 2026-04-25 01:16 UTC: Scales ld/st Frontend Recovery Note
+
+Tensor-memory-scales `get_reg_layout(instr_variant="32x32b")` should treat `32x32b` as a user-facing packet-family request, not as a hard requirement that the final atom remain scalar `I32x32b`. For scales roots and type-local scales descriptor views, the current `MemDescType`/layout may realize the request through packed `16x32bx2`; this is now accepted without producer-chain inspection. Clean negatives are likewise variant-local: n-sharded atom requests must expose enough scale elements for the packet footprint, and M=64 two-CTA scales descriptor views remain unsupported until a direct row-anchor/packet-footprint model is encoded in the current type/layout abstraction.
+
+Validation for this slice: required `make -j8`; full `ldst_scales` runtime-matrix selector `37 passed, 1675 deselected`.
