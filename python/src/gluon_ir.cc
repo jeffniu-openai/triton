@@ -74,6 +74,57 @@ std::optional<std::string> getTMemLdStUnsupportedReason(ttg::MemDescType memDesc
       "extent matches its allocation row extent.");
 }
 
+std::optional<std::string>
+getSubwordTMemLdStUnsupportedReason(ttg::MemDescType memDescTy) {
+  if (!memDescTy || memDescTy.getElementTypeBitWidth() >= 32)
+    return std::nullopt;
+  uint32_t modulus = ttng::getTMemElementsPerWord(
+      static_cast<uint32_t>(memDescTy.getElementTypeBitWidth()));
+  if (modulus <= 1)
+    return std::nullopt;
+
+  std::optional<tt::LinearLayout> layoutStorage;
+  if (auto maybeQuery = ttng::inferTypeLocalTMemLdStQueryLayout(memDescTy);
+      succeeded(maybeQuery)) {
+    layoutStorage = maybeQuery->layout;
+  } else if (auto maybeLayout = ttng::getTMemViewAnalysisLinearLayout(
+                 memDescTy.getShape(), memDescTy.getEncoding())) {
+    layoutStorage =
+        ttng::normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout);
+  }
+  if (!layoutStorage)
+    return std::nullopt;
+
+  auto *ctx = memDescTy.getContext();
+  auto kCol = StringAttr::get(ctx, "col");
+  const tt::LinearLayout &layout = *layoutStorage;
+  if (!layout.hasInDim(kCol) || layout.getInDimSizeLog2(kCol) == 0)
+    return std::nullopt;
+
+  bool mayHaveSubwordPhase = false;
+  for (unsigned idx = 0, e = layout.getInDimSizeLog2(kCol); idx < e; ++idx) {
+    for (int32_t value : layout.getBasis(kCol, idx)) {
+      if (value % static_cast<int32_t>(modulus) != 0)
+        mayHaveSubwordPhase = true;
+    }
+  }
+  if (!mayHaveSubwordPhase)
+    return std::nullopt;
+
+  auto firstBasis = layout.getBasis(kCol, 0);
+  bool zeroFirstBasis = llvm::all_of(
+      firstBasis, [](int32_t value) { return value == 0; });
+  bool unitContiguousFirstBasis = firstBasis.size() >= 2 &&
+                                  firstBasis[0] == 0 && firstBasis[1] == 1;
+  if (zeroFirstBasis || unitContiguousFirstBasis)
+    return std::nullopt;
+
+  return std::string(
+      "unsupported sub-32-bit TMEM view origin for this ld/st layout: "
+      "phase-aware lowering currently supports contiguous packed 32x32b "
+      "load/store plans or zero-column-basis elementwise RMW layouts");
+}
+
 bool isTypeLocalTMemScalesRootOrView(ttg::MemDescType memDescTy) {
   if (!memDescTy)
     return false;
@@ -100,6 +151,9 @@ getTMemScalesMinElementsForAtom(ttng::TMemAccessAtom atom) {
 
 std::optional<std::string> getTMemLdStUnsupportedReasonForVariant(
     ttg::MemDescType memDescTy, unsigned numWarps, llvm::StringRef atomName) {
+  if (auto reason = getSubwordTMemLdStUnsupportedReason(memDescTy))
+    return reason;
+
   bool scalesRootOrView = isTypeLocalTMemScalesRootOrView(memDescTy);
   bool twoCTAs =
       ttng::getTensorMemoryTwoCTAs(memDescTy.getEncoding()).value_or(false);

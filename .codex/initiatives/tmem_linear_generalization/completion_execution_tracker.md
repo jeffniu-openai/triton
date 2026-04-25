@@ -1,17 +1,17 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-25 01:16 UTC
+Last updated: 2026-04-25 01:27 UTC
 
 Active phase: Post-merge validation is red. The latest upstream-main merge builds and passes focused compiler/fpsan checks, but the broad TMEM runtime matrix has correctness, compiler-crash, unsupported-diagnostic, and expectation-drift buckets that must be triaged before performance recovery continues.
 
-Latest follow-up: closed the current tensor-memory-scales ld/st frontend/type-local bucket. Explicit `32x32b` now aliases the packed `16x32bx2` realization for scales roots and type-local scales descriptor views when the current layout requires that packed form, and scales clean-negative rows now report structural variant-specific reasons. The full `ldst_scales` runtime-matrix selector is green as `37 passed, 1675 deselected` after `make -j8`. Broad validation remains red until the remaining non-scales buckets are rerun and closed.
+Latest follow-up: closed the subword ld/st dynamic/control-flow bucket. Immediate `memdesc_index` values now participate in subword phase proof so indexed-away dimensions that can shift the runtime `taddr` into an odd element column are treated as unknown phase. Unknown-phase layouts either use contiguous packed realignment, zero-column-basis elementwise RMW, or report a structural unsupported diagnostic. Focused subword validation is green as `13 passed, 1699 deselected`; adjacent unaligned-subword ld/st validation is green as `26 passed, 1686 deselected` after `make -j8`. Broad validation remains red until ld.red, remaining descriptor-view, MMAv5/scaled-MMAv5, and structural-fuzzer buckets are closed.
 
 Current broad-recovery checklist:
 
 - [x] Restore direct-root `tcgen05.copy` support-query fallback and validate dense 256-row copy rows.
 - [x] Fix frontend/type-local layout selection for tensor-memory-scales roots/views; remaining non-scales descriptor-view `get_reg_layout` failures stay tracked under ld/st and MMAv5 buckets.
 - [x] Close ld/st half-row row-origin miscompiles by preserving narrowed leading allocation shape through `memdesc_index` and rejecting unsupported direct row-slice packets cleanly.
-- [ ] Fix subword ld/st dynamic and loop-carried view miscompiles/opcode expectation drift.
+- [x] Fix subword ld/st dynamic, loop-carried, and dynamic-index view miscompiles/opcode expectation drift.
 - [ ] Fix `ld.red` exact-layout reduction planning for permuted/tile-permuted layouts.
 - [x] Fix `tcgen05.copy` tile-permuted/warpx2 exact destination offsets.
 - [ ] Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.

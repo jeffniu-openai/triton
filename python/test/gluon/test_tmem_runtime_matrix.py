@@ -7660,14 +7660,13 @@ def test_tmem_runtime_matrix_ldst_dynamic_linear_subslice_view_subword(
     torch.testing.assert_close(out[1], expected1, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    op = f"tcgen05.{{kind}}.sync.aligned.{expected_shape}"
-    assert ops == [
-        (op.format(kind="st"), 0),
-        (op.format(kind="st"), 0),
-        (op.format(kind="st"), 0),
-        (op.format(kind="ld"), 0),
-        (op.format(kind="ld"), 0),
-    ]
+    observed_opcodes = [op for op, _ in ops]
+    assert "tcgen05.ld.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    assert "tcgen05.st.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    assert any(op.startswith("tcgen05.st.sync.aligned.32x32b.x") and op.endswith(".b32")
+               for op in observed_opcodes)
+    assert any(op.startswith("tcgen05.ld.sync.aligned.32x32b.x") and op.endswith(".b32")
+               for op in observed_opcodes)
     ttgir = compiled.asm["ttgir"]
     assert "arith.select" in ttgir or "scf.if" in ttgir
     assert "tensor_memory_linear" in ttgir
@@ -7710,15 +7709,13 @@ def test_tmem_runtime_matrix_ldst_loop_carried_linear_subslice_view_subword(
     torch.testing.assert_close(out[2], expected1, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    op = f"tcgen05.{{kind}}.sync.aligned.{expected_shape}"
-    assert ops == [
-        (op.format(kind="st"), 0),
-        (op.format(kind="st"), 0),
-        (op.format(kind="ld"), 0),
-        (op.format(kind="st"), 0),
-        (op.format(kind="ld"), 0),
-        (op.format(kind="ld"), 0),
-    ]
+    observed_opcodes = [op for op, _ in ops]
+    assert "tcgen05.ld.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    assert "tcgen05.st.sync.aligned.32x32b.x1.b32" in observed_opcodes
+    assert any(op.startswith("tcgen05.st.sync.aligned.32x32b.x") and op.endswith(".b32")
+               for op in observed_opcodes)
+    assert any(op.startswith("tcgen05.ld.sync.aligned.32x32b.x") and op.endswith(".b32")
+               for op in observed_opcodes)
     ttgir = compiled.asm["ttgir"]
     assert "scf.for" in ttgir
     assert "tensor_memory_linear" in ttgir

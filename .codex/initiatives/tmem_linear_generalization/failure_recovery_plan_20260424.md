@@ -38,6 +38,8 @@ Remaining plan:
 
 ### 2. Subword ld/st dynamic and loop-carried views
 
+Status: closed on 2026-04-25 for current runtime-matrix subword ld/st rows.
+
 Symptoms:
 - wide-opcode expectations see scalar `x1` RMW sequences.
 - dynamic f16 subword descriptor views miscompare.
@@ -45,9 +47,10 @@ Symptoms:
 Likely root cause:
 - subword phase/alignment for selected memdesc SSA values is conservative or wrong: static type/layout proves candidate atom coverage, but dynamic selected `taddr` can carry subword phase. Lowering scalarizes or packs/unpacks using an incomplete current-address model.
 
-Fix plan:
-- Recheck the current `taddr` plus element-column/subword phase model for dynamic selected descriptors.
-- For phases not representable by a wide atom, either emit correct scalar/subword RMW and update opcode expectations, or reject cleanly if correct lowering is impossible. Runtime miscompares must be fixed first.
+Fix executed:
+- Immediate `MemDescIndexOp` SSA values now contribute to subword phase proof, so dynamic/static indexed-away dimensions that can alter the runtime `taddr` element-column phase force the unknown-phase path instead of incorrectly proving wide-op alignment from result shape alone.
+- Unknown-phase layouts with zero column bases use elementwise 32-bit RMW through the exact type-local query layout. Contiguous packed unknown-phase layouts continue to use the wide realignment path. Non-contiguous/reversed packed phase layouts report a clean structural diagnostic.
+- Opcode expectations now require scalar `32x32b.x1` RMW when phase is unknown; runtime correctness remains the primary assertion.
 
 ### 3. Multidim descriptor ld/st and half-row views
 
@@ -132,7 +135,7 @@ Fix plan:
 
 1. [done] Restore direct-root copy support-query fallback and validate dense direct-root copy rows.
 2. [done for scales] Fix/frontend type-local layout selection for tensor-memory-scales roots/views; continue non-scales descriptor-view failures in their owning buckets.
-3. Fix ld/st exact row/address planning: half-row row-origin closed; subword dynamic views remain open under bucket 2.
+3. Fix ld/st exact row/address planning: half-row row-origin and subword dynamic views are closed for current coverage.
 4. Fix ld.red exact-layout reduction planning.
 5. [done] Fix copy tile-permuted/warpx2 exact destination offsets.
 6. Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.

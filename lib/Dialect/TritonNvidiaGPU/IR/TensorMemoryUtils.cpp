@@ -3,6 +3,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
@@ -74,6 +75,43 @@ getTMemElementOffsetModuloStatus(MemDescType memTy, uint32_t modulus) {
   return TMemSubwordPhaseStatus::KnownZero;
 }
 
+static TMemSubwordPhaseStatus
+getTMemIndexElementOffsetModuloStatus(MemDescIndexOp indexOp,
+                                      uint32_t modulus) {
+  auto srcTy = dyn_cast_if_present<MemDescType>(indexOp.getSrc().getType());
+  if (!srcTy || srcTy.getRank() == 0)
+    return TMemSubwordPhaseStatus::Unknown;
+
+  // The indexed result inherits any origin uncertainty already represented by
+  // the source type.  Do not inspect the source producer chain; the source type
+  // and the immediate index op are the local facts available here.
+  if (getTMemElementOffsetModuloStatus(srcTy, modulus) !=
+      TMemSubwordPhaseStatus::KnownZero)
+    return TMemSubwordPhaseStatus::Unknown;
+
+  auto offsetIsAligned = [&](int64_t index) {
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.front() = static_cast<int32_t>(index);
+    auto rowCol = tryGetTMemViewPhysicalRowElementCol(srcTy, offsets);
+    return rowCol &&
+           rowCol->second % static_cast<uint32_t>(modulus) == 0;
+  };
+
+  APInt staticIndex;
+  if (matchPattern(indexOp.getIndex(), m_ConstantInt(&staticIndex))) {
+    return offsetIsAligned(staticIndex.getSExtValue())
+               ? TMemSubwordPhaseStatus::KnownZero
+               : TMemSubwordPhaseStatus::Unknown;
+  }
+
+  int64_t indexedExtent = srcTy.getShape().front();
+  for (int64_t bit = 1; bit < indexedExtent; bit <<= 1) {
+    if (!offsetIsAligned(bit))
+      return TMemSubwordPhaseStatus::Unknown;
+  }
+  return TMemSubwordPhaseStatus::KnownZero;
+}
+
 TMemSubwordPhaseStatus getTMemSubwordPhaseStatus(Value memDesc) {
   if (!memDesc)
     return TMemSubwordPhaseStatus::Unknown;
@@ -81,6 +119,8 @@ TMemSubwordPhaseStatus getTMemSubwordPhaseStatus(Value memDesc) {
   if (!memTy || memTy.getElementTypeBitWidth() >= 32)
     return TMemSubwordPhaseStatus::KnownZero;
   uint32_t modulus = getTMemElementsPerWord(memTy.getElementTypeBitWidth());
+  if (auto indexOp = memDesc.getDefiningOp<MemDescIndexOp>())
+    return getTMemIndexElementOffsetModuloStatus(indexOp, modulus);
   return getTMemElementOffsetModuloStatus(memTy, modulus);
 }
 

@@ -986,6 +986,19 @@ lowerTMemLdStFromTypes(
     if (!supportRowPlan)
       supportRowPlan = getTMemLdStRowPlan(supportPlan.query.layout);
 
+    auto trySparseSubwordLowering = [&]()
+        -> FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>> {
+      if (!useSubwordPhasePath || memTy.getElementTypeBitWidth() >= 32)
+        return failure();
+      return lowerElementwisePackedSubwordLdSt(
+          loc, rewriter, regTy, supportPlan.query, pred, llvmElemTy,
+          memTy.getElementTypeBitWidth(), vals, tmemBase, redOp);
+    };
+
+    if (auto sparseLowered = trySparseSubwordLowering();
+        succeeded(sparseLowered))
+      return *sparseLowered;
+
     auto encodingInfoOr = computeTMemLdStEncodingInfo(
         regTy, planningMemTy, supportPlan.query, maxnreg,
         debugQuerySelection ? diag : std::function<InFlightDiagnostic()>{},
@@ -995,10 +1008,12 @@ lowerTMemLdStFromTypes(
       if (!preserveTMemLdStSupportQueryBaseOffset(planningMemTy,
                                                   supportPlan.query))
         encodingInfo.baseOffset = 0;
-      return lowerTMemLdStFromInfo(
+      auto lowered = lowerTMemLdStFromInfo(
           loc, rewriter, encodingInfo, pred, llvmElemTy,
           memTy.getElementTypeBitWidth(), vals, tmemBase, redOp, useAbs, useNaN,
           useSubwordPhasePath);
+      if (succeeded(lowered))
+        return *lowered;
     }
 
     auto sparseLowered = lowerElementwisePackedSubwordLdSt(

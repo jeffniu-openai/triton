@@ -18801,3 +18801,9 @@ The current policy is now explicit in code and tests: indexing such a narrowed l
 Tensor-memory-scales `get_reg_layout(instr_variant="32x32b")` should treat `32x32b` as a user-facing packet-family request, not as a hard requirement that the final atom remain scalar `I32x32b`. For scales roots and type-local scales descriptor views, the current `MemDescType`/layout may realize the request through packed `16x32bx2`; this is now accepted without producer-chain inspection. Clean negatives are likewise variant-local: n-sharded atom requests must expose enough scale elements for the packet footprint, and M=64 two-CTA scales descriptor views remain unsupported until a direct row-anchor/packet-footprint model is encoded in the current type/layout abstraction.
 
 Validation for this slice: required `make -j8`; full `ldst_scales` runtime-matrix selector `37 passed, 1675 deselected`.
+
+## 2026-04-25 01:27 UTC: Subword memdesc_index Phase Note
+
+A sub-32-bit `ttg.memdesc_index` result can have `shape == alloc_shape` and still carry nonzero subword phase in the runtime TMEM `taddr`. Do not use result shape equality alone as a proof of 32-bit-word alignment. The local proof now handles the immediate index op: static indices check exact element-column offset modulo the elements-per-word, and dynamic indices check each indexed-dimension bit contribution. If any contribution can be odd, lowering must use the unknown-phase path.
+
+For unknown phase, there are now two supported lowering families: contiguous packed `32x32b` realignment, and zero-column-basis elementwise 32-bit RMW through the exact query layout. Reversed/non-contiguous packed phase layouts are a clean unsupported boundary until a direct lowering is added. Validation: focused subword selector `13 passed`; adjacent unaligned-subword ld/st selector `26 passed`.
