@@ -204,11 +204,21 @@ getTMemMemDescIndexResultAllocShape(MemDescType srcTy) {
     return result;
 
   // Indexing a leading dimension that was already narrowed by a subview must
-  // preserve the omitted physical row extent in the result type.  Otherwise the
-  // rank-2 view appears to start at allocation row zero, and direct TMEM ld/st
-  // planning can silently target the wrong row footprint.
-  if (srcTy.getShape()[0] < srcTy.getAllocShape()[0])
-    result[0] *= srcTy.getAllocShape()[0];
+  // preserve the omitted physical extent in the result type.  The omitted
+  // dimension is not always a row selector after reshape/permute chains: it can
+  // select a column packet half.  Use the current source type/layout to decide
+  // which result dimension owns the hidden allocation extent.
+  if (srcTy.getShape()[0] < srcTy.getAllocShape()[0]) {
+    int64_t factor = srcTy.getAllocShape()[0];
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.front() = 1;
+    auto rowCol = tryGetTMemViewPhysicalRowElementCol(srcTy, offsets);
+    if (rowCol && rowCol->second != 0 && rowCol->first == 0) {
+      result.back() *= factor;
+    } else {
+      result[0] *= factor;
+    }
+  }
   return result;
 }
 

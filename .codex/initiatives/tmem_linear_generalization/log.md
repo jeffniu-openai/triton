@@ -36414,3 +36414,11 @@ Open after this slice:
 - Lowering fix: when unknown-phase lowering sees a type-local query layout with subword lanes encoded as zero column bases, it now falls back to elementwise 32-bit RMW through the exact query layout instead of forcing the contiguous packed realignment path. Reversed/non-contiguous packed phase layouts now get a frontend structural diagnostic.
 - Test updates: dynamic/loop-carried subword ld/st rows keep runtime correctness checks and now assert the presence of scalar `32x32b.x1` RMW opcodes instead of requiring wide opcodes that are only legal when phase is proven zero.
 - Validation: required `make -j8`; focused subword selector `13 passed, 1699 deselected`; adjacent unaligned-subword ld/st selector `26 passed, 1686 deselected`.
+
+## 2026-04-25 01:35 UTC: remaining ld/st descriptor-view recovery
+
+- Root cause: the `memdesc_index` allocation-shape preservation fix for row-origin views was too row-specific. When a narrowed leading view dimension was actually a column selector after reshape/permute, `getTMemMemDescIndexResultAllocShape` still folded the hidden allocation extent into result rows. That made valid column-half descriptor views look like origin-changing row slices and caused `get_reg_layout()` to reject runtime-positive multidim ld/st rows.
+- Fix: `getTMemMemDescIndexResultAllocShape` now queries the source type/layout physical offset for the indexed-away leading dimension. If the hidden dimension moves only element columns, the allocation extent is folded into the result column dimension; otherwise it remains a row extent. This keeps direct legality derived from current type/layout facts.
+- Diagnostic cleanup: frontend variant-specific unsupported reasons now cover requested ld/st atom dword footprints that exceed exposed columns, direct ld/st requests on `tcgen05.copy.4x256b` refresh images, and raw physical bitcasts of those refresh images. The block-descriptor clean-negative expectation now uses the current direct-memdesc diagnostic instead of stale producer-chain `memdesc_subslice` wording.
+- Test updates: multidim descriptor-slice runtime positives keep correctness and TMEM-view checks, but no longer require stale `tt.trans`/`tt.split`/`tt.join` strings that are folded away.
+- Validation: required `make -j8`; focused descriptor/diagnostic selector `17 passed, 1695 deselected`.

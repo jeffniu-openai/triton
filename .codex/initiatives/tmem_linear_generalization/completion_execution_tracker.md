@@ -1,10 +1,10 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-25 01:27 UTC
+Last updated: 2026-04-25 01:35 UTC
 
 Active phase: Post-merge validation is red. The latest upstream-main merge builds and passes focused compiler/fpsan checks, but the broad TMEM runtime matrix has correctness, compiler-crash, unsupported-diagnostic, and expectation-drift buckets that must be triaged before performance recovery continues.
 
-Latest follow-up: closed the subword ld/st dynamic/control-flow bucket. Immediate `memdesc_index` values now participate in subword phase proof so indexed-away dimensions that can shift the runtime `taddr` into an odd element column are treated as unknown phase. Unknown-phase layouts either use contiguous packed realignment, zero-column-basis elementwise RMW, or report a structural unsupported diagnostic. Focused subword validation is green as `13 passed, 1699 deselected`; adjacent unaligned-subword ld/st validation is green as `26 passed, 1686 deselected` after `make -j8`. Broad validation remains red until ld.red, remaining descriptor-view, MMAv5/scaled-MMAv5, and structural-fuzzer buckets are closed.
+Latest follow-up: closed the remaining non-red ld/st descriptor-view bucket. `memdesc_index` allocation-shape preservation now folds hidden leading extents into rows or columns according to the source type/layout physical offset, so column-half multidim descriptor views no longer look like unsupported row-origin slices. Variant-specific frontend diagnostics now cover too-small ld/st atom footprints and `tcgen05.copy.4x256b` refresh images/raw bitcasts. Focused descriptor validation is green as `17 passed, 1695 deselected` after `make -j8`. Broad validation remains red until ld.red, MMAv5/scaled-MMAv5, and structural-fuzzer buckets are closed.
 
 Current broad-recovery checklist:
 

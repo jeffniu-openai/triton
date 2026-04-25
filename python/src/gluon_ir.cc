@@ -74,6 +74,68 @@ std::optional<std::string> getTMemLdStUnsupportedReason(ttg::MemDescType memDesc
       "extent matches its allocation row extent.");
 }
 
+bool basisEquals(ArrayRef<int32_t> basis,
+                 std::initializer_list<int32_t> expected) {
+  return llvm::equal(basis, ArrayRef<int32_t>(expected));
+}
+
+std::optional<unsigned> getTMemLdStAtomDwordFootprint(ttng::TMemAccessAtom atom) {
+  switch (atom) {
+  case ttng::TMemAccessAtom::I32x32b:
+    return 1;
+  case ttng::TMemAccessAtom::I16x64b:
+  case ttng::TMemAccessAtom::I16x32bx2:
+    return 2;
+  case ttng::TMemAccessAtom::I16x128b:
+    return 4;
+  case ttng::TMemAccessAtom::I16x256b:
+    return 8;
+  }
+  llvm_unreachable("unknown TMEM ld/st atom");
+}
+
+bool isRawPhysicalBitcastOfTMemCopy4x256RefreshImage(ttg::MemDescType memDescTy) {
+  if (!memDescTy || memDescTy.getRank() != 2 ||
+      memDescTy.getElementTypeBitWidth() != 8 || memDescTy.getShape()[0] != 32 ||
+      memDescTy.getShape()[1] != 4)
+    return false;
+
+  auto maybeLayout = ttng::getTMemViewAnalysisLinearLayout(
+      memDescTy.getShape(), memDescTy.getEncoding());
+  if (!maybeLayout)
+    return false;
+
+  auto *ctx = memDescTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  const tt::LinearLayout &layout = *maybeLayout;
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
+      layout.getInDimSizeLog2(kRow) != 7 ||
+      layout.getInDimSizeLog2(kCol) != 5)
+    return false;
+  for (unsigned bit = 0; bit < 5; ++bit) {
+    if (!basisEquals(layout.getBasis(kRow, bit), {0, 0}))
+      return false;
+  }
+  return basisEquals(layout.getBasis(kRow, 5), {1, 0}) &&
+         basisEquals(layout.getBasis(kRow, 6), {2, 0}) &&
+         basisEquals(layout.getBasis(kCol, 0), {0, 1}) &&
+         basisEquals(layout.getBasis(kCol, 1), {0, 2}) &&
+         basisEquals(layout.getBasis(kCol, 2), {8, 0}) &&
+         basisEquals(layout.getBasis(kCol, 3), {16, 0}) &&
+         basisEquals(layout.getBasis(kCol, 4), {4, 0});
+}
+
+std::string getRawPhysicalBitcast4x256RefreshLdStUnsupportedMessage() {
+  return std::string(
+             "direct TMEM load/store is unsupported for a raw physical bitcast "
+             "of a tcgen05.copy.4x256b refresh image. tcgen05.ld/st packets "
+             "read whole row footprints and do not provide a lane mask for "
+             "this refresh image; the underlying 4x8 refresh image has the "
+             "same packet constraints. ") +
+         ttng::getTMemCopy4x256RefreshLdStUnsupportedMessage();
+}
+
 std::optional<std::string>
 getSubwordTMemLdStUnsupportedReason(ttg::MemDescType memDescTy) {
   if (!memDescTy || memDescTy.getElementTypeBitWidth() >= 32)
@@ -151,19 +213,16 @@ getTMemScalesMinElementsForAtom(ttng::TMemAccessAtom atom) {
 
 std::optional<std::string> getTMemLdStUnsupportedReasonForVariant(
     ttg::MemDescType memDescTy, unsigned numWarps, llvm::StringRef atomName) {
+  if (ttng::isTMemCopy4x256RefreshLayout(memDescTy))
+    return ttng::getTMemCopy4x256RefreshLdStUnsupportedMessage();
+  if (isRawPhysicalBitcastOfTMemCopy4x256RefreshImage(memDescTy))
+    return getRawPhysicalBitcast4x256RefreshLdStUnsupportedMessage();
   if (auto reason = getSubwordTMemLdStUnsupportedReason(memDescTy))
     return reason;
 
   bool scalesRootOrView = isTypeLocalTMemScalesRootOrView(memDescTy);
   bool twoCTAs =
       ttng::getTensorMemoryTwoCTAs(memDescTy.getEncoding()).value_or(false);
-  bool m64TwoCTAInt8DescriptorView =
-      memDescTy.getRank() == 2 && memDescTy.getElementTypeBitWidth() == 8 &&
-      memDescTy.getShape()[0] == 64 &&
-      isa<ttng::TensorMemoryLinearEncodingAttr>(memDescTy.getEncoding());
-  if (!scalesRootOrView && !m64TwoCTAInt8DescriptorView)
-    return getTMemLdStUnsupportedReason(memDescTy);
-
   auto maybeAtom = ttng::getTMemLdStRequestedAtomForMemDesc(memDescTy, atomName,
                                                             numWarps);
   if (failed(maybeAtom))
@@ -192,6 +251,26 @@ std::optional<std::string> getTMemLdStUnsupportedReasonForVariant(
         "unsupported M=64 two-CTA tensor-memory-scales view: the current "
         "type-local layout has no direct row-anchor rematerialization or "
         "packet-footprint model for this 32x32b descriptor view");
+  }
+
+  if (*maybeAtom) {
+    if (auto requiredDwords = getTMemLdStAtomDwordFootprint(**maybeAtom)) {
+      int64_t lastDim =
+          memDescTy.getShape().empty() ? 1 : memDescTy.getShape().back();
+      int64_t bitwidth = memDescTy.getElementTypeBitWidth();
+      int64_t exposedDwords =
+          llvm::divideCeil(lastDim * bitwidth, int64_t{32});
+      if (exposedDwords < static_cast<int64_t>(*requiredDwords)) {
+        return (llvm::Twine("requested tcgen05.ld/st atom ") +
+                ttng::getOpShape(**maybeAtom) + " has a " +
+                llvm::Twine(*requiredDwords) +
+                "-dword column footprint, but descriptor view exposes only " +
+                llvm::Twine(exposedDwords) +
+                " materializable dword column" +
+                (exposedDwords == 1 ? "" : "s"))
+            .str();
+      }
+    }
   }
 
   return getTMemLdStUnsupportedReason(memDescTy);

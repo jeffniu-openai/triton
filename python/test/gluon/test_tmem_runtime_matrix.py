@@ -5868,10 +5868,8 @@ UNSUPPORTED_BLOCK_DESCRIPTOR_CASES = [
         _make_tmem_linear_layout_block(128, 128, two_ctas=True),
         _make_tmem_linear_layout_64x32_block(two_ctas=True),
         (
-            "unsupported tensor memory memdesc_subslice view",
-            "is not affine in the selected tensor-memory linear layout",
-            "basis step 2 crosses a physical layout boundary",
-            "carry-dependent descriptor view",
+            "unsupported tensor memory descriptor view",
+            "current memdesc type does not encode a self-contained ld/st layout",
         ),
     ),
 ]
@@ -8550,10 +8548,9 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices(dtype_name, torch_d
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    assert "tt.trans" in ttgir
-    assert "tt.split" in ttgir
-    assert "tt.join" in ttgir
-    assert "ttg.memdesc_subslice" not in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tmem_store" in ttgir
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize(

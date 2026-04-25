@@ -54,7 +54,7 @@ Fix executed:
 
 ### 3. Multidim descriptor ld/st and half-row views
 
-Status: half-row row-origin sub-bucket closed on 2026-04-25; remaining subword dynamic ld/st is tracked separately in bucket 2.
+Status: closed on 2026-04-25 for current non-red ld/st runtime-matrix coverage; subword dynamic ld/st is closed separately in bucket 2.
 
 Symptoms:
 - stale `tt.reshape` string expectations.
@@ -64,9 +64,10 @@ Root cause found:
 - `memdesc_subslice` preserved allocation context, but `memdesc_index` erased it when indexing a leading TMEM dimension that had already been narrowed by a subview. The final rank-2 descriptor looked like a plain origin-zero view, so type-local ld/st planning could not know that the current SSA `taddr` selected the second row half.
 
 Fix executed:
-- `memdesc_index` now folds the omitted leading allocation extent into the result row allocation for narrowed TMEM views.
+- `memdesc_index` now preserves omitted leading allocation extent in the result row or column dimension according to the current source type/layout physical offset. Row-moving narrowed views remain clean unsupported when the result type cannot encode a direct row footprint; column-moving narrowed views stay runtime-positive.
 - Direct row-slice ld/st without a layout-encoded row support bit is a clean unsupported case from the current memdesc type; frontend, verifier/planner, and late lowering share this predicate.
-- Stale `tt.reshape` string assertions were removed while keeping runtime correctness and IR feature checks.
+- Stale IR string assertions were removed or refreshed while keeping runtime correctness and TMEM operation checks.
+- Frontend clean-negative reasons now cover atom footprint/exposed-column mismatches and `tcgen05.copy.4x256b` refresh-image ld/st boundaries.
 
 Validation:
 - `make -j8`
@@ -135,7 +136,7 @@ Fix plan:
 
 1. [done] Restore direct-root copy support-query fallback and validate dense direct-root copy rows.
 2. [done for scales] Fix/frontend type-local layout selection for tensor-memory-scales roots/views; continue non-scales descriptor-view failures in their owning buckets.
-3. Fix ld/st exact row/address planning: half-row row-origin and subword dynamic views are closed for current coverage.
+3. [done] Fix ld/st exact row/address planning: half-row row-origin, subword dynamic views, and remaining non-red descriptor-view rows are closed for current coverage.
 4. Fix ld.red exact-layout reduction planning.
 5. [done] Fix copy tile-permuted/warpx2 exact destination offsets.
 6. Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.

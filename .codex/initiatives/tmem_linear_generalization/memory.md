@@ -18807,3 +18807,9 @@ Validation for this slice: required `make -j8`; full `ldst_scales` runtime-matri
 A sub-32-bit `ttg.memdesc_index` result can have `shape == alloc_shape` and still carry nonzero subword phase in the runtime TMEM `taddr`. Do not use result shape equality alone as a proof of 32-bit-word alignment. The local proof now handles the immediate index op: static indices check exact element-column offset modulo the elements-per-word, and dynamic indices check each indexed-dimension bit contribution. If any contribution can be odd, lowering must use the unknown-phase path.
 
 For unknown phase, there are now two supported lowering families: contiguous packed `32x32b` realignment, and zero-column-basis elementwise 32-bit RMW through the exact query layout. Reversed/non-contiguous packed phase layouts are a clean unsupported boundary until a direct lowering is added. Validation: focused subword selector `13 passed`; adjacent unaligned-subword ld/st selector `26 passed`.
+
+## 2026-04-25 01:35 UTC: memdesc_index Alloc-Shape Ownership Note
+
+`memdesc_index` allocation-shape preservation must follow the physical dimension selected by the indexed-away logical dimension. The earlier row-slice fix folded any narrowed leading extent into result rows, which is correct for true row-origin slices but wrong for reshape/permute chains where the leading dimension selects a column packet half. The helper now uses the source type/layout offset for logical index 1: column-only offsets fold into the result column allocation; other narrowed leading offsets fold into rows. This keeps row-origin clean negatives without rejecting column-half descriptor positives.
+
+Validation for this slice: required `make -j8`; descriptor/diagnostic selector `17 passed, 1695 deselected`.
