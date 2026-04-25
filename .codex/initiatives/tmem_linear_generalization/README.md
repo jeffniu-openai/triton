@@ -7822,3 +7822,15 @@ When resuming the initiative:
 - Closed the 2026-04-24 broad TMEM recovery baseline for the local GB200 three-file sweep. All four split groups over `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py` now pass on the current build.
 - Final fixes: relaxed the MMAv5 blockM=64 verifier to use current logical A tile shape, made the frontend dword-footprint precheck planner-safe for packed sub-32-bit layouts, preserved hidden row-origin allocation extent for narrowed extra-rank row slices, and refreshed stale runtime-matrix IR expectations.
 - Latest broad evidence: group1 `4347 passed, 620 skipped`; group2 `2671 passed, 2296 skipped`; group3 `2359 passed, 2608 skipped`; group4 `3575 passed, 1389 skipped`.
+
+## Latest: 2026-04-25 example 01/05 TMEM backend performance exploration
+
+- Promoted a narrow 01 attention selector change: Blackwell Ultra noncausal D64
+  FP8 now uses `NUM_KV_BUFFERS=4`. Same-input A/B versus the old selector was
+  output-bitexact for `N_CTX=1024..65536` and improved TFLOPS by
+  `1.0053x..1.0072x`.
+- Explored removing the 05 fused-gather epilogue convert layout. Simple
+  source-level removal is not promotable: direct removal fails final `i16 -> i32`
+  packing, direct `i16` stores are slower, and layout variants either fail
+  subtile splitting or keep the same convert ops.
+- Detailed notes: `example_tmem_backend_perf_exploration_20260425.md`.

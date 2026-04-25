@@ -18875,3 +18875,27 @@ Validation completed:
 Current status:
 - The former `184 failed` broad TMEM recovery baseline is closed for this three-file GB200 local validation set.
 - Remaining known work is no longer correctness recovery for this bucket; next workstreams are performance follow-up for examples 01/05 and any broader CI/lit lanes outside this three-file sweep.
+
+## 2026-04-25 08:46 UTC: 01/05 TMEM backend performance exploration
+
+Current performance slice outcome:
+- Promoted one narrow 01 selector change: on Blackwell Ultra, noncausal D64 FP8
+  now uses `NUM_KV_BUFFERS=4`. Same-input A/B against the previous selector was
+  output-bitexact for `N_CTX=1024,2048,4096,8192,16384,32768,65536` and improved
+  TFLOPS by `1.0053x..1.0072x`.
+- Do not promote the 05 epilogue convert-layout removal attempts from this pass.
+  Direct removal fails final packing, direct `i16` stores are slower, and layout
+  variants either fail subtile splitting or keep the same convert ops. The
+  current convert is necessary for the existing `i16 -> i32` packed global store
+  path unless a new cross-lane pack/store strategy is implemented.
+- 01 `M` buffer note: several existing baseline rows are not bit-stable for `M`
+  across repeated identical launches, while final output tensors are bit-stable.
+  This pass used final output bitexactness as the performance promotion gate and
+  did not attempt to fix the preexisting `M` instability.
+
+Validation evidence:
+- `make -j8`
+- `python3 -m py_compile python/examples/gluon/01-attention-forward.py`
+- D64 FP8 noncausal same-input A/B: `N_CTX=1024..65536`, output-bitexact,
+  speedup range `1.0053x..1.0072x`
+- Focused pytest rows for the changed path: `2 passed in 6.41s`

@@ -36485,3 +36485,24 @@ Validation completed:
 Current status:
 - The former `184 failed` broad TMEM recovery baseline is closed for this three-file GB200 local validation set.
 - Remaining known work is no longer correctness recovery for this bucket; next workstreams are performance follow-up for examples 01/05 and any broader CI/lit lanes outside this three-file sweep.
+
+## 2026-04-25 08:46 UTC: example 01/05 TMEM backend performance exploration
+
+- Explored 05 epilogue convert-layout removal. Direct removal failed because
+  `pack_fp8x4` needs two elements per thread in the last dimension; direct `i16`
+  stores were bit-stable but slower; store-compatible accumulator layouts broke
+  M-subtile splitting; wider-N split layout kept the same convert ops and was
+  slower; subtile/epilogue-warp sweeps were bitexact but not consistently faster.
+- Explored 01 TMEM/register/scheduling knobs. QK `auto` preserved final outputs
+  but changed the returned `M` buffer on rows where baseline `M` is already not
+  repeat-stable; O layout variants were slower or unsupported; scalar state
+  layout changed output bits. The stable promoted win is Blackwell Ultra
+  noncausal D64 FP8 `NUM_KV_BUFFERS=4`.
+- Promoted selector change in `python/examples/gluon/01-attention-forward.py`:
+  D64 FP8 noncausal on BWU now uses 4 KV buffers instead of 2 at `N_CTX=1024`
+  and 8 above that. Same-input A/B against old selector: output-bitexact for
+  `N_CTX=1024..65536`, speedup `1.0053x..1.0072x`.
+- Validation: `make -j8`; `python3 -m py_compile python/examples/gluon/01-attention-forward.py`; focused A/B script; focused pytest rows
+  `test_op[False-triton-fp8-False-64-4096-32-4]` and
+  `test_op[True-triton-fp8-False-64-4096-32-4]` passed `2` cases.
+- Detailed report: `example_tmem_backend_perf_exploration_20260425.md`.

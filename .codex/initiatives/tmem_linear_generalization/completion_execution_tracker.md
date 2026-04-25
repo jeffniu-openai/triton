@@ -5732,3 +5732,31 @@ Validation completed:
 Current status:
 - The former `184 failed` broad TMEM recovery baseline is closed for this three-file GB200 local validation set.
 - Remaining known work is no longer correctness recovery for this bucket; next workstreams are performance follow-up for examples 01/05 and any broader CI/lit lanes outside this three-file sweep.
+
+## 2026-04-25 08:46 UTC: Example 01/05 Performance Exploration
+
+Status: one narrow 01 performance selector change promoted; 05 convert-layout
+source-level removal attempts classified as dead ends.
+
+Completed:
+- [x] Baseline focused 01/05 measurements with output repeat checks.
+- [x] 05 epilogue convert-layout removal experiments: direct removal, `i16`
+  direct store, store-compatible accumulator layout, wider split layout,
+  SwiGLU subtile sweep, and epilogue warp split sweep.
+- [x] 01 register-layout experiments: QK auto/32x32b, O 32x32b/16x64b, scalar
+  state layout, and KV-buffer/turnstile sweeps.
+- [x] Promoted BWU noncausal D64 FP8 `NUM_KV_BUFFERS=4` selector.
+- [x] Recorded detailed findings in
+  `example_tmem_backend_perf_exploration_20260425.md`.
+
+Validation:
+- `make -j8`
+- `python3 -m py_compile python/examples/gluon/01-attention-forward.py`
+- D64 FP8 noncausal same-input A/B versus old selector: output-bitexact for
+  `N_CTX=1024..65536`, speedup `1.0053x..1.0072x`.
+- Focused pytest rows for changed path: `2 passed in 6.41s`.
+
+Remaining:
+- Optional compact full-benchmark rerun for 01 D64 FP8 noncausal.
+- Future 05 work should target a new cross-lane pack/store primitive or compiler
+  store-layout materialization rather than deleting the convert in source.

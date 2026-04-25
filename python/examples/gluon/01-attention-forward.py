@@ -972,7 +972,7 @@ def select_kernel_config(
             split_exp_factor = 2
             maxnreg = 128
             use_selected_tmem_red = is_bwu
-            num_kv_buffers = 2 if n_ctx <= 1024 else 8
+            num_kv_buffers = 4 if is_bwu else (2 if n_ctx <= 1024 else 8)
             use_exp2_turnstile = True
         elif not causal and head_dim == 128:
             group_size_n = 1
