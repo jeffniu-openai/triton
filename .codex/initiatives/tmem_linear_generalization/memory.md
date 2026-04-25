@@ -18843,3 +18843,13 @@ Validation:
 
 Next concrete step:
 - Commit and push this checkpoint, then refresh the structural-fuzzer expectation rows that changed from bug sentinels to clean unsupported or runtime-positive cases. After that, run the broad 4-GPU validation split over `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py`.
+
+
+## 2026-04-25 02:36 UTC: structural fuzzer expectation refresh after recovery closeout
+
+- The structural fuzzer had three stale clean-unsupported rows from `FZ-20260421-0003`: chain1 `64x32 32x32b`, chain2 column-reverse `64x32 16x64b`, and f16 chain2 identity `64x32 16x64b` now compile and execute correctly after the ld/st descriptor-view and type-local lowering fixes.
+- Manual exact probes showed zero mismatches for all three rows and PTX/LLIR `tcgen05.ld/st` opcode agreement. The checked-in test now treats them as runtime positives instead of expecting a diagnostic.
+- Validation: exact promoted selector `3 passed, 33 deselected`; full structural fuzzer split-4 groups all passed (`9 passed, 27 deselected` per group; `36 passed` aggregate).
+
+Next concrete step:
+- Run the broad 4-GPU split over `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py` to verify the recovery plan against the former `184 failed` baseline.

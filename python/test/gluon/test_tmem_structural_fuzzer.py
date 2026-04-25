@@ -121,16 +121,6 @@ def _run_structural_child(case_id):
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
 
 
-def _assert_clean_tmem_ldst_descriptor_view_unsupported(text):
-    assert "unsupported for descriptor view" in text
-    assert "unsupported tensor memory descriptor view for direct tcgen05.ld/st" in text
-    assert "required row anchors" in text
-    assert "Access the full backing tile or reshape/copy" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
-
-
-
 @dataclass(frozen=True)
 class LdStCase:
     case_id: str
@@ -234,7 +224,7 @@ LDST_CASES = [
     LdStCase("ldst-view-col-rotate-16x128b", 0x104, 128, 128, "identity", "rotate1", "16x128b", 1),
 ]
 
-LDST_DESCRIPTOR_VIEW_CLEAN_UNSUPPORTED_CASES = [
+LDST_DESCRIPTOR_VIEW_POSITIVE_CASES = [
     LdStCase(
         "ldst-fz20260421-0003-chain1-64x32-32x32b",
         0xA003,
@@ -959,8 +949,8 @@ def test_tmem_structural_fuzzer_ldst_view_roundtrip(case):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("case", LDST_DESCRIPTOR_VIEW_CLEAN_UNSUPPORTED_CASES, ids=lambda case: case.case_id)
-def test_tmem_structural_fuzzer_ldst_descriptor_view_reports_clean_unsupported(case, capfd):
+@pytest.mark.parametrize("case", LDST_DESCRIPTOR_VIEW_POSITIVE_CASES, ids=lambda case: case.case_id)
+def test_tmem_structural_fuzzer_ldst_descriptor_view_read_roundtrip(case):
     torch.manual_seed(case.seed)
     layout = _make_linear_layout(case.m, case.n, case.row_kind, case.col_kind)
     parent_layout = _lift_layout(layout, [2])
@@ -968,12 +958,16 @@ def test_tmem_structural_fuzzer_ldst_descriptor_view_reports_clean_unsupported(c
     inp = torch.randn((case.m, case.n), dtype=torch_dtype, device="cuda")
     out = torch.empty_like(inp)
 
-    with pytest.raises(Exception) as excinfo:
-        _fuzz_ldst_descriptor_view_read_kernel[(1, )](
-            inp, out, parent_layout, case.m, case.n, case.instr_variant, case.chain_id, num_warps=4
-        )
+    compiled = _fuzz_ldst_descriptor_view_read_kernel[(1, )](
+        inp, out, parent_layout, case.m, case.n, case.instr_variant, case.chain_id, num_warps=4
+    )
 
-    _assert_clean_tmem_ldst_descriptor_view_unsupported(collect_compile_error_text(excinfo, capfd))
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    ptx_ops = _extract_tcgen05_ops(compiled.asm["ptx"], ("ld", "st"))
+    llir_ops = _extract_tcgen05_ops(compiled.asm["llir"], ("ld", "st"))
+    assert ptx_ops == llir_ops
+    assert any(".ld." in op for op in ptx_ops)
+    assert any(".st." in op for op in ptx_ops)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

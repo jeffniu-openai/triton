@@ -7811,3 +7811,8 @@ When resuming the initiative:
 - Root causes: direct TMEM-LHS `tcgen05.mma` cannot encode in-tile K permutations smaller than the hardware instruction K tile, and scaled accumulator half-tile subviews need self-contained sparse physical column images rather than narrowed logical-only types.
 - Current clean unsupported boundaries: in-tile TMEM-LHS K permutations that would require repacking A, and direct `ld/st` of sparse physical accumulator subviews whose compact logical register tensor cannot name the noncontiguous physical columns without parent replay.
 - Next validation step: commit/push this checkpoint, refresh structural-fuzzer expectations, then rerun the broad 4-GPU split.
+
+## Latest: 2026-04-25 02:36 UTC structural fuzzer expectation refresh
+
+- Promoted three stale `FZ-20260421-0003` ld/st descriptor-view rows from clean unsupported to runtime-positive checks after exact probes showed zero mismatches and PTX/LLIR opcode agreement.
+- Full structural fuzzer split-4 now passes as `36 passed` aggregate. Next step is the broad 4-GPU validation split.
