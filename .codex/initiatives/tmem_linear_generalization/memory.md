@@ -18819,3 +18819,27 @@ For unknown phase, there are now two supported lowering families: contiguous pac
 `memdesc_index` allocation-shape preservation must follow the physical dimension selected by the indexed-away logical dimension. The earlier row-slice fix folded any narrowed leading extent into result rows, which is correct for true row-origin slices but wrong for reshape/permute chains where the leading dimension selects a column packet half. The helper now uses the source type/layout offset for logical index 1: column-only offsets fold into the result column allocation; other narrowed leading offsets fold into rows. This keeps row-origin clean negatives without rejecting column-half descriptor positives.
 
 Validation for this slice: required `make -j8`; descriptor/diagnostic selector `17 passed, 1695 deselected`.
+
+
+## 2026-04-25 02:33 UTC: MMAv5/scaled-MMAv5 bucket closeout
+
+Root causes fixed/classified:
+- TMEM-LHS tile-permuted miscompares came from accepting layouts whose preserved canonical column span was smaller than the `tcgen05.mma` hardware K tile. The hardware TMEM-A operand is only a base address, so in-tile K permutations cannot be encoded directly; these rows are now clean unsupported instead of miscompiled.
+- Scaled accumulator half-tile subview failures came from `memdesc_subslice` narrowing the physical column image to the logical view width. The type/query path now preserves a wider self-contained physical image when retained bases require it.
+- Direct `ld/st` of the resulting sparse physical accumulator subview remains a clean unsupported boundary for the current register tensor abstraction: the descriptor can address MMA D, but a compact `128x64` register tensor cannot name noncontiguous physical columns relative to the current `taddr` without parent replay, which is disallowed.
+
+Fixes landed in the working tree:
+- MMAv5 and scaled-MMAv5 verifiers reject direct TMEM-LHS layouts whose canonical preserved K span is smaller than the required storage K tile.
+- Pure 2D column `memdesc_subslice` inference now keeps the simple narrowed fast path only when retained bases fit the narrowed physical span; sparse/tile-permuted cases use exact inverse/projection layout arithmetic.
+- Runtime-matrix coverage is split into verified positives and clean unsupported diagnostics for true direct-codegen boundaries.
+
+Validation:
+- `make -j8`
+- Plain TMEM-LHS focused selector: `8 passed, 1700 deselected`.
+- Scaled TMEM-LHS focused selector: `18 passed, 1690 deselected`.
+- Scaled accumulator sparse-subview focused selector: `10 passed, 1698 deselected`.
+- Full MMAv5/scaled selector: `343 passed, 1365 deselected`.
+- `git diff --check` passed.
+
+Next concrete step:
+- Commit and push this checkpoint, then refresh the structural-fuzzer expectation rows that changed from bug sentinels to clean unsupported or runtime-positive cases. After that, run the broad 4-GPU validation split over `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py`.

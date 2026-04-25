@@ -36429,3 +36429,27 @@ Open after this slice:
 - A second root cause was Gluon builder-level result-type canonicalization. `create_tmem_load` called `canonicalizeTMemLoadReductionType` for every red load, which rewrote explicit/current M64 row-permuted layouts into canonical support layouts after frontend selection and caused `ConvertTritonGPUToLLVM` failures.
 - Fixes: red-load lowering now separates data chunks from reduction scalars, uses atom-specific payload ordering, and removes the late Gluon red-result canonicalization. Runtime assertions were kept as the primary contract; M64/tile opcode expectations were refreshed only after runtime correctness passed.
 - Validation: required `make -j8`; full focused selector `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -q -s --tb=short -k 'ld_red' python/test/gluon/test_tmem_runtime_matrix.py` -> `264 passed, 1448 deselected`; `git diff --check` passed.
+
+
+## 2026-04-25 02:33 UTC: MMAv5/scaled-MMAv5 bucket closeout
+
+Root causes fixed/classified:
+- TMEM-LHS tile-permuted miscompares came from accepting layouts whose preserved canonical column span was smaller than the `tcgen05.mma` hardware K tile. The hardware TMEM-A operand is only a base address, so in-tile K permutations cannot be encoded directly; these rows are now clean unsupported instead of miscompiled.
+- Scaled accumulator half-tile subview failures came from `memdesc_subslice` narrowing the physical column image to the logical view width. The type/query path now preserves a wider self-contained physical image when retained bases require it.
+- Direct `ld/st` of the resulting sparse physical accumulator subview remains a clean unsupported boundary for the current register tensor abstraction: the descriptor can address MMA D, but a compact `128x64` register tensor cannot name noncontiguous physical columns relative to the current `taddr` without parent replay, which is disallowed.
+
+Fixes landed in the working tree:
+- MMAv5 and scaled-MMAv5 verifiers reject direct TMEM-LHS layouts whose canonical preserved K span is smaller than the required storage K tile.
+- Pure 2D column `memdesc_subslice` inference now keeps the simple narrowed fast path only when retained bases fit the narrowed physical span; sparse/tile-permuted cases use exact inverse/projection layout arithmetic.
+- Runtime-matrix coverage is split into verified positives and clean unsupported diagnostics for true direct-codegen boundaries.
+
+Validation:
+- `make -j8`
+- Plain TMEM-LHS focused selector: `8 passed, 1700 deselected`.
+- Scaled TMEM-LHS focused selector: `18 passed, 1690 deselected`.
+- Scaled accumulator sparse-subview focused selector: `10 passed, 1698 deselected`.
+- Full MMAv5/scaled selector: `343 passed, 1365 deselected`.
+- `git diff --check` passed.
+
+Next concrete step:
+- Commit and push this checkpoint, then refresh the structural-fuzzer expectation rows that changed from bug sentinels to clean unsupported or runtime-positive cases. After that, run the broad 4-GPU validation split over `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py`.

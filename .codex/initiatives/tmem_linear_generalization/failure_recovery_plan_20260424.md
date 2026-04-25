@@ -130,16 +130,28 @@ Validation:
 
 ### 6. MMAv5 / scaled-MMAv5 TMEM-LHS and descriptor-subview paths
 
+Status: closed on 2026-04-25 for the current MMAv5/scaled runtime-matrix selector, with two documented clean unsupported boundaries.
+
 Symptoms:
-- TMEM-LHS tile-permuted plain and scaled rows miscompare.
-- scaled accumulator subslice tile-permuted descriptor views fail in `get_reg_layout(auto)`.
+- TMEM-LHS tile-permuted plain and scaled rows miscompared.
+- scaled accumulator subslice tile-permuted descriptor views failed in `get_reg_layout(auto)`.
 
-Likely root cause:
-- The MMAv5 accumulator address path was fixed, but TMEM-LHS and scaled subview frontend planning still use family layout information as if it were exact physical order.
+Root causes found:
+- The TMEM-LHS verifier accepted layouts that preserved canonical column order only for a sub-tile smaller than the hardware instruction K tile. `tcgen05.mma` has no TMEM-A descriptor stride or permutation operand: it reads one fixed physical K tile from the TMEM-A base. When the logical K tile is permuted inside that physical tile, A is consumed in physical order while B remains logical, so direct codegen would miscompile. This is a true ISA/codegen boundary unless the program explicitly repacks/copies A into a compatible layout.
+- `memdesc_subslice` result-type inference for pure 2D column subviews over tile-permuted layouts had a narrowed fast path that forced the physical output column span to the logical view width. A half-tile accumulator view such as `128x64` from a `128x128` tile-permuted parent actually maps logical columns into a wider physical image. The old type was not self-contained enough for type-local planning.
+- After the type inference fix, direct `ld/st` of that sparse physical accumulator subview is still unsupported by the current register tensor abstraction. The sliced descriptor can be a valid MMA D address, but a `128x64` register tensor cannot directly name physical columns such as `{0..31,64..95}` relative to its current `taddr`. That is recorded as a clean frontend unsupported case instead of replaying the parent view chain.
 
-Fix plan:
-- Apply the same exact-layout/address split to TMEM-LHS load operands.
-- Extend frontend `get_reg_layout` for MMAv5-compatible descriptor subviews using exact current layout.
+Fix executed:
+- Plain and scaled MMAv5 verification now rejects TMEM-LHS layouts whose preserved canonical K span is smaller than the instruction's required storage K tile, with a diagnostic explaining that in-tile column permutations cannot be represented by the TMEM-A address operand.
+- The `memdesc_subslice` query/type path now distinguishes simple column slices whose retained bases fit a narrowed physical span from sparse/tile-permuted column slices that need a wider self-contained physical output image. The latter falls through to exact inverse/projection arithmetic instead of losing physical columns.
+- Runtime-matrix rows were split into positives and clean negatives. Valid larger K tiles and mxfp8 scaled TMEM-LHS rows still execute and check numerical correctness/opcodes. Plain f16/f8 and scaled mxfp4/nvfp4 in-tile K permutations now assert clean unsupported diagnostics. Sparse scaled-accumulator subview `ld/st` rows assert the current direct-layout unsupported diagnostic rather than a compiler crash or silent replay.
+
+Validation:
+- `make -j8`
+- Focused plain TMEM-LHS selector -> `8 passed, 1700 deselected`.
+- Focused scaled TMEM-LHS selector -> `18 passed, 1690 deselected`.
+- Focused scaled accumulator sparse-subview selector -> `10 passed, 1698 deselected`.
+- Full MMAv5/scaled selector `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -q -s --tb=short -k 'mma and (tile_permuted or scaled)' python/test/gluon/test_tmem_runtime_matrix.py` -> `343 passed, 1365 deselected`.
 
 ## Execution Order
 
@@ -148,5 +160,5 @@ Fix plan:
 3. [done] Fix ld/st exact row/address planning: half-row row-origin, subword dynamic views, and remaining non-red descriptor-view rows are closed for current coverage.
 4. [done] Fix ld.red exact-layout reduction planning.
 5. [done] Fix copy tile-permuted/warpx2 exact destination offsets.
-6. Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.
-7. Re-run focused bucket selectors after each slice, then the 4-GPU broad split.
+6. [done] Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling, including clean unsupported boundaries for in-tile K permutations and sparse physical accumulator subview `ld/st`.
+7. Re-run focused bucket selectors after each slice, then the 4-GPU broad split. Focused recovery buckets are now closed; the next validation step is expectation refresh for structural-fuzzer sentinels, then broad 4-GPU validation.

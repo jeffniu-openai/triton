@@ -1560,18 +1560,42 @@ inferTMemSubsliceQueryLayout(ArrayRef<int64_t> srcShape,
         *error = "unsupported tensor memory memdesc_subslice view";
       return failure();
     }
-    auto narrowedLayout = ll;
-    if (narrowedLayout.getOutDimSize(logicalDims[1]) != dstShape[1])
-      narrowedLayout =
-          narrowedLayout.resizeOutDim(logicalDims[1], dstShape[1]);
-    if (narrowedLayout.getInDimSize(kCol) != dstShape[1])
-      narrowedLayout = narrowedLayout.resizeInDim(kCol, dstShape[1]);
-    return TMemLdStQueryLayout{
-        narrowedLayout, srcQuery.twoCTAs,
-        remapTMemLdStQueryOrigin(
-            srcQuery, narrowedLayout,
-            {{kCol, static_cast<int32_t>(offsets[1])}})};
+    auto fastPathLayout = ll;
+    if (fastPathLayout.getInDimSize(kCol) != dstShape[1])
+      fastPathLayout = fastPathLayout.resizeInDim(kCol, dstShape[1]);
+
+    bool retainedBasesFitNarrowPhysicalSpan = true;
+    if (fastPathLayout.getOutDimSize(logicalDims[1]) != dstShape[1]) {
+      unsigned colOutIdx = fastPathLayout.getOutDimIndex(logicalDims[1]);
+      for (StringAttr inDim : fastPathLayout.getInDimNames()) {
+        for (unsigned basisIdx = 0,
+                      e = fastPathLayout.getInDimSizeLog2(inDim);
+             basisIdx < e; ++basisIdx) {
+          ArrayRef<int32_t> basis = fastPathLayout.getBasis(inDim, basisIdx);
+          if (basis[colOutIdx] >= dstShape[1])
+            retainedBasesFitNarrowPhysicalSpan = false;
+        }
+      }
+    }
+
+    if (retainedBasesFitNarrowPhysicalSpan) {
+      auto narrowedLayout = fastPathLayout;
+      if (narrowedLayout.getOutDimSize(logicalDims[1]) != dstShape[1])
+        narrowedLayout =
+            narrowedLayout.resizeOutDim(logicalDims[1], dstShape[1]);
+      return TMemLdStQueryLayout{
+          narrowedLayout, srcQuery.twoCTAs,
+          remapTMemLdStQueryOrigin(
+              srcQuery, narrowedLayout,
+              {{kCol, static_cast<int32_t>(offsets[1])}})};
+    }
   }
+
+  // Some column subviews, such as a half-tile slice of a tile-permuted MMAv5
+  // accumulator, keep an active logical column span that maps to a wider
+  // physical TMEM column image. Let the exact inverse/projection path build the
+  // self-contained relative layout instead of forcing the physical out-dim to
+  // the logical view size.
 
   auto logicalDims = llvm::to_vector(ll.getOutDimNames());
   SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
@@ -4311,6 +4335,37 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
       return true;
     };
 
+    auto narrowedWindowHasNonNegativePhysicalDeltas = [&]() {
+      std::string inverseError;
+      auto maybeInv = computeLeftInverseLayout(ll, &inverseError);
+      if (failed(maybeInv))
+        return false;
+
+      SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
+      encodedOffsets.reserve(layoutRank);
+      for (auto [dim, offset] : llvm::enumerate(offsets))
+        encodedOffsets.push_back({logicalDims[dim], offset});
+      auto baseCoords =
+          maybeInv->apply(makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
+      auto physOutDimNames = llvm::to_vector(maybeInv->getOutDimNames());
+      for (int64_t dim = 0; dim < static_cast<int64_t>(dstShape.size());
+           ++dim) {
+        for (int64_t step = 1; step < dstShape[dim]; step <<= 1) {
+          auto point = encodedOffsets;
+          point[dim].second += static_cast<int32_t>(step);
+          auto pointCoords =
+              maybeInv->apply(makeFullLinearLayoutCoords(logicalDims, point));
+          for (auto physDim : physOutDimNames) {
+            int32_t delta = lookupLinearLayoutCoord(pointCoords, physDim) -
+                            lookupLinearLayoutCoord(baseCoords, physDim);
+            if (delta < 0)
+              return false;
+          }
+        }
+      }
+      return true;
+    };
+
     if (narrowedWindowFitsDstShape()) {
       auto narrowedLayout = ll;
       if (narrowedLayout.getOutDimSize(logicalDims[1]) != dstShape[1])
@@ -4319,6 +4374,17 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
       if (narrowedLayout.getInDimSize(kCol) != dstShape[1])
         narrowedLayout = narrowedLayout.resizeInDim(kCol, dstShape[1]);
       auto result = tryMakeTMemViewEncoding(ctx, narrowedLayout,
+                                            maybeSrcLayout->twoCTAs, error);
+      if (!result)
+        return failure();
+      return *result;
+    }
+
+    if (narrowedWindowHasNonNegativePhysicalDeltas()) {
+      auto activeLayout = ll;
+      if (activeLayout.getInDimSize(kCol) != dstShape[1])
+        activeLayout = activeLayout.resizeInDim(kCol, dstShape[1]);
+      auto result = tryMakeTMemViewEncoding(ctx, activeLayout,
                                             maybeSrcLayout->twoCTAs, error);
       if (!result)
         return failure();

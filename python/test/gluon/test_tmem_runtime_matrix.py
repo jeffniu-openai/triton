@@ -6318,11 +6318,22 @@ SCALED_MMA_LHS_SUBSLICE_NK_CASES = list(
     )
 )
 
+SCALED_MMA_LHS_TILE_PERMUTED_UNSUPPORTED_NK_CASES = list(
+    dict.fromkeys(
+        [
+            (a_format, b_format, 128, 128, acc_layout_kind)
+            for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
+            if a_format in ("mxfp4", "nvfp4")
+        ]
+    )
+)
+
 SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = list(
     dict.fromkeys(
         [
             (a_format, b_format, 128, 128, acc_layout_kind)
             for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
+            if a_format == "mxfp8"
         ] + [
             ("mxfp8", "mxfp8", n, k, acc_layout_kind)
             for n, k, acc_layout_kind in (
@@ -13150,10 +13161,17 @@ MMA_TILE_PERMUTED_KIND_CASES = _dedupe_matrix_cases(
     ]
 )
 
+MMA_LHS_TILE_PERMUTED_UNSUPPORTED_NK_CASES = _dedupe_matrix_cases(
+    [(kind, *MMA_KIND_REPRESENTATIVE_NK, MMA_KIND_REPRESENTATIVE_NK[1] // 4) for kind in ("f8e5m2", "f8e4m3")] + [
+        ("f16", 32, 32, 8),
+    ]
+)
+
 MMA_LHS_TILE_PERMUTED_NK_CASES = _dedupe_matrix_cases(
-    [(kind, *MMA_KIND_REPRESENTATIVE_NK, MMA_KIND_REPRESENTATIVE_NK[1] // 4) for kind in MMA_PLAIN_KINDS] + [
+    [(kind, *MMA_KIND_REPRESENTATIVE_NK, MMA_KIND_REPRESENTATIVE_NK[1] // 4)
+     for kind in MMA_PLAIN_KINDS if kind not in ("f8e5m2", "f8e4m3")] + [
         ("f16", n, k, k // 4)
-        for n, k in ((32, 32), (64, 64), (128, 128), (256, 256))
+        for n, k in ((64, 64), (128, 128), (256, 256))
     ]
 )
 
@@ -14450,6 +14468,33 @@ def test_tmem_runtime_matrix_mma_lhs_tile_permuted_use_acc(kind, n, k, tile_n):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("use_acc", (False, True))
+@pytest.mark.parametrize("kind,n,k,tile_n", MMA_LHS_TILE_PERMUTED_UNSUPPORTED_NK_CASES)
+def test_tmem_runtime_matrix_mma_lhs_tile_permuted_reports_clean_unsupported(
+    kind, n, k, tile_n, use_acc, capfd
+):
+    m = 128
+    lhs_layout = _make_tmem_linear_layout_tile_permuted(m, k, tile_n)
+    acc_layout = _make_tmem_linear_layout(m, n)
+    a, b, _shared_layout_a, shared_layout_b, _expected_kind, _atol, _rtol = _make_mma_plain_kind_inputs(
+        kind, m, n, k
+    )
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_mma_lhs_kernel[(1, )](
+            a, b, out, lhs_layout, acc_layout, shared_layout_b, n, k, 1.0 if use_acc else 0.0, use_acc, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM LHS layout is not compatible with the tcgen05.mma instruction K tile" in text
+    assert "Column permutations inside the instruction K tile cannot be represented" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("kind,acc_layout_kind,n,k", MMA_LHS_SUBSLICE_NK_CASES)
 def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_kind, n, k):
     m = 128
@@ -15156,7 +15201,9 @@ def test_tmem_runtime_matrix_mma_scaled_shared_scale_descriptor_view_auto_tmem_c
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
 @pytest.mark.parametrize("k", (128, 256))
-def test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix(a_format, b_format, k):
+def test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_reports_clean_unsupported(
+    a_format, b_format, k, capfd
+):
     m = 128
     n = 64
     vec_size = 16 if a_format == "nvfp4" else 32
@@ -15168,34 +15215,33 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix
     b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
-    compiled = tmem_mma_scaled_acc_subslice_format_kernel[(1, )](
-        out,
-        m,
-        n,
-        k,
-        a,
-        b,
-        a_scale,
-        b_scale,
-        _make_tmem_linear_layout_tile_permuted(m, 128, 32),
-        64,
-        vec_size,
-        a_elem_per_byte,
-        b_elem_per_byte,
-        a_tcgen_format,
-        b_tcgen_format,
-        0.0,
-        num_warps=4,
-    )
+    with pytest.raises(Exception) as excinfo:
+        tmem_mma_scaled_acc_subslice_format_kernel[(1, )](
+            out,
+            m,
+            n,
+            k,
+            a,
+            b,
+            a_scale,
+            b_scale,
+            _make_tmem_linear_layout_tile_permuted(m, 128, 32),
+            64,
+            vec_size,
+            a_elem_per_byte,
+            b_elem_per_byte,
+            a_tcgen_format,
+            b_tcgen_format,
+            0.0,
+            num_warps=4,
+        )
 
-    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
-
-    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
-    expected_count = 2 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
-    assert len(mma_ops) == expected_count
-    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
-    assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM layout 'auto' unsupported for descriptor view" in text
+    assert "shape=[128, 128]" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -15436,6 +15482,57 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_use_acc(
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_subslice" not in ttgir
     assert "tensor_memory_linear" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,n,k,acc_layout_kind", SCALED_MMA_LHS_TILE_PERMUTED_UNSUPPORTED_NK_CASES)
+def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_interior_k_reports_clean_unsupported(
+    a_format, b_format, n, k, acc_layout_kind, capfd
+):
+    m = 128
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+    lhs_storage_k = k // a_elem_per_byte
+    lhs_layout = _make_tmem_linear_layout_tile_permuted(m, lhs_storage_k, lhs_storage_k // 4)
+    acc_layout = (
+        TensorMemoryLayout((m, n), col_stride=1)
+        if acc_layout_kind == "legacy"
+        else _make_tmem_linear_layout(m, n)
+    )
+
+    torch.manual_seed(0)
+    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
+    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_mma_scaled_lhs_tile_permuted_format_kernel[(1, )](
+            out,
+            m,
+            n,
+            k,
+            a,
+            b,
+            a_scale,
+            b_scale,
+            lhs_layout,
+            acc_layout,
+            vec_size,
+            a_elem_per_byte,
+            b_elem_per_byte,
+            a_tcgen_format,
+            b_tcgen_format,
+            0.0,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM LHS layout is not compatible with the tcgen05.mma instruction K tile" in text
+    assert "Column permutations inside the instruction K tile cannot be represented" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

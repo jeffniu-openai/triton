@@ -7803,3 +7803,11 @@ When resuming the initiative:
 - Adjacent checked-in controls for two-CTA no-scale copy indexed views, plain
   MMAv5 indexed accumulator views, two-CTA scales copy, and scaled-MMAv5
   two-CTA accumulator subslice/copy passed as `47 passed`.
+
+
+## Latest: 2026-04-25 02:33 UTC MMAv5/scaled-MMAv5 recovery closeout
+
+- Closed the remaining focused broad-recovery bucket after the 2026-04-24 `184 failed` validation run. The MMAv5/scaled selector now passes as `343 passed, 1365 deselected` after required `make -j8`.
+- Root causes: direct TMEM-LHS `tcgen05.mma` cannot encode in-tile K permutations smaller than the hardware instruction K tile, and scaled accumulator half-tile subviews need self-contained sparse physical column images rather than narrowed logical-only types.
+- Current clean unsupported boundaries: in-tile TMEM-LHS K permutations that would require repacking A, and direct `ld/st` of sparse physical accumulator subviews whose compact logical register tensor cannot name the noncontiguous physical columns without parent replay.
+- Next validation step: commit/push this checkpoint, refresh structural-fuzzer expectations, then rerun the broad 4-GPU split.

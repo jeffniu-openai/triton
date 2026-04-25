@@ -717,6 +717,24 @@ getMMAv5DTypeKindAndAcc(Type t) {
   return std::nullopt;
 }
 
+static LogicalResult verifyMMAv5TMemLhsInstructionKTile(
+    Operation *op, MemDescType lhsTy,
+    const std::optional<MMAv5LhsLayoutInfo> &lhsInfo,
+    unsigned requiredStorageKTile) {
+  if (!lhsInfo || lhsInfo->mmaSizeN >= requiredStorageKTile)
+    return success();
+
+  return op->emitOpError()
+         << "TMEM LHS layout is not compatible with the tcgen05.mma "
+            "instruction K tile: layout preserves canonical order for "
+         << lhsInfo->mmaSizeN
+         << " storage columns, but this instruction reads "
+         << requiredStorageKTile
+         << " storage columns from TMEM A per K tile. Column permutations "
+            "inside the instruction K tile cannot be represented by the "
+            "tcgen05.mma TMEM-A address operand.";
+}
+
 static LogicalResult verifyMMADType(Operation *op, Type a, Type b, Type d) {
   auto akind = getMMAv5DTypeKindAndAcc(a);
   auto bkind = getMMAv5DTypeKindAndAcc(b);
@@ -821,6 +839,10 @@ LogicalResult TCGen5MMAOp::verify() {
   if (aTmemInfo) {
     if (aTmemInfo->colStride != 1)
       return emitOpError("The col stride of the LHS operand must be 1");
+    unsigned requiredStorageKTile = 256 / lhsTy.getElementTypeBitWidth();
+    if (failed(verifyMMAv5TMemLhsInstructionKTile(
+            getOperation(), lhsTy, aTmemInfo, requiredStorageKTile)))
+      return failure();
   }
   if (retInfo->colStride != 32 / retType.getElementTypeBitWidth())
     return emitOpError("The col stride of the return operand must be 32 / ")
@@ -1100,10 +1122,11 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   Type btype =
       getScaledMMAOperandType(getB().getType().getElementType(), getBType());
   Type dtype = getD().getType().getElementType();
-  auto aEnc = getA().getType().getEncoding();
+  auto lhsTy = getA().getType();
+  auto aEnc = lhsTy.getEncoding();
   bool aInTmem =
       isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc);
-  auto aTmemInfo = aInTmem ? getMMAv5LhsLayoutInfo(getA().getType())
+  auto aTmemInfo = aInTmem ? getMMAv5LhsLayoutInfo(lhsTy)
                            : std::optional<MMAv5LhsLayoutInfo>{};
   if (failed(verifyMMADType(*this, atype, btype, dtype)))
     return failure();
@@ -1121,8 +1144,28 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   if (aTmemInfo && aTmemInfo->colStride != 1)
     return emitOpError("The col stride of the LHS operand must be 1");
   if (aTmemInfo) {
+    bool transA = false;
+    if (auto aSharedLayout = dyn_cast<triton::gpu::NVMMASharedEncodingAttr>(
+            lhsTy.getEncoding()))
+      transA = aSharedLayout.getTransposed();
+    bool transB = false;
+    if (auto bSharedLayout = dyn_cast<triton::gpu::NVMMASharedEncodingAttr>(
+            getB().getType().getEncoding()))
+      transB = !bSharedLayout.getTransposed();
+    auto scaledInfo = getMMAv5ScaledInstructionInfo(
+        getAType(), getBType(), getAScale().getType().getElementType(),
+        getBScale().getType().getElementType(), transA || transB);
+    unsigned requiredStorageKTile = scaledInfo.mmaSizeK;
+    unsigned storageBitWidth = lhsTy.getElementTypeBitWidth();
+    unsigned logicalBitWidth = scaledInfo.numBitsPerElementA;
+    if (storageBitWidth > logicalBitWidth &&
+        storageBitWidth % logicalBitWidth == 0)
+      requiredStorageKTile /= storageBitWidth / logicalBitWidth;
+    if (failed(verifyMMAv5TMemLhsInstructionKTile(
+            getOperation(), lhsTy, aTmemInfo, requiredStorageKTile)))
+      return failure();
     if (auto requirement = getMMAv5ScaledMixedFp4ATMemRequirement(
-            getA().getType(), getAType(), getBType())) {
+            lhsTy, getAType(), getBType())) {
       return emitOpError()
              << getMMAv5ScaledMixedFp4ATMemError(*requirement);
     }
