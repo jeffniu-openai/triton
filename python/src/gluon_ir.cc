@@ -1173,11 +1173,6 @@ void init_gluon_ir(py::module &&m) {
             BoolAttr nanAttr = nullptr;
 
             if (redOp) {
-              if (auto rankedTy = dyn_cast<RankedTensorType>(resultTy)) {
-                auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
-                resultTy = ttng::canonicalizeTMemLoadReductionType(
-                    rankedTy, memDescTy, numWarps);
-              }
               redOpAttr = ttng::TMEMLoadReduceModifierAttr::get(
                   self.getContext(), redOp.value());
               if (useAbs)

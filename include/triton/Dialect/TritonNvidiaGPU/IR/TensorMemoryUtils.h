@@ -485,10 +485,6 @@ getTMemLoadReductionLayoutForMemDesc(gpu::MemDescType memTy,
 
 bool isTMemLoadReductionAddressAligned(Value memDesc);
 
-RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
-                                                   gpu::MemDescType memTy,
-                                                   unsigned numWarps);
-
 FailureOr<TMemLdStEncodingInfo> computeTMemLoadReductionEncodingInfo(
     RankedTensorType regTy, gpu::MemDescType memTy, int maxnreg,
     std::function<InFlightDiagnostic()> emitError = {});

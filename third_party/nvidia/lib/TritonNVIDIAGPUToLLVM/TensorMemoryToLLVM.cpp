@@ -18,6 +18,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <cstdlib>
 
 using namespace mlir;
@@ -758,6 +759,7 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
   }
 
   SmallVector<Value> resultVals, redvalVals;
+  SmallVector<std::pair<int32_t, SmallVector<Value>>> redLoadChunks;
   if (!packetOffsets.empty()) {
     assert(static_cast<int>(packetOffsets.size()) ==
                reps.getInDimSize(kReg) / valsPerMessage &&
@@ -809,11 +811,28 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
           /*secondHalfOffset=*/secondHalfOffset, /*unpacked=*/unpacked,
           /*numRegPerMessage=*/valsPerMessage, atom, redOp, useAbs, useNaN,
           llvmElemTy, rewriter);
-      resultVals.append(
-          unpackResults(outVals, llvmElemTy, valsPerMessage, loc, rewriter));
+      auto unpackedOut =
+          unpackResults(outVals, llvmElemTy, valsPerMessage, loc, rewriter);
+      if (redOp) {
+        redLoadChunks.push_back(
+            {staticOffset, SmallVector<Value>(std::move(unpackedOut))});
+      } else {
+        resultVals.append(unpackedOut);
+      }
       if (redval)
         redvalVals.push_back(redval);
     }
+  }
+
+  if (!redLoadChunks.empty()) {
+    if (atom != TMemAccessAtom::I16x32bx2) {
+      std::stable_sort(redLoadChunks.begin(), redLoadChunks.end(),
+                       [](const auto &lhs, const auto &rhs) {
+                         return lhs.first < rhs.first;
+                       });
+    }
+    for (auto &chunk : redLoadChunks)
+      resultVals.append(chunk.second);
   }
 
   return {resultVals, redvalVals};
@@ -900,7 +919,12 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
                     info.secondHalfOffset, info.baseOffset,
                     info.warpBaseOffset0, info.warpBaseOffset1,
                     info.packetOffsets, redOp, useAbs, useNaN);
-  if (!isStore) {
+  // Normal tcgen05.ld returns the payload in instruction/register order and
+  // needs the inverse column action to recover the requested tensor layout.
+  // I32 ld.red already returns each message payload in the requested order; the
+  // M64 split-N I16x32bx2 path still needs the column action because its
+  // second-half operand interleaves logical columns inside each message.
+  if (!isStore && (!redOp || info.atom == TMemAccessAtom::I16x32bx2)) {
     outVals = info.perm.inverse().apply(outVals);
   }
   return std::make_pair(std::move(outVals), std::move(redvalVals));

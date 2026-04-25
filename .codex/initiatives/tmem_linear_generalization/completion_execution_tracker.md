@@ -1,10 +1,10 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-25 01:35 UTC
+Last updated: 2026-04-25 01:58 UTC
 
 Active phase: Post-merge validation is red. The latest upstream-main merge builds and passes focused compiler/fpsan checks, but the broad TMEM runtime matrix has correctness, compiler-crash, unsupported-diagnostic, and expectation-drift buckets that must be triaged before performance recovery continues.
 
-Latest follow-up: closed the remaining non-red ld/st descriptor-view bucket. `memdesc_index` allocation-shape preservation now folds hidden leading extents into rows or columns according to the source type/layout physical offset, so column-half multidim descriptor views no longer look like unsupported row-origin slices. Variant-specific frontend diagnostics now cover too-small ld/st atom footprints and `tcgen05.copy.4x256b` refresh images/raw bitcasts. Focused descriptor validation is green as `17 passed, 1695 deselected` after `make -j8`. Broad validation remains red until ld.red, MMAv5/scaled-MMAv5, and structural-fuzzer buckets are closed.
+Latest follow-up: closed the `ld.red` exact-layout bucket. Root causes were red-load payload ordering differing by atom family, late Gluon red-result type canonicalization overriding the selected current layout, and stale opcode expectations that assumed canonical support-layout packet schedules. Runtime correctness now passes for tile-permuted, descriptor-chain, M64 split-N, and row/column-permuted red-load rows; focused `ld_red` validation is green as `264 passed, 1448 deselected` after `make -j8`. Broad validation remains red until MMAv5/scaled-MMAv5 and structural-fuzzer buckets are closed and the broad split is refreshed.
 
 Current broad-recovery checklist:
 
@@ -12,7 +12,7 @@ Current broad-recovery checklist:
 - [x] Fix frontend/type-local layout selection for tensor-memory-scales roots/views; remaining non-scales descriptor-view `get_reg_layout` failures stay tracked under ld/st and MMAv5 buckets.
 - [x] Close ld/st half-row row-origin miscompiles by preserving narrowed leading allocation shape through `memdesc_index` and rejecting unsupported direct row-slice packets cleanly.
 - [x] Fix subword ld/st dynamic, loop-carried, and dynamic-index view miscompiles/opcode expectation drift.
-- [ ] Fix `ld.red` exact-layout reduction planning for permuted/tile-permuted layouts.
+- [x] Fix `ld.red` exact-layout reduction planning for permuted/tile-permuted layouts.
 - [x] Fix `tcgen05.copy` tile-permuted/warpx2 exact destination offsets.
 - [ ] Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.
 
@@ -5674,3 +5674,5 @@ discovery.
 - 2026-04-24 23:26 UTC: broad TMEM validation reconfirmed not green at `6a50032c3`. See `broad_tmem_validation_20260424_2326.md`. Required `make` was green/no-op. Four-GPU split over `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py` produced aggregated selected-test result `184 failed, 12771 passed, 6913 skipped`; group-level summaries: G1 `4347 passed, 620 skipped`, G2 `2671 passed, 2296 skipped`, G3 `2359 passed, 2608 skipped`, G4 `184 failed, 3394 passed, 1389 skipped`. Next prioritization should start from the real miscompile/compile-failure buckets, not stale TTGIR string expectations.
 
 - 2026-04-24 23:40 UTC: failure recovery plan opened. See `failure_recovery_plan_20260424.md`. Active slice: restore direct-root copy support-query fallback without weakening active descriptor-view type-local lowering.
+
+- 2026-04-25 01:58 UTC: ld.red exact-layout closeout completed. Root causes: I32 `ld.red` payload ordering differs from normal load and needs chunk assembly by exact packet offset; M64 `16x32bx2` red payloads still need the column action for second-half interleaving; and the Gluon builder's late `canonicalizeTMemLoadReductionType` rewrote explicit/current M64 row-permuted result layouts to canonical support layouts. Fixes: red-load lowering now separates payload chunk assembly from reduction-scalar combination, I32 chunks are sorted by exact packet offset, M64 split-N chunks keep planner order and apply the column action, and Gluon no longer late-canonicalizes red result types. Validation: required `make -j8`; focused `ld_red` runtime selector `264 passed, 1448 deselected`; `git diff --check` passed. Next active bucket: MMAv5/scaled-MMAv5 exact TMEM-LHS and descriptor-subview handling.

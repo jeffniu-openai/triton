@@ -75,17 +75,26 @@ Validation:
 
 ### 4. `ld.red` permuted/tile-permuted layouts
 
+Status: closed on 2026-04-25 for current runtime-matrix `ld_red` coverage.
+
 Symptoms:
 - compiler lowering failures for unsupported destination layouts.
 - opcode-count mismatches.
 - 50% output miscompares for tile-permuted and descriptor-chain red-load rows.
 
-Likely root cause:
-- `ld.red` planning chooses a valid reduction atom from a support layout but writes/loads through the canonical atom order instead of the exact current memdesc physical order. Some M64 row plans also choose too many split-N messages after family normalization.
+Root causes found:
+- `tcgen05.ld.red` data payload ordering is not identical to normal `tcgen05.ld` for all atom families. The I32 red payload is already in the requested per-message register order, but multi-message exact-layout lowering still has to assemble chunks by exact physical packet offset. The M64 `16x32bx2` split-N path still needs the normal column action because its second-half operand interleaves logical columns inside each message. Treating all red payloads like normal loads corrupted tile-permuted I32 rows; treating all red payloads as already ordered corrupted M64 col-reverse rows.
+- Gluon's builder performed a late `canonicalizeTMemLoadReductionType` rewrite for every red load result type. That canonicalized explicit/current M64 row-permuted layouts after frontend layout selection, reintroducing support-layout semantics into codegen and causing `ConvertTritonGPUToLLVM` failures.
+- Several opcode expectations encoded the old canonical support-layout packet schedule rather than the exact-layout packet schedule required for correct lowering. Runtime correctness was preserved after refreshing them.
 
-Fix plan:
-- Split reduction atom selection from exact address/tile ordering, mirroring the MMAv5 accumulator fix.
-- Ensure red-load output register layout and reduced-value layout are derived from the exact current layout plus selected atom, not from a canonical family layout alone.
+Fix executed:
+- Red-load lowering now assembles data chunks separately from reduction scalars. I32 red chunks are sorted by exact packet offset before packing the result, while M64 `16x32bx2` chunks retain planner order and then apply the column action needed for second-half interleaving.
+- Removed the late Gluon builder result-type canonicalization; red-load result layouts now remain the layout selected by the frontend/type-local planner or explicitly supplied by the caller.
+- Refreshed M64 and tile-permuted opcode expectations to the exact physical packet schedule after runtime assertions passed.
+
+Validation:
+- `make -j8`
+- `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -q -s --tb=short -k 'ld_red' python/test/gluon/test_tmem_runtime_matrix.py` -> `264 passed, 1448 deselected`.
 
 ### 5. `tcgen05.copy` direct-root and view planning
 
@@ -137,7 +146,7 @@ Fix plan:
 1. [done] Restore direct-root copy support-query fallback and validate dense direct-root copy rows.
 2. [done for scales] Fix/frontend type-local layout selection for tensor-memory-scales roots/views; continue non-scales descriptor-view failures in their owning buckets.
 3. [done] Fix ld/st exact row/address planning: half-row row-origin, subword dynamic views, and remaining non-red descriptor-view rows are closed for current coverage.
-4. Fix ld.red exact-layout reduction planning.
+4. [done] Fix ld.red exact-layout reduction planning.
 5. [done] Fix copy tile-permuted/warpx2 exact destination offsets.
 6. Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.
 7. Re-run focused bucket selectors after each slice, then the 4-GPU broad split.

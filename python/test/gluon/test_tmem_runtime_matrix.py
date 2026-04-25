@@ -7083,7 +7083,7 @@ LD_RED_M64_SPLITN_CASES = [
 ]
 
 LD_RED_M64_EXPLICIT_VARIANT_CASES = [
-    pytest.param(n, "32x32b", f"16x32bx2.x{n // 2}", (0,), id=f"m64_64x{n}_32x32b")
+    pytest.param(n, "32x32b", f"16x32bx2.x{n // 4}", (0, n // 2), id=f"m64_64x{n}_32x32b")
     for n in (32, 256)
 ] + [
     pytest.param(n, load_variant, f"16x32bx2.x{n // 4}", (0, n // 2),
@@ -7097,10 +7097,18 @@ LD_RED_M64_EXPLICIT_VARIANT_CASES = [
     )
 ]
 
+LD_RED_M64_COL_REVERSE_N32_OFFSETS = (0, 16, 8, 24, 4, 20, 12, 28)
+
 LD_RED_M64_ROWCOL_PERMUTED_DEFAULT_CASES = [
     pytest.param("reverse", "identity", 32, "16x32bx2.x8", (0, 16), id="row_reverse_n32"),
     pytest.param("rotate1", "even_odd", 128, "16x32bx2.x32", (0, 64), id="row_rotate_col_even_odd_n128"),
-    pytest.param("identity", "reverse", 32, "16x32bx2.x8", (0, 16), id="col_reverse_n32"),
+    pytest.param("identity", "reverse", 32, "16x32bx2.x2", LD_RED_M64_COL_REVERSE_N32_OFFSETS, id="col_reverse_n32"),
+]
+
+LD_RED_M64_ROWCOL_PERMUTED_EXPLICIT_32X32B_CASES = [
+    pytest.param("reverse", "identity", 32, "16x32bx2.x16", (0,), id="row_reverse_n32"),
+    pytest.param("rotate1", "even_odd", 128, "16x32bx2.x32", (0, 64), id="row_rotate_col_even_odd_n128"),
+    pytest.param("identity", "reverse", 32, "16x32bx2.x2", LD_RED_M64_COL_REVERSE_N32_OFFSETS, id="col_reverse_n32"),
 ]
 
 
@@ -9948,7 +9956,7 @@ def test_tmem_runtime_matrix_ld_red_m64_explicit_splitn_variants(
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize(
     "row_perm_kind,col_perm_kind,N,expected_shape,expected_offsets",
-    LD_RED_M64_ROWCOL_PERMUTED_DEFAULT_CASES,
+    LD_RED_M64_ROWCOL_PERMUTED_EXPLICIT_32X32B_CASES,
 )
 def test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn(
     row_perm_kind, col_perm_kind, N, expected_shape, expected_offsets
@@ -10575,7 +10583,10 @@ def test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
 
-    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
+    expected_offsets = (0, 128, 64, 192) if (N, tile_n) == (256, 64) else None
+    _assert_ld_red_opcode_pairs(
+        compiled, N, expected_shape, red_op, use_abs, propagate_nan, expected_offsets=expected_offsets
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
