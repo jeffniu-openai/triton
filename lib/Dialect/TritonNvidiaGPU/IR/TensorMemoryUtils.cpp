@@ -3631,6 +3631,69 @@ getTMemCopySourceConversion(const TMemPhysicalQuery &query,
   return query.layout.invertAndCompose(shmemLl);
 }
 
+static bool isPurePositiveColumnBasis(ArrayRef<int32_t> basis) {
+  return basis.size() >= 2 && basis[0] == 0 && basis[1] > 0;
+}
+
+static std::optional<TMemPhysicalQuery>
+getDirectTMemCopyFoldedRootQuery(const TMemPhysicalQuery &exactQuery,
+                                 const LinearLayout &shmemLl) {
+  if (isTMemDescriptorSubviewType(exactQuery.memTy))
+    return std::nullopt;
+  auto foldedQuery = getExpandedRowFoldedTMemQueryLayout(exactQuery.memTy);
+  if (!foldedQuery)
+    return std::nullopt;
+
+  TMemPhysicalQuery query = exactQuery;
+  query.layout = foldedQuery->layout;
+  query.twoCTAs = foldedQuery->twoCTAs;
+  query.origin = foldedQuery->origin;
+
+  std::string conversionError;
+  if (failed(getTMemCopySourceConversion(query, shmemLl, &conversionError)))
+    return std::nullopt;
+  return query;
+}
+
+static std::optional<TMemPhysicalQuery>
+getDirectTMemCopyColumnCanonicalSourceQuery(const TMemPhysicalQuery &exactQuery,
+                                            const LinearLayout &shmemLl) {
+  if (isTMemDescriptorSubviewType(exactQuery.memTy))
+    return std::nullopt;
+
+  auto *ctx = exactQuery.memTy.getContext();
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!exactQuery.layout.hasInDim(kCol))
+    return std::nullopt;
+
+  auto bases = exactQuery.layout.getBases();
+  auto colIt = bases.find(kCol);
+  if (colIt == bases.end() || colIt->second.empty())
+    return std::nullopt;
+  if (!llvm::all_of(colIt->second, isPurePositiveColumnBasis))
+    return std::nullopt;
+
+  auto sortedColBases = colIt->second;
+  std::stable_sort(sortedColBases.begin(), sortedColBases.end(),
+                   [](ArrayRef<int32_t> lhs, ArrayRef<int32_t> rhs) {
+                     return lhs[1] < rhs[1];
+                   });
+  if (llvm::equal(sortedColBases, colIt->second))
+    return std::nullopt;
+
+  bases[kCol] = std::move(sortedColBases);
+  TMemPhysicalQuery supportQuery = exactQuery;
+  supportQuery.layout = LinearLayout(std::move(bases),
+                                     llvm::to_vector(exactQuery.layout.getOutDims()),
+                                     exactQuery.layout.isSurjective());
+
+  std::string conversionError;
+  if (failed(getTMemCopySourceConversion(supportQuery, shmemLl,
+                                         &conversionError)))
+    return std::nullopt;
+  return supportQuery;
+}
+
 FailureOr<TMemCopyPhysicalQuerySelection>
 selectTMemCopyPhysicalQuery(MemDescType memTy, const LinearLayout &shmemLl,
                             std::string *error) {
@@ -3663,8 +3726,21 @@ selectTMemCopyPhysicalQuery(MemDescType memTy, const LinearLayout &shmemLl,
     return failure();
   }
 
+  selection.query = *selection.typeLocal;
+  selection.usedTypeLocal = true;
+  if (auto foldedQuery =
+          getDirectTMemCopyFoldedRootQuery(*selection.typeLocal, shmemLl)) {
+    selection.typeLocal = *foldedQuery;
+    selection.query = std::move(*foldedQuery);
+  } else if (auto sourceQuery =
+                 getDirectTMemCopyColumnCanonicalSourceQuery(*selection.typeLocal,
+                                                             shmemLl)) {
+    selection.query = std::move(*sourceQuery);
+    selection.usedTypeLocal = false;
+  }
+
   std::string conversionError;
-  if (failed(getTMemCopySourceConversion(*selection.typeLocal, shmemLl,
+  if (failed(getTMemCopySourceConversion(*selection.query, shmemLl,
                                          &conversionError))) {
     if (error) {
       *error = conversionError.empty()
@@ -3676,8 +3752,12 @@ selectTMemCopyPhysicalQuery(MemDescType memTy, const LinearLayout &shmemLl,
     return failure();
   }
 
-  selection.query = *selection.typeLocal;
-  selection.usedTypeLocal = true;
+  if (debug && !selection.usedTypeLocal) {
+    llvm::errs() << "[tmem-copy] using canonical source-support query; "
+                    "destination addressing remains type-local\n"
+                 << selection.query->layout.toString() << "\n";
+  }
+
   return selection;
 }
 
@@ -7275,9 +7355,8 @@ static unsigned getDenseTMemCopyColumnStride(TMemCopyFamily family,
 }
 
 static std::optional<std::pair<int32_t, int32_t>>
-getDenseTMemCopyDestinationTileCoord(const LinearLayout &layout,
-                                     MLIRContext *ctx, int32_t logicalCol) {
-  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(layout);
+getDenseTMemCopyDestinationTileCoord(const LinearLayout &ll, MLIRContext *ctx,
+                                     int32_t logicalRow, int32_t logicalCol) {
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
   if (!ll.hasInDim(kRow) || !ll.hasInDim(kCol) || ll.getNumOutDims() != 2)
@@ -7285,7 +7364,8 @@ getDenseTMemCopyDestinationTileCoord(const LinearLayout &layout,
 
   auto outDims = llvm::to_vector(ll.getOutDimNames());
   auto rowCol =
-      ll.pseudoinvert().apply({{outDims[0], 0}, {outDims[1], logicalCol}});
+      ll.pseudoinvert().apply({{outDims[0], logicalRow},
+                               {outDims[1], logicalCol}});
   int32_t row = 0;
   int32_t col = 0;
   for (auto [dim, value] : rowCol) {
@@ -7352,14 +7432,15 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
     return getTMemWordColumn(static_cast<uint32_t>(logicalCol),
                              query.elementBitWidth);
 
-  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(query.layout);
-  if (!needsDenseTMemCopyPhysicalColumnTileOffsets(
-          ll, query.memTy.getContext(), family, query.elementBitWidth))
+  const LinearLayout &ll = query.layout;
+  bool needsPhysicalTileOffset = needsDenseTMemCopyPhysicalColumnTileOffsets(
+      ll, query.memTy.getContext(), family, query.elementBitWidth);
+  if (!needsPhysicalTileOffset)
     return getTMemWordColumn(static_cast<uint32_t>(logicalCol),
                              query.elementBitWidth);
 
   auto coord = getDenseTMemCopyDestinationTileCoord(
-      ll, query.memTy.getContext(), logicalCol);
+      ll, query.memTy.getContext(), 0, logicalCol);
   if (!coord)
     return std::nullopt;
   return packTMemRowColOffset(
@@ -7374,7 +7455,7 @@ getTMemCopyDestinationFootprint(const TMemPhysicalQuery &query,
                                 unsigned rows, unsigned columns) {
   int32_t physicalRow = 0;
   int32_t physicalCol = logicalCol;
-  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(query.layout);
+  const LinearLayout &ll = query.layout;
   if (family == TMemCopyFamily::Dense4x256b &&
       isTMemCopy4x256RefreshLayout(query.layout, query.memTy.getContext(),
                                    query.elementBitWidth)) {
@@ -7384,7 +7465,7 @@ getTMemCopyDestinationFootprint(const TMemPhysicalQuery &query,
                  ll, query.memTy.getContext(), family,
                  query.elementBitWidth)) {
     auto coord = getDenseTMemCopyDestinationTileCoord(
-        ll, query.memTy.getContext(), logicalCol);
+        ll, query.memTy.getContext(), 0, logicalCol);
     if (!coord)
       return std::nullopt;
     physicalRow = coord->first;
@@ -7407,8 +7488,8 @@ getTMemCopyDestinationFootprint(const TMemPhysicalQuery &query,
 std::optional<llvm::SmallVector<TMemCopyScheduledTile>>
 getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
                              TMemCopyFamily family, unsigned rowStride,
-                             unsigned colStride,
-                             int32_t logicalCols, std::string *error) {
+                             unsigned colStride, int32_t logicalCols,
+                             std::string *error) {
   if (rowStride == 0 || colStride == 0 || logicalCols < 0) {
     if (error)
       *error = "invalid tcgen05.copy destination tile stride";
@@ -8414,7 +8495,7 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
   for (int32_t logicalCol = 0; logicalCol < colSize;
        logicalCol += colStride) {
     auto tileOrigin =
-        getDenseTMemCopyDestinationTileCoord(ll, ctx, logicalCol);
+        getDenseTMemCopyDestinationTileCoord(ll, ctx, 0, logicalCol);
     if (!tileOrigin || tileOrigin->second % static_cast<int32_t>(colStride)) {
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::PhysicalQuery,
@@ -8435,7 +8516,7 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
     visitedTileOffsets.push_back(tileOffset);
     for (unsigned i = 1; i < colStride && logicalCol + i < colSize; ++i) {
       auto tileCoord =
-          getDenseTMemCopyDestinationTileCoord(ll, ctx, logicalCol + i);
+          getDenseTMemCopyDestinationTileCoord(ll, ctx, 0, logicalCol + i);
       if (!tileCoord || tileCoord->first != tileOrigin->first ||
           tileCoord->second != tileOrigin->second + static_cast<int32_t>(i)) {
         if (auto permutationRequirement =
@@ -9044,7 +9125,7 @@ llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
     bool isSingleCTA = !cvt.hasInDim(kBlock) || cvt.getInDimSize(kBlock) == 1;
     if (isSingleCTA) {
       appendWarpx2Plan(/*descriptorRows=*/64u, /*sourceWarpGroups=*/2u,
-                       /*directSeed=*/true, /*tmemDwordDelta=*/4,
+                       /*directSeed=*/true, /*tmemDwordDelta=*/0,
                        /*directSourceOffsetB128=*/32);
     }
     appendWarpx2Plan(/*descriptorRows=*/64u, /*sourceWarpGroups=*/2u,
@@ -9115,7 +9196,12 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
   auto kRow = StringAttr::get(ctx, "row");
   auto kWarp = StringAttr::get(ctx, "warp");
   auto makeLayout = [&](unsigned descriptorRows, unsigned sourceWarpGroups,
-                        unsigned descriptorCols) {
+                        unsigned descriptorCols) -> std::optional<LinearLayout> {
+    int64_t reshapeVolume = static_cast<int64_t>(descriptorRows) *
+                            sourceWarpGroups * descriptorCols *
+                            descriptorCvt.getInDimSize(kBlock);
+    if (descriptorCvt.getTotalInDimSize() != reshapeVolume)
+      return std::nullopt;
     return descriptorCvt
         .reshapeIns({{kRow, static_cast<int32_t>(descriptorRows)},
                      {kWarp, static_cast<int32_t>(sourceWarpGroups)},
@@ -9256,10 +9342,11 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
              rowFoldBits + colFoldBits <= warpBits; ++colFoldBits) {
           unsigned foldedBits = rowFoldBits + colFoldBits;
           unsigned residualWarpGroups = message.sourceWarpGroups >> foldedBits;
-          pushUnique(makeLayout(message.descriptorRows << rowFoldBits,
-                                residualWarpGroups,
-                                descriptorCvt.getInDimSize(kCol)
-                                    << colFoldBits));
+          if (auto layout = makeLayout(message.descriptorRows << rowFoldBits,
+                                       residualWarpGroups,
+                                       descriptorCvt.getInDimSize(kCol)
+                                           << colFoldBits))
+            pushUnique(*layout);
         }
       }
     }
@@ -9288,8 +9375,13 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
       }
     }
   };
-  pushUnique(makeLayout(message.descriptorRows, message.sourceWarpGroups,
-                        descriptorCvt.getInDimSize(kCol)));
+  if (auto layout = makeLayout(message.descriptorRows,
+                               message.sourceWarpGroups,
+                               descriptorCvt.getInDimSize(kCol)))
+    pushUnique(*layout);
+  auto directDataLayout = shmemLl.pseudoinvert();
+  if (directDataLayout.getNumInDims() == 2)
+    pushUnique(directDataLayout);
   if (auto directSharedLayout =
           makeSharedSeedLayout(message.descriptorRows,
                                message.sourceWarpGroups,

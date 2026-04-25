@@ -1,3 +1,10 @@
+## 2026-04-25 00:53 UTC: `tcgen05.copy` recovery bucket closed
+
+- Fixed direct-root copy support without resurrecting producer-chain legality. Expanded-row roots now use a folded physical query derived from the current `MemDescType`/layout when that query can directly compose with the shared source layout. Direct roots with permuted column bases may use a column-canonical source-support query for shared descriptor synthesis, while executable schedule and destination base-offset codegen stay on the exact destination query.
+- Fixed exact destination planning: dense copy tile offsets use exact layout arithmetic instead of normalized layout order, and single-CTA `warpx2::02_13` direct-seed copy no longer applies an extra TMEM dword destination delta. Reverted the attempted logical-row instruction scheduler because `tcgen05.copy` atom rows are physical/atom-local coverage; logical row bits may be folded or broadcast by the layout, so expanded roots must be represented by the selected physical query or rejected.
+- Removed the stale late subword destination-origin compile rejection. Non-iisan unaligned subword destinations are now allowed to compile, and Gluon iisan tests cover static-subview and loop-carried unaligned destinations with the `tcgen05.copy tensor memory destination address must be 128-bit aligned` assert.
+- Validation: `make -j8`; `pytest -q -s --tb=short -k 'cp_no_scales and (4x256b_refresh or warpx2_01_23_candidate_positive or warpx2_02_13_candidate_positive or warpx2_dense_shared_rematerializes or warpx2_01_23_twocta_positive or warpx2_01_23_twocta_dense_shared_rematerializes)' python/test/gluon/test_tmem_runtime_matrix.py` -> `14 passed, 1697 deselected`; `-k 'cp_no_scales and warpx2'` -> `83 passed, 1628 deselected`; exact dense 256-row direct-root row -> `1 passed`; `-k 'cp_no_scales_unaligned_subword or iisan_cp_unaligned_destination'` -> `6 passed, 1706 deselected`; full `-k 'cp_no_scales'` -> `301 passed, 4 skipped, 1407 deselected`; `git diff --check`.
+
 ## 2026-04-22 22:05 UTC: newer TMEM memdesc model implementation kickoff
 
 - Active branch/HEAD:

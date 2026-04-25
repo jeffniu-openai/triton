@@ -1344,6 +1344,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   assert(maybeQuerySelection->query &&
          "successful tcgen05.copy query selection must carry a query");
   const TMemPhysicalQuery &supportDstQuery = *maybeQuerySelection->query;
+  const TMemPhysicalQuery &destinationDstQuery =
+      maybeQuerySelection->typeLocal ? *maybeQuerySelection->typeLocal
+                                     : supportDstQuery;
   std::string conversionError;
   auto maybeCvt =
       getTMemCopySourceConversion(supportDstQuery, shmemLl, &conversionError);
@@ -1365,14 +1368,6 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       diag.attachNote() << *atomFailure;
     return failure();
   }
-  if (bitwidth < 32 &&
-      getTMemSubwordPhaseStatus(op.getDst()) !=
-          TMemSubwordPhaseStatus::KnownZero) {
-    return op->emitOpError()
-           << "unsupported sub-32-bit tensor memory destination origin for "
-              "tcgen05.copy: the current descriptor may start inside a "
-              "32-bit hardware column";
-  }
   Value wordBaseDst = LLVM::NVIDIA::projectTMemElementBaseToWordBase(
       loc, rewriter, baseDst, bitwidth);
   // Get shmem ptr
@@ -1387,7 +1382,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   };
   SmallVector<PlannedCopyMessage, 2> plannedMessages;
   auto planSelection =
-      selectTMemCopyPlan(srcTy, supportDstQuery, shmemLl, cvt, copyPlans,
+      selectTMemCopyPlan(srcTy, destinationDstQuery, shmemLl, cvt, copyPlans,
                          bitwidth);
   if (planSelection) {
     plannedMessages.reserve(planSelection.plan->messages.size());
@@ -1432,7 +1427,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
 
   bool twoCTAs = getModuleTwoCTAs(op);
   uint32_t destinationBaseOffset =
-      getTMemPhysicalQueryOriginBaseOffset(supportDstQuery);
+      getTMemPhysicalQueryOriginBaseOffset(destinationDstQuery);
 
   for (const TMemCopyScheduledInstruction &instruction :
        planSelection.plan->instructions) {

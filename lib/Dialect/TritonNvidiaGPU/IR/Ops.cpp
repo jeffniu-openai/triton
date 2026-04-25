@@ -1750,7 +1750,9 @@ LogicalResult TMEMCopyOp::verify() {
   assert(querySelection.query &&
          "successful tcgen05.copy query selection must carry a query");
   const TMemPhysicalQuery &supportDstQuery = *querySelection.query;
-  auto tmemLl = supportDstQuery.layout;
+  const TMemPhysicalQuery &destinationDstQuery =
+      querySelection.typeLocal ? *querySelection.typeLocal : supportDstQuery;
+  auto tmemLl = destinationDstQuery.layout;
   if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
     if (!querySelection.typeLocal) {
       llvm::errs() << "[tmem-copy] type-local destination query failed: "
@@ -1808,7 +1810,7 @@ LogicalResult TMEMCopyOp::verify() {
     return failure();
   }
   auto planSelection =
-      selectTMemCopyPlan(srcTy, supportDstQuery, shmemLl, cvt, copyPlans,
+      selectTMemCopyPlan(srcTy, destinationDstQuery, shmemLl, cvt, copyPlans,
                          bitwidth);
   if (!planSelection) {
     StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);

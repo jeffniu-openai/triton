@@ -1,5 +1,9 @@
 # TMEM Linear Generalization Initiative
 
+## Latest Status - 2026-04-25 00:53 UTC
+
+The active post-merge `tcgen05.copy` recovery bucket is closed locally. Direct-root expanded-row copies use folded type-local physical queries, direct-root descriptor synthesis can use a source-support query without changing exact destination codegen, dense/tile-permuted destination offsets are exact-layout based, `warpx2::02_13` direct-seed offset is fixed, and stale subword destination-origin compile rejection is now covered by iisan runtime alignment tests. Full `cp_no_scales` validation is green: `301 passed, 4 skipped, 1407 deselected`. Remaining non-copy buckets are still tracked in `failure_recovery_plan_20260424.md` pending broad rerun.
+
 This directory is the durable coordination space for the TMEM linear-layout
 generalization project.
 

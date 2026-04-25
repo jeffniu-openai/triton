@@ -1,25 +1,25 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-25 00:24 UTC
+Last updated: 2026-04-25 00:53 UTC
 
 Active phase: Post-merge validation is red. The latest upstream-main merge builds and passes focused compiler/fpsan checks, but the broad TMEM runtime matrix has correctness, compiler-crash, unsupported-diagnostic, and expectation-drift buckets that must be triaged before performance recovery continues.
 
-Latest follow-up: closed the ld/st half-row row-origin bucket. `memdesc_index` now preserves narrowed leading TMEM allocation context in the result type, row-slice unsupported reasons are shared across frontend/verifier/planner/lowering, and the focused half-row selector is green as `20 passed, 1691 deselected` after `make -j8`. Broad validation remains red; next active bucket is direct-root `tcgen05.copy` support-query fallback and copy view/tile-permuted planning.
+Latest follow-up: closed the current `tcgen05.copy` recovery bucket. Direct roots now use type-derived folded physical queries for expanded-row support, direct roots can use a column-canonical source-support query without changing exact destination addressing, dense/tile-permuted destination offsets are computed from the exact current layout, the single-CTA `warpx2::02_13` direct-seed offset is fixed, and stale compile-time subword destination-origin rejects were replaced with iisan/runtime-alignment coverage. The full `cp_no_scales` runtime-matrix selector is green as `301 passed, 4 skipped, 1407 deselected` after `make -j8` and focused copy checks. Broad validation remains red until the remaining non-copy buckets are rerun and closed.
 
 Current broad-recovery checklist:
 
-- [ ] Restore direct-root `tcgen05.copy` support-query fallback and validate dense 256-row copy rows.
+- [x] Restore direct-root `tcgen05.copy` support-query fallback and validate dense 256-row copy rows.
 - [ ] Fix frontend/type-local layout selection for scales and remaining descriptor-view `get_reg_layout` failures.
 - [x] Close ld/st half-row row-origin miscompiles by preserving narrowed leading allocation shape through `memdesc_index` and rejecting unsupported direct row-slice packets cleanly.
 - [ ] Fix subword ld/st dynamic and loop-carried view miscompiles/opcode expectation drift.
 - [ ] Fix `ld.red` exact-layout reduction planning for permuted/tile-permuted layouts.
-- [ ] Fix `tcgen05.copy` tile-permuted/warpx2 exact destination offsets.
+- [x] Fix `tcgen05.copy` tile-permuted/warpx2 exact destination offsets.
 - [ ] Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.
 
 Current iisan policy checklist:
 
 - [x] Move `ld.red` final-address alignment out of verifier/lowering rejection and into Gluon-emitted iisan.
-- [x] Split `tcgen05.copy` destination-alignment checks from structural copy-planner failures; move executable-plan destination alignment to Gluon-emitted iisan.
+- [x] Split `tcgen05.copy` destination-alignment checks from structural copy-planner failures; move executable-plan destination alignment to Gluon-emitted iisan. Current copy tests also assert non-iisan unaligned subword destinations are not statically rejected while iisan reports static-subview and loop-carried unaligned destinations.
 - [x] Add Gluon-emitted iisan runtime checks for MMAv5 accumulator D, TMEM A operand, and scaled-MMA accumulator/scale-address alignment.
 - [x] Preserve clean compiler diagnostics for true PTX/codegen impossibility: unsupported atoms, too-small copy shapes, descriptor synthesis gaps, non-self-contained layout gaps, subword copy destinations, and static module CTA-group constraints.
 - [ ] Revisit selected direct ld/st atom sanitizer coverage only if Gluon gets an exact frontend atom/packet-offset query; the backend iisan checks were intentionally removed with the GPU-to-LLVM instrumentation path.

@@ -11493,53 +11493,17 @@ def _run_tmem_iisan_copy_unaligned_destination_case():
         triton.knobs.compilation.instrumentation_mode = old_mode
 
 
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_iisan_cp_unaligned_destination_reports_assert():
-    result = run_in_process(_run_tmem_iisan_copy_unaligned_destination_case)
-    text = str(result.exc) + result.driver_stderr_output
-    assert result.exc is not None, text
-    assert "tcgen05.copy tensor memory destination address must be 128-bit aligned" in text
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_linear_subslice_view_reports_error(capfd):
-    M = 128
-    N = 128
-    swizzle = 32
-    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
-    inp = base.to(torch.float16)
-    out = torch.empty_like(inp)
-    parent_layout = _make_tmem_linear_layout(M, 2 * N)
-
-    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
-        tmem_copy_no_scales_unaligned_subword_linear_subslice_view_kernel[(1, )](
-            inp,
-            out,
-            parent_layout,
-            M,
-            N,
-            swizzle,
-            num_warps=4,
-        )
-
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "unsupported sub-32-bit tensor memory destination origin for tcgen05.copy" in text
-    assert "current descriptor may start inside a 32-bit hardware column" in text
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_loop_carried_view_reports_error(capfd):
-    M = 128
-    N = 128
-    swizzle = 32
-    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
-    inp = base.to(torch.float16)
-    out = torch.empty_like(inp)
-    selector_tensor = torch.tensor(0, dtype=torch.int32, device="cuda")
-    parent_layout = _make_tmem_linear_layout(M, 2 * N)
-
-    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
+def _run_tmem_iisan_copy_loop_carried_unaligned_destination_case():
+    old_mode = triton.knobs.compilation.instrumentation_mode
+    triton.knobs.compilation.instrumentation_mode = "iisan"
+    try:
+        M = 128
+        N = 128
+        swizzle = 32
+        inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N) % 16
+        out = torch.empty_like(inp)
+        selector_tensor = torch.tensor(0, dtype=torch.int32, device="cuda")
+        parent_layout = _make_tmem_linear_layout(M, 2 * N)
         tmem_copy_no_scales_unaligned_subword_loop_carried_linear_subslice_view_kernel[(1, )](
             inp,
             out,
@@ -11550,11 +11514,77 @@ def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_loop_carried_view_re
             swizzle,
             num_warps=4,
         )
+    finally:
+        triton.knobs.compilation.instrumentation_mode = old_mode
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "unsupported sub-32-bit tensor memory destination origin for tcgen05.copy" in text
-    assert "current descriptor may start inside a 32-bit hardware column" in text
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "runner",
+    [
+        pytest.param(_run_tmem_iisan_copy_unaligned_destination_case, id="static-subview"),
+        pytest.param(_run_tmem_iisan_copy_loop_carried_unaligned_destination_case, id="loop-carried"),
+    ],
+)
+def test_tmem_runtime_matrix_iisan_cp_unaligned_destination_reports_assert(runner):
+    result = run_in_process(runner)
+    text = str(result.exc) + result.driver_stderr_output
+    assert result.exc is not None, text
+    assert "tcgen05.copy tensor memory destination address must be 128-bit aligned" in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_linear_subslice_view_compiles_without_static_alignment_rejection():
+    M = 128
+    N = 128
+    swizzle = 32
+    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
+    inp = base.to(torch.float16)
+    out = torch.empty_like(inp)
+    parent_layout = _make_tmem_linear_layout(M, 2 * N)
+
+    compiled = tmem_copy_no_scales_unaligned_subword_linear_subslice_view_kernel.warmup(
+        inp,
+        out,
+        parent_layout,
+        M,
+        N,
+        swizzle,
+        grid=(1, ),
+        num_warps=4,
+    )
+
+    assert "ttng.tmem_copy" in compiled.asm["ttgir"]
+    expected_count = N * CP_NO_SCALES_SUBWORD_BITWIDTHS["f16"] // 256
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_unaligned_subword_loop_carried_view_compiles_without_static_alignment_rejection():
+    M = 128
+    N = 128
+    swizzle = 32
+    base = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N) % 16
+    inp = base.to(torch.float16)
+    out = torch.empty_like(inp)
+    selector_tensor = torch.tensor(0, dtype=torch.int32, device="cuda")
+    parent_layout = _make_tmem_linear_layout(M, 2 * N)
+
+    compiled = tmem_copy_no_scales_unaligned_subword_loop_carried_linear_subslice_view_kernel.warmup(
+        inp,
+        out,
+        selector_tensor,
+        parent_layout,
+        M,
+        N,
+        swizzle,
+        grid=(1, ),
+        num_warps=4,
+    )
+
+    assert "ttng.tmem_copy" in compiled.asm["ttgir"]
+    expected_count = N * CP_NO_SCALES_SUBWORD_BITWIDTHS["f16"] // 256
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

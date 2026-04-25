@@ -79,17 +79,35 @@ Fix plan:
 
 ### 5. `tcgen05.copy` direct-root and view planning
 
+Status: closed on 2026-04-25 for the current runtime-matrix copy bucket.
+
 Symptoms:
 - dense 256-row direct-root positives now clean-unsupported.
 - warpx2 descriptor/subslice/indexed views and tile-permuted linear layouts miscompare.
 
-Likely root cause:
-- direct-root support-query fallback was lost or over-tightened; the type-local exact query is correct for views but insufficient for roots that require a wider support query. For tile-permuted/warpx2 views, copy planning again uses canonical copy family order for destination offsets.
+Root causes found:
+- Direct-root expanded-row layouts needed the same type-derived folded physical query that ld/st already use; trying to cover a larger logical row extent by looping copy instructions is wrong because copy atom row semantics include folded/broadcast row bits.
+- Some direct-root tile-permuted layouts needed a source-support query with canonicalized column bases to synthesize the shared descriptor, but destination offsets still had to come from the exact current destination layout.
+- Dense/tile-permuted destination offset planning normalized away exact layout ordering, so physical tile offsets could be computed in the wrong column order.
+- The single-CTA `warpx2::02_13` direct-seed plan added an extra TMEM dword destination delta; the source seed offset was already carrying the required source-column shift.
+- The attempted logical-row scheduler treated `atom.nRow` as a loop stride over the whole logical matrix. That broke `4x256b` refresh and warpx2 because their descriptor source coordinate space is atom-local and logical row bits may be folded/broadcast by the layout.
+- The late subword `tcgen05.copy` destination-origin rejection was a stale compile-time alignment check. Runtime-value alignment belongs to iisan, not verifier/lowering.
 
-Fix plan:
-- Restore support-query fallback for direct roots only.
-- Keep active descriptor views on exact type-local queries.
-- For tile-permuted/warpx2 views, compute destination offsets from the exact current descriptor layout while using canonical family layouts only to select atom family/schedule.
+Fix executed:
+- Direct roots may choose a folded root physical query when type/layout algebra proves the copy conversion, and direct roots may separately choose a canonical source-support query while preserving exact destination addressing.
+- `selectTMemCopyPlan` and lowering now use exact destination queries for executable schedule and base-offset codegen, while descriptor conversion can use the support query.
+- Dense destination tile coordinates use exact layout arithmetic instead of normalization.
+- `warpx2::02_13` single-CTA direct-seed destination dword delta is zero.
+- Removed the logical-row copy scheduler; expanded rows are represented through the selected type-local physical query or rejected cleanly.
+- Removed the late subword destination-origin compile rejection and updated tests to require non-iisan compilation plus iisan assertions for static-subview and loop-carried unaligned destinations.
+
+Validation:
+- `make -j8`
+- Focused refresh/warpx2 selector -> `14 passed, 1697 deselected`.
+- Full warpx2 selector -> `83 passed, 1628 deselected`.
+- Representative dense 256-row direct-root row -> `1 passed`.
+- Subword/iisan copy selector -> `6 passed, 1706 deselected`.
+- Full `cp_no_scales` selector -> `301 passed, 4 skipped, 1407 deselected`.
 
 ### 6. MMAv5 / scaled-MMAv5 TMEM-LHS and descriptor-subview paths
 
@@ -106,10 +124,10 @@ Fix plan:
 
 ## Execution Order
 
-1. Restore direct-root copy support-query fallback and validate dense direct-root copy rows.
+1. [done] Restore direct-root copy support-query fallback and validate dense direct-root copy rows.
 2. Fix/frontend type-local layout selection for scales and descriptor views.
 3. Fix ld/st exact row/address planning: half-row row-origin closed; subword dynamic views remain open under bucket 2.
 4. Fix ld.red exact-layout reduction planning.
-5. Fix copy tile-permuted/warpx2 exact destination offsets.
+5. [done] Fix copy tile-permuted/warpx2 exact destination offsets.
 6. Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.
 7. Re-run focused bucket selectors after each slice, then the 4-GPU broad split.
