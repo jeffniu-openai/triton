@@ -210,13 +210,34 @@ getTMemMemDescIndexResultAllocShape(MemDescType srcTy) {
   // which result dimension owns the hidden allocation extent.
   if (srcTy.getShape()[0] < srcTy.getAllocShape()[0]) {
     int64_t factor = srcTy.getAllocShape()[0];
-    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
-    offsets.front() = 1;
-    auto rowCol = tryGetTMemViewPhysicalRowElementCol(srcTy, offsets);
-    if (rowCol && rowCol->second != 0 && rowCol->first == 0) {
-      result.back() *= factor;
-    } else {
+    auto layoutTrait = dyn_cast<LayoutEncodingTrait>(srcTy.getEncoding());
+    int64_t layoutRank = layoutTrait ? layoutTrait.getRank() : srcTy.getRank();
+    int64_t extraRank = srcTy.getRank() - layoutRank;
+
+    // If the indexed-away narrowed dimension lives outside the tensor-memory
+    // encoding rank and the remaining row dimension is smaller than a full
+    // direct ld/st row footprint, the current layout no longer carries the row
+    // origin bit. Preserve it as a row allocation extent so direct ld/st rejects
+    // the non-self-contained row slice instead of treating the runtime taddr row
+    // phase as a compact origin-zero tile. When the remaining row span already
+    // covers the full footprint, this pattern is a column split and the normal
+    // physical-offset query can safely decide whether the hidden extent belongs
+    // to columns.
+    bool twoCTAs = getTensorMemoryTwoCTAs(srcTy.getEncoding()).value_or(false);
+    int64_t fullRowFootprint = twoCTAs ? 256 : 128;
+    bool narrowedExtraRankRowSlice = extraRank > 0 && !result.empty() &&
+                                     result[0] < fullRowFootprint;
+    if (narrowedExtraRankRowSlice) {
       result[0] *= factor;
+    } else {
+      SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+      offsets.front() = 1;
+      auto rowCol = tryGetTMemViewPhysicalRowElementCol(srcTy, offsets);
+      if (rowCol && rowCol->second != 0 && rowCol->first == 0) {
+        result.back() *= factor;
+      } else {
+        result[0] *= factor;
+      }
     }
   }
   return result;

@@ -7816,3 +7816,9 @@ When resuming the initiative:
 
 - Promoted three stale `FZ-20260421-0003` ld/st descriptor-view rows from clean unsupported to runtime-positive checks after exact probes showed zero mismatches and PTX/LLIR opcode agreement.
 - Full structural fuzzer split-4 now passes as `36 passed` aggregate. Next step is the broad 4-GPU validation split.
+
+## Latest: 2026-04-25 05:52 UTC broad TMEM recovery validation green
+
+- Closed the 2026-04-24 broad TMEM recovery baseline for the local GB200 three-file sweep. All four split groups over `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py` now pass on the current build.
+- Final fixes: relaxed the MMAv5 blockM=64 verifier to use current logical A tile shape, made the frontend dword-footprint precheck planner-safe for packed sub-32-bit layouts, preserved hidden row-origin allocation extent for narrowed extra-rank row slices, and refreshed stale runtime-matrix IR expectations.
+- Latest broad evidence: group1 `4347 passed, 620 skipped`; group2 `2671 passed, 2296 skipped`; group3 `2359 passed, 2608 skipped`; group4 `3575 passed, 1389 skipped`.

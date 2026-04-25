@@ -254,21 +254,28 @@ std::optional<std::string> getTMemLdStUnsupportedReasonForVariant(
   }
 
   if (*maybeAtom) {
-    if (auto requiredDwords = getTMemLdStAtomDwordFootprint(**maybeAtom)) {
-      int64_t lastDim =
-          memDescTy.getShape().empty() ? 1 : memDescTy.getShape().back();
-      int64_t bitwidth = memDescTy.getElementTypeBitWidth();
-      int64_t exposedDwords =
-          llvm::divideCeil(lastDim * bitwidth, int64_t{32});
-      if (exposedDwords < static_cast<int64_t>(*requiredDwords)) {
-        return (llvm::Twine("requested tcgen05.ld/st atom ") +
-                ttng::getOpShape(**maybeAtom) + " has a " +
-                llvm::Twine(*requiredDwords) +
-                "-dword column footprint, but descriptor view exposes only " +
-                llvm::Twine(exposedDwords) +
-                " materializable dword column" +
-                (exposedDwords == 1 ? "" : "s"))
-            .str();
+    int64_t bitwidth = memDescTy.getElementTypeBitWidth();
+    // This logical-dword footprint check is only sound for 32-bit-or-wider
+    // element descriptors. Packed sub-32-bit layouts such as M64 split-N f16
+    // and tensor-memory scales can realize a wider hardware atom by packing
+    // multiple logical elements into each selected TMEM dword column; the
+    // type-local planner below must make that decision.
+    if (bitwidth >= 32) {
+      if (auto requiredDwords = getTMemLdStAtomDwordFootprint(**maybeAtom)) {
+        int64_t lastDim =
+            memDescTy.getShape().empty() ? 1 : memDescTy.getShape().back();
+        int64_t exposedDwords =
+            llvm::divideCeil(lastDim * bitwidth, int64_t{32});
+        if (exposedDwords < static_cast<int64_t>(*requiredDwords)) {
+          return (llvm::Twine("requested tcgen05.ld/st atom ") +
+                  ttng::getOpShape(**maybeAtom) + " has a " +
+                  llvm::Twine(*requiredDwords) +
+                  "-dword column footprint, but descriptor view exposes only " +
+                  llvm::Twine(exposedDwords) +
+                  " materializable dword column" +
+                  (exposedDwords == 1 ? "" : "s"))
+              .str();
+        }
       }
     }
   }

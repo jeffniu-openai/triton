@@ -5164,8 +5164,11 @@ LogicalResult impl::verifyMMAv5Op(Operation *op) {
                            itf.getAccumulator().getType())
                      : getMMAv5AccumulatorLayoutInfo(
                            itf.getAccumulator().getType());
-  if (lhsInfo && getTmemAllocSizes(itf.getA().getType()).numRows != 64 &&
-      lhsInfo->mmaSizeM == 64 && isInterleaved(accPlan)) {
+  auto lhsTy = itf.getA().getType();
+  ArrayRef<int64_t> lhsShape = lhsTy.getShape();
+  int64_t lhsLogicalM = lhsShape.size() >= 2 ? lhsShape[lhsShape.size() - 2] : 0;
+  if (lhsInfo && lhsLogicalM != 64 && lhsInfo->mmaSizeM == 64 &&
+      isInterleaved(accPlan)) {
     return op->emitOpError(
         "does not support blockM=64 with interleaved blocks in TMEM layout");
   }

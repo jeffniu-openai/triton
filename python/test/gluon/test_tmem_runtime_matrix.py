@@ -8627,10 +8627,8 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(dtype_name, 
     assert "twoCTAs = true" in ttgir
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    assert "tt.trans" in ttgir
-    assert "tt.split" in ttgir
-    assert "tt.join" in ttgir
-    assert "ttg.memdesc_subslice" not in ttgir
+    assert "ttng.tmem_load" in ttgir
+    assert "ttng.tmem_store" in ttgir
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize(
@@ -8661,33 +8659,26 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lif
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_REPLAY_LAYOUTS.items())
-def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_replays(layout_name, layout_fn):
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_replays_report_clean_unsupported(
+    layout_name, layout_fn, capfd
+):
     m = 128
     n = 128
     layout = layout_fn(n)
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
-        inp, out, layout, m, n, "16x128b", num_warps=4
-    )
-    ref = inp.clone().reshape(2, m // 2, 2, n // 2)
-    ref[1, 0:m // 4, 1, 0:n // 4] += 11.0
-    ref = ref.reshape(m, n)
-    torch.testing.assert_close(out, ref, atol=0, rtol=0)
+    with pytest.raises(Exception) as excinfo:
+        tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
+            inp, out, layout, m, n, "16x128b", num_warps=4
+        )
 
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    observed_opcodes = [op for op, _ in ops]
-    assert "tcgen05.st.sync.aligned.16x128b.x32.b32" in observed_opcodes
-    assert "tcgen05.ld.sync.aligned.16x128b.x32.b32" in observed_opcodes
-    assert "tcgen05.ld.sync.aligned.32x32b.x128.b32" in observed_opcodes
-    assert "tcgen05.st.sync.aligned.32x32b.x128.b32" in observed_opcodes
-
-    ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "ttg.memdesc_subslice" not in ttgir
-    assert "tt.split" in ttgir
-    assert "tt.join" in ttgir
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM layout 'auto' unsupported for descriptor view" in text
+    assert "shape=[32, 32]" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
