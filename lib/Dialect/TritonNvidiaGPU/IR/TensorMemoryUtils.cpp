@@ -153,6 +153,51 @@ parseTMemAccessAtomName(StringRef atomName, bool allowAuto,
   return atom;
 }
 
+llvm::SmallVector<int64_t>
+getTMemMemDescIndexResultAllocShape(MemDescType srcTy) {
+  if (!srcTy || srcTy.getRank() == 0)
+    return {};
+  llvm::SmallVector<int64_t> result =
+      llvm::to_vector(srcTy.getAllocShape().drop_front());
+  if (srcTy.getRank() <= 1 || result.empty() ||
+      srcTy.getAllocShape().size() < static_cast<size_t>(srcTy.getRank()))
+    return result;
+
+  // Indexing a leading dimension that was already narrowed by a subview must
+  // preserve the omitted physical row extent in the result type.  Otherwise the
+  // rank-2 view appears to start at allocation row zero, and direct TMEM ld/st
+  // planning can silently target the wrong row footprint.
+  if (srcTy.getShape()[0] < srcTy.getAllocShape()[0])
+    result[0] *= srcTy.getAllocShape()[0];
+  return result;
+}
+
+bool isUnsupportedOriginChangingTMemRowSubview(MemDescType memTy) {
+  if (!memTy || memTy.getRank() < 2 ||
+      memTy.getAllocShape().size() < static_cast<size_t>(memTy.getRank()))
+    return false;
+
+  int64_t logicalRows = memTy.getShape()[memTy.getRank() - 2];
+  int64_t allocRows = memTy.getAllocShape()[memTy.getAllocShape().size() - 2];
+  if (logicalRows >= allocRows)
+    return false;
+
+  auto maybeQuery = inferTypeLocalTMemLdStQueryLayout(memTy, /*error=*/nullptr);
+  if (failed(maybeQuery))
+    return false;
+
+  auto kRow = StringAttr::get(memTy.getContext(), "row");
+  if (!maybeQuery->layout.hasInDim(kRow))
+    return true;
+  for (unsigned idx = 0, e = maybeQuery->layout.getInDimSizeLog2(kRow);
+       idx < e; ++idx) {
+    auto basis = maybeQuery->layout.getBasis(kRow, idx);
+    if (llvm::all_of(basis, [](int32_t value) { return value == 0; }))
+      return false;
+  }
+  return true;
+}
+
 bool isM64SplitNDescriptorType(MemDescType memTy, unsigned numWarps,
                                bool allow16Bit) {
   if (!memTy || numWarps != 4 || memTy.getRank() != 2 ||
@@ -160,7 +205,26 @@ bool isM64SplitNDescriptorType(MemDescType memTy, unsigned numWarps,
       isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
     return false;
   unsigned bitwidth = memTy.getElementTypeBitWidth();
-  return bitwidth == 32 || (allow16Bit && bitwidth == 16);
+  if (bitwidth != 32 && !(allow16Bit && bitwidth == 16))
+    return false;
+
+  std::string layoutError;
+  auto maybeQuery =
+      getTMemViewAnalysisLayout(memTy.getShape(), memTy.getEncoding(),
+                                &layoutError);
+  if (!maybeQuery)
+    return false;
+  auto kRow = StringAttr::get(memTy.getContext(), "row");
+  if (!maybeQuery->layout.hasInDim(kRow) ||
+      maybeQuery->layout.getInDimSize(kRow) != 128)
+    return false;
+  for (unsigned idx = 0, e = maybeQuery->layout.getInDimSizeLog2(kRow);
+       idx < e; ++idx) {
+    auto basis = maybeQuery->layout.getBasis(kRow, idx);
+    if (llvm::all_of(basis, [](int32_t value) { return value == 0; }))
+      return true;
+  }
+  return false;
 }
 
 FailureOr<std::optional<TMemAccessAtom>>
@@ -2612,7 +2676,7 @@ static bool isSimpleM64SplitNRawQueryLayout(const LinearLayout &layout,
       layout.getInDimSize(kCol) != n)
     return false;
   int64_t physicalRows = layout.getInDimSize(kRow);
-  if (physicalRows != 64 && physicalRows != 128)
+  if (physicalRows != 128)
     return false;
   auto outDims = llvm::to_vector(layout.getOutDimNames());
   if (layout.getOutDimSize(outDims[0]) != m ||
@@ -2638,8 +2702,7 @@ static bool isSimpleM64SplitNRawQueryLayout(const LinearLayout &layout,
       return false;
     seenRows[rowBit] = true;
   }
-  unsigned expectedZeroRows = physicalRows == 128 ? 1 : 0;
-  if (zeroRows != expectedZeroRows ||
+  if (zeroRows != 1 ||
       !llvm::all_of(seenRows, [](bool seen) { return seen; }))
     return false;
 
@@ -4414,7 +4477,7 @@ inferTMemIndexOpType(gpu::MemDescType srcTy, std::string *error) {
   SmallVector<int64_t> srcShape(srcTy.getShape().begin(), srcTy.getShape().end());
   SmallVector<int64_t> dstShape = llvm::to_vector(srcTy.getShape().drop_front());
   SmallVector<int64_t> dstAllocShape =
-      llvm::to_vector(srcTy.getAllocShape().drop_front());
+      getTMemMemDescIndexResultAllocShape(srcTy);
 
   Attribute dstEncoding;
   if (failed(inferTMemIndexOpEncoding(srcShape, dstShape, dstAllocShape,
@@ -4991,6 +5054,20 @@ computeTMemLdStEncodingInfoImpl(
       bitwidth == 16 && !hasZeroRowBasis && !hasZeroColBasis &&
       memLayout.hasInDim(kCol) && logicalRows == activePhysicalRows &&
       logicalCols == memLayout.getInDimSize(kCol) * 2;
+
+  if (isUnsupportedOriginChangingTMemRowSubview(memTy)) {
+    if (emitError) {
+      emitError()
+          << "unsupported tensor memory row-slice load/store: the current "
+             "descriptor may start at a non-zero TMEM row, but direct "
+             "tcgen05 load/store packets address a fixed row footprint. "
+             "Represent the row selection in the tensor-memory layout, or "
+             "operate on a descriptor whose current row extent matches its "
+             "allocation row extent.";
+    }
+    return failure();
+  }
+
   // Zero row/col bases are part of the descriptor layout contract: they
   // describe broadcast/support bits in the logical view, not disposable
   // physical storage. Direct planning must keep those bases so loads, stores,

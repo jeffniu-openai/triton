@@ -550,6 +550,11 @@ bool hasSelfContainedTMemSubviewLayout(gpu::MemDescType memTy);
 
 bool hasTypeLocalTMemLdStLayout(gpu::MemDescType memTy);
 
+bool isUnsupportedOriginChangingTMemRowSubview(gpu::MemDescType memTy);
+
+llvm::SmallVector<int64_t>
+getTMemMemDescIndexResultAllocShape(gpu::MemDescType srcTy);
+
 gpu::MemDescType getSelfContainedTMemSubviewPlanningType(gpu::MemDescType memTy);
 
 bool disallowTMemLdStQueryTypeRescue(gpu::MemDescType memTy);

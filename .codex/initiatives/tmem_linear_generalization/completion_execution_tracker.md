@@ -1,10 +1,20 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-24 21:50 UTC
+Last updated: 2026-04-25 00:24 UTC
 
 Active phase: Post-merge validation is red. The latest upstream-main merge builds and passes focused compiler/fpsan checks, but the broad TMEM runtime matrix has correctness, compiler-crash, unsupported-diagnostic, and expectation-drift buckets that must be triaged before performance recovery continues.
 
-Latest follow-up: ran required `make`, focused lit checks, Python syntax compile, `test_fpsan.py`, and a four-GPU `-k tmem` runtime selection across `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py`. Focused checks are green; the broad selection selected `2040` cases and ended `286 failed`, `1647 passed`, `107 skipped`. A representative dynamic subword ld/st failure reproduced with a fresh cache. Main red buckets are subword ld/st view planning/opcode/miscompare cases, descriptor-view ld/st gaps, copy planner/warpx2/tile-permuted gaps, ld.red permuted/tile-permuted gaps, MMAv5/scaled-MMAv5 tile-permuted miscompares and `getSharedMemoryBase` crashes, and structural-fuzzer clean-negative expectations that now compile.
+Latest follow-up: closed the ld/st half-row row-origin bucket. `memdesc_index` now preserves narrowed leading TMEM allocation context in the result type, row-slice unsupported reasons are shared across frontend/verifier/planner/lowering, and the focused half-row selector is green as `20 passed, 1691 deselected` after `make -j8`. Broad validation remains red; next active bucket is direct-root `tcgen05.copy` support-query fallback and copy view/tile-permuted planning.
+
+Current broad-recovery checklist:
+
+- [ ] Restore direct-root `tcgen05.copy` support-query fallback and validate dense 256-row copy rows.
+- [ ] Fix frontend/type-local layout selection for scales and remaining descriptor-view `get_reg_layout` failures.
+- [x] Close ld/st half-row row-origin miscompiles by preserving narrowed leading allocation shape through `memdesc_index` and rejecting unsupported direct row-slice packets cleanly.
+- [ ] Fix subword ld/st dynamic and loop-carried view miscompiles/opcode expectation drift.
+- [ ] Fix `ld.red` exact-layout reduction planning for permuted/tile-permuted layouts.
+- [ ] Fix `tcgen05.copy` tile-permuted/warpx2 exact destination offsets.
+- [ ] Fix TMEM-LHS MMAv5/scaled-MMAv5 exact address/layout handling.
 
 Current iisan policy checklist:
 
@@ -5662,3 +5672,5 @@ discovery.
 - 2026-04-24 22:15 UTC: latest-main merge-resolution audit completed. Report: `merge_resolution_audit_20260424.md`. Closed two post-merge correctness issues: shared-memory allocation now sees conversions inserted by tensor-memory allocation, and MMAv5 tile-order/address lowering uses the exact current memdesc layout instead of the planning family layout. The incoming main `ld.red` fully-register-local verifier restriction is recorded as an intentional non-adoption because it conflicts with the branch's generalized direct-reduction contract. Validation: `make`; exact prior MMAv5 tile-swap row `1 passed`; exact scaled-MMAv5 crash row `1 passed`; related 4-GPU MMAv5 selectors `42 passed` and `53 passed`; lit conflict files `3 passed`; `test_fpsan.py` `85 passed, 22 skipped`. Remaining broad-inventory counts from `5aaf5b6fa` are stale for MMAv5 tile-permuted/scaled-MMAv5 rows and need refresh before further prioritization.
 
 - 2026-04-24 23:26 UTC: broad TMEM validation reconfirmed not green at `6a50032c3`. See `broad_tmem_validation_20260424_2326.md`. Required `make` was green/no-op. Four-GPU split over `test_core.py`, `test_tmem_runtime_matrix.py`, and `test_tmem_structural_fuzzer.py` produced aggregated selected-test result `184 failed, 12771 passed, 6913 skipped`; group-level summaries: G1 `4347 passed, 620 skipped`, G2 `2671 passed, 2296 skipped`, G3 `2359 passed, 2608 skipped`, G4 `184 failed, 3394 passed, 1389 skipped`. Next prioritization should start from the real miscompile/compile-failure buckets, not stale TTGIR string expectations.
+
+- 2026-04-24 23:40 UTC: failure recovery plan opened. See `failure_recovery_plan_20260424.md`. Active slice: restore direct-root copy support-query fallback without weakening active descriptor-view type-local lowering.

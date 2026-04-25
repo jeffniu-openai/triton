@@ -1170,13 +1170,15 @@ LogicalResult MemDescIndexOp::inferReturnType(
     return emitOptionalError(loc, "cannot memdesc_index a rank-0 descriptor");
 
   SmallVector<int64_t> dstShape = llvm::to_vector(srcTy.getShape().drop_front());
-  SmallVector<int64_t> dstAllocShape =
-      llvm::to_vector(srcTy.getAllocShape().drop_front());
 
   Attribute srcEnc = srcTy.getEncoding();
   bool isTMemEncoding =
       srcEnc && triton::nvidia_gpu::isTensorMemoryEncoding(srcEnc) &&
       !isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(srcEnc);
+  SmallVector<int64_t> dstAllocShape =
+      isTMemEncoding
+          ? triton::nvidia_gpu::getTMemMemDescIndexResultAllocShape(srcTy)
+          : llvm::to_vector(srcTy.getAllocShape().drop_front());
   if (!isTMemEncoding) {
     if (srcTy.getAllocShape().size() != srcTy.getRank()) {
       return emitOptionalError(

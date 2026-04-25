@@ -1395,6 +1395,16 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   if (failed(verifyTMEMOperandPreconditions(op, type, memdesc, memdescValue,
                                             regName)))
     return failure();
+  if (isUnsupportedOriginChangingTMemRowSubview(memdesc)) {
+    return op->emitOpError(regName)
+           << " is incompatible with tensor memory descriptor view: "
+              "unsupported tensor memory row-slice load/store: the current "
+              "descriptor may start at a non-zero TMEM row, but direct "
+              "tcgen05 load/store packets address a fixed row footprint. "
+              "Represent the row selection in the tensor-memory layout, or "
+              "operate on a descriptor whose current row extent matches its "
+              "allocation row extent.";
+  }
   // Pre-conversion IR can still carry unencoded tensor operands/results.  The
   // conversion pipeline chooses the concrete distributed layout, so verifier
   // compatibility checks that need a register LinearLayout must wait until the

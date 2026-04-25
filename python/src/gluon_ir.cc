@@ -62,6 +62,18 @@ getCgaLayoutBases(ttg::CGAEncodingAttr layout) {
   return it->second;
 }
 
+std::optional<std::string> getTMemLdStUnsupportedReason(ttg::MemDescType memDescTy) {
+  if (!ttng::isUnsupportedOriginChangingTMemRowSubview(memDescTy))
+    return std::nullopt;
+
+  return std::string(
+      "unsupported tensor memory row-slice load/store: the current descriptor "
+      "may start at a non-zero TMEM row, but direct tcgen05 load/store "
+      "packets address a fixed row footprint. Represent the row selection in "
+      "the tensor-memory layout, or operate on a descriptor whose current row "
+      "extent matches its allocation row extent.");
+}
+
 // Helper to check if an MLIR type or attribute has a verifier method.
 template <typename AttrOrType>
 constexpr auto hasVerifier(AttrOrType t) -> decltype(t.verifyInvariants, true) {
@@ -1656,16 +1668,22 @@ void init_gluon_ir(py::module &&m) {
   m.def(
       "get_tmem_ldst_unsupported_reason_from_memdesc",
       [](Value memDesc) -> py::object {
-        if (!isa<ttg::MemDescType>(memDesc.getType()))
+        auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+        if (!memDescTy)
           throw std::invalid_argument("expected a memdesc value");
+        if (auto reason = getTMemLdStUnsupportedReason(memDescTy))
+          return py::str(*reason);
         return py::none();
       });
 
   m.def(
       "get_tmem_ldst_unsupported_reason_from_memdesc_for_variant",
       [](Value memDesc, unsigned, const std::string &) -> py::object {
-        if (!isa<ttg::MemDescType>(memDesc.getType()))
+        auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+        if (!memDescTy)
           throw std::invalid_argument("expected a memdesc value");
+        if (auto reason = getTMemLdStUnsupportedReason(memDescTy))
+          return py::str(*reason);
         return py::none();
       });
 

@@ -919,6 +919,17 @@ lowerTMemLdStFromTypes(
   if (debugQuerySelection)
     llvm::errs() << "[tmem-ldst] memTy=" << memTy << "\n";
 
+  if (isUnsupportedOriginChangingTMemRowSubview(memTy)) {
+    emitError(loc)
+        << "unsupported tensor memory row-slice load/store: the current "
+           "descriptor may start at a non-zero TMEM row, but direct "
+           "tcgen05 load/store packets address a fixed row footprint. "
+           "Represent the row selection in the tensor-memory layout, or "
+           "operate on a descriptor whose current row extent matches its "
+           "allocation row extent.";
+    return failure();
+  }
+
   std::optional<MemDescType> typeLocalScalesStorageTy;
   if (!isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
     if (auto storageTy = getMMAv5ScaleStorageType(memTy))

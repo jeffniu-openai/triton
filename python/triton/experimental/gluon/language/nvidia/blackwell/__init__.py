@@ -550,6 +550,15 @@ class tensor_memory_descriptor(base_value):
                 flat_layout, list(flat.shape), list(self.shape)
             )
         self._require_rank2_tmem_ldst(f"{requested_variant} register layout query")
+        reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc_for_variant(
+            self.handle, num_warps, requested_variant
+        )
+        if reason is None:
+            reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc(self.handle)
+        if reason is not None:
+            raise ValueError(
+                f"TMEM layout '{instr_variant}' unsupported for descriptor view {self.type}. {reason}"
+            )
         try:
             layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
                 self.handle, num_warps, requested_variant

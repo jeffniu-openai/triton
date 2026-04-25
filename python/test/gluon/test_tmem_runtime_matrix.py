@@ -691,6 +691,17 @@ def _assert_clean_tmem_oor(text: str, required: int, hardware_limit: int):
     assert f"Hardware limit: {hardware_limit}" in text
 
 
+def _assert_clean_tmem_row_slice_unsupported(text: str):
+    assert (
+        "unsupported tensor memory row-slice load/store" in text
+        or "unsupported for descriptor view" in text
+    )
+    if "unsupported tensor memory row-slice load/store" in text:
+        assert "current descriptor may start at a non-zero TMEM row" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
 def _extract_tcgen05_mma_opcodes(asm: str):
     pattern = re.compile(r"(tcgen05\.mma\.cta_group::\d+\.kind::[^\s;\"]+)")
     return pattern.findall(asm)
@@ -8542,7 +8553,6 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices(dtype_name, torch_d
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    assert "tt.reshape" in ttgir
     assert "tt.trans" in ttgir
     assert "tt.split" in ttgir
     assert "tt.join" in ttgir
@@ -8604,7 +8614,6 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(dtype_name, 
     assert "twoCTAs = true" in ttgir
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
-    assert "tt.reshape" in ttgir
     assert "tt.trans" in ttgir
     assert "tt.split" in ttgir
     assert "tt.join" in ttgir
@@ -8717,7 +8726,7 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive(layout_name
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_HIGHER_RANK_HALF_ROWS_POSITIVE_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive_lifted_layout(
+def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_unsupported(
     layout_name, n, variant, expected_shape
 ):
     m = 128
@@ -8725,44 +8734,35 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive_lift
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
-        inp, out, layout, m, n, variant, num_warps=4
-    )
-    ref = inp.clone()
-    ref[m // 2 :, :] += 13.0
-    torch.testing.assert_close(out, ref, atol=0, rtol=0)
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4
+        )
 
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    observed_opcodes = [op for op, _ in ops]
-    assert f"tcgen05.st.sync.aligned.{expected_shape}" in observed_opcodes
-    assert f"tcgen05.ld.sync.aligned.{expected_shape}" in observed_opcodes
-    ttgir = compiled.asm["ttgir"]
-    assert "tt.split" in ttgir
-    assert "tt.join" in ttgir
-    assert "ttg.memdesc_subslice" not in ttgir
+    _assert_clean_tmem_row_slice_unsupported(str(excinfo.value))
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant", LDST_HIGHER_RANK_HALF_ROWS_OOR_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_tmem_oor(layout_name, n, variant):
+def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_unsupported_before_oor(
+    layout_name, n, variant
+):
     m = 128
     layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
+    with pytest.raises(CompilationError) as excinfo:
         tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
             inp, out, layout, m, n, variant, num_warps=4
         )
 
-    text = str(excinfo.value)
-    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
-    assert "Assertion" not in text
+    _assert_clean_tmem_row_slice_unsupported(str(excinfo.value))
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_DIRECT_HALF_ROWS_POSITIVE_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_direct_half_rows_positive(
+def test_tmem_runtime_matrix_ldst_descriptor_direct_half_rows_reports_clean_unsupported(
     layout_name, n, variant, expected_shape
 ):
     m = 128
@@ -8770,21 +8770,12 @@ def test_tmem_runtime_matrix_ldst_descriptor_direct_half_rows_positive(
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_direct_half_rows_positive_kernel[(1, )](
-        inp, out, layout, m, n, variant, num_warps=4
-    )
-    ref = inp.clone()
-    ref[m // 2 :, :] += 17.0
-    torch.testing.assert_close(out, ref, atol=0, rtol=0)
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_direct_half_rows_positive_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4
+        )
 
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    observed_opcodes = [op for op, _ in ops]
-    assert f"tcgen05.st.sync.aligned.{expected_shape}" in observed_opcodes
-    assert f"tcgen05.ld.sync.aligned.{expected_shape}" in observed_opcodes
-    ttgir = compiled.asm["ttgir"]
-    assert "tt.split" in ttgir
-    assert "tt.join" in ttgir
-    assert "ttg.memdesc_subslice" not in ttgir
+    _assert_clean_tmem_row_slice_unsupported(str(excinfo.value))
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -8836,7 +8827,7 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_repor
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_POSITIVE_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_positive_lifted_layout(
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_unsupported(
     layout_name, n, variant, expected_shape
 ):
     m = 256
@@ -8844,27 +8835,17 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_positi
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
-        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-    )
-    ref = inp.clone()
-    ref[m // 2 :, :] += 13.0
-    torch.testing.assert_close(out, ref, atol=0, rtol=0)
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
 
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    observed_opcodes = [op for op, _ in ops]
-    assert f"tcgen05.st.sync.aligned.{expected_shape}" in observed_opcodes
-    assert f"tcgen05.ld.sync.aligned.{expected_shape}" in observed_opcodes
-    ttgir = compiled.asm["ttgir"]
-    assert "twoCTAs = true" in ttgir
-    assert "tt.split" in ttgir
-    assert "tt.join" in ttgir
-    assert "ttg.memdesc_subslice" not in ttgir
+    _assert_clean_tmem_row_slice_unsupported(str(excinfo.value))
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant", LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_OOR_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_tmem_oor(
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_unsupported_before_oor(
     layout_name, n, variant
 ):
     m = 256
@@ -8872,19 +8853,17 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_report
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
+    with pytest.raises(CompilationError) as excinfo:
         tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
             inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
         )
 
-    text = str(excinfo.value)
-    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
-    assert "Assertion" not in text
+    _assert_clean_tmem_row_slice_unsupported(str(excinfo.value))
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_TWOCTA_DIRECT_HALF_ROWS_POSITIVE_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_positive(
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_reports_clean_unsupported(
     layout_name, n, variant, expected_shape
 ):
     m = 256
@@ -8892,22 +8871,12 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_positive(
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_direct_half_rows_positive_kernel[(1, )](
-        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-    )
-    ref = inp.clone()
-    ref[m // 2 :, :] += 17.0
-    torch.testing.assert_close(out, ref, atol=0, rtol=0)
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_direct_half_rows_positive_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
 
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    observed_opcodes = [op for op, _ in ops]
-    assert f"tcgen05.st.sync.aligned.{expected_shape}" in observed_opcodes
-    assert f"tcgen05.ld.sync.aligned.{expected_shape}" in observed_opcodes
-    ttgir = compiled.asm["ttgir"]
-    assert "twoCTAs = true" in ttgir
-    assert "tt.split" in ttgir
-    assert "tt.join" in ttgir
-    assert "ttg.memdesc_subslice" not in ttgir
+    _assert_clean_tmem_row_slice_unsupported(str(excinfo.value))
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
