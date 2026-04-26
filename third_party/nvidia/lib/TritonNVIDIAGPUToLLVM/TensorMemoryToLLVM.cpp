@@ -1014,8 +1014,7 @@ lowerTMemLdStFromTypes(
         supportRowPlan);
     if (succeeded(encodingInfoOr)) {
       auto &encodingInfo = *encodingInfoOr;
-      if (!preserveTMemLdStSupportQueryBaseOffset(planningMemTy,
-                                                  supportPlan.query))
+      if (!preserveTMemLdStSupportQueryBaseOffset(supportPlan.query))
         encodingInfo.baseOffset = 0;
       auto lowered = lowerTMemLdStFromInfo(
           loc, rewriter, encodingInfo, pred, llvmElemTy,
@@ -1465,12 +1464,14 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       uint64_t sourceOffsetB128 =
           messagePlan.directSourceOffsetB128 +
           (instruction.source.col * bitwidth) / 128;
-      uint64_t descImm = *message.schedule.directSeedDescriptorImm;
-      descImm &= ~(((1ULL << 14) - 1) | (0x7ULL << 49));
-      descImm |= sourceOffsetB128;
-      descImm |= ((sourceOffsetB128 >> 3) & 0x7ULL) << 49;
+      uint64_t descImm = setTMemMatrixDescriptorStartAddrB128(
+          *message.schedule.directSeedDescriptorImm, sourceOffsetB128);
       Value baseSrcb128 = b.lshr(b.ptrtoint(i32_ty, smemBase), b.i32_val(4));
-      Value baseb128 = b.zext(i64_ty, b.and_(baseSrcb128, b.i32_val(0x3FFF)));
+      Value baseb128 = b.zext(
+          i64_ty,
+          b.and_(baseSrcb128,
+                 b.i32_val(static_cast<int32_t>(
+                     kTMemMatrixDescriptorStartAddrLowMask))));
       desc = b.add(b.int_val(64, descImm), baseb128);
     } else {
       desc = message.loader->smemLoad(instruction.source.row,

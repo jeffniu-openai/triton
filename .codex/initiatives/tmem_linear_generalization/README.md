@@ -1,5 +1,11 @@
 # TMEM Linear Generalization Initiative
 
+## Latest Status - 2026-04-26 18:18 UTC
+
+The audit follow-up cleanup/correctness batch is implemented locally. Gluon descriptor `get_reg_layout()` no longer passes stale split-N helper parameters, explicit TMEM physical bitcasts now verify that the requested result type matches the inferred physical mapping, raw same-type TMEM `memdesc_reinterpret` remains legal without the physical-bitcast contract, and TMEM `memdesc_index` lit expectations now match the current self-contained alloc-shape model. The ld/st support-query scalarized path no longer double-adds the query base offset, and `tcgen05.copy` direct-seed descriptor address encoding now uses named matrix-descriptor field helpers instead of raw masks.
+
+Validation for this batch: `make -j8`; lit `test/TritonNvidiaGPU/invalid.mlir`, `test/TritonNvidiaGPU/canonicalize.mlir`, `test/TritonNvidiaGPU/ops.mlir`, `test/TritonGPU/nvidia-fpsan.mlir`, and `test/Analysis/test-buffer-region.mlir` passed `5/5`; Gluon frontend bitcast tests passed `4 passed`; focused Gluon split-N/runtime ld/st checks passed `3 passed`; `git diff --check` passed. Known validation boundary: `test/Conversion/tritongpu_to_llvm_blackwell.mlir` still fails before the updated reinterpret section on the existing `store_packedb16_4x32xf16` sub-32-bit TMEM view-origin legalization gap, then cascades into stale FileCheck misses.
+
 ## Latest Status - 2026-04-26 07:14 UTC
 
 The current branch cleanup slice is complete locally. TMEM ld/st planning now has one shared helper for choosing the planning memdesc type and one shared helper for support-query row-plan fallback, used by verifier, layout utilities, and NVIDIA GPU-to-LLVM lowering. The Gluon split-N register-layout helper was tightened to remove unused internal parameters and share one unsupported-layout diagnostic builder. `tmem_layouts.mlir` was refreshed to the current self-contained memdesc alloc-shape contract and to the current optimizer behavior for the 256-row subtile cases.

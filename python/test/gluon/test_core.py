@@ -3452,6 +3452,29 @@ def test_tmem_linear_roundtrip_splitn_shapes(name, layout, M, N, expected_offset
     _assert_exact_tcgen05_opcode_offset_immediates(compiled.asm["llir"], expected_offset_imms)
 
 
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("instr_variant", ["32x32b_splitn", "16x32bx2"])
+def test_tmem_descriptor_get_reg_layout_splitn_variants(instr_variant):
+    M = 64
+    N = 64
+    layout = _make_tmem_linear_layout_m64(N)
+    inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL[(1, )](
+        inp,
+        out,
+        layout,
+        M,
+        N,
+        instr_variant,
+        num_warps=4,
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    assert "tcgen05.st.sync.aligned.16x32bx2" in compiled.asm["ptx"]
+    assert "tcgen05.ld.sync.aligned.16x32bx2" in compiled.asm["ptx"]
+
+
 TMEM_LINEAR_M64_DIRECT_CASES = [
     ("linear_m64_16x64b_64x2", _make_tmem_linear_layout_m64(2), 64, 2, "16x64b", "16x64b.x1.b32"),
     ("linear_m64_16x64b_64x4", _make_tmem_linear_layout_m64(4), 64, 4, "16x64b", "16x64b.x2.b32"),

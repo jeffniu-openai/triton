@@ -929,6 +929,43 @@ LogicalResult MemDescReinterpretOp::verify() {
     return failure();
   if (failed(OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy)))
     return emitMemDescTypeMismatch(*this, expectedTy, dstTy);
+
+  auto isTMem = [](MemDescType ty) {
+    return ty.getMemorySpace() ==
+               triton::nvidia_gpu::TensorMemorySpaceAttr::get(ty.getContext()) &&
+           ty.getEncoding() &&
+           triton::nvidia_gpu::isTensorMemoryEncoding(ty.getEncoding());
+  };
+  bool srcTMem = isTMem(srcTy);
+  bool dstTMem = isTMem(dstTy);
+  if (srcTMem || dstTMem) {
+    if (!(srcTMem && dstTMem))
+      return emitOpError(
+          "tensor memory memdesc_reinterpret must stay in tensor memory");
+
+    bool physicalBitcast = getOperation()->hasAttr("tmem_physical_bitcast");
+    if (!physicalBitcast) {
+      if (failed(OpTrait::impl::verifyEquivalentMemDescType(srcTy, dstTy))) {
+        return emitOpError("tensor memory memdesc_reinterpret that changes "
+                           "shape, dtype, alloc shape, or layout must use the "
+                           "tmem_physical_bitcast contract");
+      }
+      return success();
+    }
+
+    std::string error;
+    auto physicalTy = triton::nvidia_gpu::inferTMemBitcastType(
+        getSrc(), dstTy.getShape(), dstTy.getElementType(), &error);
+    if (failed(physicalTy)) {
+      return emitOpError("invalid tensor memory physical bitcast: ")
+             << (error.empty() ? "failed to infer result type" : error);
+    }
+    if (failed(OpTrait::impl::verifyEquivalentMemDescType(*physicalTy, dstTy))) {
+      return emitOpError("tensor memory physical bitcast result type does not "
+                         "match inferred physical mapping; expected ")
+             << *physicalTy << " but got " << dstTy;
+    }
+  }
   return success();
 }
 

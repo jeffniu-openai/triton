@@ -1631,15 +1631,24 @@ tt.func @tc_gen5_commit(%arg0: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %pr
 // -----
 
 #tmem_f32 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 16, colStride = 1>
-#tmem_f16 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 16, colStride = 2>
+#tmem_f16 = #ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0], [128, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [1, 0]]}>
 
 module attributes {"ttg.num-warps" = 4 : i32} {
 
 // CHECK-LABEL: @reinterpret
 tt.func private @reinterpret(%arg0: !ttg.memdesc<128x32xf32, #tmem_f32, #ttng.tensor_memory>) -> !ttg.memdesc<256x32xf16, #tmem_f16, #ttng.tensor_memory> {
-  %0 = ttg.memdesc_reinterpret %arg0 : !ttg.memdesc<128x32xf32, #tmem_f32, #ttng.tensor_memory> -> !ttg.memdesc<256x32xf16, #tmem_f16, #ttng.tensor_memory>
+  %0 = ttg.memdesc_reinterpret %arg0 {tmem_physical_bitcast} : !ttg.memdesc<128x32xf32, #tmem_f32, #ttng.tensor_memory> -> !ttg.memdesc<256x32xf16, #tmem_f16, #ttng.tensor_memory>
   // CHECK-NOT: builtin.unrealized_conversion_cast
-  // CHECK: llvm.return %arg0 : !llvm.ptr<3>
+  // CHECK: %[[BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
+  // CHECK: %[[ROW_MASK:.+]] = llvm.mlir.constant(-65536 : i32) : i32
+  // CHECK: %[[ROW:.+]] = llvm.and %[[BASE]], %[[ROW_MASK]] : i32
+  // CHECK: %[[COL_MASK:.+]] = llvm.mlir.constant(65535 : i32) : i32
+  // CHECK: %[[COL:.+]] = llvm.and %[[BASE]], %[[COL_MASK]] : i32
+  // CHECK: %[[TWO:.+]] = llvm.mlir.constant(2 : i32) : i32
+  // CHECK: %[[COL2:.+]] = llvm.mul %[[COL]], %[[TWO]] : i32
+  // CHECK: %[[PTRI:.+]] = llvm.or disjoint %[[ROW]], %[[COL2]] : i32
+  // CHECK: %[[PTR:.+]] = llvm.inttoptr %[[PTRI]] : i32 to !llvm.ptr<3>
+  // CHECK: llvm.return %[[PTR]] : !llvm.ptr<3>
   tt.return %0 : !ttg.memdesc<256x32xf16, #tmem_f16, #ttng.tensor_memory>
 }
 

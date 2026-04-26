@@ -3861,8 +3861,7 @@ getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query) {
 }
 
 bool preserveTMemLdStSupportQueryBaseOffset(
-    MemDescType memTy, const TMemLdStQueryLayout &supportQuery) {
-  (void)memTy;
+    const TMemLdStQueryLayout &supportQuery) {
   return llvm::any_of(supportQuery.origin,
                       [](int32_t value) { return value != 0; });
 }
@@ -6716,7 +6715,7 @@ static void adjustTMemLdStInfoForQueryLayout(
     return;
   }
 
-  scalarInfo->baseOffset += info.baseOffset;
+  scalarInfo->baseOffset = info.baseOffset;
   scalarInfo->warpBaseOffset0 = info.warpBaseOffset0;
   scalarInfo->warpBaseOffset1 = info.warpBaseOffset1;
   scalarInfo->warpRow0 = info.warpRow0;
@@ -8884,10 +8883,12 @@ getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   if (!hasCanonicalWarpx2SharedSourceOffsetBases(shmemLl, kOffset))
     return std::nullopt;
 
-  uint64_t seedImm = 0;
-  seedImm |= 1ULL << 46;
-  seedImm |= 8ULL << 32;
-  return seedImm;
+  constexpr uint64_t kCanonicalWarpx2DirectSeedModeField = 1ULL << 46;
+  constexpr uint64_t kCanonicalWarpx2DirectSeedStrideField = 8ULL << 32;
+  constexpr uint64_t kCanonicalWarpx2DirectSeedDescriptorImm =
+      kCanonicalWarpx2DirectSeedModeField |
+      kCanonicalWarpx2DirectSeedStrideField;
+  return kCanonicalWarpx2DirectSeedDescriptorImm;
 }
 
 struct TMemCopyWarpx2TwoCTASourceColumnRequirement {

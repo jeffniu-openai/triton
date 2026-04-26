@@ -18,6 +18,7 @@
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
+#include "triton/Dialect/TritonGPU/IR/Traits.h"
 #include "triton/Dialect/TritonGPU/IR/Types.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
@@ -1104,6 +1105,16 @@ void init_gluon_ir(py::module &&m) {
                  error = "failed to infer tensor memory bitcast result type";
                throw py::value_error(error.c_str());
              }
+             if (failed(mlir::OpTrait::impl::verifyEquivalentMemDescType(
+                     *maybeInferredTy, resultTy))) {
+               std::string msg;
+               llvm::raw_string_ostream os(msg);
+               os << "explicit tensor memory bitcast layout is not physically "
+                     "equivalent to the inferred layout; expected "
+                  << *maybeInferredTy << " but got " << resultTy;
+               os.flush();
+               throw py::value_error(msg.c_str());
+             }
              auto op = createCheckedOrThrow(
                  self, "failed to create tensor memory bitcast", [&] {
                    return ttg::MemDescReinterpretOp::createChecked(
@@ -1810,11 +1821,8 @@ void init_gluon_ir(py::module &&m) {
 
         if (auto supportPlan =
                 ttng::getTypeLocalTMemLdStSupportQueryPlan(memDescTy)) {
-          auto rowPlan = supportPlan->rowPlan;
-          if (!rowPlan)
-            rowPlan = ttng::getTMemLdStRowPlanForType(memDescTy);
-          if (!rowPlan)
-            rowPlan = ttng::getTMemLdStRowPlan(supportPlan->query.layout);
+          auto rowPlan =
+              ttng::getTMemLdStRowPlanForSupportQuery(memDescTy, *supportPlan);
           py::object layout = tryQuery(memDescTy, &supportPlan->query, rowPlan);
           if (!layout.is_none())
             return layout;

@@ -36517,3 +36517,22 @@ Current status:
 
 Next concrete step:
 - If cleanup continues, prefer similarly low-risk API compression around existing TMEM planner utilities; avoid broad formatting or optimizer behavior changes unless they remove a proven stale branch-only path.
+
+## 2026-04-26 18:18 UTC: audit follow-up cleanup/correctness batch
+
+- Closed the stale Gluon split-N descriptor layout call: `tensor_memory_descriptor.get_reg_layout()` now calls `_finalize_splitn_tmem_reg_layout` with only the data the helper actually uses, and focused descriptor coverage proves both `32x32b_splitn` and `16x32bx2` still lower to the expected `16x32bx2` instructions.
+- Hardened TMEM physical bitcast semantics. Gluon explicit-layout bitcasts now reject layouts that are not physically equivalent to `inferTMemBitcastType`, and `MemDescReinterpretOp` verifier now requires `tmem_physical_bitcast` for TMEM reinterpret operations that change shape, dtype, alloc shape, or layout. Same-type TMEM reinterpret remains legal without the attr.
+- Fixed ld/st scalarized support-query base-offset composition by preserving the already-computed base offset instead of adding it a second time when falling back to scalar `32x32b.x1` query lowering.
+- Replaced raw direct-seed `tcgen05.copy` matrix-descriptor address masks with named helpers in `TensorMemoryUtils.h`, and used them from NVIDIA GPU-to-LLVM direct-source descriptor synthesis.
+- Removed duplicated Gluon row-plan fallback by routing support-query layout selection through `getTMemLdStRowPlanForSupportQuery`.
+- Refreshed lit expectations in `test/TritonNvidiaGPU/ops.mlir` for `memdesc_index` alloc-shape inference. The updated `128x512` and `128x128` alloc shapes reflect the current self-contained TMEM view model and keep legality tied to the result type.
+
+Validation:
+- `make -j8`
+- `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/canonicalize.mlir test/TritonNvidiaGPU/ops.mlir test/TritonGPU/nvidia-fpsan.mlir test/Analysis/test-buffer-region.mlir` -> `5 passed`
+- `pytest -q -s --tb=short python/test/gluon/test_frontend.py::{test_tensor_memory_bitcast_explicit_layout_ir,test_tensor_memory_bitcast_bad_explicit_layout_reports_clean_error,test_tensor_memory_bitcast_ir,test_tensor_memory_bitcast_size_mismatch_reports_clean_error}` -> `4 passed`
+- `pytest -q -s --tb=short python/test/gluon/test_core.py::test_tmem_descriptor_get_reg_layout_splitn_variants python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive` -> `3 passed`
+- `git diff --check`
+
+Known boundary:
+- `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir` still fails before the updated reinterpret case. The first hard error is the existing `store_packedb16_4x32xf16` sub-32-bit TMEM view-origin `tmem_store` legalization gap at line 1560; later FileCheck misses cascade after that abort and include stale checks outside this batch.

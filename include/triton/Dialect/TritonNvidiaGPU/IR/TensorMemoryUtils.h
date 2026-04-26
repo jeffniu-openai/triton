@@ -31,6 +31,33 @@ constexpr uint32_t getTMemWordColumn(uint32_t elementColumn,
   return elementColumn * elementBitWidth / 32;
 }
 
+// Shared-memory matrix descriptors split the B128 start address across the low
+// 14 bits and bits 51:49. TMEM copy direct-seed lowering patches only this
+// address field into an otherwise invariant canonical descriptor.
+constexpr uint64_t kTMemMatrixDescriptorStartAddrLowBits = 14;
+constexpr uint64_t kTMemMatrixDescriptorStartAddrLowMask =
+    (1ULL << kTMemMatrixDescriptorStartAddrLowBits) - 1;
+constexpr uint64_t kTMemMatrixDescriptorStartAddrHighShift = 49;
+constexpr uint64_t kTMemMatrixDescriptorStartAddrHighMask =
+    0x7ULL << kTMemMatrixDescriptorStartAddrHighShift;
+
+constexpr uint64_t encodeTMemMatrixDescriptorStartAddrB128(uint64_t addrB128) {
+  return (addrB128 & kTMemMatrixDescriptorStartAddrLowMask) |
+         (((addrB128 >> 3) & 0x7ULL)
+          << kTMemMatrixDescriptorStartAddrHighShift);
+}
+
+constexpr uint64_t clearTMemMatrixDescriptorStartAddr(uint64_t desc) {
+  return desc & ~(kTMemMatrixDescriptorStartAddrLowMask |
+                  kTMemMatrixDescriptorStartAddrHighMask);
+}
+
+constexpr uint64_t setTMemMatrixDescriptorStartAddrB128(uint64_t desc,
+                                                        uint64_t addrB128) {
+  return clearTMemMatrixDescriptorStartAddr(desc) |
+         encodeTMemMatrixDescriptorStartAddrB128(addrB128);
+}
+
 constexpr uint32_t getTMemElementsPerWord(uint32_t elementBitWidth) {
   assert(elementBitWidth > 0 && elementBitWidth <= 32 &&
          "TMEM element bitwidth must fit in one 32-bit word");
@@ -605,7 +632,7 @@ getTMemCopySourceConversion(const TMemPhysicalQuery &query,
 uint32_t getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query);
 
 bool preserveTMemLdStSupportQueryBaseOffset(
-    gpu::MemDescType memTy, const TMemLdStQueryLayout &supportQuery);
+    const TMemLdStQueryLayout &supportQuery);
 
 FailureOr<gpu::MemDescType>
 inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,

@@ -573,11 +573,6 @@ class tensor_memory_descriptor(base_value):
                 layout,
                 self.dtype,
                 list(self.shape),
-                list(self.type.alloc_shape),
-                self.layout,
-                num_warps,
-                requested_variant,
-                is_scales_layout,
             )
         if is_scales_layout:
             layout = _strip_zero_reg_bases_from_layout(layout)
