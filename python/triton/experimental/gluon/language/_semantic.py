@@ -28,8 +28,7 @@ def _clone_distributed_linear_layout(layout_obj):
     )
 
 
-def _finalize_splitn_tmem_reg_layout(layout_obj, element_ty, shape, alloc_shape, layout, num_warps, requested_variant,
-                                     is_scales_layout):
+def _finalize_splitn_tmem_reg_layout(layout_obj, element_ty, shape):
     layout_obj = _clone_distributed_linear_layout(layout_obj)
     N = shape[1]
     half_n_basis = [0, N // 2]
@@ -78,6 +77,19 @@ def _finalize_splitn_tmem_reg_layout(layout_obj, element_ty, shape, alloc_shape,
             f"shape={shape}",
         )
     return layout_obj
+
+
+def _unsupported_tmem_layout_message(requested_variant, shape, num_warps, is_scales_layout):
+    scales_hint = (
+        'for tensor-memory scales, try instr_variant="16x32bx2" for narrow tiles, '
+        if is_scales_layout else ''
+    )
+    return (
+        f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
+        f"{scales_hint}"
+        "reshape or permute so TMEM columns stay contiguous, or use a supported TMEM register layout "
+        "and insert convert_layout explicitly"
+    )
 
 
 def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, instr_variant):
@@ -135,16 +147,7 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
         if splitn_layout is None:
             return None
         try:
-            return _finalize_splitn_tmem_reg_layout(
-                splitn_layout,
-                element_ty,
-                shape,
-                alloc_shape,
-                layout,
-                num_warps,
-                "32x32b_splitn",
-                is_scales_layout,
-            )
+            return _finalize_splitn_tmem_reg_layout(splitn_layout, element_ty, shape)
         except ValueError:
             return None
 
@@ -182,24 +185,13 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
     splitn_auto_layout = try_splitn_auto_layout()
     if splitn_auto_layout is not None:
         layout_obj = splitn_auto_layout
-    _check(layout_obj is not None,
-           lambda: f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
-           + ("for tensor-memory scales, try instr_variant=\"16x32bx2\" for narrow tiles, "
-              if is_scales_layout else "")
-           + "reshape or permute so TMEM columns stay contiguous, or use a supported TMEM register layout "
-             "and insert convert_layout explicitly")
+    _check(
+        layout_obj is not None,
+        lambda: _unsupported_tmem_layout_message(requested_variant, shape, num_warps, is_scales_layout),
+    )
 
     if splitn and not is_scales_layout:
-        layout_obj = _finalize_splitn_tmem_reg_layout(
-            layout_obj,
-            element_ty,
-            shape,
-            alloc_shape,
-            layout,
-            num_warps,
-            requested_variant,
-            is_scales_layout,
-        )
+        layout_obj = _finalize_splitn_tmem_reg_layout(layout_obj, element_ty, shape)
     if is_scales_layout and has_zero_reg_basis(layout_obj):
         if requested_variant == "32x32b":
             try:
@@ -215,10 +207,7 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
                 pass
         _check(
             False,
-            lambda: f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
-            "for tensor-memory scales, try instr_variant=\"16x32bx2\" for narrow tiles, "
-            "reshape or permute so TMEM columns stay contiguous, or use a supported TMEM register layout "
-            "and insert convert_layout explicitly",
+            lambda: _unsupported_tmem_layout_message(requested_variant, shape, num_warps, is_scales_layout),
         )
     return layout_obj
 

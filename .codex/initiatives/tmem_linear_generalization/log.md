@@ -36506,3 +36506,14 @@ Current status:
   `test_op[False-triton-fp8-False-64-4096-32-4]` and
   `test_op[True-triton-fp8-False-64-4096-32-4]` passed `2` cases.
 - Detailed report: `example_tmem_backend_perf_exploration_20260425.md`.
+
+
+## 2026-04-26 07:14 UTC: branch cleanup/refactor slice
+
+- Centralized TMEM ld/st planning-type selection in `getTMemLdStPlanningType` and support-query row-plan fallback in `getTMemLdStRowPlanForSupportQuery`. Call sites in `Ops.cpp`, `TensorMemoryUtils.cpp`, and `TensorMemoryToLLVM.cpp` now share the same fallback order instead of open-coding it.
+- Reduced Gluon frontend helper churn by narrowing `_finalize_splitn_tmem_reg_layout` to the data it actually uses and sharing the unsupported TMEM-layout diagnostic text. Public `get_reg_layout`/descriptor API semantics did not change.
+- Refreshed `test/TritonNvidiaGPU/tmem_layouts.mlir`: leading-slice memdesc-index tests now include the inferred `128x64` allocation shape, and the 256-row subtile checks now match the current optimizer output instead of expecting a stale split rewrite.
+- Validation: `make -j8`; `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/invalid.mlir` -> `2 passed`; focused runtime-matrix selector for descriptor ld/st rows -> `44 passed, 1664 deselected`; focused split-N/scales selector -> `15 passed, 1693 deselected`; `python3 -m py_compile python/triton/experimental/gluon/language/_semantic.py`; `git diff --check`.
+
+Next concrete step:
+- If cleanup continues, prefer similarly low-risk API compression around existing TMEM planner utilities; avoid broad formatting or optimizer behavior changes unless they remove a proven stale branch-only path.

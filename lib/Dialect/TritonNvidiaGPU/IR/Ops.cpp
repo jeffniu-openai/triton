@@ -1483,11 +1483,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   std::string supportError;
   if (auto supportPlan = getTypeLocalTMemLdStSupportQueryPlan(memdesc,
                                                               &supportError)) {
-    auto rowPlan = supportPlan->rowPlan;
-    if (!rowPlan)
-      rowPlan = getTMemLdStRowPlanForType(memdesc);
-    if (!rowPlan)
-      rowPlan = getTMemLdStRowPlan(supportPlan->query.layout);
+    auto rowPlan = getTMemLdStRowPlanForSupportQuery(memdesc, *supportPlan);
     if (succeeded(computeTMemLdStEncodingInfo(type, memdesc,
                                               supportPlan->query, maxnreg,
                                               /*emitError=*/{}, rowPlan)))
@@ -1501,11 +1497,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
                                     [&](Diagnostic &diag) { diag.print(os); });
     if (auto supportPlan = getTypeLocalTMemLdStSupportQueryPlan(memdesc,
                                                                 &supportError)) {
-      auto rowPlan = supportPlan->rowPlan;
-      if (!rowPlan)
-        rowPlan = getTMemLdStRowPlanForType(memdesc);
-      if (!rowPlan)
-        rowPlan = getTMemLdStRowPlan(supportPlan->query.layout);
+      auto rowPlan = getTMemLdStRowPlanForSupportQuery(memdesc, *supportPlan);
       (void)computeTMemLdStEncodingInfo(
           type, memdesc, supportPlan->query, maxnreg,
           [&]() { return mlir::emitError(op->getLoc()); }, rowPlan);

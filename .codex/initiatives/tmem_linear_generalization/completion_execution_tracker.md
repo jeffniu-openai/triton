@@ -1,10 +1,19 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-25 01:58 UTC
+Last updated: 2026-04-26 07:14 UTC
 
-Active phase: Post-merge validation is red. The latest upstream-main merge builds and passes focused compiler/fpsan checks, but the broad TMEM runtime matrix has correctness, compiler-crash, unsupported-diagnostic, and expectation-drift buckets that must be triaged before performance recovery continues.
+Active phase: Cleanup/refactor after broad TMEM recovery and example performance work. The local cleanup slice is green and reduced ld/st planning duplication without behavior changes; no correctness recovery bucket is open from this slice.
 
-Latest follow-up: closed the `ld.red` exact-layout bucket. Root causes were red-load payload ordering differing by atom family, late Gluon red-result type canonicalization overriding the selected current layout, and stale opcode expectations that assumed canonical support-layout packet schedules. Runtime correctness now passes for tile-permuted, descriptor-chain, M64 split-N, and row/column-permuted red-load rows; focused `ld_red` validation is green as `264 passed, 1448 deselected` after `make -j8`. Broad validation remains red until MMAv5/scaled-MMAv5 and structural-fuzzer buckets are closed and the broad split is refreshed.
+Latest follow-up: branch-diff cleanup centralized TMEM ld/st planning-type selection and support-query row-plan fallback in `TensorMemoryUtils`, reused by verifier and lowering. Gluon split-N layout finalization now exposes only the data it uses and shares a single unsupported-layout diagnostic. `tmem_layouts.mlir` now matches the current self-contained alloc-shape contract and current optimizer behavior for 256-row subtile tests. Focused validation is green after `make -j8`.
+
+
+Current cleanup/refactor checklist:
+
+- [x] Reduce duplicated ld/st support-query row-plan fallback across verifier, layout utilities, and LLVM lowering.
+- [x] Centralize ld/st planning memdesc type selection for self-contained descriptor views and tensor-memory-scales storage views.
+- [x] Tighten Gluon split-N helper signatures and duplicated diagnostics without changing public API semantics.
+- [x] Refresh stale lit expectations that conflicted with current memdesc alloc-shape verification and current optimizer behavior.
+- [ ] Continue opportunistic low-risk deduplication in future slices only where it reduces branch-vs-main churn without reopening correctness surfaces.
 
 Current broad-recovery checklist:
 

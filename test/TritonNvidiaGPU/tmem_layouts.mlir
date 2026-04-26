@@ -175,13 +175,12 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.target = "cuda:100"} {
   // CHECK-LABEL: @subtile_tmem_load_256
-  // CHECK: %[[S0:.+]] = ttng.tmem_subslice %{{.+}} {N = 0 : i32}
-  // CHECK: %[[L0:.+]] = ttng.tmem_load %[[S0]] : !ttg.memdesc<256x64xf32
-  // CHECK: %[[C0:.+]] = ttg.convert_layout %[[L0]]
-  // CHECK: %[[S1:.+]] = ttng.tmem_subslice %{{.+}} {N = 64 : i32}
-  // CHECK: %[[L1:.+]] = ttng.tmem_load %[[S1]] : !ttg.memdesc<256x64xf32
-  // CHECK: %[[C1:.+]] = ttg.convert_layout %[[L1]]
-  // CHECK: tt.return %[[C0]], %[[C1]]
+  // CHECK: %[[LOAD:.+]] = ttng.tmem_load %arg0 : !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<256x128xf32, #linear>
+  // CHECK: %[[RESHAPE:.+]] = tt.reshape %[[LOAD]]
+  // CHECK: %[[TRANS:.+]] = tt.trans %[[RESHAPE]]
+  // CHECK: %[[CVT:.+]] = ttg.convert_layout %[[TRANS]]
+  // CHECK: tt.split %[[CVT]]
+  // CHECK: tt.return
   tt.func public @subtile_tmem_load_256(%arg0: !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable>) -> (tensor<256x64xf32, #blocked>, tensor<256x64xf32, #blocked>) {
     %0 = ttng.tmem_load %arg0 : !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<256x128xf32, #linear>
     %1 = tt.reshape %0 : tensor<256x128xf32, #linear> -> tensor<256x2x64xf32, #blocked2>
@@ -192,12 +191,11 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
   }
 
   // CHECK-LABEL: @subtile_tmem_store_256
-  // CHECK: %[[S0:.+]] = ttng.tmem_subslice %arg0 {N = 0 : i32}
-  // CHECK: %[[V0:.+]] = ttg.convert_layout %arg1
-  // CHECK: ttng.tmem_store %[[V0]], %[[S0]]
-  // CHECK: %[[S1:.+]] = ttng.tmem_subslice %arg0 {N = 64 : i32}
-  // CHECK: %[[V1:.+]] = ttg.convert_layout %arg2
-  // CHECK: ttng.tmem_store %[[V1]], %[[S1]]
+  // CHECK: %[[JOIN:.+]] = tt.join %arg1, %arg2
+  // CHECK: %[[TRANS:.+]] = tt.trans %[[JOIN]]
+  // CHECK: %[[RESHAPE:.+]] = tt.reshape %[[TRANS]]
+  // CHECK: %[[CVT:.+]] = ttg.convert_layout %[[RESHAPE]]
+  // CHECK: ttng.tmem_store %[[CVT]], %arg0
   tt.func public @subtile_tmem_store_256(
     %arg0: !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable>,
     %arg1: tensor<256x64xf32, #blocked>,
@@ -384,8 +382,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
   // CHECK-LABEL: @leading_slice_view_load
   // CHECK: %[[PART:.+]] = ttg.memdesc_subslice %{{.+}}[0, 0, 0] : !ttg.memdesc<2x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable> -> !ttg.memdesc<1x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable, 2x128x32>
-  // CHECK: %[[RESULT:.+]] = ttg.memdesc_index %[[PART]][%{{.+}}] : !ttg.memdesc<1x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable, 2x128x32> -> !ttg.memdesc<128x32xf32, #{{.+}}, #ttng.tensor_memory, mutable>
-  // CHECK: %[[LOAD:.+]] = ttng.tmem_load %[[RESULT]] : !ttg.memdesc<128x32xf32, #{{.+}}, #ttng.tensor_memory, mutable> -> tensor<128x32xf32, #linear>
+  // CHECK: %[[RESULT:.+]] = ttg.memdesc_index %[[PART]][%{{.+}}] : !ttg.memdesc<1x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable, 2x128x32> -> !ttg.memdesc<128x32xf32, #{{.+}}, #ttng.tensor_memory, mutable, 128x64>
+  // CHECK: %[[LOAD:.+]] = ttng.tmem_load %[[RESULT]] : !ttg.memdesc<128x32xf32, #{{.+}}, #ttng.tensor_memory, mutable, 128x64> -> tensor<128x32xf32, #linear>
   // CHECK: tt.return %[[LOAD]]
   tt.func @leading_slice_view_load(
       %arg0: !ttg.memdesc<2x128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable>)
@@ -397,15 +395,15 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %view1 = ttg.memdesc_trans %view0 {order = array<i32: 2, 0, 1, 3>} : !ttg.memdesc<128x2x2x16xf32, #tmem_linear2, #ttng.tensor_memory, mutable> -> !ttg.memdesc<2x128x2x16xf32, #tmem_linear3, #ttng.tensor_memory, mutable>
     %view2 = ttg.memdesc_reshape %view1 : !ttg.memdesc<2x128x2x16xf32, #tmem_linear3, #ttng.tensor_memory, mutable> -> !ttg.memdesc<2x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable>
     %part = ttg.memdesc_subslice %view2[0, 0, 0] : !ttg.memdesc<2x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable> -> !ttg.memdesc<1x128x32xf32, #tmem_linear5, #ttng.tensor_memory, mutable, 2x128x32>
-    %result = ttg.memdesc_index %part[%c0] : !ttg.memdesc<1x128x32xf32, #tmem_linear5, #ttng.tensor_memory, mutable, 2x128x32> -> !ttg.memdesc<128x32xf32, #tmem_linear6, #ttng.tensor_memory, mutable>
-    %load = ttng.tmem_load %result : !ttg.memdesc<128x32xf32, #tmem_linear6, #ttng.tensor_memory, mutable> -> tensor<128x32xf32, #linear1>
+    %result = ttg.memdesc_index %part[%c0] : !ttg.memdesc<1x128x32xf32, #tmem_linear5, #ttng.tensor_memory, mutable, 2x128x32> -> !ttg.memdesc<128x32xf32, #tmem_linear6, #ttng.tensor_memory, mutable, 128x64>
+    %load = ttng.tmem_load %result : !ttg.memdesc<128x32xf32, #tmem_linear6, #ttng.tensor_memory, mutable, 128x64> -> tensor<128x32xf32, #linear1>
     tt.return %load : tensor<128x32xf32, #linear1>
   }
 
   // CHECK-LABEL: @leading_slice_view_store
   // CHECK: %[[PART:.+]] = ttg.memdesc_subslice %{{.+}}[0, 0, 0] : !ttg.memdesc<2x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable> -> !ttg.memdesc<1x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable, 2x128x32>
-  // CHECK: %[[RESULT:.+]] = ttg.memdesc_index %[[PART]][%{{.+}}] : !ttg.memdesc<1x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable, 2x128x32> -> !ttg.memdesc<128x32xf32, #{{.+}}, #ttng.tensor_memory, mutable>
-  // CHECK: ttng.tmem_store %arg1, %[[RESULT]], %{{.+}} : tensor<128x32xf32, #linear> -> !ttg.memdesc<128x32xf32, #{{.+}}, #ttng.tensor_memory, mutable>
+  // CHECK: %[[RESULT:.+]] = ttg.memdesc_index %[[PART]][%{{.+}}] : !ttg.memdesc<1x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable, 2x128x32> -> !ttg.memdesc<128x32xf32, #{{.+}}, #ttng.tensor_memory, mutable, 128x64>
+  // CHECK: ttng.tmem_store %arg1, %[[RESULT]], %{{.+}} : tensor<128x32xf32, #linear> -> !ttg.memdesc<128x32xf32, #{{.+}}, #ttng.tensor_memory, mutable, 128x64>
   // CHECK: tt.return
   tt.func @leading_slice_view_store(
       %arg0: !ttg.memdesc<2x128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
@@ -418,8 +416,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %view1 = ttg.memdesc_trans %view0 {order = array<i32: 2, 0, 1, 3>} : !ttg.memdesc<128x2x2x16xf32, #tmem_linear2, #ttng.tensor_memory, mutable> -> !ttg.memdesc<2x128x2x16xf32, #tmem_linear3, #ttng.tensor_memory, mutable>
     %view2 = ttg.memdesc_reshape %view1 : !ttg.memdesc<2x128x2x16xf32, #tmem_linear3, #ttng.tensor_memory, mutable> -> !ttg.memdesc<2x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable>
     %part = ttg.memdesc_subslice %view2[0, 0, 0] : !ttg.memdesc<2x128x32xf32, #tmem_linear4, #ttng.tensor_memory, mutable> -> !ttg.memdesc<1x128x32xf32, #tmem_linear5, #ttng.tensor_memory, mutable, 2x128x32>
-    %result = ttg.memdesc_index %part[%c0] : !ttg.memdesc<1x128x32xf32, #tmem_linear5, #ttng.tensor_memory, mutable, 2x128x32> -> !ttg.memdesc<128x32xf32, #tmem_linear6, #ttng.tensor_memory, mutable>
-    ttng.tmem_store %arg1, %result, %true : tensor<128x32xf32, #linear1> -> !ttg.memdesc<128x32xf32, #tmem_linear6, #ttng.tensor_memory, mutable>
+    %result = ttg.memdesc_index %part[%c0] : !ttg.memdesc<1x128x32xf32, #tmem_linear5, #ttng.tensor_memory, mutable, 2x128x32> -> !ttg.memdesc<128x32xf32, #tmem_linear6, #ttng.tensor_memory, mutable, 128x64>
+    ttng.tmem_store %arg1, %result, %true : tensor<128x32xf32, #linear1> -> !ttg.memdesc<128x32xf32, #tmem_linear6, #ttng.tensor_memory, mutable, 128x64>
     tt.return
   }
 }

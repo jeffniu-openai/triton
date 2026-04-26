@@ -552,6 +552,7 @@ llvm::SmallVector<int64_t>
 getTMemMemDescIndexResultAllocShape(gpu::MemDescType srcTy);
 
 gpu::MemDescType getSelfContainedTMemSubviewPlanningType(gpu::MemDescType memTy);
+gpu::MemDescType getTMemLdStPlanningType(gpu::MemDescType memTy);
 
 bool disallowTMemLdStQueryTypeRescue(gpu::MemDescType memTy);
 
@@ -567,6 +568,10 @@ inferTypeLocalTMemLdStQueryLayout(gpu::MemDescType memTy,
 std::optional<TMemLdStSupportQueryPlan>
 getTypeLocalTMemLdStSupportQueryPlan(gpu::MemDescType memTy,
                                      std::string *error = nullptr);
+
+std::optional<TMemLdStRowPlan>
+getTMemLdStRowPlanForSupportQuery(gpu::MemDescType fallbackTy,
+                                  const TMemLdStSupportQueryPlan &supportPlan);
 
 bool isTwoCTAScalesDescriptorViewTMemLdStQuery(gpu::MemDescType memTy,
                                                const LinearLayout &queryLayout);

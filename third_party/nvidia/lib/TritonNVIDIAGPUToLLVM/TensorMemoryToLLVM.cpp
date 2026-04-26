@@ -954,19 +954,7 @@ lowerTMemLdStFromTypes(
     return failure();
   }
 
-  std::optional<MemDescType> typeLocalScalesStorageTy;
-  if (!isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
-    if (auto storageTy = getMMAv5ScaleStorageType(memTy))
-      typeLocalScalesStorageTy = *storageTy;
-  }
-
-  bool hasTypeLocalSubviewLayout = hasSelfContainedTMemSubviewLayout(memTy);
-  MemDescType planningMemTy = memTy;
-  if (typeLocalScalesStorageTy) {
-    planningMemTy = *typeLocalScalesStorageTy;
-  } else if (hasTypeLocalSubviewLayout) {
-    planningMemTy = getSelfContainedTMemSubviewPlanningType(memTy);
-  }
+  MemDescType planningMemTy = getTMemLdStPlanningType(memTy);
 
   auto queryTypes = triton::nvidia_gpu::getTypeLocalTMemLdStQueryTypes(memTy);
   if (queryTypes.empty()) {
@@ -1004,11 +992,8 @@ lowerTMemLdStFromTypes(
 
   auto trySupportQuery = [&](const TMemLdStSupportQueryPlan &supportPlan)
       -> FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>> {
-    auto supportRowPlan = supportPlan.rowPlan;
-    if (!supportRowPlan)
-      supportRowPlan = getTMemLdStRowPlanForType(planningMemTy);
-    if (!supportRowPlan)
-      supportRowPlan = getTMemLdStRowPlan(supportPlan.query.layout);
+    auto supportRowPlan =
+        getTMemLdStRowPlanForSupportQuery(planningMemTy, supportPlan);
 
     auto trySparseSubwordLowering = [&]()
         -> FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>> {

@@ -1,5 +1,11 @@
 # TMEM Linear Generalization Initiative
 
+## Latest Status - 2026-04-26 07:14 UTC
+
+The current branch cleanup slice is complete locally. TMEM ld/st planning now has one shared helper for choosing the planning memdesc type and one shared helper for support-query row-plan fallback, used by verifier, layout utilities, and NVIDIA GPU-to-LLVM lowering. The Gluon split-N register-layout helper was tightened to remove unused internal parameters and share one unsupported-layout diagnostic builder. `tmem_layouts.mlir` was refreshed to the current self-contained memdesc alloc-shape contract and to the current optimizer behavior for the 256-row subtile cases.
+
+Validation for this cleanup slice: `make -j8`; lit `test/TritonNvidiaGPU/tmem_layouts.mlir` and `test/TritonNvidiaGPU/invalid.mlir` passed `2/2`; focused runtime-matrix descriptor ld/st selector passed `44 passed, 1664 deselected`; focused split-N/scales frontend selector passed `15 passed, 1693 deselected`; `python3 -m py_compile python/triton/experimental/gluon/language/_semantic.py`; `git diff --check`.
+
 ## Latest Status - 2026-04-25 00:53 UTC
 
 The active post-merge `tcgen05.copy` recovery bucket is closed locally. Direct-root expanded-row copies use folded type-local physical queries, direct-root descriptor synthesis can use a source-support query without changing exact destination codegen, dense/tile-permuted destination offsets are exact-layout based, `warpx2::02_13` direct-seed offset is fixed, and stale subword destination-origin compile rejection is now covered by iisan runtime alignment tests. Full `cp_no_scales` validation is green: `301 passed, 4 skipped, 1407 deselected`. Remaining non-copy buckets are still tracked in `failure_recovery_plan_20260424.md` pending broad rerun.

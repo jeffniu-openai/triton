@@ -2929,11 +2929,7 @@ getCurrentTMemLdStRowPlanForRawQuery(MemDescType currentTy, Value,
 static std::optional<TMemLdStRowPlan>
 getCurrentTMemLdStRowPlanForSupportQuery(
     MemDescType currentTy, Value, const TMemLdStSupportQueryPlan &supportPlan) {
-  if (supportPlan.rowPlan)
-    return supportPlan.rowPlan;
-  if (auto rowPlan = getTMemLdStRowPlanForType(currentTy))
-    return rowPlan;
-  return getTMemLdStRowPlan(supportPlan.query.layout);
+  return getTMemLdStRowPlanForSupportQuery(currentTy, supportPlan);
 }
 
 FailureOr<TMemLdStEncodingInfo> computeTMemLoadReductionEncodingInfo(
@@ -3084,11 +3080,8 @@ getTMemLoadReductionLayoutForMemDescImpl(MemDescType memDescTy,
     if (!supportPlan)
       return std::nullopt;
 
-    auto supportRowPlan = supportPlan->rowPlan;
-    if (!supportRowPlan)
-      supportRowPlan = getTMemLdStRowPlanForType(memDescTy);
-    if (!supportRowPlan)
-      supportRowPlan = getTMemLdStRowPlan(supportPlan->query.layout);
+    auto supportRowPlan =
+        getTMemLdStRowPlanForSupportQuery(memDescTy, *supportPlan);
 
     SmallVector<gpu::DistributedEncodingTrait> layouts;
     auto addLinearLayout = [&](std::optional<LinearLayout> layout) {
@@ -3329,6 +3322,18 @@ gpu::MemDescType getSelfContainedTMemSubviewPlanningType(gpu::MemDescType memTy)
                                memTy.getMutableMemory(), memTy.getShape());
 }
 
+gpu::MemDescType getTMemLdStPlanningType(gpu::MemDescType memTy) {
+  if (!memTy)
+    return memTy;
+  if (!isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    if (auto storageTy = getMMAv5ScaleStorageType(memTy))
+      return *storageTy;
+  }
+  if (hasSelfContainedTMemSubviewLayout(memTy))
+    return getSelfContainedTMemSubviewPlanningType(memTy);
+  return memTy;
+}
+
 llvm::SmallVector<gpu::MemDescType>
 getTypeLocalTMemLdStQueryTypes(gpu::MemDescType memTy) {
   llvm::SmallVector<gpu::MemDescType> queryTypes;
@@ -3454,6 +3459,16 @@ getTypeLocalTMemLdStSupportQueryPlan(MemDescType memTy, std::string *error) {
   if (!rowPlan)
     rowPlan = getTMemLdStRowPlan(maybeQuery->layout);
   return TMemLdStSupportQueryPlan{*maybeQuery, rowPlan};
+}
+
+std::optional<TMemLdStRowPlan>
+getTMemLdStRowPlanForSupportQuery(MemDescType fallbackTy,
+                                  const TMemLdStSupportQueryPlan &supportPlan) {
+  if (supportPlan.rowPlan)
+    return supportPlan.rowPlan;
+  if (auto rowPlan = getTMemLdStRowPlanForType(fallbackTy))
+    return rowPlan;
+  return getTMemLdStRowPlan(supportPlan.query.layout);
 }
 
 static bool hasExactBasisSequence(
