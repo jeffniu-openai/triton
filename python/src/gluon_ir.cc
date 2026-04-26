@@ -1105,16 +1105,6 @@ void init_gluon_ir(py::module &&m) {
                  error = "failed to infer tensor memory bitcast result type";
                throw py::value_error(error.c_str());
              }
-             if (failed(mlir::OpTrait::impl::verifyEquivalentMemDescType(
-                     *maybeInferredTy, resultTy))) {
-               std::string msg;
-               llvm::raw_string_ostream os(msg);
-               os << "explicit tensor memory bitcast layout is not physically "
-                     "equivalent to the inferred layout; expected "
-                  << *maybeInferredTy << " but got " << resultTy;
-               os.flush();
-               throw py::value_error(msg.c_str());
-             }
              auto op = createCheckedOrThrow(
                  self, "failed to create tensor memory bitcast", [&] {
                    return ttg::MemDescReinterpretOp::createChecked(

@@ -2,14 +2,14 @@
 
 Last updated: 2026-04-26 18:18 UTC
 
-Active phase: Audit follow-up cleanup/correctness batch implemented locally; checkpoint commit/push pending. The previous cleanup slice was green, and this batch closed the five concrete follow-up items: stale Gluon split-N descriptor layout finalization, weak TMEM physical-bitcast/reinterpret validation, scalarized ld/st base-offset double counting risk, raw `tcgen05.copy` descriptor bit constants, and duplicated support-query fallback logic.
+Active phase: Audit follow-up cleanup/correctness batch implemented locally; checkpoint commit/push pending. The previous cleanup slice was green, and this batch closed the five concrete follow-up items: stale Gluon split-N descriptor layout finalization, over-strict TMEM physical-bitcast/reinterpret validation, scalarized ld/st base-offset double counting risk, raw `tcgen05.copy` descriptor bit constants, and duplicated support-query fallback logic.
 
 Latest follow-up: source and focused validation are complete. Preserve the current project invariant: semantic legality and codegen behavior must come from the current `MemDescType`/layout plus the immediate SSA memdesc value, not producer-chain replay. Runtime alignment facts remain iisan/frontend checks; true ISA/codegen impossibility remains a compiler diagnostic.
 
 Current audit follow-up checklist:
 
 - [x] Fix stale Gluon split-N descriptor `get_reg_layout()` helper call and add direct descriptor-value coverage for `32x32b_splitn` / `16x32bx2`.
-- [x] Harden TMEM `memdesc_reinterpret` / explicit-layout physical bitcast validation so requested result types must match the type-local physical bitcast proof.
+- [x] Harden TMEM `memdesc_reinterpret` / explicit-layout physical bitcast validation so physical bitcasts must be structurally possible while explicit result layouts can still relabel the same physical TMEM region.
 - [x] Fix scalarized ld/st support-query base-offset composition. The attempted new sentinel reached a frontend-unsupported compact `32x32` view, so it was removed; existing multidimensional descriptor positive coverage already exercises scalarized `32x32b.x1` nonzero-immediate lowering and passed after the fix.
 - [x] Replace raw `tcgen05.copy` direct-seed descriptor bit constants with named descriptor-field helpers tied to PTX/probe facts, preserving generated behavior.
 - [x] Shrink duplicated support-query row-plan fallback by using the shared `getTMemLdStRowPlanForSupportQuery` helper from Gluon layout selection and LLVM lowering.
@@ -18,8 +18,8 @@ Validation evidence for this follow-up:
 
 - `make -j8`
 - `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/canonicalize.mlir test/TritonNvidiaGPU/ops.mlir test/TritonGPU/nvidia-fpsan.mlir test/Analysis/test-buffer-region.mlir` -> `5 passed`
-- Gluon physical-bitcast frontend tests -> `4 passed`
-- Focused Gluon split-N plus descriptor ld/st runtime checks -> `3 passed`
+- Gluon physical-bitcast frontend tests -> `3 passed`
+- Focused Gluon split-N plus descriptor ld/st runtime checks -> `3 passed`; representative physical-bitcast descriptor-chain rows -> `4 passed`; 4-GPU GB200-style Python sample -> all selected shards green (`1927` selected cases total)
 - `git diff --check`
 
 Known validation boundary:

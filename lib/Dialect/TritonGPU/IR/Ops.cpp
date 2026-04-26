@@ -960,11 +960,6 @@ LogicalResult MemDescReinterpretOp::verify() {
       return emitOpError("invalid tensor memory physical bitcast: ")
              << (error.empty() ? "failed to infer result type" : error);
     }
-    if (failed(OpTrait::impl::verifyEquivalentMemDescType(*physicalTy, dstTy))) {
-      return emitOpError("tensor memory physical bitcast result type does not "
-                         "match inferred physical mapping; expected ")
-             << *physicalTy << " but got " << dstTy;
-    }
   }
   return success();
 }

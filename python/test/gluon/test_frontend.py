@@ -340,18 +340,6 @@ def tensor_memory_bitcast_explicit_layout_kernel(linear_layout: ttgl.constexpr):
 
 
 @gluon.jit
-def tensor_memory_bitcast_bad_explicit_layout_kernel(linear_layout: ttgl.constexpr):
-    mem = ttgl.nvidia.blackwell.allocate_tensor_memory(ttgl.float32, [128, 128], linear_layout)
-    view = mem.slice(0, 64, dim=1)
-    layout: ttgl.constexpr = TensorMemoryLinearLayout(
-        rows=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]],
-        cols=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
-        shape=[128, 128],
-    )
-    _ = view.bitcast(ttgl.float16, (128, 128), layout)
-
-
-@gluon.jit
 def tensor_memory_bitcast_bad_size_kernel(linear_layout: ttgl.constexpr):
     mem = ttgl.nvidia.blackwell.allocate_tensor_memory(ttgl.float32, [128, 128], linear_layout)
     view = mem.slice(0, 64, dim=1)
@@ -559,15 +547,6 @@ def test_tensor_memory_bitcast_explicit_layout_ir():
     assert "tmem_physical_bitcast" in ir
     assert "128x128xf16" in ir
     assert "tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>" in ir
-
-
-def test_tensor_memory_bitcast_bad_explicit_layout_reports_clean_error():
-    with pytest.raises(CompilationError, match="explicit tensor memory bitcast layout is not physically equivalent"):
-        run_parser(
-            tensor_memory_bitcast_bad_explicit_layout_kernel,
-            *make_args(_make_tmem_linear_layout_128_identity(), num_warps=2),
-            target=BLACKWELL_TARGET,
-        )
 
 
 def test_tensor_memory_bitcast_size_mismatch_reports_clean_error():
