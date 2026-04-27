@@ -254,6 +254,7 @@ class PartitionArgs:
     X_GATHER_MULTICAST: gl.constexpr
     W_SCALE_MULTICAST: gl.constexpr
     FORCE_EPILOGUE_WARPS_N1: gl.constexpr
+    INLINE_MMA_RELEASE: gl.constexpr
 
     @gluon.jit
     def apply_block_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
@@ -384,6 +385,7 @@ def mma_partition(p: PartitionArgs):
             x_buf = p.x_bufs.index(x_idx)
             mbarrier.wait(x_ready_bar, x_phase)
 
+            release_mbarriers: gl.constexpr = (x_empty_bar, w_empty_bar) if p.INLINE_MMA_RELEASE else ()
             blackwell.tcgen05_mma_scaled(
                 w_buf.reshape((p.BLOCK_N, p.BLOCK_K // 2)),
                 x_buf.permute((1, 0)),
@@ -393,9 +395,11 @@ def mma_partition(p: PartitionArgs):
                 a_type="e2m1",
                 b_type="e4m3",
                 use_acc=use_acc,
+                mbarriers=release_mbarriers,
             )
-            blackwell.tcgen05_commit(x_empty_bar)
-            blackwell.tcgen05_commit(w_empty_bar)
+            if not p.INLINE_MMA_RELEASE:
+                blackwell.tcgen05_commit(x_empty_bar)
+                blackwell.tcgen05_commit(w_empty_bar)
 
             x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
             w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
@@ -624,6 +628,7 @@ def ws_matmul_kernel(
     X_GATHER_MULTICAST: gl.constexpr,
     W_SCALE_MULTICAST: gl.constexpr,
     FORCE_EPILOGUE_WARPS_N1: gl.constexpr,
+    INLINE_MMA_RELEASE: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
     MXFP_BLOCK_SIZE: gl.constexpr,
@@ -747,6 +752,7 @@ def ws_matmul_kernel(
         X_GATHER_MULTICAST=X_GATHER_MULTICAST,
         W_SCALE_MULTICAST=W_SCALE_MULTICAST,
         FORCE_EPILOGUE_WARPS_N1=FORCE_EPILOGUE_WARPS_N1,
+        INLINE_MMA_RELEASE=INLINE_MMA_RELEASE,
     )
 
     gl.warp_specialize(
@@ -845,6 +851,7 @@ class KernelConfig:
     X_GATHER_MULTICAST: bool = True
     W_SCALE_MULTICAST: bool = True
     FORCE_EPILOGUE_WARPS_N1: bool = False
+    INLINE_MMA_RELEASE: bool = False
 
     LOAD_ACTIVATION_REGS: int = 112
     LOAD_WEIGHT_REGS: int = 48
@@ -904,7 +911,42 @@ def _select_base_config(slice_size: int) -> KernelConfig:
     )
 
 
+TUNED_SPUD_D64_OVERRIDES = {
+    16: dict(BAND_N=4, X_NUM_BUFS=7),
+    32: dict(BAND_N=4, X_NUM_BUFS=7),
+    48: dict(BAND_N=4, INLINE_MMA_RELEASE=True),
+    64: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    80: dict(BAND_N=8, INLINE_MMA_RELEASE=True),
+    96: dict(BAND_N=8, INLINE_MMA_RELEASE=True),
+    112: dict(BAND_N=8, INLINE_MMA_RELEASE=True),
+    128: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    144: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    160: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    176: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    192: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    208: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    224: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    240: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    256: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    320: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    384: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    448: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    512: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    576: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    640: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    704: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    768: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    832: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    896: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    960: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    1024: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    1040: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+}
+
+
 def select_kernel_config(slice_size: int) -> KernelConfig:
+    original_slice_size = slice_size
+    slice_size = max(slice_size, 80)
     p = _select_base_config(slice_size)
 
     if p.BLOCK_M == 32 and p.BLOCK_N == 128 and slice_size in (16, 20, 24, 32):
@@ -948,6 +990,10 @@ def select_kernel_config(slice_size: int) -> KernelConfig:
         )
     elif p.BLOCK_M == 128 and p.BLOCK_N == 256 and slice_size >= 80:
         p = replace(p, BLOCK_N=512, NUM_CTAS=2, W_NUM_BUFS=5)
+
+    tuned_overrides = TUNED_SPUD_D64_OVERRIDES.get(original_slice_size)
+    if tuned_overrides is not None:
+        return replace(p, **tuned_overrides)
 
     if p.BLOCK_M == 32 and p.BLOCK_N == 256 and p.NUM_CTAS == 2 and slice_size <= 32:
         return replace(p, BAND_N=32)
@@ -1088,6 +1134,7 @@ def matmul(
         X_GATHER_MULTICAST=p.X_GATHER_MULTICAST,
         W_SCALE_MULTICAST=p.W_SCALE_MULTICAST,
         FORCE_EPILOGUE_WARPS_N1=p.FORCE_EPILOGUE_WARPS_N1,
+        INLINE_MMA_RELEASE=p.INLINE_MMA_RELEASE,
         #
         SCALE_SIZE_OUTER=p.SCALE_SIZE_OUTER,
         SCALE_SIZE_INNER=p.SCALE_SIZE_INNER,
