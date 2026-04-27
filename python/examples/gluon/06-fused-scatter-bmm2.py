@@ -229,6 +229,24 @@ def gluon_threadfence_system():
     )
 
 
+@gluon.jit
+def gluon_set_locks(p_locks, n_shards: gl.constexpr):
+    my_lock = gl.load(p_locks).cast(gl.pointer_type(gl.uint32), bitcast=True)
+    my_grid_ptr = my_lock + 2
+
+    gl.barrier()
+    grid_done = gl.atomic_add(my_grid_ptr, val=1, sem="relaxed", scope="gpu")
+
+    if grid_done + 1 == gl.num_programs(0) * gl.num_programs(1) * gl.num_programs(2):
+        gluon_threadfence_system()
+
+        for shard_id in gl.static_range(1, n_shards):
+            peer_begin_ptr = gl.load(p_locks + shard_id).cast(gl.pointer_type(gl.uint32), bitcast=True)
+            gl.atomic_add(peer_begin_ptr, val=1, sem="release", scope="sys")
+
+        gl.store(my_grid_ptr, 0, cache_modifier=".cg")
+
+
 @aggregate
 class PartitionArgs:
     x_desc: tma.tensor_descriptor
@@ -241,7 +259,6 @@ class PartitionArgs:
 
     out_ptr: gl.tensor
     out_handles: gl.tensor
-    lock_handles: gl.tensor
     bias_ptr: gl.tensor
     bias_stride: gl.tensor
     scatter_indx_ptr: gl.tensor
@@ -286,10 +303,6 @@ class PartitionArgs:
     MXFP_BLOCK_SIZE: gl.constexpr
     PACKED_BLOCK_K: gl.constexpr
 
-    RANK: gl.constexpr
-    N_PEERS: gl.constexpr
-    DP_BATCH_SIZE: gl.constexpr
-    TOPK: gl.constexpr
     REDUCE_RANK: gl.constexpr
     N_REDUCE_SHARDS: gl.constexpr
     FLEXPOINT_SATURATE_INF: gl.constexpr
@@ -469,6 +482,7 @@ def get_store_layout(p: PartitionArgs):
 @gluon.jit
 def epilogue_direct_store(
     p: PartitionArgs,
+    map_dst_coord,
     out_packed,
     out_recip,
     off_m,
@@ -484,6 +498,7 @@ def epilogue_direct_store(
         packed_fp8 = gl.convert_layout(pack_fp8_out_fragment(out_packed_subtiles[frag_idx], out_recip), store_layout)
         store_packed_out(
             p,
+            map_dst_coord,
             packed_fp8,
             off_m + frag_idx * frag_rows,
             out_off_n,
@@ -527,6 +542,7 @@ def load_bias(
 @gluon.jit
 def store_packed_out(
     p: PartitionArgs,
+    map_dst_coord,
     packed_out,
     off_m,
     out_off_n,
@@ -536,7 +552,8 @@ def store_packed_out(
     values = pack_fp8x4(packed_out)
     layout: gl.constexpr = values.type.layout
     offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
-    offs_n = out_off_n // 4 + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
+    offs_n_i32 = out_off_n // 4 + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
+    offs_n = out_off_n + 4 * gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
 
     scatter_idx = gl.load(
         p.scatter_indx_ptr + slice_offset + offs_m,
@@ -544,61 +561,37 @@ def store_packed_out(
         other=-1,
     )
     mask_m = (offs_m < shape_m) & (scatter_idx != -1)
-    shard_rows: gl.constexpr = p.DP_BATCH_SIZE * p.TOPK
-    if shard_rows == 512:
-        src_shard_idx = scatter_idx >> 9
-        dst_m = scatter_idx & 511
-    elif shard_rows == 1024:
-        src_shard_idx = scatter_idx >> 10
-        dst_m = scatter_idx & 1023
-    elif shard_rows == 2048:
-        src_shard_idx = scatter_idx >> 11
-        dst_m = scatter_idx & 2047
-    elif shard_rows == 4096:
-        src_shard_idx = scatter_idx >> 12
-        dst_m = scatter_idx & 4095
-    elif shard_rows == 8192:
-        src_shard_idx = scatter_idx >> 13
-        dst_m = scatter_idx & 8191
-    elif shard_rows == 16384:
-        src_shard_idx = scatter_idx >> 14
-        dst_m = scatter_idx & 16383
-    elif shard_rows == 32768:
-        src_shard_idx = scatter_idx >> 15
-        dst_m = scatter_idx & 32767
-    else:
-        src_shard_idx = scatter_idx // shard_rows
-        dst_m = scatter_idx - src_shard_idx * shard_rows
-    if p.RANK == 0:
-        dst_shard_idx = src_shard_idx
-    elif p.N_PEERS == 8:
-        dst_shard_idx = (src_shard_idx - p.RANK) & 7
-    elif p.N_PEERS == 4:
-        dst_shard_idx = (src_shard_idx - p.RANK) & 3
-    elif p.N_PEERS == 2:
-        dst_shard_idx = (src_shard_idx - p.RANK) & 1
-    else:
-        dst_shard_idx = (src_shard_idx - p.RANK) % p.N_PEERS
-        dst_shard_idx += gl.where(dst_shard_idx < 0, p.N_PEERS, 0)
+    dst_shard_idx, dst_m, dst_n = map_dst_coord.fn(
+        None,
+        scatter_idx,
+        out_off_n,
+        offs_n,
+        *map_dst_coord.captured,
+    )
 
     if p.out_desc.shape[2] % p.BLOCK_N == 0:
-        mask_n = offs_n >= 0
+        mask_n = offs_n_i32 >= 0
     else:
-        mask_n = offs_n < (p.out_desc.shape[2] + 3) // 4
+        mask_n = offs_n_i32 < (p.out_desc.shape[2] + 3) // 4
     mask = gl.expand_dims(mask_m, 1) & gl.expand_dims(mask_n, 0)
 
-    peer_handles = gl.load(p.out_handles + dst_shard_idx, mask=mask_m, other=0)
-    ptrs = gl.expand_dims(peer_handles.cast(gl.pointer_type(gl.int32), bitcast=True), 1)
-    row_stride_i32: gl.constexpr = p.out_desc.shape[2] * p.N_REDUCE_SHARDS // 4
-    reduce_offset_i32: gl.constexpr = p.REDUCE_RANK * p.out_desc.shape[2] // 4
-    ptrs = ptrs + gl.expand_dims(dst_m, 1) * row_stride_i32
-    ptrs = ptrs + reduce_offset_i32
-    ptrs = ptrs + gl.expand_dims(offs_n, 0)
-    gl.store(ptrs, values, mask=mask)
+    for i in gl.static_range(p.N_REDUCE_SHARDS):
+        if dst_shard_idx is not None:
+            peer = dst_shard_idx * p.N_REDUCE_SHARDS + (p.REDUCE_RANK + i) % p.N_REDUCE_SHARDS
+        else:
+            peer = (p.REDUCE_RANK + i) % p.N_REDUCE_SHARDS
+        peer_handles = gl.load(p.out_handles + peer, mask=gl.expand_dims(mask_m, 1), other=0)
+        ptrs = peer_handles.cast(gl.pointer_type(gl.int32), bitcast=True)
+        row_stride_i32: gl.constexpr = p.out_desc.shape[2] * p.N_REDUCE_SHARDS // 4
+        reduce_offset_i32: gl.constexpr = ((p.REDUCE_RANK + i) % p.N_REDUCE_SHARDS) * p.out_desc.shape[2] // 4
+        ptrs = ptrs + gl.expand_dims(dst_m, 1) * row_stride_i32
+        ptrs = ptrs + reduce_offset_i32
+        ptrs = ptrs + gl.expand_dims(dst_n // 4, 0)
+        gl.store(ptrs, values, mask=mask)
 
 
 @gluon.jit
-def epilogue_partition(p: PartitionArgs):
+def epilogue_partition(p: PartitionArgs, map_dst_coord):
     idx = 0
     phase = 0
     x_scale = 1.0 if p.x_scale_ptr is None else gl.load(p.x_scale_ptr)
@@ -637,6 +630,7 @@ def epilogue_partition(p: PartitionArgs):
 
         epilogue_direct_store(
             p,
+            map_dst_coord,
             out,
             out_recip,
             off_m,
@@ -655,7 +649,8 @@ def ws_matmul_kernel(
     out_desc: tma.tensor_descriptor,
     out_ptr: gl.tensor,
     out_handles: gl.tensor,
-    lock_handles: gl.tensor,
+    map_dst_coord,
+    all_writes_issued,
     #
     bias_ptr: gl.tensor,
     bias_stride: gl.tensor,
@@ -676,10 +671,6 @@ def ws_matmul_kernel(
     K: gl.constexpr,
     NUM_SLICES: gl.constexpr,
     #
-    RANK: gl.constexpr,
-    N_PEERS: gl.constexpr,
-    DP_BATCH_SIZE: gl.constexpr,
-    TOPK: gl.constexpr,
     REDUCE_RANK: gl.constexpr,
     N_REDUCE_SHARDS: gl.constexpr,
     FLEXPOINT_SATURATE_INF: gl.constexpr,
@@ -772,7 +763,6 @@ def ws_matmul_kernel(
         #
         out_ptr=out_ptr,
         out_handles=out_handles,
-        lock_handles=lock_handles,
         bias_ptr=bias_ptr,
         bias_stride=bias_stride,
         scatter_indx_ptr=scatter_indx_ptr,
@@ -817,10 +807,6 @@ def ws_matmul_kernel(
         MXFP_BLOCK_SIZE=MXFP_BLOCK_SIZE,
         PACKED_BLOCK_K=BLOCK_K // 2,
         #
-        RANK=RANK,
-        N_PEERS=N_PEERS,
-        DP_BATCH_SIZE=DP_BATCH_SIZE,
-        TOPK=TOPK,
         REDUCE_RANK=REDUCE_RANK,
         N_REDUCE_SHARDS=N_REDUCE_SHARDS,
         FLEXPOINT_SATURATE_INF=FLEXPOINT_SATURATE_INF,
@@ -834,7 +820,7 @@ def ws_matmul_kernel(
 
     gl.warp_specialize(
         [
-            (epilogue_partition, (p,)),
+            (epilogue_partition, (p, map_dst_coord)),
             (load_activations, (p,)),
             (load_weights, (p,)),
             (mma_partition, (p,)),
@@ -843,18 +829,7 @@ def ws_matmul_kernel(
         [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
     )
 
-    grid_done = gl.atomic_add(
-        gl.load(lock_handles).cast(gl.pointer_type(gl.int32), bitcast=True) + 2,
-        1,
-        sem="relaxed",
-        scope="gpu",
-    )
-    if grid_done + 1 == NUM_SMS:
-        gluon_threadfence_system()
-        for shard_id in gl.static_range(1, N_PEERS):
-            peer_lock = gl.load(lock_handles + shard_id).cast(gl.pointer_type(gl.int32), bitcast=True)
-            gl.atomic_add(peer_lock, 1, sem="release", scope="sys")
-        gl.store(gl.load(lock_handles).cast(gl.pointer_type(gl.int32), bitcast=True) + 2, 0)
+    all_writes_issued.fn(*all_writes_issued.captured)
 
     invalidate_barrier_ring(x_empty_bars, x_num_bufs)
     invalidate_barrier_ring(x_ready_bars, x_num_bufs)
@@ -1081,9 +1056,6 @@ def matmul(
     )
     out_desc = make_tensor_descriptor(c, (1, config.BLOCK_M, min(config.BLOCK_N, 128)))
 
-    rank, n_peers, dp_batch_size, topk = fused_comm.map_dst_coord.captured
-    lock_handles = fused_comm.all_writes_issued.captured[0]
-
     ws_matmul_kernel[grid](
         x_desc=x_desc,
         w_desc=w_desc,
@@ -1091,7 +1063,8 @@ def matmul(
         out_desc=out_desc,
         out_ptr=c,
         out_handles=fused_comm.out_handles,
-        lock_handles=lock_handles,
+        map_dst_coord=fused_comm.map_dst_coord,
+        all_writes_issued=Closure(gluon_set_locks, fused_comm.all_writes_issued.captured),
         #
         bias_ptr=bias,
         bias_stride=bias.stride(0),
@@ -1112,10 +1085,6 @@ def matmul(
         K=k,
         NUM_SLICES=a_ragged_metadata.n_slices,
         #
-        RANK=rank,
-        N_PEERS=n_peers,
-        DP_BATCH_SIZE=dp_batch_size,
-        TOPK=topk,
         REDUCE_RANK=fused_comm.reduce_rank,
         N_REDUCE_SHARDS=fused_comm.n_reduce_shards,
         FLEXPOINT_SATURATE_INF=precision_config.flexpoint_saturate_inf,
