@@ -218,7 +218,7 @@ def split_m_subtiles_float2(values, subtile_factor: gl.constexpr):
 
 
 @gluon.jit
-def threadfence_system():
+def gluon_threadfence_system():
     return gl.inline_asm_elementwise(
         "mov.u32 $0, 0x0; fence.sc.sys;",
         "=r",
@@ -850,7 +850,7 @@ def ws_matmul_kernel(
         scope="gpu",
     )
     if grid_done + 1 == NUM_SMS:
-        threadfence_system()
+        gluon_threadfence_system()
         for shard_id in gl.static_range(1, N_PEERS):
             peer_lock = gl.load(lock_handles + shard_id).cast(gl.pointer_type(gl.int32), bitcast=True)
             gl.atomic_add(peer_lock, 1, sem="release", scope="sys")
@@ -1316,7 +1316,7 @@ def init_routing_data(
 
 
 @triton.jit
-def _threadfence_system():
+def threadfence_system():
     tl.inline_asm_elementwise(
         "mov.u32 $0, 0x0; fence.sc.sys;",
         args=(),
@@ -1328,16 +1328,23 @@ def _threadfence_system():
 
 
 @triton.jit
-def _mark_all_writes_issued(lock_handles, n_shards: tl.constexpr):
-    lock = tl.load(lock_handles).item().to(tl.pointer_type(tl.uint32))
-    grid_done = tl.atomic_add(lock + 2, val=1, sem="relaxed", scope="gpu")
+def set_locks(p_locks, n_shards: tl.constexpr):
+    my_lock = tl.load(p_locks).item().to(tl.pointer_type(tl.uint32))
+    my_grid_ptr = my_lock + 2
+
+    tl.debug_barrier()
+    grid_done = tl.atomic_add(my_grid_ptr, val=1, sem="relaxed", scope="gpu")
 
     if grid_done + 1 == tl.num_programs(0) * tl.num_programs(1) * tl.num_programs(2):
-        _threadfence_system()
+        threadfence_system()
+
         shard_id = tl.arange(0, n_shards)
-        peer_locks = tl.load(lock_handles + shard_id).to(tl.pointer_type(tl.uint32))
-        tl.atomic_add(peer_locks, val=1, mask=shard_id != 0, sem="release", scope="sys")
-        tl.store(lock + 2, 0, cache_modifier=".cg")
+        peers = tl.load(p_locks + shard_id).to(tl.pointer_type(tl.uint32))
+
+        peer_begin_ptr = peers
+        tl.atomic_add(peer_begin_ptr, val=1, mask=shard_id != 0, sem="release", scope="sys")
+
+        tl.store(my_grid_ptr, 0, cache_modifier=".cg")
 
 
 @triton.jit
@@ -1352,7 +1359,10 @@ def _map_dst_coord(
     topk: tl.constexpr,
 ):
     dst_shard_idx = offs_m // (dp_batch_size * topk)
+    # Handles are rotated such that bfs.matmul_comms_args.handles[0] is the local rank.
+    # Apply the inverse rotation.
     dst_shard_idx = (dst_shard_idx - rank) % n_peers
+    # wrap negative indices to positive indices
     dst_shard_idx += tl.where(dst_shard_idx < 0, n_peers, 0)
     return dst_shard_idx[:, None], offs_m % (dp_batch_size * topk), offs_n
 
@@ -1411,7 +1421,7 @@ def make_fused_comm(
             ),
         ),
         all_writes_issued=Closure(
-            _mark_all_writes_issued,
+            set_locks,
             (lock_handles, tl.constexpr(config.num_expert_shards)),
         ),
         reduce_rank=0,
