@@ -376,6 +376,32 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32} {
 }
 
 // -----
+#barrier = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
+#shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
+#smem = #ttg.shared_memory
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+  tt.func @tcgen5_commit_too_many_descs(
+      %bar: !ttg.memdesc<1xi64, #barrier, #smem, mutable>,
+      %desc0: !ttg.memdesc<128x128xf16, #shared, #smem>,
+      %desc1: !ttg.memdesc<128x128xf16, #shared, #smem>,
+      %desc2: !ttg.memdesc<128x128xf16, #shared, #smem>,
+      %desc3: !ttg.memdesc<128x128xf16, #shared, #smem>,
+      %desc4: !ttg.memdesc<128x128xf16, #shared, #smem>,
+      %pred: i1) {
+    // expected-error @below {{expected 0 to 4 descriptors, got 5}}
+    ttng.tc_gen5_commit %bar, %pred descs %desc0, %desc1, %desc2, %desc3, %desc4 :
+      !ttg.memdesc<1xi64, #barrier, #smem, mutable>,
+      !ttg.memdesc<128x128xf16, #shared, #smem>,
+      !ttg.memdesc<128x128xf16, #shared, #smem>,
+      !ttg.memdesc<128x128xf16, #shared, #smem>,
+      !ttg.memdesc<128x128xf16, #shared, #smem>,
+      !ttg.memdesc<128x128xf16, #shared, #smem>
+    tt.return
+  }
+}
+
+// -----
+
 
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 8}>
 #sharedT = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 8}>

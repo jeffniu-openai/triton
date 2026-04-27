@@ -453,7 +453,7 @@ tt.func public @tmem_copy_2d_slice(%src: !ttg.memdesc<128x32xi8, #shared2, #ttg.
 
 #blocked = #ttg.blocked<{sizePerThread=[1, 4], threadsPerWarp=[32, 1], warpsPerCTA=[4, 1], order=[0, 1], CGALayout = [[1, 0]]}>
 #shared = #ttg.shared_linear<{offset = [[0, 1], [0, 2], [32, 0], [64, 0], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 4], [0, 8], [0, 16]], block = [[0, 0]]}, alignment = 16>
-#shared1 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0], CGALayout = [[0]]}>
+#shared1 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0], CGALayout = [[1]]}>
 #shared2 = #ttg.shared_linear<{offset = [[0, 1], [0, 2], [32, 0], [64, 0], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 4], [0, 8], [0, 16], [128, 0], [256, 0]], block = [[0, 0]]}, alignment = 16>
 #shared3 = #ttg.shared_linear<{offset = [[0, 1], [0, 2], [32, 0], [64, 0], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [128, 0]], block = [[0, 0]]}, alignment = 128>
 #tmem_scales = #ttng.tensor_memory_scales_encoding<CGALayout = [[0, 0]]>
@@ -476,6 +476,30 @@ tt.func public @tmem_copy_2d_2cta(%src: !ttg.memdesc<128x32xi8, #shared, #ttg.sh
   ttng.tmem_copy %src, %dst : !ttg.memdesc<128x32xi8, #shared, #ttg.shared_memory>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
   tt.return
   }
+
+// CHECK-LABEL: @tc_gen5_commit_twocta_no_descs
+tt.func public @tc_gen5_commit_twocta_no_descs(
+    %barrier: !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory, mutable>,
+    %pred: i1) {
+  // CHECK: tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64
+  ttng.tc_gen5_commit %barrier, %pred :
+      !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory, mutable>
+  tt.return
+}
+
+// CHECK-LABEL: @tc_gen5_commit_twocta_with_descs
+tt.func public @tc_gen5_commit_twocta_with_descs(
+    %barrier: !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory, mutable>,
+    %src0: !ttg.memdesc<128x32xi8, #shared, #ttg.shared_memory>,
+    %src1: !ttg.memdesc<256x4xi8, #shared3, #ttg.shared_memory>,
+    %pred: i1) {
+  // CHECK: tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64
+  ttng.tc_gen5_commit %barrier, %pred descs %src0, %src1 :
+      !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory, mutable>,
+      !ttg.memdesc<128x32xi8, #shared, #ttg.shared_memory>,
+      !ttg.memdesc<256x4xi8, #shared3, #ttg.shared_memory>
+  tt.return
+}
 }
 
 // -----
