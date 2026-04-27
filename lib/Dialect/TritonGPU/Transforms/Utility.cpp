@@ -1622,6 +1622,9 @@ SmallVector<Value> getTiedArgs(Operation *op, int resultIdx) {
 LogicalResult verifyBarrierType(Operation *op,
                                 mlir::triton::gpu::MemDescType barrierType) {
   auto numCTAs = triton::gpu::lookupNumCTAs(op);
+  if (!isa<triton::gpu::SharedMemorySpaceAttr>(barrierType.getMemorySpace()))
+    return op->emitOpError("barrier allocation must be a shared memory "
+                           "descriptor");
   if (!(barrierType.getElementType().isInteger(64) &&
         barrierType.getRank() == 1 && barrierType.getShape()[0] <= numCTAs))
     return op->emitOpError("barrier allocation must be a descriptor of "

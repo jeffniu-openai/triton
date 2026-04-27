@@ -982,6 +982,12 @@ LogicalResult TCGen5CommitOp::verify() {
   auto numDescs = getDescs().size();
   if (numDescs > 4)
     return emitOpError("expected 0 to 4 descriptors, got ") << numDescs;
+  for (auto desc : getDescs()) {
+    auto descTy = cast<MemDescType>(desc.getType());
+    if (!isa<triton::gpu::SharedMemorySpaceAttr>(descTy.getMemorySpace()))
+      return emitOpError("descriptor operands must be shared memory "
+                         "descriptors");
+  }
   auto barrierTy = getBarrier().getType();
   if (failed(verifyBarrierType(*this, barrierTy)))
     return failure();
