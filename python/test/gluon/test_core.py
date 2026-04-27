@@ -736,6 +736,50 @@ def test_warpgroup_mma(ASYNC):
     torch.testing.assert_close(out, ref, atol=1e-3, rtol=1e-1)
 
 
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra/sm103")
+def test_tcgen05_mma_plain_kind_i8_reports_clean_error(capfd):
+    M = N = 128
+    K = 32
+    num_warps = 4
+
+    a = torch.randint(-8, 8, (M, K), device="cuda", dtype=torch.int8)
+    b = torch.randint(-8, 8, (K, N), device="cuda", dtype=torch.int8)
+    out = torch.empty((M, N), device="cuda", dtype=torch.int32)
+
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, THREADS_PER_WARP], warps_per_cta=[4, 1], order=[0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, THREADS_PER_WARP], warps_per_cta=[4, 1], order=[1, 0])
+    shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
+    shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
+    acc_layout = TensorMemoryLayout((M, N), col_stride=1)
+
+    with pytest.raises(Exception) as excinfo:
+        mma_kernel[(1, )](
+            a,
+            b,
+            out,
+            M,
+            N,
+            K,
+            block_layout_a,
+            block_layout_b,
+            (),
+            acc_layout,
+            shared_layout_a,
+            shared_layout_b,
+            ttgl.int32,
+            False,
+            True,
+            num_warps=num_warps,
+        )
+
+    captured = capfd.readouterr()
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert "direct tcgen05_mma kind::i8 is not supported on sm_" in msg
+    assert "current Blackwell lowering" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
 @gluon.jit
 def tma_mma_shared_inputs_kernel(a_desc, b_desc, out_ptr, out_desc, gather_idx_ptr, scatter_idx_ptr,
                                  BLOCK_M: ttgl.constexpr, BLOCK_N: ttgl.constexpr, BLOCK_K: ttgl.constexpr,
