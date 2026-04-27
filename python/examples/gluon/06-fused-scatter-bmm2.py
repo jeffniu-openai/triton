@@ -11,7 +11,6 @@ import triton.experimental.gluon.language.nvidia.blackwell.tma as tma
 from triton.experimental.gluon.language.nvidia.blackwell import float2
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
 import triton.language as tl
-import triton.language.core as tl_core
 from triton.language.core import _aggregate as aggregate
 from triton.testing import do_bench_cudagraph
 
@@ -26,7 +25,6 @@ from triton_kernels.tensor import (
     RaggedTensorMetadata,
     Tensor,
     convert_layout,
-    dtype_to_torch_dtype,
     make_ragged_tensor_metadata,
     wrap_torch_tensor,
 )
@@ -146,7 +144,7 @@ def fma_f32(a, b, c):
 
 @gluon.jit
 def pack_e4m3x2(values):
-    return tl_core.inline_asm_elementwise(
+    return gl.inline_asm_elementwise(
         """
         {
             .reg .f32 lane<2>;
@@ -156,7 +154,7 @@ def pack_e4m3x2(values):
         """,
         "=h,l",
         [values.value],
-        dtype=tl_core.int16,
+        dtype=gl.int16,
         is_pure=True,
         pack=1,
     )
@@ -164,13 +162,13 @@ def pack_e4m3x2(values):
 
 @gluon.jit
 def pack_u16x2(x0, x1):
-    return tl_core.inline_asm_elementwise(
+    return gl.inline_asm_elementwise(
         """
         mov.b32 $0, { $1, $2 };
         """,
         "=r,h,h",
         [x0, x1],
-        dtype=tl_core.int32,
+        dtype=gl.int32,
         is_pure=True,
         pack=1,
     )
@@ -221,11 +219,11 @@ def split_m_subtiles_float2(values, subtile_factor: gl.constexpr):
 
 @gluon.jit
 def threadfence_system():
-    return tl_core.inline_asm_elementwise(
+    return gl.inline_asm_elementwise(
         "mov.u32 $0, 0x0; fence.sc.sys;",
         "=r",
         [],
-        dtype=tl_core.int32,
+        dtype=gl.int32,
         is_pure=False,
         pack=1,
     )
@@ -269,7 +267,6 @@ class PartitionArgs:
     acc_empty_bars: gl.shared_memory_descriptor
     acc_ready_bars: gl.shared_memory_descriptor
     acc_num_bufs: gl.constexpr
-
 
     grid_m: gl.tensor
     GRID_N: gl.constexpr
@@ -1316,7 +1313,6 @@ def init_routing_data(
 
     scatter_indx = sparse_logits.mask_metadata.col_sorted_indx.to(torch.int32)
     return ragged_metadata, scatter_indx
-
 
 
 @triton.jit
