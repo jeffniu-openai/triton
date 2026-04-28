@@ -240,9 +240,10 @@ def gluon_set_locks(p_locks, n_shards: gl.constexpr):
     if grid_done + 1 == gl.num_programs(0) * gl.num_programs(1) * gl.num_programs(2):
         gluon_threadfence_system()
 
-        for shard_id in gl.static_range(1, n_shards):
-            peer_begin_ptr = gl.load(p_locks + shard_id).cast(gl.pointer_type(gl.uint32), bitcast=True)
-            gl.atomic_add(peer_begin_ptr, val=1, sem="release", scope="sys")
+        shard_layout: gl.constexpr = gl.BlockedLayout([1], [32], [gl.num_warps()], [0], cga_layout=((0,),))
+        shard_id = gl.arange(0, n_shards, layout=shard_layout)
+        peer_begin_ptr = gl.load(p_locks + shard_id).cast(gl.pointer_type(gl.uint32), bitcast=True)
+        gl.atomic_add(peer_begin_ptr, val=1, mask=shard_id != 0, sem="release", scope="sys")
 
         gl.store(my_grid_ptr, 0, cache_modifier=".cg")
 
@@ -489,16 +490,18 @@ def epilogue_direct_store(
     frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
     out_packed_subtiles = split_m_subtiles_float2(out_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
     for frag_idx in gl.static_range(p.EPILOGUE_ROW_SUBTILE_FACTOR):
-        packed_fp8 = gl.convert_layout(pack_fp8_out_fragment(out_packed_subtiles[frag_idx], out_recip), store_layout)
-        store_packed_out(
-            p,
-            map_dst_coord,
-            packed_fp8,
-            off_m + frag_idx * frag_rows,
-            out_off_n,
-            shape_m,
-            slice_offset,
-        )
+        frag_off_m = off_m + frag_idx * frag_rows
+        if frag_off_m < shape_m:
+            packed_fp8 = gl.convert_layout(pack_fp8_out_fragment(out_packed_subtiles[frag_idx], out_recip), store_layout)
+            store_packed_out(
+                p,
+                map_dst_coord,
+                packed_fp8,
+                frag_off_m,
+                out_off_n,
+                shape_m,
+                slice_offset,
+            )
 
 
 @gluon.jit
