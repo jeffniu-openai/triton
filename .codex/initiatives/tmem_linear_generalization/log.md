@@ -36536,3 +36536,16 @@ Validation:
 
 Known boundary:
 - `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir` still fails before the updated reinterpret case. The first hard error is the existing `store_packedb16_4x32xf16` sub-32-bit TMEM view-origin `tmem_store` legalization gap at line 1560; later FileCheck misses cascade after that abort and include stale checks outside this batch.
+
+
+## 2026-04-28 07:13 UTC: fp4 padded shared-memory compression exploration
+
+Current finding:
+- Started `fp4_padded_smem_compression_exploration_20260428.md` as the durable report for the question of whether mixed fp8/fp4 Blackwell MMA can avoid `fp4_padded` shared-memory waste without register unpacking.
+- Rebuilt `codex/tmem` with `make -j8` before probes.
+- Path A, shared-descriptor +8 interleaving, is blocked by representation: `tcgen05.mma` shared descriptors encode matrix start address as bits `[17:4]`; patching either fp4 operand A or B to `base + 8` before descriptor encoding produced bit-identical numerical output, while `base + 16` changed output.
+- Path B, `tcgen05.cp.b8x16.b4x16_p64`, does perform the useful hardware transform into TMEM: a raw-byte cp probe showed input bytes `00 01 02 ... 0f` become TMEM bytes `[0,0,4,0,8,0,12,0,16,0,20,0,24,0,28,0]`, i.e. low/high fp4 nibbles shifted into the middle of 8-bit containers.
+- However, the cp source itself is still `.b4x16_p64`: it consumes the first 8 bytes of a 16-byte group and ignores the padding half. Patching the cp shared source to `base + 8` before descriptor encoding is also bit-identical to `base + 0`, while `base + 16` changes data. So cp cannot address a second packed fp4 tile stored in the padding half.
+
+Current conclusion:
+- No no-register path has been found that doubles fp4 operand buffering inside one `.b4x16_p64` shared footprint. The only likely shared-memory-saving route is a register unpack path from dense fp4 shared storage into TMEM 8-bit containers, which violates the requested no-register/no-padding goal and needs separate performance justification.
