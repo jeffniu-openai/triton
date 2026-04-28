@@ -327,12 +327,7 @@ class PartitionArgs:
 
 @gluon.jit
 def load_activations(p: PartitionArgs):
-    local_cga_layout: gl.constexpr = ((0, 1), ) if p.USE_2CTA else ()
-    offs_layout: gl.constexpr = gl.SliceLayout(
-        dim=0,
-        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0], cga_layout=local_cga_layout),
-    )
-    tile_x_bytes: gl.constexpr = p.x_desc.block_type.nbytes * (p.BLOCK_M_PER_CTA if p.USE_2CTA else p.BLOCK_M)
+    tile_x_bytes: gl.constexpr = p.x_desc.nbytes_per_cta
 
     idx = 0
     phase = 1
@@ -342,10 +337,10 @@ def load_activations(p: PartitionArgs):
         pid_m, _, slice_idx, slice_offset = p.apply_block_schedule(block_id)
         off_m = pid_m * p.BLOCK_M
         shape_m = gl.load(p.x_slice_sizes + slice_idx)
-
-        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
-        mask_m = offs_m < shape_m
-        offs_x_m = gl.where(mask_m, slice_offset + offs_m, p.x_desc.shape[0])
+        ragged_billion: gl.constexpr = 0x40000000
+        ragged_c0: gl.constexpr = ragged_billion
+        ragged_c1 = slice_offset + shape_m
+        ragged_c2 = ragged_billion - shape_m + off_m
 
         for ki in range(p.K_TILES):
             off_k_x = ki * p.BLOCK_K
@@ -356,10 +351,9 @@ def load_activations(p: PartitionArgs):
 
             mbarrier.wait(empty_bar, phase, pred=issued >= p.x_num_bufs)
             mbarrier.expect(ready_bar, tile_x_bytes)
-            tma.async_gather(
+            tma.async_copy_global_to_shared(
                 p.x_desc,
-                offs_x_m,
-                off_k_x,
+                [ragged_c0, ragged_c1, ragged_c2, off_k_x],
                 ready_bar,
                 x_buf,
                 multicast=p.USE_2CTA and p.X_GATHER_MULTICAST,
@@ -436,7 +430,7 @@ def mma_partition(p: PartitionArgs):
 
             x_ready_bar = p.x_ready_bars.index(x_idx)
             x_empty_bar = p.x_empty_bars.index(x_idx)
-            x_buf = p.x_bufs.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx).reshape((p.BLOCK_M, p.BLOCK_K))
             mbarrier.wait(x_ready_bar, x_phase)
 
             blackwell.tcgen05_mma_scaled(
@@ -725,7 +719,7 @@ def ws_matmul_kernel(
     x_num_bufs: gl.constexpr = X_NUM_BUFS
     x_bufs = gl.allocate_shared_memory(
         x_desc.dtype,
-        [x_num_bufs, BLOCK_M, x_desc.block_type.shape[1]],
+        [x_num_bufs] + x_desc.block_type.shape,
         x_desc.layout,
     )
     x_empty_bars, x_ready_bars = alloc_ring_barriers(x_num_bufs, consumer_two_ctas=use_2cta)
@@ -902,6 +896,40 @@ def make_tensor_descriptor(
     return TensorDescriptor(ptr, shape, strides, desc_block_shape, layout)
 
 
+def make_ragged_tensor_descriptor(
+        t: torch.Tensor,
+        block_shape: tuple[int, ...],
+        *,
+        layout_block_shape: tuple[int, ...] | None = None,
+        cga_layout: tuple[tuple[int, ...], ...] = (),
+):
+    from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
+
+    assert t.ndim == 2
+    ragged_dim = 0
+    ragged_billion = 0x40000000
+    ragged_max_int = 0x7FFF0000
+
+    shape = list(t.shape)
+    shape[ragged_dim] = ragged_billion
+    shape = [ragged_max_int, ragged_max_int] + shape
+
+    ragged_stride = t.stride(ragged_dim)
+    strides = [2**34 - ragged_stride, ragged_stride] + list(t.stride())
+
+    desc_block_shape = [1, 1] + list(block_shape)
+    layout_shape = [1, 1] + list(layout_block_shape or block_shape)
+    rank = len(layout_shape)
+    assert t.dtype == torch.float8_e4m3fn
+    layout = gl.NVMMASharedLayout(
+        swizzle_byte_width=layout_shape[-1],
+        element_bitwidth=8,
+        rank=rank,
+        cga_layout=cga_layout,
+    )
+    return TensorDescriptor(t, shape, strides, desc_block_shape, layout)
+
+
 @dataclass(frozen=True, slots=True)
 class KernelConfig:
     BLOCK_M: int = 128
@@ -1032,11 +1060,10 @@ def matmul(
     grid = (launch_grid,)
     acc_cga_layout = ((1, 0),)
 
-    x_desc = make_tensor_descriptor(
+    x_desc = make_ragged_tensor_descriptor(
         a,
-        (1, config.BLOCK_K),
-        layout_block_shape=(config.BLOCK_M, config.BLOCK_K),
-        cga_layout=tuple((basis[0], 0) for basis in acc_cga_layout),
+        (config.BLOCK_M, config.BLOCK_K),
+        cga_layout=tuple((0, 0, basis[0], 0) for basis in acc_cga_layout),
     )
     w_desc = make_tensor_descriptor(
         b,
