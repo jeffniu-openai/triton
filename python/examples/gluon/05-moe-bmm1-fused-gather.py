@@ -10,7 +10,6 @@ import triton.experimental.gluon.language.nvidia.blackwell as blackwell
 import triton.experimental.gluon.language.nvidia.blackwell.tma as tma
 from triton.experimental.gluon.language.nvidia.blackwell import float2
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
-import triton.language.extra.libdevice as libdevice
 from triton.testing import do_bench_cudagraph
 
 from triton_kernels.distributed import make_expt_dict_uniform
@@ -21,6 +20,7 @@ from triton_kernels.matmul import (
     PrecisionConfig,
     matmul as reference_matmul,
 )
+from triton_kernels.matmul_details.opt_flags import scoped_opt_flags_constraints
 from triton_kernels.numerics import InFlexData, OutFlexData
 from triton_kernels.numerics_details.mxfp import MXFP_BLOCK_SIZE, downcast_to_mxfp
 from triton_kernels.swiglu import swiglu_fn
@@ -58,9 +58,19 @@ def unpack_block_schedule(schedule: gl.tensor) -> tuple[gl.tensor, gl.tensor]:
 
 
 @gluon.jit
-def banded_row_major(block_id, grid_m, GRID_N: gl.constexpr, BAND_N: gl.constexpr):
+def banded_row_major(
+    block_id,
+    grid_m,
+    GRID_N: gl.constexpr,
+    BAND_N: gl.constexpr,
+    SNAKE_N: gl.constexpr = False,
+):
     if BAND_N >= GRID_N:
-        return block_id // GRID_N, block_id % GRID_N
+        pid_m = block_id // GRID_N
+        pid_n = block_id % GRID_N
+        if SNAKE_N and (pid_m % 2 == 1):
+            pid_n = GRID_N - 1 - pid_n
+        return pid_m, pid_n
 
     full_band_tiles = grid_m * BAND_N
     n_full_bands = GRID_N // BAND_N
@@ -69,11 +79,19 @@ def banded_row_major(block_id, grid_m, GRID_N: gl.constexpr, BAND_N: gl.constexp
     if block_id < full_band_work:
         band_id = block_id // full_band_tiles
         within_band = block_id % full_band_tiles
-        return within_band // BAND_N, band_id * BAND_N + (within_band % BAND_N)
+        pid_m = within_band // BAND_N
+        band_n = within_band % BAND_N
+        if SNAKE_N and (pid_m % 2 == 1):
+            band_n = BAND_N - 1 - band_n
+        return pid_m, band_id * BAND_N + band_n
 
     tail_n = GRID_N - n_full_bands * BAND_N
     tail_idx = block_id - full_band_work
-    return tail_idx // tail_n, n_full_bands * BAND_N + (tail_idx % tail_n)
+    pid_m = tail_idx // tail_n
+    tail_band_n = tail_idx % tail_n
+    if SNAKE_N and (pid_m % 2 == 1):
+        tail_band_n = tail_n - 1 - tail_band_n
+    return pid_m, n_full_bands * BAND_N + tail_band_n
 
 
 @gluon.jit
@@ -84,8 +102,9 @@ def apply_block_schedule(
     slice_offsets: gl.tensor,
     block_schedule: gl.tensor,
     BAND_N: gl.constexpr,
+    SNAKE_N: gl.constexpr = False,
 ) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
-    schedule_pid_m, pid_n = banded_row_major(block_id, grid_m, GRID_N, BAND_N=BAND_N)
+    schedule_pid_m, pid_n = banded_row_major(block_id, grid_m, GRID_N, BAND_N=BAND_N, SNAKE_N=SNAKE_N)
 
     slice_idx, pid_m = unpack_block_schedule(gl.load(block_schedule + schedule_pid_m))
     slice_offset = gl.load(slice_offsets + slice_idx)
@@ -125,24 +144,6 @@ def alloc_ring_barriers(
     return (
         alloc_barrier_ring(num_bufs, two_ctas=producer_two_ctas),
         alloc_barrier_ring(num_bufs, two_ctas=consumer_two_ctas),
-    )
-
-
-@gluon.jit
-def pack_e4m3x2(values):
-    return gl.inline_asm_elementwise(
-        """
-        {
-            .reg .f32 lane<2>;
-            mov.b64 {lane0, lane1}, $1;
-            cvt.rn.satfinite.e4m3x2.f32 $0, lane1, lane0;
-        }
-        """,
-        "=h,l",
-        [values.value],
-        dtype=gl.int16,
-        is_pure=True,
-        pack=1,
     )
 
 
@@ -254,7 +255,11 @@ class PartitionArgs:
     X_GATHER_MULTICAST: gl.constexpr
     W_SCALE_MULTICAST: gl.constexpr
     FORCE_EPILOGUE_WARPS_N1: gl.constexpr
+    SNAKE_N: gl.constexpr
     INLINE_MMA_RELEASE: gl.constexpr
+    MMA_MULTICAST: gl.constexpr
+    ACC_COMMIT_DESCS: gl.constexpr
+    STORE_MASK_N: gl.constexpr
 
     @gluon.jit
     def apply_block_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
@@ -265,6 +270,7 @@ class PartitionArgs:
             slice_offsets=self.x_slice_offs,
             block_schedule=self.x_block_schedule,
             BAND_N=self.BAND_N,
+            SNAKE_N=self.SNAKE_N,
         )
 
 
@@ -286,12 +292,16 @@ def load_activations(p: PartitionArgs):
         off_m = pid_m * p.BLOCK_M
         shape_m = gl.load(p.x_slice_sizes + slice_idx)
         offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
-        mask_m = offs_m < shape_m
-        offs_x_m = gl.load(
-            p.gather_indx_ptr + slice_offset + offs_m,
-            mask=mask_m,
-            other=p.x_desc.shape[0],
-        )
+        full_m = off_m + p.BLOCK_M <= shape_m
+        if full_m:
+            offs_x_m = gl.load(p.gather_indx_ptr + slice_offset + offs_m)
+        else:
+            mask_m = offs_m < shape_m
+            offs_x_m = gl.load(
+                p.gather_indx_ptr + slice_offset + offs_m,
+                mask=mask_m,
+                other=p.x_desc.shape[0],
+            )
 
         for ki in range(p.K_TILES):
             off_k_x = ki * p.BLOCK_K
@@ -395,6 +405,7 @@ def mma_partition(p: PartitionArgs):
                 a_type="e2m1",
                 b_type="e4m3",
                 use_acc=use_acc,
+                multicast=p.USE_2CTA and p.MMA_MULTICAST,
                 mbarriers=release_mbarriers,
             )
             if not p.INLINE_MMA_RELEASE:
@@ -405,7 +416,10 @@ def mma_partition(p: PartitionArgs):
             w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
             use_acc = True
 
-        blackwell.tcgen05_commit(acc_ready_bar)
+        if p.ACC_COMMIT_DESCS:
+            blackwell.tcgen05_commit(acc_ready_bar, descs=(p.x_bufs.index(0), p.w_bufs.index(0)))
+        else:
+            blackwell.tcgen05_commit(acc_ready_bar)
         mma_idx, mma_phase = advance(mma_idx, mma_phase, p.acc_num_bufs)
 
 
@@ -423,11 +437,14 @@ def store_packed_out(
     offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
     offs_n = out_off_n_packed + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
     mask_m = gl.expand_dims(offs_m < shape_m, 1)
-    mask_n = gl.expand_dims(offs_n < (p.out_desc.shape[1] + 3) // 4, 0)
-    mask = mask_m & mask_n
     ptrs = p.out_ptr.cast(gl.pointer_type(gl.int32), bitcast=True)
     ptrs = ptrs + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 4)
     ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+    if p.STORE_MASK_N:
+        mask_n = gl.expand_dims(offs_n < (p.out_desc.shape[1] + 3) // 4, 0)
+        mask = mask_m & mask_n
+    else:
+        mask = mask_m
     gl.store(ptrs, values, mask=mask)
 
 
@@ -440,18 +457,111 @@ def _swiglu_step1(acc_packed, limit):
 
 
 @gluon.jit
-def _swiglu_step2(gelu, linear, alpha):
-    den = 1.0 + libdevice.exp(-alpha * gelu)
-    activated = gelu / den
-    activated_packed = float2.pack(activated, axis=1)
-    linear_packed = float2.pack(linear, axis=1)
-    return float2.fma(activated_packed, linear_packed, activated_packed)
+def _swiglu_pack_fp8_fused_f32x2(gelu_packed, linear_packed, x_packed, out_recip_packed):
+    out = gl.inline_asm_elementwise(
+        """
+        {
+            .reg .f32 gelu0;
+            .reg .f32 gelu1;
+            .reg .f32 linear0;
+            .reg .f32 linear1;
+            .reg .f32 x0;
+            .reg .f32 x1;
+            .reg .f32 sat0;
+            .reg .f32 sat1;
+            .reg .f32 magic0;
+            .reg .f32 magic1;
+            .reg .f32 red0;
+            .reg .f32 red1;
+            .reg .f32 exp0;
+            .reg .f32 exp1;
+            .reg .f32 den0;
+            .reg .f32 den1;
+            .reg .f32 act0;
+            .reg .f32 act1;
+            .reg .f32 scaled0;
+            .reg .f32 scaled1;
+            .reg .b32 neg_magic;
+            .reg .b32 one;
+            .reg .b32 scale0;
+            .reg .b32 scale1;
+            .reg .b64 magic_pair;
+            .reg .b64 red_pair;
+            .reg .b64 neg_magic_pair;
+            .reg .b64 exp_pair;
+            .reg .b64 pow2_pair;
+            .reg .b64 one_pair;
+            .reg .b64 den_pair;
+            .reg .b64 act_pair;
+            .reg .b64 linear_pair;
+            .reg .b64 out_pair;
+            .reg .b64 out_recip_pair;
+            .reg .b64 scaled_pair;
+
+            mov.b64 {gelu0, gelu1}, $1;
+            mov.b64 {linear0, linear1}, $2;
+            mov.b64 {x0, x1}, $3;
+            mov.b64 out_recip_pair, $4;
+            fma.rn.ftz.f32 sat0, x0, 0f3BBB989D, 0f3F000000;
+            fma.rn.ftz.f32 sat1, x1, 0f3BBB989D, 0f3F000000;
+            cvt.ftz.sat.f32.f32 sat0, sat0;
+            cvt.ftz.sat.f32.f32 sat1, sat1;
+            fma.rm.ftz.f32 magic0, sat0, 0f437C0000, 0f4B400001;
+            fma.rm.ftz.f32 magic1, sat1, 0f437C0000, 0f4B400001;
+
+            mov.b64 magic_pair, {magic0, magic1};
+            mov.b32 neg_magic, 0fCB40007F;
+            mov.b64 neg_magic_pair, {neg_magic, neg_magic};
+            add.f32x2 red_pair, magic_pair, neg_magic_pair;
+            mov.b64 {red0, red1}, red_pair;
+            neg.f32 red0, red0;
+            neg.f32 red1, red1;
+
+            fma.rn.ftz.f32 red0, x0, 0f3FB8AA3B, red0;
+            fma.rn.ftz.f32 red1, x1, 0f3FB8AA3B, red1;
+            fma.rn.ftz.f32 red0, x0, 0f32A57060, red0;
+            fma.rn.ftz.f32 red1, x1, 0f32A57060, red1;
+            ex2.approx.ftz.f32 exp0, red0;
+            ex2.approx.ftz.f32 exp1, red1;
+
+            mov.b32 scale0, magic0;
+            mov.b32 scale1, magic1;
+            shl.b32 scale0, scale0, 23;
+            shl.b32 scale1, scale1, 23;
+            mov.b64 exp_pair, {exp0, exp1};
+            mov.b64 pow2_pair, {scale0, scale1};
+            mov.b32 one, 0f3F800000;
+            mov.b64 one_pair, {one, one};
+            fma.rn.f32x2 den_pair, exp_pair, pow2_pair, one_pair;
+            mov.b64 {den0, den1}, den_pair;
+
+            div.full.f32 act0, gelu0, den0;
+            div.full.f32 act1, gelu1, den1;
+            mov.b64 act_pair, {act0, act1};
+            mov.b64 linear_pair, {linear0, linear1};
+            fma.rn.f32x2 out_pair, act_pair, linear_pair, act_pair;
+            mul.f32x2 scaled_pair, out_pair, out_recip_pair;
+            mov.b64 {scaled0, scaled1}, scaled_pair;
+            cvt.rn.satfinite.e4m3x2.f32 $0, scaled1, scaled0;
+        }
+        """,
+        "=h,l,l,l,l",
+        [gelu_packed.value, linear_packed.value, x_packed.value, out_recip_packed.value],
+        dtype=gl.int16,
+        is_pure=True,
+        pack=1,
+    )
+    return out
 
 
 @gluon.jit
-def pack_fp8_out_fragment(out_packed, out_recip):
-    scaled_out_packed = out_packed * float2.full_like(out_packed, out_recip)
-    return pack_e4m3x2(scaled_out_packed)
+def _swiglu_step2(gelu, linear, alpha, out_recip):
+    gelu_packed = float2.pack(gelu, axis=1)
+    linear_packed = float2.pack(linear, axis=1)
+    neg_alpha = gl.full(gelu.shape, -alpha, dtype=gl.float32, layout=gelu.type.layout)
+    x_packed = gelu_packed * float2.pack(neg_alpha, axis=1)
+    out_recip_packed = float2.full_like(gelu_packed, out_recip)
+    return _swiglu_pack_fp8_fused_f32x2(gelu_packed, linear_packed, x_packed, out_recip_packed)
 
 
 @gluon.jit
@@ -481,17 +591,18 @@ def epilogue_direct_store(
     frag_rows: gl.constexpr = p.BLOCK_M // p.SWIGLU_SUBTILE_FACTOR
     acc_packed_subtiles = split_m_subtiles(acc_packed, p.SWIGLU_SUBTILE_FACTOR)
     for frag_idx in gl.static_range(p.SWIGLU_SUBTILE_FACTOR):
-        gelu, linear = _swiglu_step1(acc_packed_subtiles[frag_idx], p.SWIGLU_LIMIT)
-        out_packed = _swiglu_step2(gelu, linear, p.SWIGLU_ALPHA)
-        packed_fp8 = gl.convert_layout(pack_fp8_out_fragment(out_packed, out_recip), store_layout)
-        store_packed_out(
-            p,
-            packed_fp8,
-            off_m + frag_idx * frag_rows,
-            out_off_n_packed,
-            shape_m,
-            slice_offset,
-        )
+        frag_off_m = off_m + frag_idx * frag_rows
+        if frag_off_m < shape_m:
+            gelu, linear = _swiglu_step1(acc_packed_subtiles[frag_idx], p.SWIGLU_LIMIT)
+            packed_fp8 = gl.convert_layout(_swiglu_step2(gelu, linear, p.SWIGLU_ALPHA, out_recip), store_layout)
+            store_packed_out(
+                p,
+                packed_fp8,
+                frag_off_m,
+                out_off_n_packed,
+                shape_m,
+                slice_offset,
+            )
 
 
 @gluon.jit
@@ -628,7 +739,11 @@ def ws_matmul_kernel(
     X_GATHER_MULTICAST: gl.constexpr,
     W_SCALE_MULTICAST: gl.constexpr,
     FORCE_EPILOGUE_WARPS_N1: gl.constexpr,
+    SNAKE_N: gl.constexpr,
     INLINE_MMA_RELEASE: gl.constexpr,
+    MMA_MULTICAST: gl.constexpr,
+    ACC_COMMIT_DESCS: gl.constexpr,
+    STORE_MASK_N: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
     MXFP_BLOCK_SIZE: gl.constexpr,
@@ -752,7 +867,11 @@ def ws_matmul_kernel(
         X_GATHER_MULTICAST=X_GATHER_MULTICAST,
         W_SCALE_MULTICAST=W_SCALE_MULTICAST,
         FORCE_EPILOGUE_WARPS_N1=FORCE_EPILOGUE_WARPS_N1,
+        SNAKE_N=SNAKE_N,
         INLINE_MMA_RELEASE=INLINE_MMA_RELEASE,
+        MMA_MULTICAST=MMA_MULTICAST,
+        ACC_COMMIT_DESCS=ACC_COMMIT_DESCS,
+        STORE_MASK_N=STORE_MASK_N,
     )
 
     gl.warp_specialize(
@@ -851,7 +970,12 @@ class KernelConfig:
     X_GATHER_MULTICAST: bool = True
     W_SCALE_MULTICAST: bool = True
     FORCE_EPILOGUE_WARPS_N1: bool = False
+    SNAKE_N: bool = False
     INLINE_MMA_RELEASE: bool = False
+    MMA_MULTICAST: bool = False
+    ACC_COMMIT_DESCS: bool = False
+    STORE_MASK_N: bool = True
+    SCHEDULE_ORDER: str = "original"
 
     LOAD_ACTIVATION_REGS: int = 112
     LOAD_WEIGHT_REGS: int = 48
@@ -874,6 +998,54 @@ class KernelConfig:
 
     def get_c_tile_smem(self, reduction_n: int) -> int:
         return (self.BLOCK_M // self.SWIGLU_SUBTILE_FACTOR) * (self.BLOCK_N // reduction_n)
+
+
+def reorder_block_schedule(block_schedule: torch.Tensor, slice_sizes: torch.Tensor, order: str) -> torch.Tensor:
+    if order == "original":
+        return block_schedule
+
+    valid = block_schedule != -1
+    values = block_schedule[valid]
+    padding = block_schedule[~valid]
+    if values.numel() == 0:
+        return block_schedule
+
+    slice_ids = values & 0xFFFF
+    block_ids = values >> 16
+    if order == "size_desc":
+        keys = -slice_sizes[slice_ids].to(torch.int64) * 65536 + block_ids.to(torch.int64)
+    elif order == "size_asc":
+        keys = slice_sizes[slice_ids].to(torch.int64) * 65536 + block_ids.to(torch.int64)
+    elif order == "slice_round_robin":
+        keys = block_ids.to(torch.int64) * 65536 + slice_ids.to(torch.int64)
+    else:
+        raise ValueError(f"unknown SPUD BMM1 schedule order: {order}")
+
+    perm = torch.argsort(keys, stable=True)
+    return torch.cat((values[perm], padding))
+
+
+def get_block_schedule(a_ragged_metadata: RaggedTensorMetadata, p: KernelConfig) -> torch.Tensor:
+    block_schedule = a_ragged_metadata.block_schedule(p.BLOCK_M)
+    if p.SCHEDULE_ORDER == "original":
+        return block_schedule
+
+    cache = getattr(a_ragged_metadata, "_spud_bmm1_schedule_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(a_ragged_metadata, "_spud_bmm1_schedule_cache", cache)
+    key = (p.BLOCK_M, p.SCHEDULE_ORDER)
+    cached = cache.get(key)
+    if cached is None:
+        cached = reorder_block_schedule(block_schedule, a_ragged_metadata.slice_sizes, p.SCHEDULE_ORDER)
+        cache[key] = cached
+    return cached
+
+
+def get_block_metadata(a_ragged_metadata: RaggedTensorMetadata, p: KernelConfig) -> tuple[torch.Tensor, torch.Tensor]:
+    if p.BLOCK_M not in RaggedTensorMetadata.block_sizes():
+        raise ValueError(f"unsupported SPUD BMM1 BLOCK_M for ragged metadata: {p.BLOCK_M}")
+    return a_ragged_metadata.block_offs(p.BLOCK_M), get_block_schedule(a_ragged_metadata, p)
 
 
 def _select_base_config(slice_size: int) -> KernelConfig:
@@ -912,35 +1084,35 @@ def _select_base_config(slice_size: int) -> KernelConfig:
 
 
 TUNED_SPUD_D64_OVERRIDES = {
-    16: dict(BAND_N=4, X_NUM_BUFS=7),
-    32: dict(BAND_N=4, X_NUM_BUFS=7),
-    48: dict(BAND_N=4, INLINE_MMA_RELEASE=True),
-    64: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    80: dict(BAND_N=8, INLINE_MMA_RELEASE=True),
-    96: dict(BAND_N=8, INLINE_MMA_RELEASE=True),
-    112: dict(BAND_N=8, INLINE_MMA_RELEASE=True),
-    128: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    144: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    160: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    176: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    192: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    208: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    224: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    240: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    256: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    320: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    384: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    16: dict(BAND_N=4, X_NUM_BUFS=7, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    32: dict(BAND_N=1, X_NUM_BUFS=7, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    48: dict(BAND_N=1, INLINE_MMA_RELEASE=True),
+    64: dict(BAND_N=16, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
+    80: dict(BAND_N=11, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    96: dict(BAND_N=9, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    112: dict(BAND_N=8, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    128: dict(BAND_N=12, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    144: dict(BAND_N=10, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    160: dict(BAND_N=12, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    176: dict(BAND_N=12, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True),
+    192: dict(BAND_N=12, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    208: dict(BAND_N=14, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=64, LOAD_WEIGHT_REGS=32, MMA_REGS=32),
+    224: dict(BAND_N=9, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    240: dict(BAND_N=11, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    256: dict(BAND_N=12, X_NUM_BUFS=7, SWIGLU_SUBTILE_FACTOR=8, INLINE_MMA_RELEASE=True, LOAD_ACTIVATION_WARPS=2, LOAD_ACTIVATION_REGS=96, LOAD_WEIGHT_REGS=40, MMA_REGS=40),
+    320: dict(BAND_N=16, SWIGLU_SUBTILE_FACTOR=16, INLINE_MMA_RELEASE=True, SCHEDULE_ORDER="size_desc"),
+    384: dict(BAND_N=16, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
     448: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    512: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    576: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    640: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    704: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    512: dict(BAND_N=16, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
+    576: dict(BAND_N=16, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
+    640: dict(BAND_N=16, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
+    704: dict(BAND_N=16, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
     768: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    832: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    896: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    832: dict(BAND_N=16, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
+    896: dict(BAND_N=16, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
     960: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
     1024: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
-    1040: dict(BAND_N=16, INLINE_MMA_RELEASE=True),
+    1040: dict(BLOCK_M=256, BLOCK_N=256, NUM_CTAS=2, BAND_N=19, X_NUM_BUFS=6, W_NUM_BUFS=6, INLINE_MMA_RELEASE=True, FORCE_EPILOGUE_WARPS_N1=True),
 }
 
 
@@ -1016,6 +1188,7 @@ def matmul(
     c: torch.Tensor,
     fused_activation: FusedActivation,
     p: KernelConfig | None = None,
+    warmup: bool = False,
 ):
     specs = fused_activation.specs
     assert specs.name == "swiglu"
@@ -1038,11 +1211,13 @@ def matmul(
 
     p = p or select_kernel_config(a_ragged_metadata.expected_slice_size)
     assert isinstance(b, Tensor)
+    if n % p.BLOCK_N == 0 and p.STORE_MASK_N:
+        p = replace(p, STORE_MASK_N=False)
+
     assert isinstance(b.storage.layout, BlackwellMX4ValueShuffledLayout)
     assert b.storage.layout.block_k == p.BLOCK_K
     assert b.storage.layout.block_n == p.BLOCK_N
-    x_block_offs = a_ragged_metadata.block_offs(p.BLOCK_M)
-    x_block_schedule = a_ragged_metadata.block_schedule(p.BLOCK_M)
+    x_block_offs, x_block_schedule = get_block_metadata(a_ragged_metadata, p)
     expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, p.BLOCK_M)
     grid_n = triton.cdiv(n, p.BLOCK_N)
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
@@ -1084,7 +1259,8 @@ def matmul(
     # direct stores, so cap the layout width to a legal FP8 swizzle size.
     out_desc = make_tensor_descriptor(c, (p.BLOCK_M, min(p.BLOCK_N // reduction_n, 128)))
 
-    ws_matmul_kernel[grid](
+    kernel = (lambda **kwargs: ws_matmul_kernel.warmup(grid=grid, **kwargs)) if warmup else ws_matmul_kernel[grid]
+    kernel(
         x_desc=x_desc,
         w_desc=w_desc,
         scale_desc=scale_desc,
@@ -1134,7 +1310,11 @@ def matmul(
         X_GATHER_MULTICAST=p.X_GATHER_MULTICAST,
         W_SCALE_MULTICAST=p.W_SCALE_MULTICAST,
         FORCE_EPILOGUE_WARPS_N1=p.FORCE_EPILOGUE_WARPS_N1,
+        SNAKE_N=p.SNAKE_N,
         INLINE_MMA_RELEASE=p.INLINE_MMA_RELEASE,
+        MMA_MULTICAST=p.MMA_MULTICAST,
+        ACC_COMMIT_DESCS=p.ACC_COMMIT_DESCS,
+        STORE_MASK_N=p.STORE_MASK_N,
         #
         SCALE_SIZE_OUTER=p.SCALE_SIZE_OUTER,
         SCALE_SIZE_INNER=p.SCALE_SIZE_INNER,
@@ -1161,9 +1341,12 @@ class MLPConfig:
     num_expert_shards: int
     hidden_size: int
     intermediate_size: int
+    batch_sizes: tuple[int, ...] | None = None
 
 
 def get_batch_sizes(c: MLPConfig) -> tuple[int, ...]:
+    if c.batch_sizes is not None:
+        return c.batch_sizes
     batch_per_expert = tuple(chain.from_iterable(range(2**(2 + k), 2**(3 + k), min(2**k, 32)) for k in range(8)))
     return tuple(batch_per_expert * c.num_experts // c.experts_per_token for batch_per_expert in batch_per_expert)
 
@@ -1327,6 +1510,14 @@ def make_output_buffer(prepared: PreparedCase) -> torch.Tensor:
     return torch.zeros(prepared.out_shape, dtype=prepared.out_dtype, device=prepared.x.device)
 
 
+REFERENCE_MATMUL_CONSTRAINTS = {"block_n": 256}
+
+
+def reference_matmul_block_n256(**kwargs):
+    with scoped_opt_flags_constraints(REFERENCE_MATMUL_CONSTRAINTS):
+        return reference_matmul(**kwargs)
+
+
 def run_kernel(prepared: PreparedCase, kernel, precision_config: PrecisionConfig, out: torch.Tensor) -> torch.Tensor:
     return kernel(
         a=prepared.x,
@@ -1342,7 +1533,7 @@ def run_kernel(prepared: PreparedCase, kernel, precision_config: PrecisionConfig
 
 def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, PrecisionConfig]:
     precision_config = make_precision_config(prepared)
-    kernel = matmul if provider == "example" else reference_matmul
+    kernel = matmul if provider == "example" else reference_matmul_block_n256
     y = run_kernel(prepared, kernel, precision_config, make_output_buffer(prepared))
     return y, precision_config
 
@@ -1391,18 +1582,34 @@ GPT_OSS_120B_CONFIG = MLPConfig(
     intermediate_size=2 * 2880,
 )
 
+SPUD_D64_EXPECTED_SLICE_SIZES = tuple(chain(range(16, 257, 16), range(320, 1025, 64), (1040,)))
+SPUD_D64_CONFIG = MLPConfig(
+    name="spud-d64",
+    num_experts=256,
+    experts_per_token=4,
+    num_expert_shards=8,
+    hidden_size=8192,
+    intermediate_size=16384,
+    batch_sizes=tuple(slice_size * 64 for slice_size in SPUD_D64_EXPECTED_SLICE_SIZES),
+)
+MLP_CONFIGS = (GPT_OSS_120B_CONFIG, SPUD_D64_CONFIG)
+
 
 def is_blackwell():
     return (triton.runtime.driver.active.get_current_target().backend == "cuda"
             and torch.cuda.get_device_capability()[0] == 10)
 
 
-@pytest.mark.parametrize("c", [GPT_OSS_120B_CONFIG])
-@pytest.mark.parametrize("batch_size", get_batch_sizes(GPT_OSS_120B_CONFIG))
+TEST_CASES = tuple((c, batch_size) for c in MLP_CONFIGS for batch_size in get_batch_sizes(c))
+
+
+@pytest.mark.parametrize(("c", "batch_size"), TEST_CASES)
 @pytest.mark.skipif(not is_blackwell(), reason="Gluon MoE BMM1 fused-gather is only supported on Blackwell GPUs")
-def test_op(c: MLPConfig, batch_size: tuple[int, ...]):
-    prepared = prepare_case(c, batch_size, device=f"cuda:{torch.cuda.current_device()}")
-    ref_y, ref_precision = run_provider(prepared, "reference")
+def test_op(c: MLPConfig, batch_size: int):
+    device = f"cuda:{torch.cuda.current_device()}"
+    ref_prepared = prepare_case(c, batch_size, device=device, reference=True)
+    prepared = prepare_case(c, batch_size, device=device)
+    ref_y, ref_precision = run_provider(ref_prepared, "reference")
     cand_y, cand_precision = run_provider(prepared, "example")
     description = f"{c.name}-mm1-bs{prepared.batch_size}"
     assert_close(
@@ -1431,11 +1638,6 @@ def test_op(c: MLPConfig, batch_size: tuple[int, ...]):
 # Benchmarking
 # ===-----------------------------------------------------------------------===#
 
-BENCH_TITLE = ("GPT-OSS-120B MoE MM1 "
-               f"E={GPT_OSS_120B_CONFIG.num_experts} "
-               f"EP={GPT_OSS_120B_CONFIG.experts_per_token} "
-               f"ES={GPT_OSS_120B_CONFIG.num_expert_shards} "
-               f"B={GPT_OSS_120B_CONFIG.hidden_size}x{GPT_OSS_120B_CONFIG.intermediate_size}")
 PEAK_TFLOPS = 5_000.0
 PEAK_TBPS = 8.0
 
@@ -1453,7 +1655,11 @@ def bench(c: MLPConfig = GPT_OSS_120B_CONFIG, uniform_routing: bool = False):
         len(_format_perf((99999.99, 999.99))),
     )
 
-    print(BENCH_TITLE, flush=True)
+    print((f"{c.name} MoE MM1 "
+           f"E={c.num_experts} "
+           f"EP={c.experts_per_token} "
+           f"ES={c.num_expert_shards} "
+           f"B={c.hidden_size}x{c.intermediate_size}"), flush=True)
     print(f"Peak: {PEAK_TFLOPS / 1000:g} PFLOPS, {PEAK_TBPS:g} TBPS", flush=True)
     print(
         f"{'batch_size':>{batch_width}}  {'example':>{perf_width}}  {'reference':>{perf_width}}",
@@ -1483,9 +1689,10 @@ def bench(c: MLPConfig = GPT_OSS_120B_CONFIG, uniform_routing: bool = False):
             reference=True,
         )
         flops, nbytes = estimate_benchmark_work(c, prepared)
-        reference = benchmark_kernel(prepared, reference_matmul, flops, nbytes)
+        reference = benchmark_kernel(prepared, reference_matmul_block_n256, flops, nbytes)
         print(f"{_format_perf(reference):>{perf_width}}", flush=True)
 
 
 if __name__ == "__main__":
-    bench(uniform_routing=False)
+    for config in MLP_CONFIGS:
+        bench(config, uniform_routing=False)

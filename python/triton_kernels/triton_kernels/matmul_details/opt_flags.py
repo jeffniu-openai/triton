@@ -288,7 +288,7 @@ def make_default_opt_flags_nvidia(
         block_k = constraints["block_k"]
     else:
         block_k = opt_flags_nvidia.compute_block_k(m, k, is_persistent, lhs_dtype, rhs_dtype, precision_config, has_y_acc_in)
-    if block_n == 256 and block_k == 128 and block_m <= 64 and is_persistent and rhs_dtype == FP4 and k >= 4096 and slice_size > 1 and lhs_dtype != torch.bfloat16 and not constraints.get("disable_mx4_block_swap", False):
+    if block_n == 256 and constraints.get("block_n", None) is None and block_k == 128 and block_m <= 64 and is_persistent and rhs_dtype == FP4 and k >= 4096 and slice_size > 1 and lhs_dtype != torch.bfloat16 and not constraints.get("disable_mx4_block_swap", False):
         # Swap block_n and block_k for mxfp4 weights so that block_k is a full cacheline, so long as K is sufficiently large.
         # TODO: swizzle the HBM layout of the weights instead
         block_n, block_k = block_k, block_n
