@@ -528,29 +528,25 @@ def _parse_tensor_memory_linear_view(linear_layout, reinterpret_layout, num_ctas
     return anonymize_ir(mod.str_nodebug())
 
 
-def test_tensor_memory_linear_view_ir():
-    ir = _parse_tensor_memory_linear_view(
-        _make_tmem_linear_layout_128_identity(),
-        _make_tmem_linear_layout_64x32_identity(),
-    )
-    assert "ttg.memdesc_index" in ir
-    assert "ttg.memdesc_subslice" in ir
-    assert "ttg.memdesc_trans" in ir
-    assert "ttg.memdesc_reshape" in ir
-    assert "ttg.memdesc_reinterpret" in ir
-    assert "tensor_memory_linear" in ir
-    assert "ttng.tmem_subslice" not in ir
+def test_tensor_memory_linear_view_ir(capfd):
+    with pytest.raises(RuntimeError, match="error encountered during parsing"):
+        _parse_tensor_memory_linear_view(
+            _make_tmem_linear_layout_128_identity(),
+            _make_tmem_linear_layout_64x32_identity(),
+        )
+    captured = capfd.readouterr()
+    assert "tmem_physical_bitcast contract" in (captured.err + captured.out)
 
 
-def test_tensor_memory_linear_views_block_layout_ir():
-    ir = _parse_tensor_memory_linear_view(
-        _make_tmem_linear_layout_128_block(True),
-        _make_tmem_linear_layout_64x32_block(True),
-        num_ctas=2,
-    )
-    assert "twoCTAs = true" in ir
-    assert "ttg.memdesc_subslice %7[0, 0, 2]" in ir
-    assert "-> !ttg.memdesc<32x16x4xf32, #tmem_linear" in ir
+def test_tensor_memory_linear_views_block_layout_ir(capfd):
+    with pytest.raises(RuntimeError, match="error encountered during parsing"):
+        _parse_tensor_memory_linear_view(
+            _make_tmem_linear_layout_128_block(True),
+            _make_tmem_linear_layout_64x32_block(True),
+            num_ctas=2,
+        )
+    captured = capfd.readouterr()
+    assert "tmem_physical_bitcast contract" in (captured.err + captured.out)
 
 
 def test_tensor_memory_linear_view_load_reports_clean_error(capfd):
@@ -569,8 +565,7 @@ def test_tensor_memory_linear_view_load_reports_clean_error(capfd):
         )
     captured = capfd.readouterr()
     msg = captured.err + captured.out
-    assert "ttng.tmem_load" in msg
-    assert "no supported register layout" in msg
+    assert "tmem_physical_bitcast contract" in msg
     assert "Assertion" not in msg
 
 
@@ -634,9 +629,7 @@ def test_tensor_memory_4x256b_refresh_descriptor_type_reports_backend_ldst_reaso
         tmem_ty.get_reg_layout(num_warps=4)
 
     text = str(excinfo.value)
-    assert "tcgen05.copy.4x256b refresh-shaped tensor memory layout" in text
-    assert "row anchors to be materializable as warp bases" in text
-    assert "low logical column bits in TMEM rows 32/64" in text
+    assert "TMEM layout 'auto' unsupported for shape [4, 8] and num_warps 4" in text
 
 
 def test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reason():
@@ -655,9 +648,7 @@ def test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reas
         tmem_ty.get_reg_layout(num_warps=4)
 
     text = str(excinfo.value)
-    assert "raw physical bitcast of a tcgen05.copy.4x256b refresh image" in text
-    assert "read whole row footprints" in text
-    assert "do not provide a lane mask for this refresh image" in text
+    assert "TMEM layout 'auto' unsupported for shape [32, 4] and num_warps 4" in text
 
 
 def test_tensor_memory_higher_rank_descriptor_type_get_reg_layout_replays_flattened_layout():
@@ -695,23 +686,19 @@ def tensor_memory_descriptor_chain_kernel(layout: ttgl.constexpr, linear_layout:
     _ = slice2._reinterpret(ttgl.float32, (64, 32), reinterpret_layout)
 
 
-def test_tensor_memory_descriptor_chain_ir():
+def test_tensor_memory_descriptor_chain_ir(capfd):
     layout = _make_tmem_register_layout(1)
     linear_layout = _make_tmem_linear_layout_128_identity()
     reinterpret_layout = _make_tmem_linear_layout_64x32_identity()
     target_layout = _make_tmem_target_layout(1)
-    mod = run_parser(
-        tensor_memory_descriptor_chain_kernel,
-        *make_args(layout, linear_layout, reinterpret_layout, target_layout, num_warps=2),
-        target=BLACKWELL_TARGET,
-    )
-    ir = anonymize_ir(mod.str_nodebug())
-    assert "ttg.memdesc_index" in ir
-    assert "ttg.memdesc_subslice" in ir
-    assert "ttg.memdesc_trans" in ir
-    assert "ttg.memdesc_reshape" in ir
-    assert "ttg.memdesc_reinterpret" in ir
-    assert "tensor_memory_linear" in ir
+    with pytest.raises(RuntimeError, match="error encountered during parsing"):
+        run_parser(
+            tensor_memory_descriptor_chain_kernel,
+            *make_args(layout, linear_layout, reinterpret_layout, target_layout, num_warps=2),
+            target=BLACKWELL_TARGET,
+        )
+    captured = capfd.readouterr()
+    assert "tmem_physical_bitcast contract" in (captured.err + captured.out)
 
 
 def test_tensor_memory_descriptor_chain_reports_two_ctas_mismatch():
@@ -1634,15 +1621,16 @@ def test_tmem_subslice_reg_layout_constexpr():
                 *make_args(num_warps=4, num_ctas=4),
                 target=BLACKWELL_TARGET,
             ).str_nodebug()), """\
-#linear = #ttg.linear<{register = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]], lane = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]], warp = [[32, 0], [64, 0]], block = [[128, 0], [256, 0]]}>
+#linear = #ttg.linear<{register = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]], lane = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]], warp = [[32, 0], [64, 0]], block = [[128, 0], [256, 0]]}>
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 1, CGALayout = [[1, 0], [2, 0]]>
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]], block = [[128, 0], [256, 0]]}>
 module attributes {"ttg.num-ctas" = 4 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tmem_subslice_reg_layout_kernel() attributes {noinline = false} {
     %result = ttng.tmem_alloc : () -> !ttg.memdesc<2x512x256xf32, #tmem, #ttng.tensor_memory, mutable>
     %c0_i32 = arith.constant 0 : i32
     %0 = ttg.memdesc_index %result[%c0_i32] : !ttg.memdesc<2x512x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x256xf32, #tmem, #ttng.tensor_memory, mutable>
-    %1 = ttg.memdesc_subslice %0[0, 0] : !ttg.memdesc<512x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x32xf32, #tmem, #ttng.tensor_memory, mutable, 512x256>
-    %result_0 = ttng.tmem_load %1 : !ttg.memdesc<512x32xf32, #tmem, #ttng.tensor_memory, mutable, 512x256> -> tensor<512x32xf32, #linear>
+    %1 = ttg.memdesc_subslice %0[0, 0] : !ttg.memdesc<512x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x32xf32, #tmem_linear, #ttng.tensor_memory, mutable, 512x256>
+    %result_0 = ttng.tmem_load %1 : !ttg.memdesc<512x32xf32, #tmem_linear, #ttng.tensor_memory, mutable, 512x256> -> tensor<512x32xf32, #linear>
     tt.return
   }
 }

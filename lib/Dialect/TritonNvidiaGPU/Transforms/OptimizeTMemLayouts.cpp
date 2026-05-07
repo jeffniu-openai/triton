@@ -435,8 +435,11 @@ public:
       return failure();
 
     auto tmemEnc = tmemLoadOp.getSrc().getType().getEncoding();
-    if (!triton::nvidia_gpu::isTensorMemoryEncoding(tmemEnc) ||
-        isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(tmemEnc))
+    // The alternative tmem_load -> local_store layout propagation still
+    // assumes the legacy canonical TMEM encoding. Arbitrary explicit linear
+    // roots can flow through reshapes whose inferred distributed layouts are
+    // not representable by this optimization path, so leave them unchanged.
+    if (!isa<triton::nvidia_gpu::TensorMemoryEncodingAttr>(tmemEnc))
       return failure();
     int numWarps = ttg::lookupNumWarps(tmemLoadOp);
     auto oldType = tmemLoadOp.getType();

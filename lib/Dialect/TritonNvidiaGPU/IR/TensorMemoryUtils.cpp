@@ -47,11 +47,20 @@ getTMemElementOffsetModuloStatus(MemDescType memTy, uint32_t modulus) {
     return TMemSubwordPhaseStatus::KnownZero;
   }
 
-  // A descriptor whose active shape equals its allocation shape has no encoded
-  // subview displacement. TMEM allocations are word-column aligned; view ops that
-  // can introduce a nonzero origin must express that fact in the result type or
-  // remain conservatively unknown below.
-  if (memTy.getShape() == memTy.getAllocShape())
+  // A descriptor whose active shape covers the full allocation image has no
+  // encoded subview displacement. Leading allocation dimensions of extent one
+  // cannot hide a runtime origin either; they only preserve container rank.
+  // Nontrivial hidden prefixes stay conservative because a value selected from
+  // one of those slices can carry an origin that is not visible in the current
+  // active shape alone.
+  auto allocShape = memTy.getAllocShape();
+  auto shape = memTy.getShape();
+  if (shape == allocShape)
+    return TMemSubwordPhaseStatus::KnownZero;
+  if (allocShape.size() >= shape.size() &&
+      allocShape.take_back(shape.size()) == shape &&
+      llvm::all_of(allocShape.drop_back(shape.size()),
+                   [](int64_t dim) { return dim == 1; }))
     return TMemSubwordPhaseStatus::KnownZero;
 
   std::string error;

@@ -279,6 +279,10 @@ static SmallVector<Operation *> getAlloc(Value value) {
           worklist.push_back(whileOp.getYieldedValues()[idx]);
           worklist.push_back(whileOp.getInits()[idx]);
         }
+      } else if (isa<triton::FuncOp>(parentOp)) {
+        // Function-entry arguments can be externally provided TMEM descriptors
+        // with no local allocation to chase.
+        continue;
       } else {
         llvm::report_fatal_error(
             "unhandled parent op when looking for TMEM alloc: " +

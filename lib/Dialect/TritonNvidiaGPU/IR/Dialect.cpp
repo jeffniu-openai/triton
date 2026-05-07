@@ -511,6 +511,14 @@ LinearLayout getCanonicalTensorMemoryLinearLayout(MemDescType memDescType) {
 std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTensorMemoryLinearEncoding(MLIRContext *ctx, LinearLayout linearLayout,
                                   bool twoCTAs, std::string *error) {
+  auto kBlock = StringAttr::get(ctx, "block");
+  if (!linearLayout.hasInDim(kBlock)) {
+    auto bases = linearLayout.getBases();
+    bases[kBlock] = {};
+    linearLayout = LinearLayout(std::move(bases), linearLayout.getOutDims(),
+                                linearLayout.isSurjective());
+  }
+
   std::string diagStr;
   llvm::raw_string_ostream diagOs(diagStr);
   ScopedDiagnosticHandler handler(
@@ -613,6 +621,14 @@ normalizeTensorMemoryLinearLayoutForMMAv5Family(LinearLayout layout) {
   auto kBlock = StringAttr::get(ctx, "block");
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
+
+  // Zero bases are broadcast-equivalent input bits. They matter for exact
+  // view/layout preservation, but not when matching the physical MMAv5 tile
+  // family realized by the non-broadcast image.
+  for (StringAttr dim : {kRow, kCol, kBlock}) {
+    if (layout.hasInDim(dim))
+      layout = layout.removeZeroBasesAlongDim(dim);
+  }
 
   if (layout.hasInDim(kBlock) && layout.getInDimSize(kBlock) == 1)
     layout = layout.squeezeIns(kBlock);
@@ -3603,6 +3619,13 @@ tryGetLinearEncodingAttr(MLIRContext *ctx, LinearLayout layout) {
   return LinearEncodingAttr::get(ctx, std::move(layout));
 }
 
+static LinearEncodingAttr getLinearEncodingAttr(MLIRContext *ctx,
+                                                LinearLayout layout) {
+  auto attr = tryGetLinearEncodingAttr(ctx, std::move(layout));
+  assert(attr && "expected a valid distributed linear layout");
+  return *attr;
+}
+
 static bool
 isTMemLdStSelectionLayoutValid(gpu::MemDescType memType,
                                const LinearLayout &layout) {
@@ -4268,7 +4291,7 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
       if (auto preferred = getDistributedLayoutForTmemLdStAnchored(
               raw, atom, numWarps, memType.getElementTypeBitWidth());
           preferred && isTMemLdStSelectionLayoutValid(memType, *preferred)) {
-        return LinearEncodingAttr::get(ctx, std::move(*preferred));
+        return getLinearEncodingAttr(ctx, std::move(*preferred));
       }
     }
   }
@@ -4280,7 +4303,7 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
               layout, TMemAccessAtom::I16x256b, numWarps,
               memType.getElementTypeBitWidth());
           preferred && isTMemLdStSelectionLayoutValid(memType, *preferred)) {
-        return LinearEncodingAttr::get(ctx, std::move(*preferred));
+        return getLinearEncodingAttr(ctx, std::move(*preferred));
       }
       return std::nullopt;
     };
@@ -4294,13 +4317,13 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
               ctx, TMemAccessAtom::I16x256b, stripped.getInDimSize(kCol),
               numWarps);
           canonical && isTMemLdStSelectionLayoutValid(memType, *canonical)) {
-        return LinearEncodingAttr::get(ctx, std::move(*canonical));
+        return getLinearEncodingAttr(ctx, std::move(*canonical));
       }
       TMemLdStRowPlan canonicalM64Plan{/*warpRow0=*/32, /*warpRow1=*/64,
                                         /*rowSpan=*/128};
       if (auto preferred = getDistributedLayoutForTmemLdSt(
               memType, TMemAccessAtom::I16x256b, numWarps, canonicalM64Plan)) {
-        return LinearEncodingAttr::get(ctx, std::move(*preferred));
+        return getLinearEncodingAttr(ctx, std::move(*preferred));
       }
       return std::nullopt;
     };
@@ -4324,12 +4347,12 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
     auto layout = getDistributedLayoutForTmemLdSt(
         memType, TMemAccessAtom::I16x256b, numWarps);
     if (layout) {
-      return LinearEncodingAttr::get(ctx, std::move(*layout));
+      return getLinearEncodingAttr(ctx, std::move(*layout));
     }
   }
   if (auto layout = getDistributedLayoutForTmemLdSt(
           memType, TMemAccessAtom::I32x32b, numWarps)) {
-    return LinearEncodingAttr::get(ctx, std::move(*layout));
+    return getLinearEncodingAttr(ctx, std::move(*layout));
   }
   auto layouts = getTmemCompatibleLayouts(memType, numWarps);
   if (layouts.empty() &&
@@ -4340,7 +4363,7 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
     auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
     if (matchesSimplePermutedM64SplitNLinearView(raw)) {
       if (auto canonical = getCanonicalM64SplitNLayout(memType, numWarps))
-        return LinearEncodingAttr::get(ctx, std::move(*canonical));
+        return getLinearEncodingAttr(ctx, std::move(*canonical));
     }
   }
   assert(!layouts.empty() &&
