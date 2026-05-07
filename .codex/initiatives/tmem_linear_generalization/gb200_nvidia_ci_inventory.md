@@ -104,6 +104,36 @@ noise lives in `gb200_failure_classification_20260412.md`.
     `_reinterpret` behavior or stale diagnostics instead of the explicit
     physical-bitcast contract.
 
+## Focused Recovery Refresh (2026-05-07 UTC)
+
+- Current checkpoint:
+  - `51534acf0` on `origin/codex/tmem`.
+- Deterministic branch-owned exact lists are green on the repaired head:
+  - unit exact manifest: `115 passed`;
+  - regression exact manifest: `93 passed`;
+  - `triton_kernels` exact manifest: `69 passed`;
+  - Gluon frontend exact manifest: `7 passed`.
+- Focused lit recovery is green:
+  - `Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `Gluon/infer_coalesced_encoding.mlir`;
+  - `TritonGPU/amd/amd-consan.mlir`;
+  - `TritonNvidiaGPU/test_tensor_memory_allocation.mlir`.
+- Root-cause summary:
+  - unit/regression failures came from non-canonical in-memory distributed
+    `LinearEncodingAttr` construction that only became canonical after textual
+    round-trip;
+  - the `triton_kernels` bucket came from the legacy TMEM-to-shared propagation
+    pattern trying to rewrite explicit-linear roots it cannot represent;
+  - the TMEM allocation lit crash came from externally provided function-entry
+    TMEM descriptors being treated as if every descriptor must resolve to a
+    local alloc;
+  - the Blackwell holdout was a direct packed-f16 descriptor whose singleton
+    hidden allocation prefix was over-classified as possible subword phase,
+    followed by stale raw-pointer FileCheck text.
+- Next validation gate:
+  - rerun the broad GB200-equivalent lane from the repaired head before using
+    any pre-fix aggregate failure count for prioritization.
+
 ## Previous Broad Validation Checkpoint (2026-04-13 05:41 UTC)
 
 ### 2026-04-14 00:46 UTC Refresh On `cfef1b94f`

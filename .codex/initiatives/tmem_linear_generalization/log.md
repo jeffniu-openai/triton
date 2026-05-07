@@ -36588,3 +36588,32 @@ Current finding:
 
 Current conclusion:
 - No no-register path has been found that doubles fp4 operand buffering inside one `.b4x16_p64` shared footprint. The only likely shared-memory-saving route is a register unpack path from dense fp4 shared storage into TMEM 8-bit containers, which violates the requested no-register/no-padding goal and needs separate performance justification.
+
+## 2026-05-07 UTC: post-merge deterministic GB200 recovery closed
+
+- Pushed `51534acf0` after closing the exact current-head branch buckets found
+  by the refreshed 2026-05-07 census.
+- Fixed the shared unit/regression live-JIT failure by normalizing TMEM-produced
+  distributed `LinearEncodingAttr` values before they escape the selection
+  helpers; saved textual repros had passed only because parse-roundtrip already
+  canonicalized the same layout.
+- Fixed the `triton_kernels` family by keeping explicit-linear TMEM roots out of
+  the legacy `TMemToSharedMemPattern`.
+- Fixed the focused TMEM allocation crash by allowing externally provided
+  function-entry TMEM descriptors to have no local alloc root.
+- Rewrote/refreshed the seven Gluon frontend rows and the stale lit snapshots
+  that were still describing retired reinterpret behavior or the old raw-word
+  address model.
+- Closed the final Blackwell conversion holdout by proving singleton hidden
+  allocation prefixes cannot contribute subword phase; refreshed the remaining
+  FileCheck text after the real bug was gone.
+
+Validation:
+- `make -j8`
+- exact manifests: unit `115 passed`; regression `93 passed`;
+  `triton_kernels` `69 passed`; Gluon frontend `7 passed`
+- focused lit: Blackwell conversion, Gluon infer-coalesced, AMD consan, and
+  TMEM allocation files all passed
+- focused subword runtime selector:
+  `104 passed, 1604 deselected`
+- `git diff --check`

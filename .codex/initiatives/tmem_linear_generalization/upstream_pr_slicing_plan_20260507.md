@@ -127,15 +127,18 @@ The branch has two kinds of content:
 
 ## Current Risk To Resolve Before Cutting PR 1
 
-- The current post-merge GB200 inventory is not green yet:
-  - `make test-lit` still has four older branch-local failures;
-  - `make NUM_PROCS=24 test-unit` still has the broad TMEM compile-failure
-    family in `language/test_core.py` and `language/test_matmul.py`;
-  - `make NUM_PROCS=24 test-regression` and
-    `python/triton_kernels/tests` now expose related matmul compile-failure
-    families;
-  - the focused Gluon frontend list still has seven reinterpret-contract /
-    stale-expectation rows to rewrite;
-  - the grouped Gluon sweep remains partition-sensitive at its long final tail.
-- Treat those as release gates for the upstream series, but not as a reason to
-  collapse the series back into one PR.
+- The deterministic focused recovery set is now green at `51534acf0`:
+  - unit exact manifest `115 passed`;
+  - regression exact manifest `93 passed`;
+  - `triton_kernels` exact manifest `69 passed`;
+  - Gluon frontend exact manifest `7 passed`;
+  - all four focused lit files from the merge-base comparison passed.
+- The remaining release gate is broad validation, not another known focused
+  product bucket:
+  - rerun the repaired head through the GB200-equivalent lane;
+  - refresh aggregate counts before using the pre-fix failure inventory for any
+    prioritization;
+  - keep the partition-sensitive Gluon tail, `test_debug.py`, and Proton
+    classified separately unless a fresh branch-only exact repro appears.
+- Treat broad-lane freshness as the gate for starting PR extraction, but keep
+  the stacked series structure above rather than collapsing back into one PR.

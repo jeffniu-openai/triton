@@ -49,7 +49,7 @@ PY
 ### Current-Head Recovery Status (2026-05-07 UTC)
 
 - Current checkpoint:
-  - `bd71536ef`.
+  - `51534acf0`.
 - Merge-local backlog:
   - closed by `30a398ff4`:
     - generic shared-only `memdesc_reinterpret` verifier regression;
@@ -58,26 +58,26 @@ PY
   - closed by `bd71536ef`:
     - branch-local attention per-part TMEM bitcast missing active CGA layout
       for upstream multicta coverage.
-- Live current-head recovery backlog already refreshed:
+- Closed focused backlog:
   1. `115` unit nodeids in `language/test_core.py` and
-     `language/test_matmul.py`;
-  2. `93` regression nodeids in `python/test/regression/test_cast_matmul.py`;
-  3. `69` `triton_kernels` matmul nodeids;
-  4. `7` Gluon frontend contract/stale-expectation nodeids;
-  5. `4` remaining lit files:
+     `language/test_matmul.py` -> `115 passed`;
+  2. `93` regression nodeids in `python/test/regression/test_cast_matmul.py`
+     -> `93 passed`;
+  3. `69` `triton_kernels` matmul nodeids -> `69 passed`;
+  4. `7` Gluon frontend contract/stale-expectation nodeids -> `7 passed`;
+  5. the `4` focused lit files:
      `Conversion/tritongpu_to_llvm_blackwell.mlir`,
      `Gluon/infer_coalesced_encoding.mlir`,
      `TritonGPU/amd/amd-consan.mlir`, and
-     `TritonNvidiaGPU/test_tensor_memory_allocation.mlir`.
+     `TritonNvidiaGPU/test_tensor_memory_allocation.mlir` -> all passed.
 - Classification note:
-  - the unit bucket is not merge-induced because the immediate pre-merge branch
-    sweep already had `117` failures in the same two files;
-  - the regression bucket is newly refreshed current-head evidence and still
-    needs exact baseline classification;
-  - the `triton_kernels` matmul bucket is newly refreshed current-head evidence
-    and belongs beside the other matmul compile-failure families;
-  - the seven Gluon frontend rows are reinterpret-contract / stale-expectation
-    work, not compiler regressions to mix into the matmul repair queue;
+  - the unit bucket was not merge-induced because the immediate pre-merge
+    branch sweep already had `117` failures in the same two files;
+  - the repaired head confirms the regression and `triton_kernels` manifests
+    were real branch deltas rather than flakes;
+  - the seven Gluon frontend rows were reinterpret-contract /
+    stale-expectation work, not compiler regressions to mix into the matmul
+    repair queue;
   - older April statements that no live recovery backlog remained are stale.
 - Not current recovery blockers:
   - the pre-fix examples lane had `384` attention failures, but they were the
@@ -90,22 +90,18 @@ PY
 
 ### Fresh Repair Plan After Merge-Base Classification (2026-05-07 UTC)
 
-1. Fix the deterministic MMAv5 accumulator-family regression shared by the
-   unit and regression manifests. The representative rows fail only on the
-   branch, and their exact TMEM accumulator roots contain broadcast-equivalent
-   zero bases that should not disqualify the physical MMAv5 family match.
-2. Reduce the `triton_kernels` persistent-matmul bucket separately from an
-   exact reproducer in `TritonNvidiaGPUOptimizeTMemLayoutsPass`; keep it beside
-   the MMAv5 fix until the shared-vs-distinct root cause is proven.
-3. Rewrite the six branch-added Gluon frontend tests onto the explicit TMEM
+1. [x] Fix the deterministic MMAv5 accumulator-family regression shared by the
+   unit and regression manifests.
+2. [x] Reduce the `triton_kernels` persistent-matmul bucket separately from the
+   legacy optimizer path that cannot represent explicit-linear TMEM roots.
+3. [x] Rewrite the six branch-added Gluon frontend tests onto the explicit TMEM
    physical-bitcast contract and refresh the one branch-changed constexpr
-   expectation. These are test-contract updates, not compiler regressions.
-4. Refresh the stale lit expectations whose inferred memdesc text changed, and
-   keep `tritongpu_to_llvm_blackwell.mlir` separated into its real existing
-   sub-32-bit conversion gap plus any cascading stale checks.
-5. Re-run focused exact manifests first, then broaden to the full current GB200
-   lane pieces once the focused sets are green. Keep `test_debug.py` and Proton
-   out of the product-recovery queue unless a fresh branch-only exact appears.
+   expectation.
+4. [x] Refresh the stale lit expectations and close the real Blackwell
+   singleton-prefix subword-phase bug.
+5. [ ] Re-run the full current GB200 lane pieces from the repaired head. Keep
+   `test_debug.py` and Proton out of the product-recovery queue unless a fresh
+   branch-only exact appears.
 
 ### Previous Current-Head Recovery Status (2026-04-13 05:41 UTC)
 

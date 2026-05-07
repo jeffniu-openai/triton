@@ -2,11 +2,12 @@
 
 Last updated: 2026-05-07 UTC
 
-Active phase: post-merge GB200 revalidation and upstream-extraction planning.
+Active phase: post-recovery broad GB200 revalidation and upstream-extraction
+planning.
 Current public upstream main (`4cd6bcbc9`) has been merged into `codex/tmem`,
 the merge-local verifier and Gluon barrier-count fallout is fixed and pushed at
-`30a398ff4`, and current-head GB200 reruns are replacing the stale April
-inventory.
+`30a398ff4`, the refreshed deterministic branch failures are fixed and pushed at
+`51534acf0`, and the next gate is a broad current-head rerun.
 
 Latest follow-up: source recovery is complete for merge-local issues. Preserve
 the current project invariant: semantic legality and codegen behavior must come
@@ -28,6 +29,7 @@ Current post-merge checklist:
 - [x] Finish current-head Gluon, Proton, debug, and triton-kernels reruns or
       reduce non-completing tails to focused exact evidence.
 - [x] Refresh all GB200 manifests/counts from current-head evidence.
+- [x] Land and push the deterministic recovery checkpoint.
 - [ ] Land and push the documentation checkpoint.
 - [ ] Use `upstream_pr_slicing_plan_20260507.md` as the extraction checklist for
       the stacked upstream PR series.
@@ -38,14 +40,14 @@ Current branch-recovery checklist after fresh merge-base classification:
       `4cd6bcbc9`.
 - [x] Classify deterministic branch deltas separately from preexisting / flaky
       harness symptoms.
-- [ ] Fix the branch-new MMAv5 accumulator-family regression behind the unit
+- [x] Fix the branch-new MMAv5 accumulator-family regression behind the unit
       and regression manifests.
-- [ ] Fix or separately explain the branch-new `triton_kernels` optimizer
-      failure family.
-- [ ] Rewrite / refresh the seven Gluon frontend contract rows.
-- [ ] Refresh the remaining lit rows after separating true conversion gaps from
-      stale expected text.
-- [ ] Re-run focused exact manifests, then the broader GB200 surfaces, and
+- [x] Fix the branch-new `triton_kernels` optimizer failure family.
+- [x] Rewrite / refresh the seven Gluon frontend contract rows.
+- [x] Refresh the remaining lit rows after separating the true conversion bug
+      from stale expected text.
+- [x] Re-run focused exact manifests.
+- [ ] Re-run the broader GB200 surfaces, and
       refresh the manifests again before the next checkpoint.
 
 Current audit follow-up checklist:
@@ -64,9 +66,23 @@ Validation evidence for this follow-up:
 - Focused Gluon split-N plus descriptor ld/st runtime checks -> `3 passed`; representative physical-bitcast descriptor-chain rows -> `4 passed`; 4-GPU GB200-style Python sample -> all selected shards green (`1927` selected cases total)
 - `git diff --check`
 
+Latest focused recovery evidence:
+
+- exact manifest reruns: unit `115 passed`, regression `93 passed`,
+  `triton_kernels` `69 passed`, Gluon frontend `7 passed`;
+- `lit -v` passed for
+  `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+  `Gluon/infer_coalesced_encoding.mlir`,
+  `TritonGPU/amd/amd-consan.mlir`, and
+  `TritonNvidiaGPU/test_tensor_memory_allocation.mlir`;
+- focused subword runtime selector:
+  `104 passed, 1604 deselected`.
+
 Known validation boundary:
 
-- `test/Conversion/tritongpu_to_llvm_blackwell.mlir` remains red before the updated reinterpret case because `store_packedb16_4x32xf16` hits the existing sub-32-bit TMEM view-origin `tmem_store` legalization gap at line 1560. Treat this as a separate conversion-lit cleanup/correctness bucket, not as a reason to weaken the physical-bitcast verifier.
+- no deterministic branch-owned exact bucket remains red at focused scope after
+  `51534acf0`; the remaining work is to rerun the broad GB200-equivalent lane
+  and refresh the aggregate manifests from the new head.
 
 Previous follow-up: branch-diff cleanup centralized TMEM ld/st planning-type selection and support-query row-plan fallback in `TensorMemoryUtils`, reused by verifier and lowering. Gluon split-N layout finalization now exposes only the data it uses and shares a single unsupported-layout diagnostic. `tmem_layouts.mlir` now matches the current self-contained alloc-shape contract and current optimizer behavior for 256-row subtile tests. Focused validation is green after `make -j8`.
 

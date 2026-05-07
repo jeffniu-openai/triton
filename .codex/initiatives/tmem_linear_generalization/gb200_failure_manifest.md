@@ -32,28 +32,32 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
-## Current-Head Failure Status (2026-05-07 UTC)
+## Current-Head Focused Recovery Status (2026-05-07 UTC)
 
 - Current checkpoint:
-  - `bd71536ef` on `origin/codex/tmem`.
-- Live current-head exact lists refreshed so far:
+  - `51534acf0` on `origin/codex/tmem`.
+- Former live current-head exact lists from the pre-fix inventory:
   - `gb200_current_20260507_unit_main_failures.txt`
     - `115` nodeids total;
+    - current exact rerun: `115 passed`;
     - files represented:
       - `language/test_matmul.py`: `74`;
       - `language/test_core.py`: `41`;
   - `gb200_current_20260507_regression_failures.txt`
     - `93` nodeids total;
+    - current exact rerun: `93 passed`;
     - files represented:
       - `python/test/regression/test_cast_matmul.py`: `93`.
   - `gb200_current_20260507_triton_kernels_failures.txt`
     - `69` nodeids total;
+    - current exact rerun: `69 passed`;
     - files represented:
       - `python/triton_kernels/tests/test_matmul.py`: `69`.
   - `gb200_current_20260507_gluon_frontend_failures.txt`
     - `7` nodeids total;
     - all are focused frontend contract/stale-expectation tests in
-      `python/test/gluon/test_frontend.py`.
+      `python/test/gluon/test_frontend.py`;
+    - current exact rerun: `7 passed`.
   - `gb200_current_20260507_debug_failures.txt`
     - `93` nodeids total;
     - current symptom is forked CUDA driver initialization failure.
@@ -61,20 +65,20 @@ PY
     - `37` nodeids total;
     - current symptom is xdist/CUPTI session interaction noise.
 - Current interpretation:
-  - the unit family is branch-preexisting across the latest merge because the
-    immediate pre-merge branch sweep already had `117` failures in the same two
-    files;
-  - the regression family is a fresh current-head live list and must be kept in
-    the active manifest until fixed or classified against a fresh baseline;
-  - the `triton_kernels` matmul family is now a fresh active product bucket;
-  - the seven Gluon frontend rows are reinterpret-contract rewrites or stale
-    expectation text, not compiler regressions to blur into the matmul buckets;
+  - the deterministic branch-owned exact lists above are closed at focused scope
+    by `51534acf0`;
+  - the unit/regression failures shared the same in-memory distributed-layout
+    canonicalization bug, the `triton_kernels` family was the legacy
+    optimizer path accepting explicit-linear roots, and the Gluon rows were
+    contract / expectation refreshes rather than product regressions;
   - the debug and Proton lists are currently harness-sensitive symptoms, not
     yet branch-actionable compiler bugs;
   - the pre-fix `384` Gluon examples failures are not active: they were the
     multicta attention merge bug fixed by `bd71536ef`, and the repaired
     attention file passes `576/576`;
-  - older April claims of "none known from current local evidence" are stale.
+  - older April claims of "none known from current local evidence" are stale,
+    and the next aggregate truth source must come from a fresh broad rerun on
+    `51534acf0` or later.
 
 ## Merge-Base Classification Refresh (2026-05-07 UTC)
 

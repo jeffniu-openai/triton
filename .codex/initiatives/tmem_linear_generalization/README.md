@@ -4,8 +4,8 @@
 
 Rehydrated `codex/tmem`, merged current `upstream/main` (`4cd6bcbc9`) into the
 branch as `189e89bc0`, fixed the merge-induced correctness issues found by
-post-merge validation, and pushed recovery checkpoints `30a398ff4` and
-`bd71536ef`.
+post-merge validation, and pushed recovery checkpoints `30a398ff4`,
+`bd71536ef`, and `51534acf0`.
 
 Merge fallout already fixed:
 - TMEM `memdesc_reinterpret` verification no longer assumes every
@@ -15,19 +15,31 @@ Merge fallout already fixed:
 - The branch-local attention per-part TMEM bitcast now carries the active CGA
   layout for upstream's new 2CTA/4CTA coverage.
 
-Current GB200-local status is no longer green and older April "all clear"
-inventory counts are stale:
-- `make test-lit` now passes `261` tests with `4` remaining older branch-local
+Fresh focused recovery after that inventory is green:
+- the `115` unit rows, `93` regression rows, and `69`
+  `python/triton_kernels/tests` rows from the refreshed exact manifests now all
+  pass on current head;
+- the seven Gluon frontend rows are rewritten/refreshed and pass;
+- the four focused lit files from the merge-base comparison now pass:
+  `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+  `Gluon/infer_coalesced_encoding.mlir`,
+  `TritonGPU/amd/amd-consan.mlir`, and
+  `TritonNvidiaGPU/test_tensor_memory_allocation.mlir`;
+- the Blackwell conversion holdout was a real branch bug plus stale expected
+  text: singleton hidden alloc prefixes were being treated as possible subword
+  displacement, and several checks still assumed the old raw-word pointer
+  lowering.
+
+Current GB200-local broad status is still based on the pre-fix rerun and older
+April "all clear" counts remain stale until the lane is rerun:
+- before `51534acf0`, `make test-lit` passed `261` tests with `4` branch-local
   failures and `2` unsupported tests;
-- `make NUM_PROCS=24 test-unit` fails `115` tests in the existing
-  `language/test_core.py` / `language/test_matmul.py` TMEM compile-failure
-  family;
-- `make NUM_PROCS=24 test-regression` fails `93` `test_cast_matmul` rows in
-  the same `ConvertTritonGPUToLLVM` family;
-- `python/triton_kernels/tests` fails `69` matmul rows;
+- before `51534acf0`, `make NUM_PROCS=24 test-unit`,
+  `make NUM_PROCS=24 test-regression`, and `python/triton_kernels/tests`
+  exposed the now-closed exact manifest families above;
 - the main Gluon grouped run reached `99%`, reproduced `7` frontend
-  contract/stale-expectation failures, then was stopped after one overlong
-  `test_tcgen05_mma_scaled` tail; that exact passes in isolation;
+  contract/stale-expectation failures that are now fixed, then was stopped after
+  one overlong `test_tcgen05_mma_scaled` tail; that exact passes in isolation;
 - the pre-fix full Gluon examples run failed `384` attention rows, all in the
   multicta merge bug fixed by `bd71536ef`; the repaired attention file now
   passes `576/576`;

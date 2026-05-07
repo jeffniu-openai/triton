@@ -18967,3 +18967,30 @@ Current finding:
 
 Current conclusion:
 - No no-register path has been found that doubles fp4 operand buffering inside one `.b4x16_p64` shared footprint. The only likely shared-memory-saving route is a register unpack path from dense fp4 shared storage into TMEM 8-bit containers, which violates the requested no-register/no-padding goal and needs separate performance justification.
+
+## 2026-05-07 UTC: Post-Merge GB200 Focused Recovery Closeout
+
+- `51534acf0` closes the deterministic branch-owned exact buckets found after
+  merging current `upstream/main`.
+- Unit/regression live-JIT failures came from constructing non-canonical
+  distributed `LinearEncodingAttr` objects in memory. Textual round-trip made
+  the same layouts canonical, which is why saved repro IR passed while live JIT
+  failed. TMEM-produced distributed layouts now normalize before use.
+- The `triton_kernels` matmul family was a separate optimizer bug: the legacy
+  `tmem_load -> local_store` propagation path accepted explicit-linear TMEM roots
+  it cannot represent. Restrict it to legacy `TensorMemoryEncodingAttr`.
+- Function-entry TMEM descriptors can be externally supplied and therefore have
+  no local alloc root to chase during tensor-memory allocation analysis.
+- The final Blackwell holdout was a real phase-proof bug. A descriptor with
+  alloc shape `1x128x128` has a hidden prefix only for container rank; that
+  singleton dimension cannot encode subword displacement and should not force
+  unknown-phase lowering. Nontrivial hidden prefixes remain conservative.
+- Focused evidence on current head:
+  unit exact manifest `115 passed`; regression exact manifest `93 passed`;
+  `triton_kernels` exact manifest `69 passed`; Gluon frontend manifest
+  `7 passed`; focused lit recovery set `4/4` passed; subword runtime selector
+  `104 passed, 1604 deselected`.
+
+Next concrete step:
+- Run the broader GB200-equivalent lane from `51534acf0` or later and refresh
+  the aggregate inventory before starting the upstream PR extraction series.
