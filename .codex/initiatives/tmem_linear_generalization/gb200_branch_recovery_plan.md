@@ -49,17 +49,22 @@ PY
 ### Current-Head Recovery Status (2026-05-07 UTC)
 
 - Current checkpoint:
-  - `30a398ff4`.
+  - `bd71536ef`.
 - Merge-local backlog:
   - closed by `30a398ff4`:
     - generic shared-only `memdesc_reinterpret` verifier regression;
     - stale branch-owned Gluon `tcgen05_mma_barrier_count` call sites after the
       upstream `two_ctas` API change.
+  - closed by `bd71536ef`:
+    - branch-local attention per-part TMEM bitcast missing active CGA layout
+      for upstream multicta coverage.
 - Live current-head recovery backlog already refreshed:
   1. `115` unit nodeids in `language/test_core.py` and
      `language/test_matmul.py`;
   2. `93` regression nodeids in `python/test/regression/test_cast_matmul.py`;
-  3. `4` remaining lit files:
+  3. `69` `triton_kernels` matmul nodeids;
+  4. `7` Gluon frontend contract/stale-expectation nodeids;
+  5. `4` remaining lit files:
      `Conversion/tritongpu_to_llvm_blackwell.mlir`,
      `Gluon/infer_coalesced_encoding.mlir`,
      `TritonGPU/amd/amd-consan.mlir`, and
@@ -69,10 +74,19 @@ PY
     sweep already had `117` failures in the same two files;
   - the regression bucket is newly refreshed current-head evidence and still
     needs exact baseline classification;
+  - the `triton_kernels` matmul bucket is newly refreshed current-head evidence
+    and belongs beside the other matmul compile-failure families;
+  - the seven Gluon frontend rows are reinterpret-contract / stale-expectation
+    work, not compiler regressions to mix into the matmul repair queue;
   - older April statements that no live recovery backlog remained are stale.
-- Pending before the backlog is complete:
-  - finish Gluon, Proton, debug, and triton-kernels reruns;
-  - replace stale aggregate counts with current-head exact manifests.
+- Not current recovery blockers:
+  - the pre-fix examples lane had `384` attention failures, but they were the
+    merge-local multicta layout bug fixed by `bd71536ef`; the repaired attention
+    file now passes `576/576`;
+  - `test_debug.py` currently fails through forked CUDA initialization despite
+    direct CUDA allocation working;
+  - Proton's broad xdist command reports `37` CUPTI/session-interaction
+    failures while representative exacts and all required tail commands pass.
 
 ### Previous Current-Head Recovery Status (2026-04-13 05:41 UTC)
 

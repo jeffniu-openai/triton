@@ -131,6 +131,11 @@ The branch has two kinds of content:
   - `make test-lit` still has four older branch-local failures;
   - `make NUM_PROCS=24 test-unit` still has the broad TMEM compile-failure
     family in `language/test_core.py` and `language/test_matmul.py`;
-  - the full post-merge Gluon rerun is still in progress for the current head.
+  - `make NUM_PROCS=24 test-regression` and
+    `python/triton_kernels/tests` now expose related matmul compile-failure
+    families;
+  - the focused Gluon frontend list still has seven reinterpret-contract /
+    stale-expectation rows to rewrite;
+  - the grouped Gluon sweep remains partition-sensitive at its long final tail.
 - Treat those as release gates for the upstream series, but not as a reason to
   collapse the series back into one PR.

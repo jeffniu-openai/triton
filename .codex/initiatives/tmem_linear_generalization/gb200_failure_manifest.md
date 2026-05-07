@@ -35,29 +35,46 @@ PY
 ## Current-Head Failure Status (2026-05-07 UTC)
 
 - Current checkpoint:
-  - `30a398ff4` on `origin/codex/tmem`.
+  - `bd71536ef` on `origin/codex/tmem`.
 - Live current-head exact lists refreshed so far:
-  - `/tmp/gb200-current-test-unit-failures.txt`
+  - `gb200_current_20260507_unit_main_failures.txt`
     - `115` nodeids total;
     - files represented:
       - `language/test_matmul.py`: `74`;
       - `language/test_core.py`: `41`;
-  - `/tmp/gb200-current-test-regression-failures.txt`
+  - `gb200_current_20260507_regression_failures.txt`
     - `93` nodeids total;
     - files represented:
       - `python/test/regression/test_cast_matmul.py`: `93`.
+  - `gb200_current_20260507_triton_kernels_failures.txt`
+    - `69` nodeids total;
+    - files represented:
+      - `python/triton_kernels/tests/test_matmul.py`: `69`.
+  - `gb200_current_20260507_gluon_frontend_failures.txt`
+    - `7` nodeids total;
+    - all are focused frontend contract/stale-expectation tests in
+      `python/test/gluon/test_frontend.py`.
+  - `gb200_current_20260507_debug_failures.txt`
+    - `93` nodeids total;
+    - current symptom is forked CUDA driver initialization failure.
+  - `gb200_current_20260507_proton_main_failures.txt`
+    - `37` nodeids total;
+    - current symptom is xdist/CUPTI session interaction noise.
 - Current interpretation:
   - the unit family is branch-preexisting across the latest merge because the
     immediate pre-merge branch sweep already had `117` failures in the same two
     files;
   - the regression family is a fresh current-head live list and must be kept in
     the active manifest until fixed or classified against a fresh baseline;
+  - the `triton_kernels` matmul family is now a fresh active product bucket;
+  - the seven Gluon frontend rows are reinterpret-contract rewrites or stale
+    expectation text, not compiler regressions to blur into the matmul buckets;
+  - the debug and Proton lists are currently harness-sensitive symptoms, not
+    yet branch-actionable compiler bugs;
+  - the pre-fix `384` Gluon examples failures are not active: they were the
+    multicta attention merge bug fixed by `bd71536ef`, and the repaired
+    attention file passes `576/576`;
   - older April claims of "none known from current local evidence" are stale.
-- Pending refresh before this section can be considered complete:
-  - Gluon exact list;
-  - Proton exact list;
-  - isolated `test_debug.py`;
-  - `python/triton_kernels/tests`.
 
 ## Previous Current-Head Failure Status (2026-04-13 05:41 UTC)
 

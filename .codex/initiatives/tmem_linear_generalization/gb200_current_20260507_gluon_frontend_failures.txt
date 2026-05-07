@@ -1,0 +1,7 @@
+python/test/gluon/test_frontend.py::test_tensor_memory_linear_view_ir
+python/test/gluon/test_frontend.py::test_tensor_memory_linear_views_block_layout_ir
+python/test/gluon/test_frontend.py::test_tensor_memory_linear_view_load_reports_clean_error
+python/test/gluon/test_frontend.py::test_tensor_memory_4x256b_refresh_descriptor_type_reports_backend_ldst_reason
+python/test/gluon/test_frontend.py::test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reason
+python/test/gluon/test_frontend.py::test_tensor_memory_descriptor_chain_ir
+python/test/gluon/test_frontend.py::test_tmem_subslice_reg_layout_constexpr

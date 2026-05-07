@@ -23,7 +23,7 @@ noise lives in `gb200_failure_classification_20260412.md`.
 ## Current Broad Validation Checkpoint (2026-05-07 UTC)
 
 - Current branch checkpoint:
-  - `30a398ff4` on `origin/codex/tmem`;
+  - `bd71536ef` on `origin/codex/tmem`;
   - current public `upstream/main` merged at `4cd6bcbc9`.
 - Current-head reruns completed so far:
   - `make -j8`: success;
@@ -37,25 +37,38 @@ noise lives in `gb200_failure_classification_20260412.md`.
   - `make NUM_PROCS=24 test-regression`:
     `93 failed, 997 passed, 216 skipped`.
 - Current exact-failure artifacts already refreshed:
-  - `/tmp/gb200-current-test-unit-failures.txt`: `115` nodeids, split across
-    `language/test_matmul.py` (`74`) and `language/test_core.py` (`41`);
-  - `/tmp/gb200-current-test-regression-failures.txt`: `93` nodeids, all from
-    `python/test/regression/test_cast_matmul.py`.
+  - `gb200_current_20260507_unit_main_failures.txt`: `115` nodeids, split
+    across `language/test_matmul.py` (`74`) and `language/test_core.py` (`41`);
+  - `gb200_current_20260507_regression_failures.txt`: `93` nodeids, all from
+    `python/test/regression/test_cast_matmul.py`;
+  - `gb200_current_20260507_triton_kernels_failures.txt`: `69` nodeids, all
+    from `python/triton_kernels/tests/test_matmul.py`;
+  - `gb200_current_20260507_gluon_frontend_failures.txt`: `7` frontend
+    contract/stale-expectation nodeids;
+  - `gb200_current_20260507_debug_failures.txt`: `93` forked CUDA-init nodeids;
+  - `gb200_current_20260507_proton_main_failures.txt`: `37` xdist/CUPTI
+    interaction-sensitive nodeids.
 - Classification against the immediate pre-merge branch state:
   - the dominant unit family is not merge-induced; pre-merge branch head already
     failed `117` tests in the same two files;
   - the current regression rerun refreshes a live broader compile-failure family
     that was not represented in the stale April "green" summary.
-- In-flight current-head reruns:
-  - full Gluon;
-  - Proton;
-  - isolated `test_debug.py`;
-  - `python/triton_kernels/tests`.
+- Remaining current-head lane notes:
+  - the grouped main Gluon run reached `99%`, reproduced the seven focused
+    frontend failures above, then was stopped after an overlong
+    `test_tcgen05_mma_scaled` tail; that exact passed in isolation;
+  - the first full Gluon examples run failed `384` attention rows, all from a
+    merge-local multicta layout bug; after `bd71536ef`, the repaired attention
+    file passed `576/576`;
+  - `test_debug.py` failures are currently a forked CUDA-init harness symptom:
+    direct Torch CUDA allocation succeeds on the same GPU;
+  - Proton's broad xdist main command is noisy, but representative periodic
+    flushing exacts and all three required tail commands pass.
 - Inventory consequence:
   - the April 13/14 "no deterministic branch-caused GB200 failure" conclusion
     is stale;
-  - do not use the older green aggregate until this current-head rerun finishes
-    and the manifests below are replaced.
+  - do not use the older green aggregate for prioritization; use the refreshed
+    2026-05-07 manifests above instead.
 
 ## Previous Broad Validation Checkpoint (2026-04-13 05:41 UTC)
 

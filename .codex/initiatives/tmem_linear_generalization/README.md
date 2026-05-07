@@ -3,14 +3,17 @@
 ## Latest Status - 2026-05-07 UTC
 
 Rehydrated `codex/tmem`, merged current `upstream/main` (`4cd6bcbc9`) into the
-branch as `189e89bc0`, fixed the two merge-induced correctness issues found by
-post-merge validation, and pushed the recovery checkpoint `30a398ff4`.
+branch as `189e89bc0`, fixed the merge-induced correctness issues found by
+post-merge validation, and pushed recovery checkpoints `30a398ff4` and
+`bd71536ef`.
 
 Merge fallout already fixed:
 - TMEM `memdesc_reinterpret` verification no longer assumes every
   `MemDescType` in generic shared-only tests is tensor memory.
 - Branch-owned Gluon test helpers now pass upstream's required `two_ctas`
   argument when computing `tcgen05_mma_barrier_count`.
+- The branch-local attention per-part TMEM bitcast now carries the active CGA
+  layout for upstream's new 2CTA/4CTA coverage.
 
 Current GB200-local status is no longer green and older April "all clear"
 inventory counts are stale:
@@ -21,10 +24,19 @@ inventory counts are stale:
   family;
 - `make NUM_PROCS=24 test-regression` fails `93` `test_cast_matmul` rows in
   the same `ConvertTritonGPUToLLVM` family;
+- `python/triton_kernels/tests` fails `69` matmul rows;
+- the main Gluon grouped run reached `99%`, reproduced `7` frontend
+  contract/stale-expectation failures, then was stopped after one overlong
+  `test_tcgen05_mma_scaled` tail; that exact passes in isolation;
+- the pre-fix full Gluon examples run failed `384` attention rows, all in the
+  multicta merge bug fixed by `bd71536ef`; the repaired attention file now
+  passes `576/576`;
+- `test_debug.py` still fails `93` forked CUDA-init cases even though direct
+  Torch CUDA allocation works on the same GPU;
+- Proton's xdist main command fails `37` CUPTI/session-interaction rows while
+  representative exacts and all three tail commands pass;
 - `make test-cpp`, `make test-gsan`, the fused-attention tutorial, and the
-  microbenchmark pass on the current head;
-- full post-merge Gluon / Proton reruns are still in progress as of this
-  checkpoint.
+  microbenchmark pass on the current head.
 
 The durable upstream extraction plan now lives in
 `upstream_pr_slicing_plan_20260507.md`.

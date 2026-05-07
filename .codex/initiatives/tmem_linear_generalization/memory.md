@@ -2,28 +2,38 @@
 
 - Rehydrated `codex/tmem`, fetched current public upstream main at
   `4cd6bcbc9af7ae4816ddeca23ab7bf8fb9781aa0`, merged it into the branch as
-  `189e89bc0`, then pushed checkpoint `30a398ff4` after fixing the merge-local
-  fallout discovered by validation.
+  `189e89bc0`, then pushed checkpoints `30a398ff4` and `bd71536ef` after fixing
+  the merge-local fallout discovered by validation.
 - Merge-local fixes already landed: the TMEM reinterpret verifier now checks
   whether the memdesc memory space is tensor memory before constructing the
   tensor-memory attr, and branch-owned Gluon helpers now pass the upstream
-  `two_ctas` argument into `tcgen05_mma_barrier_count`.
+  `two_ctas` argument into `tcgen05_mma_barrier_count`; the branch-local
+  attention per-part TMEM bitcast now carries the active CGA layout for new
+  upstream multicta coverage.
 - Current-head validation completed so far: `make -j8`; `make test-lit` ->
   `261 passed, 4 failed, 2 unsupported`; `make test-cpp` -> `242/242 passed`;
   `make NUM_PROCS=24 test-unit` main phase -> `115 failed, 15165 passed, 5552
   skipped, 2 xfailed`; `make test-gsan` -> `93 passed, 5 skipped`; fused
   attention tutorial -> `192 passed, 192 skipped`; `make test-microbenchmark`
   passed; `make NUM_PROCS=24 test-regression` -> `93 failed, 997 passed, 216
-  skipped`.
+  skipped`; `python/triton_kernels/tests` -> `69 failed, 2493 passed, 3752
+  skipped`; focused Gluon frontend reds -> `7 failed`; repaired attention file
+  rerun -> `576 passed`.
 - Classification from current evidence: the dominant unit bucket is not a new
   merge regression because the pre-merge branch sweep already failed `117`
   tests in the same two files. The regression lane adds a newly refreshed live
   `test_cast_matmul` compile-failure family that must now be tracked alongside
   unit/lit before the branch is considered GB200-green again.
-- Current post-merge reruns still in flight at this checkpoint: full Gluon,
-  Proton, isolated `test_debug.py`, and the `python/triton_kernels/tests`
-  tail. The older April GB200 "no deterministic branch-caused failure" state is
-  stale until these current-head reruns finish and the manifests are refreshed.
+- Current classification refinements: the examples lane's `384` failures were a
+  merge bug and are closed by `bd71536ef`; the grouped Gluon sweep reached `99%`
+  and reproduced the seven frontend failures above before an overlong final
+  `test_tcgen05_mma_scaled` tail, whose exact passes in isolation;
+  `test_debug.py` is currently a forked CUDA-init harness symptom despite direct
+  Torch CUDA allocation succeeding on the same GPU; Proton's broad xdist
+  failures remain interaction-sensitive because representative exacts and all
+  required tail commands pass.
+- The older April GB200 "no deterministic branch-caused failure" state is stale
+  until the active manifests below are repaired or explicitly reclassified.
 
 # Previous Memory - 2026-04-26 18:18 UTC
 

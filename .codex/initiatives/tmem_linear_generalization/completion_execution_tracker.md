@@ -25,8 +25,9 @@ Current post-merge checklist:
       dominant failure family against the pre-merge branch sweep.
 - [x] Start the current-head regression refresh and record its live failure
       family.
-- [ ] Finish current-head Gluon, Proton, debug, and triton-kernels reruns.
-- [ ] Refresh all GB200 manifests/counts from current-head evidence.
+- [x] Finish current-head Gluon, Proton, debug, and triton-kernels reruns or
+      reduce non-completing tails to focused exact evidence.
+- [x] Refresh all GB200 manifests/counts from current-head evidence.
 - [ ] Land and push the documentation checkpoint.
 - [ ] Use `upstream_pr_slicing_plan_20260507.md` as the extraction checklist for
       the stacked upstream PR series.

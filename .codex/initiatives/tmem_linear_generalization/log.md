@@ -18,6 +18,22 @@
   the same two files. The regression rerun adds a newly refreshed live
   `test_cast_matmul` compile-failure family that must now be tracked in the
   current GB200 inventory.
+- The first full Gluon examples rerun failed `384` attention rows. Root cause
+  was merge-local: `_compute_and_store_exp2` still built a one-CTA TMEM bitcast
+  layout after upstream added 2CTA/4CTA coverage. Fixed at `bd71536ef` by using
+  `SPLIT_M_PER_CTA`, `CGA_LAYOUT`, and `two_ctas`; representative 2CTA/4CTA
+  exacts passed, then the full attention file passed `576/576`.
+- Additional current-head surfaces now refreshed: `python/triton_kernels/tests`
+  -> `69 failed, 2493 passed, 3752 skipped`; focused Gluon frontend exacts ->
+  `7 failed`; `test_debug.py` exact rerun -> `93 failed, 2 passed` from forked
+  CUDA initialization despite direct Torch CUDA allocation succeeding on the
+  same GPU; Proton main `-n 8` -> `37 failed, 94 passed, 1 skipped`, while
+  representative exacts and the three tail commands passed.
+- The grouped main Gluon sweep reached `99%` and reproduced the same seven
+  frontend failures before one long `test_tcgen05_mma_scaled` tail dominated the
+  end of the run. The late-tail exact passed in isolation, so record the grouped
+  run as incomplete/partition-sensitive rather than inventing a full failure
+  count.
 - Added `upstream_pr_slicing_plan_20260507.md` with the recommended stacked PR
   order and the topics to hold out of the first upstream series.
 
