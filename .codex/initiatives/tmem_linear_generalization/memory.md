@@ -1,4 +1,31 @@
-# Latest Memory - 2026-04-26 18:18 UTC
+# Latest Memory - 2026-05-07 UTC
+
+- Rehydrated `codex/tmem`, fetched current public upstream main at
+  `4cd6bcbc9af7ae4816ddeca23ab7bf8fb9781aa0`, merged it into the branch as
+  `189e89bc0`, then pushed checkpoint `30a398ff4` after fixing the merge-local
+  fallout discovered by validation.
+- Merge-local fixes already landed: the TMEM reinterpret verifier now checks
+  whether the memdesc memory space is tensor memory before constructing the
+  tensor-memory attr, and branch-owned Gluon helpers now pass the upstream
+  `two_ctas` argument into `tcgen05_mma_barrier_count`.
+- Current-head validation completed so far: `make -j8`; `make test-lit` ->
+  `261 passed, 4 failed, 2 unsupported`; `make test-cpp` -> `242/242 passed`;
+  `make NUM_PROCS=24 test-unit` main phase -> `115 failed, 15165 passed, 5552
+  skipped, 2 xfailed`; `make test-gsan` -> `93 passed, 5 skipped`; fused
+  attention tutorial -> `192 passed, 192 skipped`; `make test-microbenchmark`
+  passed; `make NUM_PROCS=24 test-regression` -> `93 failed, 997 passed, 216
+  skipped`.
+- Classification from current evidence: the dominant unit bucket is not a new
+  merge regression because the pre-merge branch sweep already failed `117`
+  tests in the same two files. The regression lane adds a newly refreshed live
+  `test_cast_matmul` compile-failure family that must now be tracked alongside
+  unit/lit before the branch is considered GB200-green again.
+- Current post-merge reruns still in flight at this checkpoint: full Gluon,
+  Proton, isolated `test_debug.py`, and the `python/triton_kernels/tests`
+  tail. The older April GB200 "no deterministic branch-caused failure" state is
+  stale until these current-head reruns finish and the manifests are refreshed.
+
+# Previous Memory - 2026-04-26 18:18 UTC
 
 - Implemented the five-point audit follow-up cleanup/correctness batch on `codex/tmem` at base HEAD `86454f834`. Key changes: Gluon split-N descriptor layout finalization now uses the narrowed helper signature; explicit TMEM physical bitcast with a user-provided layout is checked for structural feasibility through `inferTMemBitcastType` while preserving explicit-layout relabeling semantics; `MemDescReinterpretOp` now rejects TMEM shape/dtype/layout/alloc-shape changes unless the op carries `tmem_physical_bitcast`; ld/st support-query scalarized lowering preserves query-origin base offsets without double counting; and direct-seed `tcgen05.copy` descriptor encoding uses named matrix-descriptor start-address helpers.
 - Type/model cleanup from validation: `test/TritonNvidiaGPU/ops.mlir` had stale `memdesc_index` result alloc-shapes for high-rank TMEM view cases. The verifier expects `128x512` and `128x128` alloc shapes respectively, which matches the current self-contained layout model, so the test IR was updated instead of weakening inference.

@@ -46,7 +46,35 @@ PY
 
 ## Current Classification Summary
 
-### Current-Head Recovery Status (2026-04-13 05:41 UTC)
+### Current-Head Recovery Status (2026-05-07 UTC)
+
+- Current checkpoint:
+  - `30a398ff4`.
+- Merge-local backlog:
+  - closed by `30a398ff4`:
+    - generic shared-only `memdesc_reinterpret` verifier regression;
+    - stale branch-owned Gluon `tcgen05_mma_barrier_count` call sites after the
+      upstream `two_ctas` API change.
+- Live current-head recovery backlog already refreshed:
+  1. `115` unit nodeids in `language/test_core.py` and
+     `language/test_matmul.py`;
+  2. `93` regression nodeids in `python/test/regression/test_cast_matmul.py`;
+  3. `4` remaining lit files:
+     `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+     `Gluon/infer_coalesced_encoding.mlir`,
+     `TritonGPU/amd/amd-consan.mlir`, and
+     `TritonNvidiaGPU/test_tensor_memory_allocation.mlir`.
+- Classification note:
+  - the unit bucket is not merge-induced because the immediate pre-merge branch
+    sweep already had `117` failures in the same two files;
+  - the regression bucket is newly refreshed current-head evidence and still
+    needs exact baseline classification;
+  - older April statements that no live recovery backlog remained are stale.
+- Pending before the backlog is complete:
+  - finish Gluon, Proton, debug, and triton-kernels reruns;
+  - replace stale aggregate counts with current-head exact manifests.
+
+### Previous Current-Head Recovery Status (2026-04-13 05:41 UTC)
 
 - Current checkpoint:
   - `b475e2883`.

@@ -1,3 +1,26 @@
+## 2026-05-07 UTC: merged latest upstream main and restarted GB200 inventory
+
+- Rehydrated `codex/tmem`, fetched public `upstream/main` at `4cd6bcbc9`, and
+  merged it into the branch as `189e89bc0`.
+- Fixed the two merge-local failures found by validation and pushed
+  `30a398ff4`: generic shared-only reinterpret verification no longer assumes
+  tensor-memory space, and branch-owned Gluon test helpers now pass upstream's
+  required `two_ctas` parameter to `tcgen05_mma_barrier_count`.
+- Current-head validation completed so far: `make -j8`; `make test-lit` ->
+  `261 passed, 4 failed, 2 unsupported`; `make test-cpp` -> `242/242 passed`;
+  main `make NUM_PROCS=24 test-unit` phase -> `115 failed, 15165 passed, 5552
+  skipped, 2 xfailed`; `make test-gsan` -> `93 passed, 5 skipped`; fused
+  attention tutorial -> `192 passed, 192 skipped`; `make test-microbenchmark`
+  passed; `make NUM_PROCS=24 test-regression` -> `93 failed, 997 passed, 216
+  skipped`.
+- Current classification: the unit failure family is branch-preexisting across
+  the merge boundary because the pre-merge sweep already had `117` failures in
+  the same two files. The regression rerun adds a newly refreshed live
+  `test_cast_matmul` compile-failure family that must now be tracked in the
+  current GB200 inventory.
+- Added `upstream_pr_slicing_plan_20260507.md` with the recommended stacked PR
+  order and the topics to hold out of the first upstream series.
+
 ## 2026-04-25 00:53 UTC: `tcgen05.copy` recovery bucket closed
 
 - Fixed direct-root copy support without resurrecting producer-chain legality. Expanded-row roots now use a folded physical query derived from the current `MemDescType`/layout when that query can directly compose with the shared source layout. Direct roots with permuted column bases may use a column-canonical source-support query for shared descriptor synthesis, while executable schedule and destination base-offset codegen stay on the exact destination query.

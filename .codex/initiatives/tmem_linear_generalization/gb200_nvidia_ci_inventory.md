@@ -20,7 +20,44 @@ lives in `gb200_branch_recovery_plan.md`. The current detailed split between
 actual bugs, stale tests, API/contract-update tests, and merge-base-preexisting
 noise lives in `gb200_failure_classification_20260412.md`.
 
-## Current Broad Validation Checkpoint (2026-04-13 05:41 UTC)
+## Current Broad Validation Checkpoint (2026-05-07 UTC)
+
+- Current branch checkpoint:
+  - `30a398ff4` on `origin/codex/tmem`;
+  - current public `upstream/main` merged at `4cd6bcbc9`.
+- Current-head reruns completed so far:
+  - `make -j8`: success;
+  - `make test-lit`: `261 passed, 4 failed, 2 unsupported`;
+  - `make test-cpp`: `242/242` passed;
+  - main phase of `make NUM_PROCS=24 test-unit`:
+    `115 failed, 15165 passed, 5552 skipped, 2 xfailed`;
+  - `make test-gsan`: `93 passed, 5 skipped`;
+  - `python/tutorials/06-fused-attention.py`: `192 passed, 192 skipped`;
+  - `make test-microbenchmark`: passed;
+  - `make NUM_PROCS=24 test-regression`:
+    `93 failed, 997 passed, 216 skipped`.
+- Current exact-failure artifacts already refreshed:
+  - `/tmp/gb200-current-test-unit-failures.txt`: `115` nodeids, split across
+    `language/test_matmul.py` (`74`) and `language/test_core.py` (`41`);
+  - `/tmp/gb200-current-test-regression-failures.txt`: `93` nodeids, all from
+    `python/test/regression/test_cast_matmul.py`.
+- Classification against the immediate pre-merge branch state:
+  - the dominant unit family is not merge-induced; pre-merge branch head already
+    failed `117` tests in the same two files;
+  - the current regression rerun refreshes a live broader compile-failure family
+    that was not represented in the stale April "green" summary.
+- In-flight current-head reruns:
+  - full Gluon;
+  - Proton;
+  - isolated `test_debug.py`;
+  - `python/triton_kernels/tests`.
+- Inventory consequence:
+  - the April 13/14 "no deterministic branch-caused GB200 failure" conclusion
+    is stale;
+  - do not use the older green aggregate until this current-head rerun finishes
+    and the manifests below are replaced.
+
+## Previous Broad Validation Checkpoint (2026-04-13 05:41 UTC)
 
 ### 2026-04-14 00:46 UTC Refresh On `cfef1b94f`
 

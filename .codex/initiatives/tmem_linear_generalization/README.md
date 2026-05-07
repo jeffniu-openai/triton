@@ -1,5 +1,34 @@
 # TMEM Linear Generalization Initiative
 
+## Latest Status - 2026-05-07 UTC
+
+Rehydrated `codex/tmem`, merged current `upstream/main` (`4cd6bcbc9`) into the
+branch as `189e89bc0`, fixed the two merge-induced correctness issues found by
+post-merge validation, and pushed the recovery checkpoint `30a398ff4`.
+
+Merge fallout already fixed:
+- TMEM `memdesc_reinterpret` verification no longer assumes every
+  `MemDescType` in generic shared-only tests is tensor memory.
+- Branch-owned Gluon test helpers now pass upstream's required `two_ctas`
+  argument when computing `tcgen05_mma_barrier_count`.
+
+Current GB200-local status is no longer green and older April "all clear"
+inventory counts are stale:
+- `make test-lit` now passes `261` tests with `4` remaining older branch-local
+  failures and `2` unsupported tests;
+- `make NUM_PROCS=24 test-unit` fails `115` tests in the existing
+  `language/test_core.py` / `language/test_matmul.py` TMEM compile-failure
+  family;
+- `make NUM_PROCS=24 test-regression` fails `93` `test_cast_matmul` rows in
+  the same `ConvertTritonGPUToLLVM` family;
+- `make test-cpp`, `make test-gsan`, the fused-attention tutorial, and the
+  microbenchmark pass on the current head;
+- full post-merge Gluon / Proton reruns are still in progress as of this
+  checkpoint.
+
+The durable upstream extraction plan now lives in
+`upstream_pr_slicing_plan_20260507.md`.
+
 ## Latest Status - 2026-04-26 18:18 UTC
 
 The audit follow-up cleanup/correctness batch is implemented locally. Gluon descriptor `get_reg_layout()` no longer passes stale split-N helper parameters, explicit TMEM physical bitcasts now verify that the bitcast is structurally possible while preserving explicit-layout relabeling semantics, raw same-type TMEM `memdesc_reinterpret` remains legal without the physical-bitcast contract, and TMEM `memdesc_index` lit expectations now match the current self-contained alloc-shape model. The ld/st support-query scalarized path no longer double-adds the query base offset, and `tcgen05.copy` direct-seed descriptor address encoding now uses named matrix-descriptor field helpers instead of raw masks.

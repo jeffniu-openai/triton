@@ -32,7 +32,34 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
-## Current-Head Failure Status (2026-04-13 05:41 UTC)
+## Current-Head Failure Status (2026-05-07 UTC)
+
+- Current checkpoint:
+  - `30a398ff4` on `origin/codex/tmem`.
+- Live current-head exact lists refreshed so far:
+  - `/tmp/gb200-current-test-unit-failures.txt`
+    - `115` nodeids total;
+    - files represented:
+      - `language/test_matmul.py`: `74`;
+      - `language/test_core.py`: `41`;
+  - `/tmp/gb200-current-test-regression-failures.txt`
+    - `93` nodeids total;
+    - files represented:
+      - `python/test/regression/test_cast_matmul.py`: `93`.
+- Current interpretation:
+  - the unit family is branch-preexisting across the latest merge because the
+    immediate pre-merge branch sweep already had `117` failures in the same two
+    files;
+  - the regression family is a fresh current-head live list and must be kept in
+    the active manifest until fixed or classified against a fresh baseline;
+  - older April claims of "none known from current local evidence" are stale.
+- Pending refresh before this section can be considered complete:
+  - Gluon exact list;
+  - Proton exact list;
+  - isolated `test_debug.py`;
+  - `python/triton_kernels/tests`.
+
+## Previous Current-Head Failure Status (2026-04-13 05:41 UTC)
 
 - Current checkpoint:
   - `b475e2883` on `origin/codex/tmem`.

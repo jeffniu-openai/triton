@@ -1,10 +1,35 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-26 18:18 UTC
+Last updated: 2026-05-07 UTC
 
-Active phase: Audit follow-up cleanup/correctness batch implemented locally; checkpoint commit/push pending. The previous cleanup slice was green, and this batch closed the five concrete follow-up items: stale Gluon split-N descriptor layout finalization, over-strict TMEM physical-bitcast/reinterpret validation, scalarized ld/st base-offset double counting risk, raw `tcgen05.copy` descriptor bit constants, and duplicated support-query fallback logic.
+Active phase: post-merge GB200 revalidation and upstream-extraction planning.
+Current public upstream main (`4cd6bcbc9`) has been merged into `codex/tmem`,
+the merge-local verifier and Gluon barrier-count fallout is fixed and pushed at
+`30a398ff4`, and current-head GB200 reruns are replacing the stale April
+inventory.
 
-Latest follow-up: source and focused validation are complete. Preserve the current project invariant: semantic legality and codegen behavior must come from the current `MemDescType`/layout plus the immediate SSA memdesc value, not producer-chain replay. Runtime alignment facts remain iisan/frontend checks; true ISA/codegen impossibility remains a compiler diagnostic.
+Latest follow-up: source recovery is complete for merge-local issues. Preserve
+the current project invariant: semantic legality and codegen behavior must come
+from the current `MemDescType`/layout plus the immediate SSA memdesc value, not
+producer-chain replay. Runtime alignment facts remain iisan/frontend checks;
+true ISA/codegen impossibility remains a compiler diagnostic.
+
+Current post-merge checklist:
+
+- [x] Fetch latest `upstream/main` and merge it into `codex/tmem`.
+- [x] Resolve merge conflicts and fix merge-local compile/runtime fallout.
+- [x] Push a recoverable checkpoint after the merge fixup.
+- [x] Rerun `make test-lit`, `make test-cpp`, `make test-gsan`, tutorial, and
+      microbenchmark surfaces.
+- [x] Rerun the main `make NUM_PROCS=24 test-unit` phase and classify the
+      dominant failure family against the pre-merge branch sweep.
+- [x] Start the current-head regression refresh and record its live failure
+      family.
+- [ ] Finish current-head Gluon, Proton, debug, and triton-kernels reruns.
+- [ ] Refresh all GB200 manifests/counts from current-head evidence.
+- [ ] Land and push the documentation checkpoint.
+- [ ] Use `upstream_pr_slicing_plan_20260507.md` as the extraction checklist for
+      the stacked upstream PR series.
 
 Current audit follow-up checklist:
 
