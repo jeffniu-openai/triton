@@ -600,7 +600,9 @@ def _apply_causal_mask(qk, col_limit_right):
 def _compute_and_store_exp2(config, qk, s_tmem):
     SIZE: gl.constexpr = qk.shape[1] // config.SPLIT_EXP_FACTOR
     TMEM_COLS_PER_PART: gl.constexpr = SIZE * config.dtype.primitive_bitwidth // gl.float32.primitive_bitwidth
-    p_part_tmem_layout: gl.constexpr = TensorMemoryLayout((config.SPLIT_M, SIZE), col_stride=1)
+    p_part_tmem_layout: gl.constexpr = TensorMemoryLayout((config.SPLIT_M_PER_CTA, SIZE), col_stride=1,
+                                                          cga_layout=config.CGA_LAYOUT,
+                                                          two_ctas=gl.num_ctas() > 1)
     qks = _split_n(qk, config.SPLIT_EXP_FACTOR)
     ps = ()
     for i in gl.static_range(config.SPLIT_EXP_FACTOR):
