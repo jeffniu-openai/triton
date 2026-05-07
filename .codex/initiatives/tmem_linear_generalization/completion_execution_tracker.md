@@ -2,12 +2,12 @@
 
 Last updated: 2026-05-07 UTC
 
-Active phase: post-recovery broad GB200 revalidation and upstream-extraction
-planning.
+Active phase: upstream-extraction planning after broad GB200 revalidation.
 Current public upstream main (`4cd6bcbc9`) has been merged into `codex/tmem`,
 the merge-local verifier and Gluon barrier-count fallout is fixed and pushed at
 `30a398ff4`, the refreshed deterministic branch failures are fixed and pushed at
-`51534acf0`, and the next gate is a broad current-head rerun.
+`51534acf0`, and the broad current-head rerun is now complete enough to show no
+remaining deterministic branch-owned product bucket.
 
 Latest follow-up: source recovery is complete for merge-local issues. Preserve
 the current project invariant: semantic legality and codegen behavior must come
@@ -30,7 +30,7 @@ Current post-merge checklist:
       reduce non-completing tails to focused exact evidence.
 - [x] Refresh all GB200 manifests/counts from current-head evidence.
 - [x] Land and push the deterministic recovery checkpoint.
-- [ ] Land and push the documentation checkpoint.
+- [x] Land and push the documentation checkpoint.
 - [ ] Use `upstream_pr_slicing_plan_20260507.md` as the extraction checklist for
       the stacked upstream PR series.
 
@@ -47,7 +47,7 @@ Current branch-recovery checklist after fresh merge-base classification:
 - [x] Refresh the remaining lit rows after separating the true conversion bug
       from stale expected text.
 - [x] Re-run focused exact manifests.
-- [ ] Re-run the broader GB200 surfaces, and
+- [x] Re-run the broader GB200 surfaces, and
       refresh the manifests again before the next checkpoint.
 
 Current audit follow-up checklist:
@@ -78,11 +78,32 @@ Latest focused recovery evidence:
 - focused subword runtime selector:
   `104 passed, 1604 deselected`.
 
+Latest broad recovery evidence:
+
+- `make test-lit` -> `265 passed, 2 unsupported`
+- main `make NUM_PROCS=24 test-unit` phase ->
+  `15280 passed, 5552 skipped, 2 xfailed`
+- `python/test/unit/test_debug.py` -> same `93` forked CUDA-init failures as
+  merge-base
+- `make NUM_PROCS=24 test-regression` -> `1090 passed, 216 skipped`
+- `make NUM_PROCS=24 test-gsan` -> one xdist aggregate hang; exact nodeid
+  passed directly and `make NUM_PROCS=8 test-gsan` -> `97 passed, 1 skipped`
+- `python/tutorials/06-fused-attention.py` -> `192 passed, 192 skipped`
+- `python/examples/gluon/` -> `1811 passed, 74 skipped`
+- four-way full `python/triton_kernels/tests/` split ->
+  `2562 passed, 3752 skipped`
+- Proton main xdist command -> `31` session-sensitive failures, while three
+  representative exacts and all three tail commands passed directly
+- `make test-cpp` -> `242/242` passed
+- `make test-microbenchmark` -> passed
+
 Known validation boundary:
 
-- no deterministic branch-owned exact bucket remains red at focused scope after
-  `51534acf0`; the remaining work is to rerun the broad GB200-equivalent lane
-  and refresh the aggregate manifests from the new head.
+- no deterministic branch-owned exact bucket remains red after the focused and
+  broad reruns;
+- the remaining non-green symptoms are merge-base-preexisting
+  (`test_debug.py`) or xdist/session-sensitive (main Gluon aggregate tail,
+  `test-gsan -n 24`, Proton), not a current TMEM recovery backlog.
 
 Previous follow-up: branch-diff cleanup centralized TMEM ld/st planning-type selection and support-query row-plan fallback in `TensorMemoryUtils`, reused by verifier and lowering. Gluon split-N layout finalization now exposes only the data it uses and shares a single unsupported-layout diagnostic. `tmem_layouts.mlir` now matches the current self-contained alloc-shape contract and current optimizer behavior for 256-row subtile tests. Focused validation is green after `make -j8`.
 

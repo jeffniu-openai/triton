@@ -18991,6 +18991,29 @@ Current conclusion:
   `7 passed`; focused lit recovery set `4/4` passed; subword runtime selector
   `104 passed, 1604 deselected`.
 
+## 2026-05-07 UTC: post-repair broad GB200 refresh
+
+- Broad rerun on the repaired head no longer exposes a deterministic
+  branch-owned product bucket:
+  - lit `265 passed, 2 unsupported`
+  - unit main phase `15280 passed, 5552 skipped, 2 xfailed`
+  - regression `1090 passed, 216 skipped`
+  - full `python/triton_kernels/tests/` split `2562 passed, 3752 skipped`
+  - examples `1811 passed, 74 skipped`
+  - tutorial `192 passed, 192 skipped`
+  - C++ `242/242` passed
+  - microbenchmark passed
+- The only remaining non-green surfaces are harness/session-sensitive:
+  - `test_debug.py` still reproduces the same `93` forked CUDA-init failures on
+    merge-base;
+  - the main Gluon aggregate reached one overlong `test_tcgen05_mma_scaled`
+    tail that passes directly;
+  - `test-gsan -n 24` hung on one aggregate worker, but the exact row passed
+    directly and `test-gsan -n 8` passed `97 passed, 1 skipped`;
+  - Proton broad xdist reported `31` failures while direct exacts/tails passed.
+- The branch-recovery queue is therefore closed from current local evidence.
+
 Next concrete step:
-- Run the broader GB200-equivalent lane from `51534acf0` or later and refresh
-  the aggregate inventory before starting the upstream PR extraction series.
+- Treat `upstream_pr_slicing_plan_20260507.md` as the active checklist for
+  extracting reviewable upstream slices from fresh branches rooted at current
+  `upstream/main`.

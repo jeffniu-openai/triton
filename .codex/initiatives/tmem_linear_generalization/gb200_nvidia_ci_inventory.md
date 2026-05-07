@@ -23,19 +23,27 @@ noise lives in `gb200_failure_classification_20260412.md`.
 ## Current Broad Validation Checkpoint (2026-05-07 UTC)
 
 - Current branch checkpoint:
-  - `bd71536ef` on `origin/codex/tmem`;
+  - `402284c3f` on `origin/codex/tmem`;
   - current public `upstream/main` merged at `4cd6bcbc9`.
-- Current-head reruns completed so far:
+- Current-head reruns after focused recovery:
   - `make -j8`: success;
-  - `make test-lit`: `261 passed, 4 failed, 2 unsupported`;
+  - `make test-lit`: `265 passed, 2 unsupported`;
   - `make test-cpp`: `242/242` passed;
   - main phase of `make NUM_PROCS=24 test-unit`:
-    `115 failed, 15165 passed, 5552 skipped, 2 xfailed`;
-  - `make test-gsan`: `93 passed, 5 skipped`;
+    `15280 passed, 5552 skipped, 2 xfailed`;
+  - `python/test/unit/test_debug.py`: same `93` forked CUDA-init failures as
+    merge-base;
   - `python/tutorials/06-fused-attention.py`: `192 passed, 192 skipped`;
   - `make test-microbenchmark`: passed;
   - `make NUM_PROCS=24 test-regression`:
-    `93 failed, 997 passed, 216 skipped`.
+    `1090 passed, 216 skipped`;
+  - full four-way `python/triton_kernels/tests/` split:
+    `2562 passed, 3752 skipped`;
+  - full `python/examples/gluon/` aggregate:
+    `1811 passed, 74 skipped`;
+  - `make NUM_PROCS=24 test-gsan`: one aggregate hang on a single exact row;
+    direct exact rerun passed and `make NUM_PROCS=8 test-gsan` passed
+    `97 passed, 1 skipped`.
 - Current exact-failure artifacts already refreshed:
   - `gb200_current_20260507_unit_main_failures.txt`: `115` nodeids, split
     across `language/test_matmul.py` (`74`) and `language/test_core.py` (`41`);
@@ -54,21 +62,24 @@ noise lives in `gb200_failure_classification_20260412.md`.
   - the current regression rerun refreshes a live broader compile-failure family
     that was not represented in the stale April "green" summary.
 - Remaining current-head lane notes:
-  - the grouped main Gluon run reached `99%`, reproduced the seven focused
-    frontend failures above, then was stopped after an overlong
-    `test_tcgen05_mma_scaled` tail; that exact passed in isolation;
-  - the first full Gluon examples run failed `384` attention rows, all from a
-    merge-local multicta layout bug; after `bd71536ef`, the repaired attention
-    file passed `576/576`;
-  - `test_debug.py` failures are currently a forked CUDA-init harness symptom:
-    direct Torch CUDA allocation succeeds on the same GPU;
-  - Proton's broad xdist main command is noisy, but representative periodic
-    flushing exacts and all three required tail commands pass.
+  - the grouped main Gluon run reached `99%`, then was stopped after one
+    overlong `test_tcgen05_mma_scaled` tail; that exact passes in isolation;
+  - the first pre-fix Gluon examples run failed `384` attention rows, all from a
+    merge-local multicta layout bug; the repaired full examples aggregate now
+    passes `1811/1811` selected rows;
+  - `test_debug.py` failures are a forked CUDA-init harness symptom:
+    direct Torch CUDA allocation succeeds on the same GPU and merge-base shows
+    the same exact set;
+  - Proton's broad xdist main command remains noisy (`31` failures in the
+    latest rerun), but representative exacts and all three required tail
+    commands pass.
 - Inventory consequence:
   - the April 13/14 "no deterministic branch-caused GB200 failure" conclusion
-    is stale;
-  - do not use the older green aggregate for prioritization; use the refreshed
-    2026-05-07 manifests above instead.
+    was stale before `51534acf0`;
+  - after the repair and broad rerun, no deterministic branch-caused GB200
+    product failure remains known;
+  - future triage should start from fresh exact repros instead of the pre-fix
+    aggregate manifests.
 
 ## Fresh Merge-Base Classification (2026-05-07 UTC)
 

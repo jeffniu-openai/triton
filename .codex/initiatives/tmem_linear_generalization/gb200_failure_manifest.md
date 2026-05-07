@@ -32,7 +32,7 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
-## Current-Head Focused Recovery Status (2026-05-07 UTC)
+## Current-Head Recovery Status (2026-05-07 UTC)
 
 - Current checkpoint:
   - `51534acf0` on `origin/codex/tmem`.
@@ -76,9 +76,36 @@ PY
   - the pre-fix `384` Gluon examples failures are not active: they were the
     multicta attention merge bug fixed by `bd71536ef`, and the repaired
     attention file passes `576/576`;
-  - older April claims of "none known from current local evidence" are stale,
-    and the next aggregate truth source must come from a fresh broad rerun on
-    `51534acf0` or later.
+  - older April claims of "none known from current local evidence" are stale;
+  - the fresh broad rerun on the repaired head leaves no deterministic
+    branch-owned product failure active.
+
+## Broad-Rerun Refresh (2026-05-07 UTC)
+
+- Product lanes now green on current head:
+  - lit: `265 passed, 2 unsupported`
+  - unit main phase: `15280 passed, 5552 skipped, 2 xfailed`
+  - regression: `1090 passed, 216 skipped`
+  - full `python/triton_kernels/tests/` split:
+    `2562 passed, 3752 skipped`
+  - full examples aggregate: `1811 passed, 74 skipped`
+  - tutorial: `192 passed, 192 skipped`
+  - C++ tests: `242/242` passed
+  - microbenchmark: passed
+- Non-product / harness-sensitive symptoms:
+  - debug exact manifest: same `93` forked CUDA-init rows as merge-base;
+  - Gluon main aggregate: one long-tail `test_tcgen05_mma_scaled` exact that
+    passes directly;
+  - GSan: `-n 24` aggregate hung on
+    `test_transitive_cta_scope_read_after_write[acq-rel-acquire]`, that exact
+    passed directly, and `-n 8` full rerun passed `97 passed, 1 skipped`;
+  - Proton main xdist command: latest rerun reported `31` failures, but three
+    representative current failures and all three required tail commands pass
+    directly.
+- Current recovery reading:
+  - the deterministic exact lists remain historical after the repair;
+  - use new exact repros, not pre-fix aggregate counts, if a future lane goes
+    red again.
 
 ## Merge-Base Classification Refresh (2026-05-07 UTC)
 

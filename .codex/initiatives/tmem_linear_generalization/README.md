@@ -30,25 +30,28 @@ Fresh focused recovery after that inventory is green:
   displacement, and several checks still assumed the old raw-word pointer
   lowering.
 
-Current GB200-local broad status is still based on the pre-fix rerun and older
-April "all clear" counts remain stale until the lane is rerun:
-- before `51534acf0`, `make test-lit` passed `261` tests with `4` branch-local
-  failures and `2` unsupported tests;
-- before `51534acf0`, `make NUM_PROCS=24 test-unit`,
-  `make NUM_PROCS=24 test-regression`, and `python/triton_kernels/tests`
-  exposed the now-closed exact manifest families above;
-- the main Gluon grouped run reached `99%`, reproduced `7` frontend
-  contract/stale-expectation failures that are now fixed, then was stopped after
-  one overlong `test_tcgen05_mma_scaled` tail; that exact passes in isolation;
-- the pre-fix full Gluon examples run failed `384` attention rows, all in the
-  multicta merge bug fixed by `bd71536ef`; the repaired attention file now
-  passes `576/576`;
-- `test_debug.py` still fails `93` forked CUDA-init cases even though direct
-  Torch CUDA allocation works on the same GPU;
-- Proton's xdist main command fails `37` CUPTI/session-interaction rows while
-  representative exacts and all three tail commands pass;
-- `make test-cpp`, `make test-gsan`, the fused-attention tutorial, and the
-  microbenchmark pass on the current head.
+Fresh broad rerun on the repaired head is also clean outside already-classified
+harness noise:
+- `make test-lit` -> `265 passed, 2 unsupported`;
+- `make test-cpp` -> `242/242` passed;
+- the main `make NUM_PROCS=24 test-unit` phase -> `15280 passed, 5552 skipped,
+  2 xfailed`;
+- `test_debug.py` still fails the same `93` forked CUDA-init rows that fail on
+  merge-base;
+- `make NUM_PROCS=24 test-regression` -> `1090 passed, 216 skipped`;
+- the full examples aggregate now passes `1811 passed, 74 skipped`;
+- `make NUM_PROCS=24 test-gsan` hung in one xdist aggregate row, but that exact
+  passed immediately in isolation and `make NUM_PROCS=8 test-gsan` passed
+  `97 passed, 1 skipped`;
+- the main Gluon aggregate still has one partition-sensitive long tail at
+  `test_tcgen05_mma_scaled`, but that exact passes in isolation after the seven
+  fixed frontend rows;
+- Proton's xdist main command is still session-sensitive (`31` failures in the
+  latest broad run), while representative exacts and all three tail commands
+  pass directly;
+- the fused-attention tutorial now passes `192 passed, 192 skipped`; the full
+  four-way `python/triton_kernels/tests` rerun passes `2562 passed,
+  3752 skipped`.
 
 The durable upstream extraction plan now lives in
 `upstream_pr_slicing_plan_20260507.md`.

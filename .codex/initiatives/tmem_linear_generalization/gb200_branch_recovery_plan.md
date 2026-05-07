@@ -84,9 +84,12 @@ PY
     merge-local multicta layout bug fixed by `bd71536ef`; the repaired attention
     file now passes `576/576`;
   - `test_debug.py` currently fails through forked CUDA initialization despite
-    direct CUDA allocation working;
-  - Proton's broad xdist command reports `37` CUPTI/session-interaction
-    failures while representative exacts and all required tail commands pass.
+    direct CUDA allocation working and reproduces on merge-base;
+  - Proton's broad xdist command reported `31` CUPTI/session-interaction
+    failures in the latest broad rerun while representative exacts and all
+    required tail commands pass;
+  - `test-gsan -n 24` and the main Gluon aggregate each showed one
+    partition-sensitive tail that passes directly.
 
 ### Fresh Repair Plan After Merge-Base Classification (2026-05-07 UTC)
 
@@ -99,7 +102,7 @@ PY
    expectation.
 4. [x] Refresh the stale lit expectations and close the real Blackwell
    singleton-prefix subword-phase bug.
-5. [ ] Re-run the full current GB200 lane pieces from the repaired head. Keep
+5. [x] Re-run the full current GB200 lane pieces from the repaired head. Keep
    `test_debug.py` and Proton out of the product-recovery queue unless a fresh
    branch-only exact appears.
 

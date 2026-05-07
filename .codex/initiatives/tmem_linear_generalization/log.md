@@ -36617,3 +36617,32 @@ Validation:
 - focused subword runtime selector:
   `104 passed, 1604 deselected`
 - `git diff --check`
+
+## 2026-05-07 UTC: post-repair broad GB200 refresh
+
+- Re-ran the current-head GB200-equivalent surfaces after `51534acf0`.
+- Green product surfaces:
+  - `make test-lit` -> `265 passed, 2 unsupported`
+  - main unit phase -> `15280 passed, 5552 skipped, 2 xfailed`
+  - `make NUM_PROCS=24 test-regression` -> `1090 passed, 216 skipped`
+  - full four-way `python/triton_kernels/tests/` split ->
+    `2562 passed, 3752 skipped`
+  - `make test-cpp` -> `242/242` passed
+  - `python/tutorials/06-fused-attention.py` -> `192 passed, 192 skipped`
+  - `python/examples/gluon/` -> `1811 passed, 74 skipped`
+  - `make test-microbenchmark` -> passed
+- Harness/session-sensitive evidence:
+  - `python/test/unit/test_debug.py` still reports the merge-base-preexisting
+    `93` forked CUDA-init rows;
+  - the main Gluon aggregate still has one partition-sensitive
+    `test_tcgen05_mma_scaled` tail that passes directly;
+  - `make NUM_PROCS=24 test-gsan` hung on
+    `test_transitive_cta_scope_read_after_write[acq-rel-acquire]`, while the
+    exact row passed directly and `make NUM_PROCS=8 test-gsan` passed
+    `97 passed, 1 skipped`;
+  - `make test-proton` reported `31` broad xdist failures, while three
+    representative exacts and the three Proton tail commands passed directly.
+- Recovery consequence:
+  - no deterministic branch-owned product bucket remains known on current head;
+  - future red reruns should start from fresh exact repros rather than stale
+    pre-fix aggregate counts.

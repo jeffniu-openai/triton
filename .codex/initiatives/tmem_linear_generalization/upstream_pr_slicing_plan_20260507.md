@@ -133,12 +133,15 @@ The branch has two kinds of content:
   - `triton_kernels` exact manifest `69 passed`;
   - Gluon frontend exact manifest `7 passed`;
   - all four focused lit files from the merge-base comparison passed.
-- The remaining release gate is broad validation, not another known focused
-  product bucket:
-  - rerun the repaired head through the GB200-equivalent lane;
-  - refresh aggregate counts before using the pre-fix failure inventory for any
-    prioritization;
-  - keep the partition-sensitive Gluon tail, `test_debug.py`, and Proton
-    classified separately unless a fresh branch-only exact repro appears.
-- Treat broad-lane freshness as the gate for starting PR extraction, but keep
-  the stacked series structure above rather than collapsing back into one PR.
+- Broad validation has now been refreshed on the repaired head:
+  - lit, C++, regression, tutorial, examples, microbenchmark, and the main unit
+    phase are green;
+  - the remaining non-green symptoms are `PREEXISTING_ON_MERGE_BASE`
+    (`test_debug.py`) or xdist/session-sensitive (main Gluon aggregate,
+    `test-gsan -n 24`, Proton), with direct exact reruns passing where checked.
+- The PR-series gate is now extraction hygiene, not an outstanding known
+  product regression:
+  - cut the series from fresh branches rooted at current `upstream/main`;
+  - carry only the reviewed product/test slices needed by each PR;
+  - keep the broad rerun evidence in this initiative directory rather than
+    shipping local coordination docs upstream.
