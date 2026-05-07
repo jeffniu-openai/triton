@@ -32,6 +32,22 @@ Current post-merge checklist:
 - [ ] Use `upstream_pr_slicing_plan_20260507.md` as the extraction checklist for
       the stacked upstream PR series.
 
+Current branch-recovery checklist after fresh merge-base classification:
+
+- [x] Compare the refreshed 2026-05-07 exact manifests against merge-base
+      `4cd6bcbc9`.
+- [x] Classify deterministic branch deltas separately from preexisting / flaky
+      harness symptoms.
+- [ ] Fix the branch-new MMAv5 accumulator-family regression behind the unit
+      and regression manifests.
+- [ ] Fix or separately explain the branch-new `triton_kernels` optimizer
+      failure family.
+- [ ] Rewrite / refresh the seven Gluon frontend contract rows.
+- [ ] Refresh the remaining lit rows after separating true conversion gaps from
+      stale expected text.
+- [ ] Re-run focused exact manifests, then the broader GB200 surfaces, and
+      refresh the manifests again before the next checkpoint.
+
 Current audit follow-up checklist:
 
 - [x] Fix stale Gluon split-N descriptor `get_reg_layout()` helper call and add direct descriptor-value coverage for `32x32b_splitn` / `16x32bx2`.

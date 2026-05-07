@@ -76,6 +76,40 @@ PY
     attention file passes `576/576`;
   - older April claims of "none known from current local evidence" are stale.
 
+## Merge-Base Classification Refresh (2026-05-07 UTC)
+
+- `REAL_NEW_ON_BRANCH_REGRESSION`
+  - `gb200_current_20260507_unit_main_failures.txt`: `115 / 115` pass on
+    merge-base.
+  - `gb200_current_20260507_regression_failures.txt`: `93 / 93` pass on
+    merge-base.
+  - `gb200_current_20260507_triton_kernels_failures.txt`: `69 / 69` pass on
+    merge-base.
+  - current lit files:
+    `Conversion/tritongpu_to_llvm_blackwell.mlir`,
+    `Gluon/infer_coalesced_encoding.mlir`,
+    `TritonGPU/amd/amd-consan.mlir`, and
+    `TritonNvidiaGPU/test_tensor_memory_allocation.mlir` all pass on
+    merge-base.
+- `BRANCH_ADDED_COVERAGE_RED`
+  - six Gluon frontend rows are not present on merge-base:
+    `test_tensor_memory_linear_view_ir`,
+    `test_tensor_memory_linear_views_block_layout_ir`,
+    `test_tensor_memory_linear_view_load_reports_clean_error`,
+    `test_tensor_memory_4x256b_refresh_descriptor_type_reports_backend_ldst_reason`,
+    `test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reason`,
+    and `test_tensor_memory_descriptor_chain_ir`.
+- `BRANCH_CHANGED_COVERAGE_RED`
+  - `test_tmem_subslice_reg_layout_constexpr` exists and passes on merge-base.
+- `PREEXISTING_ON_MERGE_BASE`
+  - `gb200_current_20260507_debug_failures.txt`: the same `93` rows fail on
+    merge-base under `pytest -n 24 python/test/unit/test_debug.py`.
+- `FLAKE_OR_HARNESS_SENSITIVE`
+  - `gb200_current_20260507_proton_main_failures.txt`: the broad xdist command
+    changes shape between runs / branches (`37` current-head failures earlier,
+    `19` merge-base failures in the fresh comparison), while focused exacts are
+    not a stable branch delta.
+
 ## Previous Current-Head Failure Status (2026-04-13 05:41 UTC)
 
 - Current checkpoint:

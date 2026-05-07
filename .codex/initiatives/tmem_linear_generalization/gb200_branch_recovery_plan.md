@@ -88,6 +88,25 @@ PY
   - Proton's broad xdist command reports `37` CUPTI/session-interaction
     failures while representative exacts and all required tail commands pass.
 
+### Fresh Repair Plan After Merge-Base Classification (2026-05-07 UTC)
+
+1. Fix the deterministic MMAv5 accumulator-family regression shared by the
+   unit and regression manifests. The representative rows fail only on the
+   branch, and their exact TMEM accumulator roots contain broadcast-equivalent
+   zero bases that should not disqualify the physical MMAv5 family match.
+2. Reduce the `triton_kernels` persistent-matmul bucket separately from an
+   exact reproducer in `TritonNvidiaGPUOptimizeTMemLayoutsPass`; keep it beside
+   the MMAv5 fix until the shared-vs-distinct root cause is proven.
+3. Rewrite the six branch-added Gluon frontend tests onto the explicit TMEM
+   physical-bitcast contract and refresh the one branch-changed constexpr
+   expectation. These are test-contract updates, not compiler regressions.
+4. Refresh the stale lit expectations whose inferred memdesc text changed, and
+   keep `tritongpu_to_llvm_blackwell.mlir` separated into its real existing
+   sub-32-bit conversion gap plus any cascading stale checks.
+5. Re-run focused exact manifests first, then broaden to the full current GB200
+   lane pieces once the focused sets are green. Keep `test_debug.py` and Proton
+   out of the product-recovery queue unless a fresh branch-only exact appears.
+
 ### Previous Current-Head Recovery Status (2026-04-13 05:41 UTC)
 
 - Current checkpoint:

@@ -70,6 +70,40 @@ noise lives in `gb200_failure_classification_20260412.md`.
   - do not use the older green aggregate for prioritization; use the refreshed
     2026-05-07 manifests above instead.
 
+## Fresh Merge-Base Classification (2026-05-07 UTC)
+
+- Comparison point:
+  - branch head: `867a81f710cabd1fcc5bed75e2f4f5518c70a6a4`;
+  - latest merged public main / merge-base:
+    `4cd6bcbc9af7ae4816ddeca23ab7bf8fb9781aa0`.
+- Deterministic branch-caused product buckets:
+  - the current `115` unit nodeids all pass on merge-base;
+  - the current `93` regression nodeids all pass on merge-base;
+  - the current `69` `triton_kernels` nodeids all pass on merge-base;
+  - the four current lit files all pass on merge-base.
+- Gluon frontend split:
+  - six of the seven current frontend nodeids are absent on merge-base and are
+    therefore `BRANCH_ADDED_COVERAGE_RED`;
+  - `test_tmem_subslice_reg_layout_constexpr` exists and passes on merge-base,
+    so it is `BRANCH_CHANGED_COVERAGE_RED`.
+- Not branch-actionable:
+  - `test_debug.py` fails the same `93` forked CUDA-init rows on merge-base
+    under the exact `-n 24` command, so the current symptom is
+    `PREEXISTING_ON_MERGE_BASE` / environment-sensitive rather than TMEM
+    branch drift;
+  - Proton's broad xdist command is flaky/session-interaction-sensitive:
+    current branch evidence reported `37` failures, while the same merge-base
+    command produced `19` failures and a different live set.
+- Representative current-head failure signatures:
+  - unit and regression representatives fail in `ConvertTritonGPUToLLVM` on
+    single-CTA MMAv5 accumulator descriptors whose exact
+    `tensor_memory_linear` roots include broadcast-equivalent zero bases;
+  - the representative `triton_kernels` row fails earlier in
+    `TritonNvidiaGPUOptimizeTMemLayoutsPass`;
+  - the six branch-added Gluon rows still exercise retired private
+    `_reinterpret` behavior or stale diagnostics instead of the explicit
+    physical-bitcast contract.
+
 ## Previous Broad Validation Checkpoint (2026-04-13 05:41 UTC)
 
 ### 2026-04-14 00:46 UTC Refresh On `cfef1b94f`
