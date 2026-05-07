@@ -377,6 +377,8 @@ class CUDABackend(BaseBackend):
         passes.ttgpuir.add_allocate_warp_groups(pm)
         passes.convert.add_scf_to_cf(pm)
         passes.gluon.add_inliner(pm)
+        if "consan" in options.instrumentation_mode:
+            passes.ttgpuir.add_prepare_consan_captures(pm, "nvidia")
         # Tensor-memory allocation can rematerialize scale fragments and insert
         # layout conversions. Run it before shared-memory allocation so those
         # conversions receive scratch offsets through the normal allocation

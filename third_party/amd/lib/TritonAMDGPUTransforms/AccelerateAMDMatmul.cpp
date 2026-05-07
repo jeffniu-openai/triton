@@ -1247,7 +1247,8 @@ public:
       }
 
       LinearLayout newLL = ttg::chooseScaledWmmaScaleLayout(
-          ctx, idx, shape, mDim, scaleFactor, ctaLayout, cgaLayout);
+          ctx, idx, shape, mDim, nDim, wmmaEnc.getIsTransposed(), scaleFactor,
+          ctaLayout, cgaLayout);
       Attribute newScaleEncoding = ttg::LinearEncodingAttr::get(ctx, newLL);
       auto newScaleType =
           RankedTensorType::get(shape, scaleType, newScaleEncoding);
@@ -1725,9 +1726,9 @@ struct TritonAMDGPUAccelerateMatmulPass
     ModuleOp m = getOperation();
 
     RewritePatternSet mfmaPatterns(context);
-    AMD::TargetInfo ti = AMD::TargetInfo(archGenerationName);
-    unsigned wmmaVersion = getWmmaVersion(archGenerationName);
-    switch (auto isaFamily = triton::AMD::deduceISAFamily(archGenerationName)) {
+    AMD::TargetInfo ti = AMD::TargetInfo(gfxArch);
+    unsigned wmmaVersion = getWmmaVersion(gfxArch);
+    switch (auto isaFamily = triton::AMD::deduceISAFamily(gfxArch)) {
     case ISAFamily::GFX1250:
       mfmaPatterns.add<ScaledBlockedToScaledWMMAF8F6F4>(context, wmmaVersion,
                                                         /*benefit=*/4);
@@ -1752,9 +1753,9 @@ struct TritonAMDGPUAccelerateMatmulPass
     case ISAFamily::RDNA4:
       ttg::populateDecomposeScaledBlockedPatterns(mfmaPatterns,
                                                   /*benefit=*/3);
-      mfmaPatterns.add<::BlockedToWMMA>(
-          context, getWmmaVersion(archGenerationName), matrixInstructionSize,
-          /*benefit=*/2);
+      mfmaPatterns.add<::BlockedToWMMA>(context, getWmmaVersion(gfxArch),
+                                        matrixInstructionSize,
+                                        /*benefit=*/2);
       break;
     default:
       break;
@@ -1763,7 +1764,7 @@ struct TritonAMDGPUAccelerateMatmulPass
       signalPassFailure();
 
     RewritePatternSet patterns(context);
-    patterns.add<AccelerateBlocked>(context, archGenerationName, /*benefit=*/1);
+    patterns.add<AccelerateBlocked>(context, gfxArch, /*benefit=*/1);
     if (applyPatternsGreedily(m, std::move(patterns)).failed())
       signalPassFailure();
     decomposeMixedModeDotOp(m);

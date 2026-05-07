@@ -8,6 +8,7 @@
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonInstrument/IR/ConSanConstants.h"
 #include "triton/Tools/GenericSwizzling.h"
 #include "triton/Tools/LayoutUtils.h"
 
@@ -159,6 +160,15 @@ getNvidiaAllocationAnalysisScratchSizeFn(TargetInfoBase &targetInfo) {
       // In cuda we always swizzle
       auto elems = getNumScratchElemsSwizzledCvt(srcTy, dstTy, targetInfo);
       return elems * getBitwidth(srcTy) / 8;
+    }
+    if (auto ws = dyn_cast<triton::gpu::WarpSpecializeOp>(op)) {
+      unsigned captureSize = defaultAllocationAnalysisScratchSizeFn(op);
+      // ConSan adds captures after allocation; reserve space pre-computed by
+      // the common TritonInstrumentPrepareConSanCaptures pass.
+      if (auto extra = ws->getAttrOfType<IntegerAttr>(
+              mlir::triton::instrument::kConSanExtraCaptureBytesAttr))
+        captureSize += extra.getInt();
+      return captureSize;
     }
     return defaultAllocationAnalysisScratchSizeFn(op);
   };

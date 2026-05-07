@@ -13,6 +13,7 @@
 #include "triton/Tools/LayoutUtils.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/MathExtras.h"
 
 // Provide custom directive handlers for declarative assemblyFormat.
 // They must be visible before including the generated op classes.
@@ -930,6 +931,18 @@ LogicalResult MemDescReinterpretOp::verify() {
   if (failed(OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy)))
     return emitMemDescTypeMismatch(*this, expectedTy, dstTy);
 
+  auto kBlock = StringAttr::get(getContext(), "block");
+  auto getNumBroadcastCTADims = [kBlock](MemDescType ty) {
+    auto rank = cast<LayoutEncodingTrait>(ty.getEncoding()).getRank();
+    auto layout =
+        toLinearLayout(ty.getAllocShape().take_back(rank), ty.getEncoding());
+    auto freeVariableMask = layout.getFreeVariableMasks().lookup(kBlock);
+    return llvm::popcount<uint32_t>(freeVariableMask);
+  };
+  if (getNumBroadcastCTADims(srcTy) != getNumBroadcastCTADims(dstTy))
+    return emitError(
+        "source and result must have the same number of broadcast CTA dims");
+
   auto isTMem = [](MemDescType ty) {
     return ty.getMemorySpace() ==
                triton::nvidia_gpu::TensorMemorySpaceAttr::get(ty.getContext()) &&
@@ -1184,6 +1197,65 @@ LogicalResult LocalScatterOp::verify() {
     return emitError("values element type must match destination element type");
   }
 
+  return success();
+}
+
+// LocalAtomicScatterRMWOp
+LogicalResult LocalAtomicScatterRMWOp::verify() {
+  auto dstTy = getDst().getType();
+  auto valuesTy = cast<RankedTensorType>(getValues().getType());
+  auto indicesTy = cast<RankedTensorType>(getIndices().getType());
+  auto maskTy = getMask() ? cast<RankedTensorType>(getMask().getType())
+                          : RankedTensorType();
+  Type valuesEltTy = valuesTy.getElementType();
+  unsigned axis = getAxis();
+
+  if (!dstTy.getMutableMemory())
+    return emitOpError("Cannot store into immutable memory");
+
+  // Local atomic scatter RMW only supports shared-memory memdescs.
+  if (!isa<SharedEncodingTrait>(dstTy.getEncoding())) {
+    return emitError("destination must have shared memory encoding");
+  }
+
+  // Match Triton's existing atomic add type support.
+  if (!valuesEltTy.isIntOrFloat()) {
+    return emitError("values must have integer or floating element type");
+  }
+
+  // Verify indices tensor has integer element type
+  if (!indicesTy.getElementType().isInteger()) {
+    return emitError("indices must have integer element type");
+  }
+
+  if (failed(verifySharedMemoryRank(*this, valuesTy, dstTy, "values")))
+    return failure();
+
+  // Verify values, indices, and mask have the same shape/rank.
+  if (valuesTy.getShape() != indicesTy.getShape()) {
+    return emitError("values shape must match indices shape");
+  }
+  if (maskTy && valuesTy.getShape() != maskTy.getShape()) {
+    return emitError("values shape must match mask shape");
+  }
+
+  // Verify axis is valid
+  if (axis >= dstTy.getRank()) {
+    return emitError("axis ")
+           << axis << " is out of bounds for destination rank "
+           << dstTy.getRank();
+  }
+
+  // Verify values, indices, and result have the same layout
+  if (valuesTy.getEncoding() != indicesTy.getEncoding()) {
+    return emitError("values must have the same layout as indices");
+  }
+  if (maskTy && valuesTy.getEncoding() != maskTy.getEncoding()) {
+    return emitError("values must have the same layout as mask");
+  }
+  if (dstTy.getElementType() != valuesEltTy) {
+    return emitError("values element type must match destination element type");
+  }
   return success();
 }
 
@@ -1502,12 +1574,12 @@ LogicalResult MemDescSubsliceOp::verify() {
 
   auto ctx = getContext();
   LinearLayout ll;
-  if (auto paddedEncoding = dyn_cast<PaddedSharedEncodingAttr>(srcEnc)) {
+  if (auto paddedEncoding = triton::gpu::getPaddedEncoding(srcEnc)) {
     if (paddedEncoding.getRank() < srcTy.getRank()) {
       return emitError("SubSlice of low rank PaddedSharedEncoding from higher "
                        "rank tensors is not supported yet");
     }
-    ll = paddedEncoding.getLinearComponent();
+    ll = triton::gpu::paddedLinearLayout(srcTy);
   } else {
     ll = triton::gpu::toLinearLayout(srcTy);
   }
@@ -1548,6 +1620,14 @@ LogicalResult MemDescSubsliceOp::verify() {
 
 RegionRange WarpSpecializeOp::getPartitionRegions() {
   return getPartitionOp().getPartitionRegions();
+}
+
+SmallVector<Region *> WarpSpecializeOp::getNonEmptyPartitionRegions() {
+  SmallVector<Region *> regions;
+  for (Region *region : getPartitionRegions())
+    if (!region->empty() && !region->front().without_terminator().empty())
+      regions.push_back(region);
+  return regions;
 }
 
 WarpSpecializePartitionsOp WarpSpecializeOp::getPartitionOp() {
