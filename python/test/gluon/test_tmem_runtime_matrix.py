@@ -2720,7 +2720,10 @@ def tmem_mma_indexed_acc_kernel(
         acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
-    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], False))
+    mbarrier.init(
+        bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], False, acc_tmem.type.layout.two_ctas),
+    )
     tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, mbarriers=[bar])
     mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
     mbarrier.invalidate(bar)
@@ -2767,7 +2770,10 @@ def tmem_mma_acc_subslice_kernel(
         acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
-    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], False))
+    mbarrier.init(
+        bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], False, acc_tmem.type.layout.two_ctas),
+    )
     tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, mbarriers=[bar])
     mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
     mbarrier.invalidate(bar)
@@ -3609,7 +3615,10 @@ def tmem_mma_twocta_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: ttgl.constexpr, BL
     tma_bar = mbarrier.allocate_mbarrier(two_ctas=acc_tmem_layout.two_ctas)
     mbarrier.init(tma_bar, count=1)
     mma_bar = mbarrier.allocate_mbarrier()
-    mbarrier.init(mma_bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], True))
+    mbarrier.init(
+        mma_bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], True, acc_tmem_layout.two_ctas),
+    )
 
     mbarrier.expect(tma_bar, a_desc.nbytes_per_cta + b_desc.nbytes_per_cta)
     tma.async_copy_global_to_shared(a_desc, [0, 0], tma_bar, smem_a, multicast=True)
@@ -3639,7 +3648,10 @@ def tmem_mma_twocta_use_acc_kernel(a_desc, b_desc, c_ptr, out_ptrs, BLOCK_M: ttg
     tma_bar = mbarrier.allocate_mbarrier(two_ctas=acc_tmem_layout.two_ctas)
     mbarrier.init(tma_bar, count=1)
     mma_bar = mbarrier.allocate_mbarrier()
-    mbarrier.init(mma_bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], True))
+    mbarrier.init(
+        mma_bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], True, acc_tmem_layout.two_ctas),
+    )
 
     mbarrier.expect(tma_bar, a_desc.nbytes_per_cta + b_desc.nbytes_per_cta)
     tma.async_copy_global_to_shared(a_desc, [0, 0], tma_bar, smem_a, multicast=True)
@@ -3674,7 +3686,10 @@ def tmem_mma_twocta_tma_b_transposed_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: t
     tma_bar = mbarrier.allocate_mbarrier(two_ctas=acc_tmem_layout.two_ctas)
     mbarrier.init(tma_bar, count=1)
     mma_bar = mbarrier.allocate_mbarrier()
-    mbarrier.init(mma_bar, count=tcgen05_mma_barrier_count([smem_a, mma_b], True))
+    mbarrier.init(
+        mma_bar,
+        count=tcgen05_mma_barrier_count([smem_a, mma_b], True, acc_tmem_layout.two_ctas),
+    )
 
     mbarrier.expect(tma_bar, a_desc.nbytes_per_cta + b_desc.nbytes_per_cta)
     tma.async_copy_global_to_shared(a_desc, [0, 0], tma_bar, smem_a, multicast=True)
@@ -3705,7 +3720,10 @@ def tmem_mma_twocta_tma_b_transposed_use_acc_kernel(a_desc, b_desc, c_ptr, out_p
     tma_bar = mbarrier.allocate_mbarrier(two_ctas=acc_tmem_layout.two_ctas)
     mbarrier.init(tma_bar, count=1)
     mma_bar = mbarrier.allocate_mbarrier()
-    mbarrier.init(mma_bar, count=tcgen05_mma_barrier_count([smem_a, mma_b], True))
+    mbarrier.init(
+        mma_bar,
+        count=tcgen05_mma_barrier_count([smem_a, mma_b], True, acc_tmem_layout.two_ctas),
+    )
 
     mbarrier.expect(tma_bar, a_desc.nbytes_per_cta + b_desc.nbytes_per_cta)
     tma.async_copy_global_to_shared(a_desc, [0, 0], tma_bar, smem_a, multicast=True)
@@ -3757,7 +3775,10 @@ def tmem_mma_kernel(a_ptr, b_ptr, c_ptr, out_ptr, layout: ttgl.constexpr, use_ac
         acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
-    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], False))
+    mbarrier.init(
+        bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], False, acc_tmem.type.layout.two_ctas),
+    )
     tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, mbarriers=[bar])
     mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
     mbarrier.invalidate(bar)
@@ -3792,7 +3813,10 @@ def tmem_mma_plain_kind_use_acc_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: ttgl.con
     acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
-    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], False))
+    mbarrier.init(
+        bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], False, acc_tmem.type.layout.two_ctas),
+    )
     tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=True, mbarriers=[bar])
     mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
     mbarrier.invalidate(bar)
@@ -3830,7 +3854,10 @@ def tmem_mma_twocta_plain_kind_use_acc_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: t
     acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
 
     bar = mbarrier.allocate_mbarrier()
-    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], True))
+    mbarrier.init(
+        bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], True, acc_tmem.type.layout.two_ctas),
+    )
     tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=True, multicast=True, mbarriers=[bar])
     mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
     mbarrier.invalidate(bar)
@@ -3872,7 +3899,10 @@ def tmem_mma_twocta_indexed_acc_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: ttgl.con
         acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
 
     bar = mbarrier.allocate_mbarrier()
-    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], True))
+    mbarrier.init(
+        bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], True, acc_tmem.type.layout.two_ctas),
+    )
     tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, multicast=True, mbarriers=[bar])
     mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
     mbarrier.invalidate(bar)
@@ -3914,7 +3944,10 @@ def tmem_mma_twocta_acc_subslice_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: ttgl.co
         acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
 
     bar = mbarrier.allocate_mbarrier()
-    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], True))
+    mbarrier.init(
+        bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], True, acc_tmem.type.layout.two_ctas),
+    )
     tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, multicast=True, mbarriers=[bar])
     mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
     mbarrier.invalidate(bar)

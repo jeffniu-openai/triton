@@ -944,8 +944,8 @@ LogicalResult MemDescReinterpretOp::verify() {
         "source and result must have the same number of broadcast CTA dims");
 
   auto isTMem = [](MemDescType ty) {
-    return ty.getMemorySpace() ==
-               triton::nvidia_gpu::TensorMemorySpaceAttr::get(ty.getContext()) &&
+    return isa<triton::nvidia_gpu::TensorMemorySpaceAttr>(
+               ty.getMemorySpace()) &&
            ty.getEncoding() &&
            triton::nvidia_gpu::isTensorMemoryEncoding(ty.getEncoding());
   };

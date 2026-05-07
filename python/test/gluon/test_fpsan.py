@@ -184,7 +184,10 @@ def _tcgen05_mma_twocta_linear_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: gl.cons
     tma_bar = hopper_mbarrier.allocate_mbarrier(two_ctas=acc_tmem_layout.two_ctas)
     hopper_mbarrier.init(tma_bar, count=1)
     mma_bar = hopper_mbarrier.allocate_mbarrier()
-    hopper_mbarrier.init(mma_bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], True))
+    hopper_mbarrier.init(
+        mma_bar,
+        count=tcgen05_mma_barrier_count([smem_a, smem_b], True, acc_tmem_layout.two_ctas),
+    )
 
     hopper_mbarrier.expect(tma_bar, a_desc.nbytes_per_cta + b_desc.nbytes_per_cta)
     tma.async_copy_global_to_shared(a_desc, [0, 0], tma_bar, smem_a, multicast=True)
